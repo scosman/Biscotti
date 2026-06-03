@@ -1,0 +1,164 @@
+# EventKitLab Validation Script (V2)
+
+Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar account (iCloud, Google, Exchange, etc.) with at least a few events, some of which have video conferencing links and multiple attendees.
+
+## Prerequisites
+
+- EventKitLab built and running (via `xcodegen generate && open EventKitLab.xcodeproj`, then Run)
+- At least one calendar account configured in System Settings > Internet Accounts
+- Some events in the next 7 days (ideally including a Zoom/Meet/Teams meeting with attendees)
+- Contacts app with at least a few contacts that match calendar attendees (for enrichment testing)
+
+## Test Steps
+
+### 1. Permission Tab -- Calendar Access
+
+1. Open EventKitLab. You should see the **Permission** tab.
+2. If calendar access has not been granted previously, you should see "Status: Not Determined" and a "Request Calendar Access" button.
+3. Click **Request Calendar Access**.
+4. Grant full access when the system prompt appears.
+5. Verify:
+   - [ ] Status changes to "Full Access" (or "Authorized (deprecated)" on older SDK paths).
+   - [ ] A green checkmark icon appears next to the calendar status.
+
+**Result:** _______________
+
+### 2. Permission Tab -- Contacts Access
+
+1. On the Permission tab, under "Contacts Access", click **Request Contacts Access**.
+2. Grant access when prompted.
+3. Verify:
+   - [ ] Status changes to "Authorized".
+   - [ ] A green checkmark icon appears.
+
+**Result:** _______________
+
+### 3. Permission Tab -- Denial Handling
+
+1. Open System Settings > Privacy & Security > Calendars.
+2. Revoke EventKitLab's calendar access.
+3. Relaunch EventKitLab.
+4. Verify:
+   - [ ] The Permission tab shows "Denied" status.
+   - [ ] An "Open System Settings" button is shown.
+   - [ ] Clicking the button opens the relevant System Settings pane.
+5. Re-grant access in System Settings and relaunch EventKitLab to continue testing.
+
+**Result:** _______________
+
+### 4. Calendars Tab -- Calendar Listing and Filtering
+
+1. Switch to the **Calendars** tab.
+2. Verify:
+   - [ ] All your calendars appear, grouped by source (e.g. "iCloud", "Google", "Exchange").
+   - [ ] Each calendar shows its color dot, title, and type label (CalDAV, Exchange, etc.).
+   - [ ] All calendars are toggled ON by default.
+3. Toggle OFF one calendar (e.g. "Birthdays" or a secondary calendar).
+4. Verify the toggle visually reflects the change.
+5. Click **Disable All**, then **Enable All**.
+   - [ ] All toggles turn off, then back on.
+6. Leave at least two calendars enabled (one with events, one without if possible).
+
+**Result:** _______________
+
+### 5. Events Tab -- Date Range and Event Fetching
+
+1. Switch to the **Events** tab.
+2. Adjust the date range to cover a period with known events (default is yesterday to +7 days).
+3. Click **Fetch Events**.
+4. Verify:
+   - [ ] Events appear in the list, sorted by start date.
+   - [ ] The event count label updates (e.g. "12 events loaded").
+   - [ ] Each event shows its title, date/time range, and calendar name.
+   - [ ] All-day events show an "All Day" badge.
+   - [ ] Events with conferencing links show a blue video icon.
+5. Disable a calendar on the Calendars tab, return to Events, and re-fetch.
+   - [ ] Events from the disabled calendar no longer appear.
+
+**Result:** _______________
+
+### 6. Events Tab -- Event Detail Expansion
+
+1. Click on an event in the list to expand it.
+2. Verify the expanded view shows:
+   - [ ] Organizer name and email (if available).
+   - [ ] Location (if set).
+   - [ ] URL (if set).
+   - [ ] Conference platform and URL (if detected -- e.g. "Meet: https://meet.google.com/...").
+   - [ ] Notes (if present, truncated to 5 lines).
+   - [ ] Status and availability.
+   - [ ] Attendee list with name, email, role, status, type.
+   - [ ] "[You]" marker on the current user's attendee entry.
+   - [ ] Event ID and External ID.
+3. Click the same event again to collapse it.
+   - [ ] The detail section hides.
+
+**Result:** _______________
+
+### 7. Events Tab -- Contacts Enrichment Comparison
+
+1. On the Events tab (with events loaded), click **Show Contacts Comparison**.
+2. Expand an event that has attendees who are also in your Contacts.
+3. Verify:
+   - [ ] Under each attendee, a purple "Contacts enrichment" section appears.
+   - [ ] For matched contacts: contact name, email, organization, and "Has photo" are shown.
+   - [ ] For unmatched attendees: "No matching contact found" is shown.
+   - [ ] The EK-only data (above) and Contact-enriched data (below) are visibly side-by-side for comparison.
+4. Click **Hide Contacts Comparison** to toggle it off.
+   - [ ] The purple enrichment sections disappear.
+
+**Result:** _______________
+
+### 8. Data Report Tab -- Report Generation
+
+1. Make sure events are loaded (fetch on the Events tab first if needed).
+2. Switch to the **Data Report** tab.
+3. Click **Generate Report**.
+4. Verify:
+   - [ ] A formatted text report appears in the scrollable area.
+   - [ ] The report header shows generation date and event count.
+   - [ ] Each event section includes: title, start/end, all-day, calendar, color hex, status, availability, location, URL, notes, timezone, organizer details, conference info, all identifiers, and attendee details.
+   - [ ] Raw EKEvent extras are included: isDetached, birthdayContactIdentifier, structuredLocation (with geo if available), creationDate, lastModifiedDate, recurrence rules, alarms.
+   - [ ] If Contacts enrichment was run, a "Contacts Enrichment Comparison" section appears at the bottom showing match statistics and per-attendee comparison.
+5. Click **Copy to Clipboard**.
+   - [ ] "Copied!" confirmation appears briefly.
+   - [ ] Paste into a text editor to confirm the full report was copied.
+
+**Result:** _______________
+
+### 9. Conference URL Detection (Spot Check)
+
+1. If you have an event with a Zoom, Google Meet, or Teams link in its notes, location, or URL field, verify it was detected:
+   - [ ] The event shows the blue video icon in the list.
+   - [ ] The expanded detail shows the correct platform name and conference URL.
+2. If you have an event without any conferencing link:
+   - [ ] No video icon is shown, and no conference info appears in the detail.
+
+**Result:** _______________
+
+### 10. Empty State Handling
+
+1. On the Calendars tab, click **Disable All**.
+2. Go to the Events tab and click **Fetch Events**.
+   - [ ] The event list is empty.
+   - [ ] A message like "No events in the selected range..." is shown.
+3. Go to the Data Report tab.
+   - [ ] The "Generate Report" button is disabled (no events loaded).
+4. Re-enable calendars on the Calendars tab.
+
+**Result:** _______________
+
+## Summary
+
+| Test | Pass/Fail | Notes |
+|------|-----------|-------|
+| 1. Calendar Access | | |
+| 2. Contacts Access | | |
+| 3. Denial Handling | | |
+| 4. Calendar Filtering | | |
+| 5. Event Fetching | | |
+| 6. Event Detail | | |
+| 7. Contacts Enrichment | | |
+| 8. Data Report | | |
+| 9. Conference Detection | | |
+| 10. Empty States | | |

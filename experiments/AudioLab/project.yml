@@ -1,0 +1,46 @@
+name: AudioLab
+options:
+  bundleIdPrefix: com.steak.experiments
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "26.3"
+  minimumXcodeGenVersion: "2.34.0"
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    ARCHS: arm64
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: "NO"
+    SWIFT_VERSION: "6.2"
+    ENABLE_APP_SANDBOX: "NO"
+
+targets:
+  AudioLab:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.audiolab
+        INFOPLIST_FILE: Sources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+    scheme:
+      testTargets:
+        - AudioLabTests
+
+  AudioLabTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: AudioLab
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.audiolab.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AudioLab.app/Contents/MacOS/AudioLab"
+        BUNDLE_LOADER: "$(TEST_HOST)"

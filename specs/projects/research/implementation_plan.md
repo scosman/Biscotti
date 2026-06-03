@@ -11,11 +11,11 @@ Each coding phase also **writes** its experiment's `VALIDATION.md` manual test s
 ## Phases
 
 ### Research → decision docs under `/research/<area>/`
-- [ ] Phase 1: Audio research (R1) → `research/audio/README.md`
-- [ ] Phase 2: EventKit research (R2) → `research/eventkit/README.md`
-- [ ] Phase 3: ArgMax STT + diarization + ML isolation research (R3) → `research/argmax/README.md`
-- [ ] Phase 4: Permissions matrix research (R4) → `research/permissions/README.md`
-- [ ] Phase 5: Research summary → `research/README.md` (recommendations + links)
+- [x] Phase 1: Audio research (R1) → `research/audio/README.md`
+- [x] Phase 2: EventKit research (R2) → `research/eventkit/README.md`
+- [x] Phase 3: ArgMax STT + diarization + ML isolation research (R3) → `research/argmax/README.md`
+- [x] Phase 4: Permissions matrix research (R4) → `research/permissions/README.md`
+- [x] Phase 5: Research summary → `research/README.md` (recommendations + links)
 
 ### Coding → reference apps/libs under `/experiments/<Name>/` (each also writes its `VALIDATION.md`)
 - [ ] Phase 6: AudioLab (E1) — implement R1; write `VALIDATION.md` (V1 script)

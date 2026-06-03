@@ -38,11 +38,20 @@ final class SystemAudioCapture: @unchecked Sendable {
 
     private var _lock = os_unfair_lock()
     private var _isCapturing = false
+    private var _writeError: OSStatus?
 
     var isCapturing: Bool {
         os_unfair_lock_lock(&_lock)
         defer { os_unfair_lock_unlock(&_lock) }
         return _isCapturing
+    }
+
+    /// Non-nil if ExtAudioFileWrite failed during recording.  Checked
+    /// after `stop()` to surface write errors to the UI.
+    var writeError: OSStatus? {
+        os_unfair_lock_lock(&_lock)
+        defer { os_unfair_lock_unlock(&_lock) }
+        return _writeError
     }
 
     var isSuspectedFailure: Bool {
@@ -237,26 +246,45 @@ final class SystemAudioCapture: @unchecked Sendable {
 
     private func processEntry(_ entry: AudioRingBuffer.Entry) {
         let frameCount = Int(entry.frameCount)
+        let channelCount = Int(max(entry.channelCount, 1))
+        let sampleCount = frameCount * channelCount
         let sampleRate = tapSampleRate
 
-        // RMS monitoring -- runs on writer thread, not RT thread
-        entry.data.withMemoryRebound(to: Float.self, capacity: frameCount) { samples in
+        // RMS monitoring -- runs on writer thread, not RT thread.
+        // sampleCount covers all channels so the RMS reflects the
+        // full signal regardless of channel layout.
+        entry.data.withMemoryRebound(to: Float.self, capacity: sampleCount) { samples in
             let duration = Double(frameCount) / sampleRate
-            rmsMonitor.processSamples(samples, count: frameCount, bufferDuration: duration)
+            rmsMonitor.processSamples(samples, count: sampleCount, bufferDuration: duration)
         }
 
-        // Write to file -- runs on writer thread, not RT thread
-        if let file = audioFile {
-            let buffer = AudioBuffer(
-                mNumberChannels: entry.channelCount,
-                mDataByteSize: entry.dataByteSize,
-                mData: entry.data
-            )
-            var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
-            let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
-            if writeStatus != noErr {
-                logger.fault("ExtAudioFileWrite failed: \(writeStatus)")
+        // Write to file -- runs on writer thread, not RT thread.
+        guard let file = audioFile else { return }
+
+        // Validate that the byte size we are about to hand to
+        // ExtAudioFileWrite actually matches the frame count.
+        let expectedBytes = UInt32(sampleCount) * UInt32(MemoryLayout<Float>.size)
+        guard entry.dataByteSize >= expectedBytes else {
+            logger.error("Buffer byte size (\(entry.dataByteSize)) < expected (\(expectedBytes)) for \(frameCount) frames x \(channelCount) ch -- skipping write")
+            return
+        }
+
+        let buffer = AudioBuffer(
+            mNumberChannels: entry.channelCount,
+            mDataByteSize: entry.dataByteSize,
+            mData: entry.data
+        )
+        var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
+        let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
+        if writeStatus != noErr {
+            logger.error("ExtAudioFileWrite failed: \(writeStatus)")
+
+            // Record the first write error so it can be surfaced to the UI.
+            os_unfair_lock_lock(&_lock)
+            if _writeError == nil {
+                _writeError = writeStatus
             }
+            os_unfair_lock_unlock(&_lock)
         }
     }
 
@@ -278,7 +306,10 @@ final class SystemAudioCapture: @unchecked Sendable {
             guard let firstBuffer = buffers.first,
                   firstBuffer.mData != nil else { return }
 
-            let frameCount = firstBuffer.mDataByteSize / UInt32(MemoryLayout<Float>.size)
+            let frameCount = audioFrameCount(
+                byteSize: firstBuffer.mDataByteSize,
+                channelCount: firstBuffer.mNumberChannels
+            )
             guard frameCount > 0 else { return }
 
             // Lock-free enqueue into pre-allocated ring buffer slots.
@@ -334,6 +365,21 @@ final class SystemAudioCapture: @unchecked Sendable {
             teardown()
         }
     }
+}
+
+// MARK: - Helpers
+
+/// Computes the number of audio frames from a buffer's byte size and
+/// channel count, assuming 32-bit float samples.
+///
+/// `mDataByteSize = frameCount * channelCount * sizeof(Float)`
+///
+/// Returns 0 if `channelCount` is 0 or `byteSize` is 0.
+func audioFrameCount(byteSize: UInt32, channelCount: UInt32) -> UInt32 {
+    let ch = max(channelCount, 1)
+    let bytesPerFrame = UInt32(MemoryLayout<Float>.size) * ch
+    guard bytesPerFrame > 0 else { return 0 }
+    return byteSize / bytesPerFrame
 }
 
 enum AudioLabError: LocalizedError {

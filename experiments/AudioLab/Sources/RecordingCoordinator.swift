@@ -77,8 +77,14 @@ final class RecordingCoordinator {
     func stopRecording() {
         guard isRecording else { return }
 
+        let sysCapture = systemCapture
         systemCapture?.stop()
         micCapture?.stop()
+
+        // Surface any write errors that occurred during recording.
+        if let writeErr = sysCapture?.writeError {
+            lastError = "System audio write error during recording (OSStatus \(writeErr))"
+        }
 
         systemCapture = nil
         micCapture = nil

@@ -140,11 +140,12 @@ public struct DiarizationResult {
     public let frameRate: Float
     public private(set) var segments: [SpeakerSegment]
     public var timings: (any DiarizationTimings)?
-    public private(set) var speakerCentroidEmbeddings: [Int: [Float]]  // speaker ID -> embedding vector
-    // Methods:
-    // addSpeakerInfo(to:strategy:) -> [[SpeakerSegment]]
+    // NOT public in v1.0.0 — see section 6 erratum:
+    // public private(set) var speakerCentroidEmbeddings: [Int: [Float]]
     // centroidCosineDistance(between:and:) -> Float  (range 0.0-2.0)
     // nearestSpeakerCentroid(to:) -> Int?
+    // Methods (public):
+    // addSpeakerInfo(to:strategy:) -> [[SpeakerSegment]]
 }
 
 // SpeakerSegment (value type, Identifiable + Sendable)
@@ -252,11 +253,13 @@ Both `whisperKit.transcribe(audioArray:)` and `speakerKit.diarize(audioArray:)` 
 - `DiarizationResult.nearestSpeakerCentroid(to:)` finds the closest speaker to a given embedding.
 - **Speaker identification (voiceprint extraction + recognition across files):** The [SpeakerKit blog post](https://www.argmaxinc.com/blog/speakerkit) describes "extracting voiceprints for a given speaker and identifying them in novel contexts" as a planned feature. However, this is stated in a roadmap/future-looking section of that blog post, and we have not found a shipping API or confirmed timeline. **Treat this as unverified/aspirational until confirmed with the ArgMax team.**
 
+> **ERRATUM (verified in E3 against argmax-oss-swift v1.0.0):** `speakerCentroidEmbeddings`, `centroidCosineDistance(between:and:)`, and `nearestSpeakerCentroid(to:)` do **not** exist as public API on `DiarizationResult` in v1.0.0. The centroid embeddings are computed internally during Pyannote clustering but are not surfaced to callers. Cross-file speaker matching via centroid embeddings is therefore **not currently possible** without an SDK change or custom extraction of the internal clustering state. This is an open question for the ArgMax team (see questions section).
+
 **Recommendation for Steak:**
-- Store `speakerCentroidEmbeddings` from every `DiarizationResult` in the Meeting data model.
-- Build a simple speaker-matching system: after each meeting, compare centroid embeddings against a saved "known speakers" table using cosine distance. If distance is below a threshold, map the cluster ID to a known name.
+- ~~Store `speakerCentroidEmbeddings` from every `DiarizationResult` in the Meeting data model.~~ **(ERRATUM: not available in v1.0.0 -- see note above.** The `TranscriptResult` data model reserves a `speakerEmbeddings` field for future use, but it will be empty until the SDK exposes centroid embeddings or we implement custom extraction.)
+- Build a simple speaker-matching system: after each meeting, compare centroid embeddings against a saved "known speakers" table using cosine distance. If distance is below a threshold, map the cluster ID to a known name. **(Blocked on embedding access -- add to ArgMax team questions.)**
 - The "me" speaker can be bootstrapped using the mic-stream heuristic (see section 5) and then confirmed/stored as a voiceprint for future matching.
-- This is our own application-layer logic, not an SDK feature. It is feasible because the SDK exposes the raw embeddings.
+- This is our own application-layer logic, not an SDK feature. ~~It is feasible because the SDK exposes the raw embeddings.~~ It will be feasible once the SDK exposes centroid embeddings publicly, or if we extract them from the internal clustering state.
 
 ---
 
@@ -510,7 +513,7 @@ public struct TranscriptResult: Sendable, Codable, Identifiable {
     public let language: String                   // detected language code
     public let speakerCount: Int
     public let segments: [TranscriptSegment]
-    public let speakerEmbeddings: [Int: [Float]]  // speaker ID -> centroid embedding (for cross-file matching)
+    public let speakerEmbeddings: [Int: [Float]]  // speaker ID -> centroid embedding (reserved; empty in v1.0.0 — see section 6 erratum)
     public let processingDuration: TimeInterval   // how long transcription took
 }
 
@@ -535,7 +538,7 @@ public struct TranscriptWord: Sendable, Codable {
 }
 ```
 
-This captures everything the SDK provides in a clean Codable shape suitable for SwiftData storage. The `speakerEmbeddings` field enables the cross-file speaker matching described in section 6. The `modelVersion` field supports the re-transcription use case (re-process with a newer model and compare).
+This captures everything the SDK provides in a clean Codable shape suitable for SwiftData storage. The `speakerEmbeddings` field is reserved for cross-file speaker matching described in section 6, but will be empty in v1.0.0 since centroid embeddings are not exposed by the free SDK (see section 6 erratum). The `modelVersion` field supports the re-transcription use case (re-process with a newer model and compare).
 
 ---
 
@@ -553,7 +556,7 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 6. **Word timestamps are approximate.** The free SDK's word timestamps come from Whisper's built-in mechanism, not forced alignment. They are adequate for diarization matching and UI highlighting, but not sample-accurate. The Pro SDK offers forced alignment.
 
-7. **Speaker labels are per-file.** "Speaker 0" in meeting A is not the same as "Speaker 0" in meeting B. Our cross-file matching via centroid embeddings is custom application logic, not a tested SDK feature. The cosine-distance threshold will need tuning.
+7. **Speaker labels are per-file.** "Speaker 0" in meeting A is not the same as "Speaker 0" in meeting B. Our planned cross-file matching via centroid embeddings is custom application logic, but depends on the SDK exposing centroid embeddings publicly (not the case in v1.0.0 -- see section 6 erratum). The cosine-distance threshold will need tuning once access is available.
 
 8. **No offline model bundling (easily).** Models are downloaded from HuggingFace on first use. If the user is offline during first launch, transcription will not work. We should detect this and prompt the user to connect. Bundling the SpeakerKit model (~33 MB) in the app is feasible; the STT model (1.3-3.1 GB) is too large to bundle.
 
@@ -574,13 +577,13 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 We have been building Steak, a macOS meeting recorder that uses the free `argmax-oss-swift` SDK for post-meeting transcription with WhisperKit + SpeakerKit. Before we finalize the implementation, we would appreciate confirmation on a few points:
 
 **Confirm this approach sounds good:**
-> We plan to use `openai_whisper-large-v3_turbo` for STT and Pyannote v4 (community-1) via SpeakerKit for diarization, processing audio files after meetings end (not real-time). We want to run both in an XPC service for crash isolation (has anyone tested WhisperKit/CoreML inside an XPC service?). We capture mic + system audio as separate streams, merge to mono for SDK input, and use the mic stream to heuristically identify "me." We store `speakerCentroidEmbeddings` and use cosine distance to match speakers across meetings. Custom vocabulary is passed via `promptTokens`. Does this approach sound reasonable, and are there any pitfalls you would flag?
+> We plan to use `openai_whisper-large-v3_turbo` for STT and Pyannote v4 (community-1) via SpeakerKit for diarization, processing audio files after meetings end (not real-time). We want to run both in an XPC service for crash isolation (has anyone tested WhisperKit/CoreML inside an XPC service?). We capture mic + system audio as separate streams, merge to mono for SDK input, and use the mic stream to heuristically identify "me." We would like to store speaker centroid embeddings and use cosine distance to match speakers across meetings, but we found that `speakerCentroidEmbeddings` is not exposed as public API in v1.0.0 (see section 6 erratum) -- is there a way to access these, or is this planned? Custom vocabulary is passed via `promptTokens`. Does this approach sound reasonable, and are there any pitfalls you would flag?
 
 **Specific questions:**
 
 1. **Sequential vs. parallel model loading:** Is there a recommended order for running WhisperKit then SpeakerKit on the same audio? Any benefit to loading both simultaneously versus sequentially? Does unloading WhisperKit before loading SpeakerKit cause any issues with the audio processor?
 
-2. **Centroid embedding stability:** How stable are the `speakerCentroidEmbeddings` across different audio conditions (different microphones, noise levels, recording quality)? Is cosine distance the right metric, and what threshold would you suggest for "same speaker" matching?
+2. **Centroid embedding access and stability:** We could not find `speakerCentroidEmbeddings` as public API on `DiarizationResult` in v1.0.0 (see section 6 erratum). Is there a supported way to access per-speaker centroid embeddings for cross-file matching? If so: how stable are they across different audio conditions (different microphones, noise levels, recording quality)? Is cosine distance the right metric, and what threshold would you suggest for "same speaker" matching?
 
 3. **promptTokens for vocabulary:** Are there best practices for formatting the `promptTokens` to maximize recognition of specific terms (company names, people's names)? Any gotchas with the token limit?
 

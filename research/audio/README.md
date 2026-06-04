@@ -315,12 +315,6 @@ let encoderSettings: [String: Any] = [
 
 ---
 
-### 8 Check logs/warnings
-
-Do a full recording an check any xcode logs and warnings for potential issues/concerns.
-
----
-
 ## Recommendation
 
 ### Chosen API

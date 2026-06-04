@@ -139,6 +139,22 @@ _Added after Test 1 surfaced that the Streams tab required a manual Refresh. Val
 
 **Result:** **PASS (user-validated live).** Streams tab updates with no manual refresh: processes appear/disappear and their active/idle dots flip on their own as calls start/stop. **Decision: notify, not poll** — registering on `kAudioProcessPropertyIsRunning` works; the input/output-specific properties are unnotifiable on macOS (forum 825780) so we re-derive I/O state on each `IsRunning` fire. One inherent OS gap (step 4: mic mute/unmute while output already active won't update live) — documented, not a blocker for meeting detection.
 
+### 9. Build & Runtime Logs/Warnings Audit
+
+Do a full recording and check Xcode build output and runtime console logs for any warnings/errors that signal real issues (vs. known Core Audio noise).
+
+1. Clean build the app; check for **compiler warnings/errors**.
+2. Run a full recording (start → play system audio + speak → stop) with the Xcode console / unified log open.
+3. Verify:
+   - [x] Build is clean (no Swift compiler warnings/errors).
+   - [x] Runtime logs contain no **new/unexplained** warnings — only previously-characterized benign Core Audio noise.
+
+**Result:** **PASS.** **Build clean** — a `clean build` produced **0 Swift compiler warnings/errors** (only benign tooling lines: an xcodebuild "multiple matching destinations" note and an AppIntents-metadata skip, which we don't use). **Runtime:** a full recording produced **no warnings before recording started**; on record-start, two lines appear, **both known-benign**:
+- `throwing -10877` (×2) — Core Audio log noise, **not** an error signal. Already characterized in Tests 4 & 2: it fires in *working* runs too (and is not a denial signal). Expected as the tap/aggregate device spins up.
+- `AddInstanceForFactory: No factory registered for id <CFUUID …> F8BB1C28-BAE8-11D6-9C31-00039315CD46` — ubiquitous benign macOS log; that UUID is the standard CoreAudio HAL plugin, and this line appears in essentially every audio app when the audio stack initializes. Not an error.
+
+No new or actionable issues surfaced. (Added manually during Phase 9 as a catch-all sanity sweep.)
+
 ## Summary
 
 | Test | Pass/Fail | Notes |
@@ -151,3 +167,4 @@ _Added after Test 1 surfaced that the Streams tab required a manual Refresh. Val
 | 6. Long Recording (optional) | ✅ Pass | ~10 min global recording; memory stable. Both tracks decode end-to-end, zero errors; mic 10:06.20 / system 10:06.46 (aligned within ~0.26 s). 0.488 MB/min/stream (~64.9 kbps), matches target. `ffprobe` mis-estimates raw-ADTS duration → full decode for truth. |
 | 7. Route-Change / Zero-Buffer | ✅ Pass | Route-change survival (the hard req) fixed & validated. Zero-buffer detection **deferred** — failure doesn't reproduce on macOS 15; `RMSMonitor` left unwired, revisit only if it ever occurs. Track-alignment is a documented edge-effect enhancement (~0.26 s/10 min), not a blocker. |
 | 8. Live Auto-Refresh | ✅ Pass | User-validated live. Notify (not poll) via `kAudioProcessPropertyIsRunning` listener — the IsRunningInput/Output variants don't notify (macOS bug, forum 825780). One OS gap: mute/unmute while other direction active won't update live. |
+| 9. Logs/Warnings Audit | ✅ Pass | Clean build (0 compiler warnings). Runtime: no warnings pre-record; on record-start only known-benign Core Audio noise (`-10877`; `AddInstanceForFactory` HAL-plugin line). No new issues. |

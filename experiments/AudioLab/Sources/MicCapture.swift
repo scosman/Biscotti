@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import CoreAudio
 import Foundation
 
 final class MicCapture: @unchecked Sendable {
@@ -20,44 +19,6 @@ final class MicCapture: @unchecked Sendable {
         self.fileURL = fileURL
     }
 
-    /// Pin `AVAudioEngine`'s input node to the given audio device.
-    ///
-    /// `AVAudioEngine` uses an implicit `kAudioUnitSubType_HALOutput`
-    /// AudioUnit under the hood. By default, the HAL I/O unit references
-    /// both the system default input and output devices. When an aggregate
-    /// device is created for a Core Audio process tap (especially in
-    /// per-process mode), macOS may reconfigure the output device's stream
-    /// graph, which can disrupt the HAL I/O unit's output side and
-    /// silently prevent the input side from delivering buffers.
-    ///
-    /// Explicitly setting `kAudioOutputUnitProperty_CurrentDevice` on the
-    /// underlying AudioUnit pins the engine to a specific device and
-    /// isolates it from changes to the system default output device.
-    private func pinInputDevice(_ deviceID: AudioObjectID) throws {
-        let inputNode = engine.inputNode
-        let audioUnit = inputNode.audioUnit!
-        var devID = deviceID
-        let status = AudioUnitSetProperty(
-            audioUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &devID,
-            UInt32(MemoryLayout<AudioObjectID>.size)
-        )
-        guard status == noErr else {
-            throw AudioLabError.micEngineStartFailed(
-                NSError(
-                    domain: "AudioLab", code: Int(status),
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "Failed to set input device on AVAudioEngine (OSStatus \(status))"
-                    ]
-                )
-            )
-        }
-    }
-
     func start() throws {
         lock.lock()
         guard !_isCapturing else {
@@ -65,22 +26,6 @@ final class MicCapture: @unchecked Sendable {
             return
         }
         lock.unlock()
-
-        // Resolve the default input device and explicitly pin the engine
-        // to it so that aggregate-device creation for the system audio tap
-        // (especially in per-process mode) does not disrupt the mic stream.
-        guard let inputDeviceID = CoreAudioHelpers.defaultInputDeviceID() else {
-            throw AudioLabError.micEngineStartFailed(
-                NSError(
-                    domain: "AudioLab", code: -1,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "No default input device available"
-                    ]
-                )
-            )
-        }
-        try pinInputDevice(inputDeviceID)
 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)

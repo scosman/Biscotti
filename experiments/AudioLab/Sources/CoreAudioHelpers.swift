@@ -135,6 +135,33 @@ enum CoreAudioHelpers {
         }
     }
 
+    // MARK: - Device Queries
+
+    /// Returns the AudioObjectID for the default system output device.
+    static func defaultOutputDeviceID() -> AudioObjectID? {
+        getPropertyData(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioObjectID.self
+        )
+    }
+
+    /// Returns the UID string for a given audio device ID.
+    static func deviceUID(for deviceID: AudioObjectID) -> String? {
+        getStringProperty(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        )
+    }
+
     // MARK: - Listener Registration
 
     struct ProcessListListener {

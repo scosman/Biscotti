@@ -97,19 +97,26 @@ final class SystemAudioCapture: @unchecked Sendable {
     // MARK: - Setup
 
     private func createTapAndAggregate() throws {
-        let tapUUID = UUID()
-        let tapDesc = CATapDescription()
-        tapDesc.uuid = tapUUID
-        tapDesc.name = "audiolab-system-tap"
-
-        if captureMode == .perProcess, let processID = targetProcessID {
-            tapDesc.processes = [processID]
+        // Look up the default output device -- the aggregate device must
+        // reference it as a sub-device so Core Audio knows which hardware
+        // stream the tap should intercept.
+        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
+              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
+        else {
+            throw AudioLabError.couldNotQueryOutputDevice
         }
 
-        tapDesc.isPrivate = true
+        let tapUUID = UUID()
+        let tapDesc: CATapDescription
+        if captureMode == .perProcess, let processID = targetProcessID {
+            tapDesc = CATapDescription(stereoMixdownOfProcesses: [processID])
+        } else {
+            tapDesc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        }
+        tapDesc.uuid = tapUUID
+        tapDesc.name = "audiolab-system-tap"
         tapDesc.muteBehavior = .unmuted
-        tapDesc.isExclusive = false
-        tapDesc.isMixdown = true
+        tapDesc.isPrivate = true
 
         var tapID: AudioObjectID = kAudioObjectUnknown
         var status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
@@ -118,11 +125,20 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
         tapObjectID = tapID
 
+        // The aggregate device gets its own UID, distinct from the tap UUID.
+        // It must list the output device as a sub-device and declare it as
+        // the main sub-device so the tap's audio is routed into the IOProc.
+        let aggregateUID = UUID().uuidString
         let aggConfig: [String: Any] = [
-            kAudioAggregateDeviceUIDKey as String: tapUUID.uuidString,
+            kAudioAggregateDeviceUIDKey as String: aggregateUID,
             kAudioAggregateDeviceNameKey as String: "AudioLab Aggregate",
+            kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
             kAudioAggregateDeviceIsPrivateKey as String: true,
             kAudioAggregateDeviceIsStackedKey as String: false,
+            kAudioAggregateDeviceTapAutoStartKey as String: true,
+            kAudioAggregateDeviceSubDeviceListKey as String: [
+                [kAudioSubDeviceUIDKey as String: outputUID],
+            ],
             kAudioAggregateDeviceTapListKey as String: [
                 [
                     kAudioSubTapUIDKey as String: tapUUID.uuidString,
@@ -386,6 +402,7 @@ enum AudioLabError: LocalizedError {
     case failedToCreateProcessTap(OSStatus)
     case failedToCreateAggregateDevice(OSStatus)
     case couldNotQueryTapFormat
+    case couldNotQueryOutputDevice
     case failedToCreateAudioFile(OSStatus)
     case failedToSetClientFormat(OSStatus)
     case failedToCreateIOProc(OSStatus)
@@ -400,6 +417,8 @@ enum AudioLabError: LocalizedError {
             return "Failed to create aggregate device (OSStatus \(s))"
         case .couldNotQueryTapFormat:
             return "Could not query tap format"
+        case .couldNotQueryOutputDevice:
+            return "Could not determine default output device"
         case .failedToCreateAudioFile(let s):
             return "Failed to create audio file (OSStatus \(s))"
         case .failedToSetClientFormat(let s):

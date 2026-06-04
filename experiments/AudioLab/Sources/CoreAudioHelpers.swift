@@ -150,6 +150,19 @@ enum CoreAudioHelpers {
         )
     }
 
+    /// Returns the AudioObjectID for the default system input device.
+    static func defaultInputDeviceID() -> AudioObjectID? {
+        getPropertyData(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioObjectID.self
+        )
+    }
+
     /// Returns the UID string for a given audio device ID.
     static func deviceUID(for deviceID: AudioObjectID) -> String? {
         getStringProperty(

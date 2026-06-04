@@ -54,18 +54,26 @@ final class RecordingCoordinator {
         let mic = MicCapture(fileURL: paths.mic)
         micCapture = mic
 
+        // Start the microphone BEFORE the system audio tap. AVAudioEngine
+        // uses an internal HAL I/O AudioUnit that references both the
+        // default input and output devices. Starting it first ensures the
+        // engine's audio graph is established before the aggregate device
+        // (created by SystemAudioCapture) potentially disrupts the output
+        // device state. MicCapture also explicitly pins itself to the
+        // default input device, but starting it first provides an extra
+        // layer of safety.
         do {
-            try sysCapture.start()
+            try mic.start()
         } catch {
-            lastError = "System audio: \(error.localizedDescription)"
+            lastError = "Microphone: \(error.localizedDescription)"
             return
         }
 
         do {
-            try mic.start()
+            try sysCapture.start()
         } catch {
-            sysCapture.stop()
-            lastError = "Microphone: \(error.localizedDescription)"
+            mic.stop()
+            lastError = "System audio: \(error.localizedDescription)"
             return
         }
 

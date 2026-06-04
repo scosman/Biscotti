@@ -206,4 +206,88 @@ enum CoreAudioHelpers {
             listener.block
         )
     }
+
+    // MARK: - Per-Process Property Listeners
+
+    // @unchecked because AudioObjectPropertyListenerBlock lacks a Sendable annotation
+    // in the CoreAudio headers, but our blocks only capture Sendable values.
+    struct ProcessPropertyListener: @unchecked Sendable {
+        let objectID: AudioObjectID
+        let propertySelector: AudioObjectPropertySelector
+        let block: AudioObjectPropertyListenerBlock
+        let queue: DispatchQueue
+    }
+
+    static func addProcessPropertyListener(
+        processID: AudioObjectID,
+        property: AudioObjectPropertySelector,
+        queue: DispatchQueue,
+        handler: @escaping @Sendable () -> Void
+    ) -> ProcessPropertyListener? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: property,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let block: AudioObjectPropertyListenerBlock = { _, _ in
+            handler()
+        }
+
+        let status = AudioObjectAddPropertyListenerBlock(
+            processID,
+            &address,
+            queue,
+            block
+        )
+
+        return status == noErr
+            ? ProcessPropertyListener(
+                objectID: processID,
+                propertySelector: property,
+                block: block,
+                queue: queue
+            )
+            : nil
+    }
+
+    static func removeProcessPropertyListener(_ listener: ProcessPropertyListener) {
+        var address = AudioObjectPropertyAddress(
+            mSelector: listener.propertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            listener.objectID,
+            &address,
+            listener.queue,
+            listener.block
+        )
+    }
+
+    // MARK: - Single-Process I/O State
+
+    static func processIOState(for processID: AudioObjectID) -> (isRunningInput: Bool, isRunningOutput: Bool) {
+        let isRunningInput: UInt32 = getPropertyData(
+            objectID: processID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioProcessPropertyIsRunningInput,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: UInt32.self
+        ) ?? 0
+
+        let isRunningOutput: UInt32 = getPropertyData(
+            objectID: processID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioProcessPropertyIsRunningOutput,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: UInt32.self
+        ) ?? 0
+
+        return (isRunningInput != 0, isRunningOutput != 0)
+    }
 }

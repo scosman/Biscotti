@@ -19,6 +19,7 @@ Each coding phase also **writes** its experiment's `VALIDATION.md` manual test s
 
 ### Coding → reference apps/libs under `/experiments/<Name>/` (each also writes its `VALIDATION.md`)
 - [x] Phase 6: AudioLab (E1) — implement R1; write `VALIDATION.md` (V1 script)
+- [x] Phase 6b: AudioLab live auto-refresh (E1) — Streams tab updates without manual refresh; resolve the poll-vs-notify decision for per-process input/output state. Surfaced during Phase 9 V1 Test 1. Add `VALIDATION.md` Test 8.
 - [x] Phase 7: EventKitLab (E2) — implement R2; write `VALIDATION.md` (V2 script)
 - [x] Phase 8: ArgMaxKit (E3) — implement R3 library + CLI harness; write `VALIDATION.md` (V3 script)
 

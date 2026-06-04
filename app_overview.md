@@ -188,6 +188,7 @@ We could support both private and external models
 ## Misc App Reqs
 
 - Settings has a “Launch on startup” option, enabled by default
+- We've seen track alignment issues in recording: call comes in 10s after recording starts, and system audio track is off by 10s. This went away, but have seen sub-second drift after. We should investigate 1) tracking clock time of start of alignment, 2) adding silnce in start gaps, 3) If same type of gap is possible in middle (if so, offset won't save us)
 
 ## Design Style
 

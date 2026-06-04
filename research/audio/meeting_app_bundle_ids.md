@@ -16,6 +16,7 @@ apps route through a system conferencing daemon. Per-process taps must target th
 |----------------|--------------------------------------------|-------|
 | Google Meet in **Safari** | `com.apple.WebKit.GPU` | Likely true for **all** Safari tabs/audio — the WebKit GPU process owns media. Can't distinguish *which* tab/site from the bundle ID alone. |
 | **FaceTime** | `com.apple.avconferenced` | Audio routes through the system conferencing daemon, not the FaceTime app. During a call, output went active first on FaceTime, then input+output moved to `avconferenced` once connected. Per-process capture of FaceTime likely needs to target `avconferenced`. |
+| **Slack** huddle | `com.tinyspeck.slackmacgap.helper` | Audio routes through Slack's helper process, not the main `com.tinyspeck.slackmacgap` app. Per-process capture of a Slack huddle needs to target the `.helper` process. |
 
 ## Open questions / TODO (fill in as we test)
 
@@ -23,7 +24,7 @@ apps route through a system conferencing daemon. Per-process taps must target th
   own GPU/renderer helpers — expect something like a Chrome Helper process, distinct
   from Safari's WebKit.GPU.)
 - Native **Zoom** app bundle ID + does it route through a helper?
-- Native **Slack** huddles — process?
+- ~~Native **Slack** huddles — process?~~ → `com.tinyspeck.slackmacgap.helper` (see table above).
 - **Microsoft Teams** (native + web) — process?
 - Webex — process?
 - Implication for UX: since Safari (and likely browser) audio is attributed to a

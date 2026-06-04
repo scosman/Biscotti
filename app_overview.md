@@ -91,6 +91,15 @@ The app window does not need to be open for the app to work. We’re a tray-firs
   - As soon as you start typing it takes over main view areas with live filtering search results. A back button in top left of main area closes search.
   - Searches all fields (title people, transcripts). Use simple swiftData search for now (something like splitting terms, LIKE to check presence, return count, sort by count). Will design details later. Not fancy FTS in V1 but could add later.
 
+### Onboarding
+
+We'll be a great onboarding wizard, as setup isn't trivial.
+
+ - Approve audio permissions: system audio and mic. Instructions to fix if they deny it.
+ - Approve calendard permission, fix or skip if they deny (push fix). Select which calendars they want to monitor for meetings (although maybe this gets moved into settings if we have good "videoconference link detection"). P2: instuct them to connect Google/other Calendar to Apple calendar if missing their key events.
+ - Download models: TTS, diterisation, and LLM (later). Needs progress. Needs disk space chceck before starting.
+ - Demo (P2). Offer demo: voice says "Hey, welcome. Say someting back and we'll show you our on device transcription. [6 second gap of recording]" -> transcribe and see 2 speakers (app voice and user voice).
+
 ## Custom Vocabularies
 
 We want to support custom vocabularies.
@@ -189,6 +198,9 @@ We could support both private and external models
 
 - Settings has a “Launch on startup” option, enabled by default
 - We've seen track alignment issues in recording: call comes in 10s after recording starts, and system audio track is off by 10s. This went away, but have seen sub-second drift after. We should investigate 1) tracking clock time of start of alignment, 2) adding silnce in start gaps, 3) If same type of gap is possible in middle (if so, offset won't save us)
+- "Stop recording" notification: detect end of meeting and suggest stopping audio recording
+- P2: system wide keyboard shortcut to start/stop recording. Configurable, disableable.
+- we should have a server delivered JSON file with known "meeting" apps. Bundle ID, name, etc. This lets us detect their audio/when meeting start, and being server driven json lets us update OTA.
 
 ## Design Style
 

@@ -1,8 +1,8 @@
 import Foundation
 
 enum RecordingFileManager {
-    static let micSuffix = "_mic.caf"
-    static let systemSuffix = "_system.caf"
+    static let micSuffix = "_mic.aac"
+    static let systemSuffix = "_system.aac"
 
     static func recordingsDirectory() -> URL {
         let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!

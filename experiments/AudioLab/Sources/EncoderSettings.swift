@@ -1,26 +1,72 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 
 enum EncoderSettings {
-    static let sampleRate: Double = 48_000.0
+    // 24 kHz: our STT (transcription) models run at 16 kHz internally, so 24 kHz
+    // already covers them with headroom for future models that may want higher-rate
+    // audio — a small size cost for that margin. 64 kbps mono AAC-LC sits firmly
+    // within the codec's comfortable voice range.
+    static let sampleRate: Double = 24_000.0
     static let channels: AVAudioChannelCount = 1
-    static let bitRate: Int = 64_000
+    static let bitRate: UInt32 = 64_000
     static let formatID: AudioFormatID = kAudioFormatMPEG4AAC
+    static let fileType: AudioFileTypeID = kAudioFileAAC_ADTSType
 
-    static var outputSettings: [String: Any] {
-        [
-            AVFormatIDKey: Int(formatID),
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: Int(channels),
-            AVEncoderBitRateKey: bitRate,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
+    /// ASBD for the on-disk AAC output (used by ExtAudioFile).
+    static func outputASBD() -> AudioStreamBasicDescription {
+        var asbd = AudioStreamBasicDescription()
+        asbd.mSampleRate = sampleRate
+        asbd.mFormatID = formatID
+        asbd.mChannelsPerFrame = UInt32(channels)
+        return asbd
     }
 
-    static var processingFormat: AVAudioFormat {
-        AVAudioFormat(
-            standardFormatWithSampleRate: sampleRate,
-            channels: channels
-        )!
+    /// After setting the client format on an ExtAudioFile, call this to
+    /// configure the AAC encoder's bitrate via its underlying AudioConverter.
+    /// Returns noErr on success; callers should handle failures.
+    @discardableResult
+    static func applyBitRate(to extFile: ExtAudioFileRef) -> OSStatus {
+        var converterRef: AudioConverterRef?
+        var size = UInt32(MemoryLayout<AudioConverterRef>.size)
+        var status = ExtAudioFileGetProperty(
+            extFile,
+            kExtAudioFileProperty_AudioConverter,
+            &size,
+            &converterRef
+        )
+        guard status == noErr, let converter = converterRef else { return status }
+
+        var rate = bitRate
+        status = AudioConverterSetProperty(
+            converter,
+            kAudioConverterEncodeBitRate,
+            UInt32(MemoryLayout<UInt32>.size),
+            &rate
+        )
+        if status != noErr { return status }
+
+        // Commit the bitrate change. ExtAudioFile caches its converter's state, so
+        // after modifying the converter directly we must hand it a NULL converter
+        // config to make it re-read the converter. The data MUST be a (NULL)
+        // CFArrayRef at pointer size — passing a UInt32 (wrong type/size) makes
+        // ExtAudioFile deref garbage as a CFArray and crash (EXC_BAD_ACCESS in
+        // CFArrayGetCount).
+        var config: UnsafeRawPointer?
+        let cfgStatus = ExtAudioFileSetProperty(
+            extFile,
+            kExtAudioFileProperty_ConverterConfig,
+            UInt32(MemoryLayout<UnsafeRawPointer?>.size),
+            &config
+        )
+        return cfgStatus
     }
+
+    /// PCM format the mic tap pre-converts to before encoding (and the
+    /// ExtAudioFile client format). Computed once; the force-unwrap is safe for
+    /// a valid mono rate.
+    static let processingFormat: AVAudioFormat = AVAudioFormat(
+        standardFormatWithSampleRate: sampleRate,
+        channels: channels
+    )!
 }

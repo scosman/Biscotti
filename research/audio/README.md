@@ -120,6 +120,8 @@ We can poll or listen for changes to `kAudioHardwarePropertyProcessObjectList` a
 
 **Finding: AAC-LC at 64 kbps mono, 48 kHz sample rate, in a CAF container. Convert to M4A for long-term storage after recording.**
 
+> **⚠️ Revised by Phase 9 validation (Test 5).** Final choice is **ADTS AAC-LC, 24 kHz, mono, 64 kbps** — *not* CAF. **Container:** CAF+AAC is **not crash-safe** (needs a `pakt` chunk written only on close); **ADTS** is self-syncing and decodes up to the last frame after a crash (see [finding #5](./phase9_validation_findings.md)). **Sample rate:** **24 kHz** — our STT models run at 16 kHz internally, so 24 kHz covers them with headroom for future higher-rate models at a small size cost (settles open-question #3 below). The codec/bitrate reasoning below still applies (64 kbps unchanged).
+
 **Why AAC-LC over alternatives:**
 
 | Codec | Quality at Target Bitrate | macOS Native Encode | macOS Native Decode | Container Support | Verdict |
@@ -159,6 +161,8 @@ let encoderSettings: [String: Any] = [
 ---
 
 ### 5. Crash-safe streaming to disk
+
+> **⚠️ Corrected by Phase 9 validation (Test 5).** CAF crash-safety holds **only for uncompressed PCM**, *not* for AAC-LC. Recording AAC-LC into CAF and crashing leaves an **undecodable** file ("Missing packet table") because AAC's variable-size packets need the `pakt` chunk, which `AVAudioFile` writes only on close. **Corrected approach: record PCM into CAF during capture, encode to AAC `.m4a` on stop.** See [finding #5 in the validation findings](./phase9_validation_findings.md). The mechanism below is right; only the *codec recorded during capture* changes (PCM, not AAC).
 
 **Finding: Record into CAF (Core Audio Format) files, which are crash-safe by design. Convert to M4A post-recording for long-term storage.**
 
@@ -306,6 +310,13 @@ let encoderSettings: [String: Any] = [
 - [MacRumors Forums: coreaudiod CPU usage on M1](https://forums.macrumors.com/threads/fix-sustained-12-15-coreaudiod-cpu-usage-on-m1-possibly-intel-too.2331498/)
 - [Core Audio Essentials](https://developer.apple.com/library/archive/documentation/MusicAudio/Conceptual/CoreAudioOverview/CoreAudioEssentials/CoreAudioEssentials.html)
 
+
+---
+
+### 8 Check logs/warnings
+
+Do a full recording an check any xcode logs and warnings for potential issues/concerns.
+
 ---
 
 ## Recommendation
@@ -437,7 +448,7 @@ AudioEngine (class, @MainActor-isolated)
 
 2. **Teams workaround validation**: The Microsoft Teams silent-capture issue needs to be validated in E1. If confirmed, we need to decide: (a) always use global tap, (b) use ScreenCaptureKit as a fallback for Teams only, or (c) accept the limitation and document it. Option (a) is simplest.
 
-3. **Sample rate for long-term storage**: We recommend 48 kHz to preserve maximum fidelity for future re-transcription. However, most STT models operate at 16 kHz internally. Should we save at 16 kHz to halve file sizes (~50% smaller), or keep 48 kHz as an investment in future model capabilities? **Recommendation**: Keep 48 kHz -- the storage cost is low and future models may benefit from higher fidelity.
+3. **Sample rate for long-term storage**: ~~We recommend 48 kHz...~~ **RESOLVED in Phase 9 → 24 kHz.** Our STT (transcription) models run at **16 kHz internally**, so 24 kHz covers them with **headroom** for future models that may want higher-rate audio, at a small size cost. Capture at **24 kHz mono, 64 kbps AAC-LC** (ADTS). A middle ground between the original 48 kHz fidelity lean and a bare 16 kHz floor.
 
 4. **Opus revisit timeline**: Apple has added `kAudioFormatOpus` but native encoding support is immature. Should we plan to revisit Opus encoding when Apple stabilizes the API (likely macOS 16+)? At 32 kbps Opus, file sizes would be ~50% smaller than 64 kbps AAC-LC with comparable or better voice quality.
 

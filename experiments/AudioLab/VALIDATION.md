@@ -4,9 +4,13 @@ Manual test script for the AudioLab experiment (E1). Run on a Mac with Apple Sil
 
 **Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15.** Detailed engineering findings (the bugs found and the architecture decisions they drove) live in [`research/audio/phase9_validation_findings.md`](../../research/audio/phase9_validation_findings.md).
 
-## Key decision recorded during this run
+## Key decisions recorded during this run
 
 **Capture strategy: global system-audio capture, NOT per-process.** Per-process taps proved fragile and useless for the most common meeting setups (browser meetings in Safari all share `com.apple.WebKit.GPU`; FaceTime routes through `com.apple.avconferenced`; Slack huddles through `…slackmacgap.helper`). We ship a single global system-audio tap + plain `AVAudioEngine` for the mic. This **drops Test 3 (per-process capture)** from the active plan. See finding #3 in the findings doc.
+
+**Audio format: 24 kHz mono, 64 kbps AAC-LC** (after substantial research + A/B testing on real recordings). 24 kHz / 64 kbps won the tradeoff: our current STT models run at 16 kHz, so 24 kHz adds **future-proofing headroom** for better models down the line, while still sounding decent and staying small. Bonus: it's pleasant enough that **playback in the UI won't hurt your ears**. See finding #5 and R1 open-question #3.
+
+**Crash-proofing: ADTS AAC container** (no trailing table). We record into **ADTS AAC** rather than CAF/M4A so a crash preserves the audio **up to the moment of the crash**. The previous CAF/M4A containers keep a packet/index table written only at the **end** on clean close — kill the app and that table never lands, making the whole file undecodable. ADTS has **no end table**: each frame is self-describing, so a truncated file just plays up to its last complete frame. Validated by Test 5 (force-kill mid-recording → partial files still play). See finding #5.
 
 ## Prerequisites
 
@@ -79,10 +83,10 @@ Manual test script for the AudioLab experiment (E1). Run on a Mac with Apple Sil
 4. Re-open AudioLab.
 5. Navigate to the recordings directory (shown in the file paths from a previous recording).
 6. Verify:
-   - [ ] The `.caf` files from the interrupted recording exist.
-   - [ ] They are playable in QuickTime Player (partial recording up to the crash point).
+   - [x] The `.aac` files from the interrupted recording exist.
+   - [x] They are playable (partial recording up to the crash point) — via `afplay`/ffmpeg.
 
-**Result:** _Not yet run._
+**Result:** **PASS after switching to ADTS AAC.** Initial attempt (AAC-LC in **CAF**) **FAILED**: the partial CAFs existed after a `kill -9` but were **undecodable** (QuickTime `-12842`, ffmpeg `Missing packet table. It is required when block size or frame size are variable.`) — AAC's variable-size packets need the CAF **`pakt`** chunk, which is written only on `close`, so a hard kill loses the whole recording. **Fix shipped:** record **ADTS AAC** (`ExtAudioFile` + `kAudioFileAAC_ADTSType`) for both tracks. ADTS frames are **self-syncing** (per-frame sync word + length), so a truncated file decodes up to the last complete frame — no packet table, no finalization. **Crash test now passes** (partial `_mic.aac`/`_system.aac` play up to the kill point). Two writer bugs were found and fixed along the way: (1) the bitrate-commit poked `ExtAudioFile` with a wrong-typed `kExtAudioFileProperty_ConverterConfig` → `EXC_BAD_ACCESS` (fixed: NULL `CFArrayRef` at pointer size); (2) the mic track came out empty because its ExtAudioFile client format was the raw 3ch/48k input while the tap wrote pre-converted mono buffers (fixed: client format = mono processing format). See headline finding #5 in the findings doc.
 
 ### 6. Long Recording Stability (Optional, ~10 minutes)
 
@@ -139,7 +143,7 @@ _Added after Test 1 surfaced that the Streams tab required a manual Refresh. Val
 | 2. Global Capture | ✅ Pass | After 2 fixes (multichannel frame count; aggregate-device config). Plain AVAudioEngine mic; VPIO rejected. |
 | 3. Per-Process Capture | ❌ Dropped | Descoped — global-only decision (finding #3). |
 | 4. Permission Denial | ✅ Pass (after fix) | Pre-fix: silent failure (empty `_mic.caf`, no error; `-10877` is noise — fires when working too). Fix: preflight `AVCaptureDevice.authorizationStatus` → OS prompt / alert + refuse to start + Open Settings. **Validated working.** System tap has no perm API → still needs zero-buffer backstop. Ad-hoc signing churns TCC identity. |
-| 5. Crash-Safe (optional) | ⬜ Not run | |
+| 5. Crash-Safe (optional) | ✅ Pass (after fix) | CAF+AAC **not** crash-safe (no `pakt` until close → undecodable after `kill -9`). Switched both tracks to **ADTS AAC** (`ExtAudioFile`, self-syncing frames) → partial files now decode up to the kill point. Fixed 2 writer bugs en route (ConverterConfig crash; empty-mic client-format mismatch). |
 | 6. Long Recording (optional) | ⬜ Not run | |
 | 7. Route-Change / Zero-Buffer | 🟡 Partial | Route-change survival fixed & passing; zero-buffer not reproduced on macOS 15; track-alignment open. |
 | 8. Live Auto-Refresh | ✅ Pass | User-validated live. Notify (not poll) via `kAudioProcessPropertyIsRunning` listener — the IsRunningInput/Output variants don't notify (macOS bug, forum 825780). One OS gap: mute/unmute while other direction active won't update live. |

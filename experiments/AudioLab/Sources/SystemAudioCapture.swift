@@ -164,11 +164,11 @@ final class SystemAudioCapture: @unchecked Sendable {
 
         tapSampleRate = tapFormat.mSampleRate
 
-        var outputASBD = makeOutputASBD()
+        var outputASBD = EncoderSettings.outputASBD()
         var fileRef: ExtAudioFileRef?
         let status = ExtAudioFileCreateWithURL(
             fileURL as CFURL,
-            kAudioFileCAFType,
+            EncoderSettings.fileType,
             &outputASBD,
             nil,
             AudioFileFlags.eraseFile.rawValue,
@@ -190,6 +190,13 @@ final class SystemAudioCapture: @unchecked Sendable {
             throw AudioLabError.failedToSetClientFormat(clientStatus)
         }
 
+        // Set the AAC encoder bitrate via the underlying AudioConverter.
+        let brStatus = EncoderSettings.applyBitRate(to: file)
+        guard brStatus == noErr else {
+            ExtAudioFileDispose(file)
+            throw AudioLabError.failedToSetEncoderBitRate(brStatus)
+        }
+
         audioFile = file
     }
 
@@ -206,13 +213,6 @@ final class SystemAudioCapture: @unchecked Sendable {
         return format
     }
 
-    private func makeOutputASBD() -> AudioStreamBasicDescription {
-        var asbd = AudioStreamBasicDescription()
-        asbd.mSampleRate = EncoderSettings.sampleRate
-        asbd.mFormatID = EncoderSettings.formatID
-        asbd.mChannelsPerFrame = UInt32(EncoderSettings.channels)
-        return asbd
-    }
 
     // MARK: - Writer Thread
 
@@ -407,6 +407,7 @@ enum AudioLabError: LocalizedError {
     case failedToSetClientFormat(OSStatus)
     case failedToCreateIOProc(OSStatus)
     case failedToStartDevice(OSStatus)
+    case failedToSetEncoderBitRate(OSStatus)
     case micEngineStartFailed(Error)
 
     var errorDescription: String? {
@@ -427,6 +428,8 @@ enum AudioLabError: LocalizedError {
             return "Failed to create IO proc (OSStatus \(s))"
         case .failedToStartDevice(let s):
             return "Failed to start device (OSStatus \(s))"
+        case .failedToSetEncoderBitRate(let s):
+            return "Failed to set encoder bit rate (OSStatus \(s))"
         case .micEngineStartFailed(let error):
             return "Mic engine start failed: \(error.localizedDescription)"
         }

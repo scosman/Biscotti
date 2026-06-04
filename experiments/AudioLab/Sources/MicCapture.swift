@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AudioToolbox
 import Foundation
 
 /// Microphone capture via a plain `AVAudioEngine` tap.
@@ -14,10 +15,10 @@ final class MicCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let fileURL: URL
 
-    /// Guards `audioFile`, which is read by the tap callback (audio thread) and
+    /// Guards `extFile`, which is read by the tap callback (audio thread) and
     /// written by start/stop/reconfigure. Never held across file I/O.
     private let fileLock = NSLock()
-    private var audioFile: AVAudioFile?
+    private var extFile: ExtAudioFileRef?
 
     private let lock = NSLock()
     private var _isCapturing = false
@@ -59,13 +60,15 @@ final class MicCapture: @unchecked Sendable {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        let file = try AVAudioFile(
-            forWriting: fileURL,
-            settings: EncoderSettings.outputSettings,
-            commonFormat: .pcmFormatFloat32,
-            interleaved: false
+        // The tap always pre-converts to the encoder's processing format
+        // (mono 24 kHz), so the ExtAudioFile client format must be THAT — not the
+        // raw input (e.g. 3ch/48k) — or we'd write mono/16k buffers into a file
+        // expecting 3ch/48k and the track comes out empty.
+        let file = try Self.createExtAudioFile(
+            url: fileURL,
+            clientFormat: EncoderSettings.processingFormat
         )
-        setAudioFile(file)
+        setExtFile(file)
 
         do {
             try installTap(inputFormat: inputFormat)
@@ -73,7 +76,7 @@ final class MicCapture: @unchecked Sendable {
             try engine.start()
         } catch {
             inputNode.removeTap(onBus: 0)
-            setAudioFile(nil)
+            closeExtFile()
             throw AudioLabError.micEngineStartFailed(error)
         }
 
@@ -117,24 +120,82 @@ final class MicCapture: @unchecked Sendable {
 
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        setAudioFile(nil)
+        closeExtFile()
     }
 
     deinit {
         if let observer = configObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        // No lock around _isCapturing here: deinit runs only when the last
+        // reference is gone, so no other thread can be touching this instance.
         if _isCapturing {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
         }
+        if let file = extFile {
+            ExtAudioFileDispose(file)
+        }
+    }
+
+    // MARK: - ExtAudioFile creation
+
+    /// Creates an ADTS AAC ExtAudioFile and configures its client format and
+    /// encoder bitrate. The client format is set to match the live tap so the
+    /// converter handles any resampling/channel-mixing.
+    private static func createExtAudioFile(
+        url: URL,
+        clientFormat: AVAudioFormat
+    ) throws -> ExtAudioFileRef {
+        var outputASBD = EncoderSettings.outputASBD()
+        var fileRef: ExtAudioFileRef?
+        let createStatus = ExtAudioFileCreateWithURL(
+            url as CFURL,
+            EncoderSettings.fileType,
+            &outputASBD,
+            nil,
+            AudioFileFlags.eraseFile.rawValue,
+            &fileRef
+        )
+        guard createStatus == noErr, let file = fileRef else {
+            throw AudioLabError.failedToCreateAudioFile(createStatus)
+        }
+
+        // Set the client (input) format to the live PCM format. The internal
+        // AudioConverter will resample + downmix as needed.
+        var clientASBD = clientFormat.streamDescription.pointee
+        let clientStatus = ExtAudioFileSetProperty(
+            file,
+            kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
+            &clientASBD
+        )
+        guard clientStatus == noErr else {
+            ExtAudioFileDispose(file)
+            throw AudioLabError.failedToSetClientFormat(clientStatus)
+        }
+
+        // Set the AAC encoder bitrate via the underlying AudioConverter.
+        let brStatus = EncoderSettings.applyBitRate(to: file)
+        guard brStatus == noErr else {
+            ExtAudioFileDispose(file)
+            throw AudioLabError.failedToSetEncoderBitRate(brStatus)
+        }
+
+        return file
     }
 
     // MARK: - Tap installation
 
     /// Installs a tap on the input bus for `inputFormat`, converting to the
-    /// mono 48 kHz processing format when the source format differs. Writes go
-    /// to the currently-open `audioFile`, which stays the same across reconfigs.
+    /// mono 24 kHz AAC output format. Writes go to the currently-open `extFile`,
+    /// which stays the same across reconfigs.
+    ///
+    /// When the input format differs from the encoder's processing format
+    /// (e.g. 3-channel 48 kHz from the M4 built-in mic), we use an
+    /// AVAudioConverter to pre-convert to mono 24 kHz before handing to
+    /// ExtAudioFile. This avoids "inconsistent packets" errors that occur when
+    /// the ExtAudioFile internal converter must do large rate + channel changes.
     private func installTap(inputFormat: AVAudioFormat) throws {
         let targetFormat = EncoderSettings.processingFormat
         let inputNode = engine.inputNode
@@ -154,7 +215,7 @@ final class MicCapture: @unchecked Sendable {
 
             inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
                 [weak self] buffer, _ in
-                guard let self, let file = self.currentAudioFile() else { return }
+                guard let self, let file = self.currentExtFile() else { return }
 
                 let frameCapacity = AVAudioFrameCount(
                     Double(buffer.frameLength) * targetFormat.sampleRate / inputFormat.sampleRate
@@ -179,23 +240,25 @@ final class MicCapture: @unchecked Sendable {
                 converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
 
                 if error == nil, convertedBuffer.frameLength > 0 {
-                    do {
-                        try file.write(from: convertedBuffer)
-                    } catch {
-                        print("[MicCapture] Write error: \(error)")
-                    }
+                    Self.writeBuffer(convertedBuffer, to: file)
                 }
             }
         } else {
             inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
                 [weak self] buffer, _ in
-                guard let self, let file = self.currentAudioFile() else { return }
-                do {
-                    try file.write(from: buffer)
-                } catch {
-                    print("[MicCapture] Write error: \(error)")
-                }
+                guard let self, let file = self.currentExtFile() else { return }
+                Self.writeBuffer(buffer, to: file)
             }
+        }
+    }
+
+    /// Writes a PCM buffer to an ExtAudioFile. Logs errors without throwing
+    /// (called from the audio tap callback).
+    private static func writeBuffer(_ buffer: AVAudioPCMBuffer, to file: ExtAudioFileRef) {
+        let bufferList = buffer.mutableAudioBufferList
+        let status = ExtAudioFileWrite(file, buffer.frameLength, bufferList)
+        if status != noErr {
+            print("[MicCapture] ExtAudioFileWrite error: \(status)")
         }
     }
 
@@ -241,6 +304,13 @@ final class MicCapture: @unchecked Sendable {
             return
         }
 
+        // Do NOT touch the ExtAudioFile client format here. It stays the encoder
+        // processing format (mono 24 kHz) for the life of the file: installTap
+        // below builds a fresh AVAudioConverter from the new input format to that
+        // same processing format, so ExtAudioFile always receives mono 24 kHz
+        // buffers regardless of the new device's format. Resetting the client
+        // format to the raw input is exactly what produced the empty mic track.
+
         do {
             try installTap(inputFormat: inputFormat)
             engine.prepare()
@@ -256,15 +326,29 @@ final class MicCapture: @unchecked Sendable {
 
     // MARK: - Shared-state accessors
 
-    private func setAudioFile(_ file: AVAudioFile?) {
+    private func setExtFile(_ file: ExtAudioFileRef?) {
         fileLock.lock()
-        audioFile = file
+        extFile = file
         fileLock.unlock()
     }
 
-    private func currentAudioFile() -> AVAudioFile? {
+    private func closeExtFile() {
+        // Detach under the lock, then dispose OUTSIDE it: ExtAudioFileDispose
+        // flushes the encoder to disk (blocking I/O), and fileLock must never be
+        // held across I/O (the real-time tap thread also takes it). Callers
+        // already remove the tap first, but this keeps the invariant true.
+        fileLock.lock()
+        let file = extFile
+        extFile = nil
+        fileLock.unlock()
+        if let file {
+            ExtAudioFileDispose(file)
+        }
+    }
+
+    private func currentExtFile() -> ExtAudioFileRef? {
         fileLock.lock()
         defer { fileLock.unlock() }
-        return audioFile
+        return extFile
     }
 }

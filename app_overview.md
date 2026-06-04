@@ -162,6 +162,13 @@ Goal is a quick sanity check it works well, can get information we need. Can use
 
 Note: for the `experiment` I don’t think we need a library wrapper here like speech - just a proof of concept, generating reference code.
 
+## Notificaitons
+
+We should have excellent notifications
+
+ - At a event start time: pop it in, show link to join call if we can auto-extract, option to record. Some smarts on "meetings that have video conferening links", not any calenar appointment (a flight, dance recitle)
+ - When an ad-hock meeting starts (Facetime, Slack huddle, one off video converence), as detected by audio APIs, notificaiton to offer to record
+
 ## LLM Enhancements
 
 Will add this post V1, but we want to add

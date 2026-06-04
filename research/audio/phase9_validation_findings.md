@@ -66,6 +66,12 @@ Validated and corrected against the R1 tap recipe:
 ## Track-alignment finding (open)
 - With **tap auto-start** (`kAudioAggregateDeviceTapAutoStartKey: true`), the system tap only delivers buffers once a tapped process actually plays audio — so the system track has **no leading silence** and starts later than the mic track → the two files are **not time-aligned**.
 - **Recommendation:** capture the system track **continuously from t=0** (write silence until real audio arrives), or stamp both streams with a shared clock and pad to a common start, so `_mic.caf` and `_system.caf` are alignable for merge/diarization.
+- **Long-run data point (Test 6):** over a ~10-minute global recording with audio already playing at start, the two tracks ended up aligned to within **~0.26 s** at the file level (decoded `_mic.aac` 10:06.20 vs `_system.aac` 10:06.46) — no drift accumulated over the run. So the misalignment is a **start/stop edge effect** (tap auto-start adds leading offset; the system tap also keeps capturing a few seconds after the mic stops), not clock drift during steady state. A fixed t=0 anchor on both tracks should close it.
+
+## Long-recording stability is solid (Test 6)
+- A ~10-minute continuous global recording is **stable**: memory held flat (user-observed), and both `_mic.aac` / `_system.aac` **decode end-to-end with zero ffmpeg errors** — no gaps, corruption, or truncation over the run.
+- **Size scales linearly as expected:** ~**0.488 MB/min/stream** (measured mic bitrate 64.9 kbps), matching the ~0.5 MB/min/stream estimate for 64 kbps. ~10 min ≈ 4.9 MB/stream.
+- **Tooling gotcha for raw ADTS AAC:** `ffprobe`'s quick duration estimate is **unreliable** for our `.aac` files — it mis-derives bitrate (e.g. reported 2061 bps → a bogus 5.2-hour duration for a 4.9 MB / 10-min file). Always confirm duration with a **full decode** (`ffmpeg -i file -f null -`), which is exact. (Same root cause as the crash-safety story: raw ADTS has no header table; tools must scan frames.)
 
 ## Permission denial is a silent failure — no usable OSStatus (Test 4)
 - Revoking **Microphone** access does **not** raise an error. Recording still "starts" and writes a small (~32 KB) **silent** `_mic.caf`; the UI shows nothing wrong.

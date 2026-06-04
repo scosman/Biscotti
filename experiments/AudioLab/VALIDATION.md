@@ -94,11 +94,11 @@ Manual test script for the AudioLab experiment (E1). Run on a Mac with Apple Sil
 2. Let it run for at least 10 minutes.
 3. Stop recording.
 4. Verify:
-   - [ ] Files are present and playable.
-   - [ ] No gaps or corruption in playback.
-   - [ ] File sizes are proportional to duration (~0.5 MB/min per stream at 64 kbps).
+   - [x] Files are present and playable.
+   - [x] No gaps or corruption in playback.
+   - [x] File sizes are proportional to duration (~0.5 MB/min per stream at 64 kbps).
 
-**Result:** _Not yet run._
+**Result:** **PASS.** ~10-minute global recording (music playlist out the speakers + occasional mic), user-reported **memory stable** throughout. Both tracks **decode end-to-end with zero ffmpeg errors** (no gaps/corruption): `_mic.aac` = 4.93 MB, decoded **10:06.20**; `_system.aac` = 4.87 MB, decoded **10:06.46**. **Sizes proportional:** 0.488 MB/min/stream (measured mic bitrate 64.9 kbps) — matches the ~0.5 MB/min/stream target. **Track alignment held over the long run:** the two files differ by only **~0.26 s** at the file level (a ~4 s tail seen in the UI timer — system kept capturing briefly after the mic stopped — did not appear in the decoded data; this is much tighter than the start-of-recording case in the open track-alignment finding). **Tooling gotcha:** `ffprobe` quick-estimates a wildly wrong duration for raw ADTS AAC (it misreads bitrate, e.g. reported 5.2 h / 2061 bps for the system track) — a full decode (`ffmpeg -i f -f null -`) gives the true duration.
 
 ### 7. Route-Change Survival & Zero-Buffer Detection
 
@@ -144,6 +144,6 @@ _Added after Test 1 surfaced that the Streams tab required a manual Refresh. Val
 | 3. Per-Process Capture | ❌ Dropped | Descoped — global-only decision (finding #3). |
 | 4. Permission Denial | ✅ Pass (after fix) | Pre-fix: silent failure (empty `_mic.caf`, no error; `-10877` is noise — fires when working too). Fix: preflight `AVCaptureDevice.authorizationStatus` → OS prompt / alert + refuse to start + Open Settings. **Validated working.** System tap has no perm API → still needs zero-buffer backstop. Ad-hoc signing churns TCC identity. |
 | 5. Crash-Safe (optional) | ✅ Pass (after fix) | CAF+AAC **not** crash-safe (no `pakt` until close → undecodable after `kill -9`). Switched both tracks to **ADTS AAC** (`ExtAudioFile`, self-syncing frames) → partial files now decode up to the kill point. Fixed 2 writer bugs en route (ConverterConfig crash; empty-mic client-format mismatch). |
-| 6. Long Recording (optional) | ⬜ Not run | |
+| 6. Long Recording (optional) | ✅ Pass | ~10 min global recording; memory stable. Both tracks decode end-to-end, zero errors; mic 10:06.20 / system 10:06.46 (aligned within ~0.26 s). 0.488 MB/min/stream (~64.9 kbps), matches target. `ffprobe` mis-estimates raw-ADTS duration → full decode for truth. |
 | 7. Route-Change / Zero-Buffer | 🟡 Partial | Route-change survival fixed & passing; zero-buffer not reproduced on macOS 15; track-alignment open. |
 | 8. Live Auto-Refresh | ✅ Pass | User-validated live. Notify (not poll) via `kAudioProcessPropertyIsRunning` listener — the IsRunningInput/Output variants don't notify (macOS bug, forum 825780). One OS gap: mute/unmute while other direction active won't update live. |

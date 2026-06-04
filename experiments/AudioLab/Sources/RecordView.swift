@@ -60,6 +60,17 @@ struct RecordView: View {
             Spacer()
         }
         .padding()
+        .alert(
+            "Microphone Access Needed",
+            isPresented: $coordinator.permissionAlertShown
+        ) {
+            if coordinator.permissionAlertOffersSettings {
+                Button("Open Settings") { coordinator.openMicrophoneSettings() }
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(coordinator.permissionAlertMessage)
+        }
         .onAppear {
             monitor.startMonitoring()
         }

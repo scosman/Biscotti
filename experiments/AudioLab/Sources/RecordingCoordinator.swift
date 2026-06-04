@@ -1,3 +1,5 @@
+import AppKit
+import AVFoundation
 import CoreAudio
 import Foundation
 import Observation
@@ -12,6 +14,14 @@ final class RecordingCoordinator {
     private(set) var micFileURL: URL?
     private(set) var systemFileURL: URL?
     private(set) var lastError: String?
+
+    /// Drives the microphone-permission alert in RecordView. We refuse to start a
+    /// recording when the mic is denied/restricted rather than capturing a silent
+    /// file with no feedback (Phase 9 Test 4: denial is otherwise a silent failure
+    /// with no usable OSStatus).
+    var permissionAlertShown = false
+    private(set) var permissionAlertMessage = ""
+    private(set) var permissionAlertOffersSettings = false
 
     /// Thread-safety: systemCapture and micCapture are created and torn down on
     /// the main thread. Their internal audio callbacks run on dedicated audio/writer
@@ -34,7 +44,69 @@ final class RecordingCoordinator {
         return RecordingFileManager.fileSize(at: url)
     }
 
+    /// Public entry point: preflight the microphone permission, then capture.
+    /// We never start a capture we know will be silent — instead we tell the user
+    /// exactly what to fix (and offer to open System Settings when appropriate).
     func startRecording(captureMode: CaptureMode, targetProcessID: AudioObjectID?) {
+        guard !isRecording else { return }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            beginCapture(captureMode: captureMode, targetProcessID: targetProcessID)
+
+        case .notDetermined:
+            // First-run: let the OS prompt, then start only if the user grants.
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if granted {
+                        self.beginCapture(captureMode: captureMode, targetProcessID: targetProcessID)
+                    } else {
+                        self.presentPermissionAlert(
+                            "AudioLab needs microphone access to record. You just declined the prompt — enable it in System Settings to record your voice.",
+                            offersSettings: true
+                        )
+                    }
+                }
+            }
+
+        case .denied:
+            presentPermissionAlert(
+                "Microphone access for AudioLab is turned off. Without it the mic track records silence. Enable AudioLab under Privacy & Security → Microphone, then try again.",
+                offersSettings: true
+            )
+
+        case .restricted:
+            // Blocked by policy (MDM / parental controls): can't even prompt.
+            presentPermissionAlert(
+                "Microphone access is blocked by a system policy (e.g. MDM or parental controls) and can't be enabled here.",
+                offersSettings: false
+            )
+
+        @unknown default:
+            presentPermissionAlert(
+                "Microphone access is unavailable. Check Privacy & Security → Microphone in System Settings.",
+                offersSettings: true
+            )
+        }
+    }
+
+    private func presentPermissionAlert(_ message: String, offersSettings: Bool) {
+        permissionAlertMessage = message
+        permissionAlertOffersSettings = offersSettings
+        permissionAlertShown = true
+    }
+
+    /// Opens System Settings directly at Privacy & Security → Microphone.
+    func openMicrophoneSettings() {
+        if let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        ) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func beginCapture(captureMode: CaptureMode, targetProcessID: AudioObjectID?) {
         guard !isRecording else { return }
         lastError = nil
 

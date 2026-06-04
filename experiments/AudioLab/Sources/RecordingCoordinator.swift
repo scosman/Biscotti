@@ -52,6 +52,11 @@ final class RecordingCoordinator {
         systemCapture = sysCapture
 
         let mic = MicCapture(fileURL: paths.mic)
+        mic.onUnrecoverableError = { [weak self] error in
+            Task { @MainActor in
+                self?.lastError = "Microphone (route change): \(error.localizedDescription)"
+            }
+        }
         micCapture = mic
 
         do {

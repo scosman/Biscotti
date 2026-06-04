@@ -1,5 +1,7 @@
 # EventKitLab Validation Script (V2)
 
+**Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15** (Phase 10). Permissions were reset before the run via `tccutil reset Calendar/AddressBook com.steak.experiments.eventkitlab` to exercise the not-determined → request flow.
+
 Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar account (iCloud, Google, Exchange, etc.) with at least a few events, some of which have video conferencing links and multiple attendees.
 
 ## Prerequisites
@@ -21,7 +23,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] Status changes to "Full Access" (or "Authorized (deprecated)" on older SDK paths).
    - [ ] A green checkmark icon appears next to the calendar status.
 
-**Result:** _______________
+**Result:** **PASS.** Prompted on click, then status confirmed to Full Access after granting.
 
 ### 2. Permission Tab -- Contacts Access
 
@@ -31,7 +33,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] Status changes to "Authorized".
    - [ ] A green checkmark icon appears.
 
-**Result:** _______________
+**Result:** **PASS.** Prompted on click; status changed to Authorized with green checkmark after granting.
 
 ### 3. Permission Tab -- Denial Handling
 
@@ -44,7 +46,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] Clicking the button opens the relevant System Settings pane.
 5. Re-grant access in System Settings and relaunch EventKitLab to continue testing.
 
-**Result:** _______________
+**Result:** **PASS.** After revoking calendar access and relaunching, the Permission tab showed Denied with an "Open System Settings" button that correctly opened the Calendars pane.
 
 ### 4. Calendars Tab -- Calendar Listing and Filtering
 
@@ -59,7 +61,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] All toggles turn off, then back on.
 6. Leave at least two calendars enabled (one with events, one without if possible).
 
-**Result:** _______________
+**Result:** **PASS, after one bug fixed.** Calendars listed correctly (grouped by source, color dots, type labels, all on by default). **Bug:** toggles (and Enable All / Disable All) did not update the UI live — required leaving and re-entering the tab; state persisted correctly but did not re-render. **Cause:** `enabledCalendarIDs` was a computed property backed directly by `UserDefaults`, which the `@Observable` macro does not track (it only observes stored properties). **Fix:** backed the state with a stored `savedEnabledIDs: Set<String>?` (nil = all-enabled default) that the public computed property resolves and persists through, so mutations trigger SwiftUI re-render while preserving persistence and the all-enabled default. Same class of observation bug as AudioLab Phase 6b.
 
 ### 5. Events Tab -- Date Range and Event Fetching
 

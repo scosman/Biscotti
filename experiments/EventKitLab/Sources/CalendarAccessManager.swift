@@ -16,15 +16,20 @@ final class CalendarAccessManager {
     private(set) var snapshots: [CalendarEventSnapshot] = []
     private(set) var enrichedAttendees: [String: EnrichedAttendee] = [:]
 
+    /// Nil means "nothing saved yet" → treat as all calendars enabled.
+    private var savedEnabledIDs: Set<String>? = {
+        guard let saved = UserDefaults.standard.stringArray(forKey: "enabledCalendarIDs") else {
+            return nil
+        }
+        return Set(saved)
+    }()
+
     var enabledCalendarIDs: Set<String> {
         get {
-            let saved = UserDefaults.standard.stringArray(forKey: "enabledCalendarIDs")
-            if let saved {
-                return Set(saved)
-            }
-            return Set(calendars.map(\.calendarIdentifier))
+            savedEnabledIDs ?? Set(calendars.map(\.calendarIdentifier))
         }
         set {
+            savedEnabledIDs = newValue
             UserDefaults.standard.set(Array(newValue), forKey: "enabledCalendarIDs")
         }
     }

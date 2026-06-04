@@ -196,6 +196,8 @@ let encoderSettings: [String: Any] = [
 
 #### 6a. Zero-filled buffers from process tap (CRITICAL)
 
+> **⚠️ Updated by Phase 9 validation (Test 7) — did NOT reproduce; mitigation DEFERRED.** Across all Phase 9 runs on **macOS 15** (Apple M4), including a 10-min continuous recording (Test 6), the all-zero tap failure **never reproduced** — it appears specific to the macOS 26.5 beta originally observed. The RMS health-monitor scaffolding below was built (`RMSMonitor` + `SystemAudioCapture.isSuspectedFailure`) but is intentionally **left unwired** to the UI: with no reproducible failure on our target OS, wiring + forced-failure validation is solving a problem we don't have. **Decision: defer** — keep the monitor in place, revisit only if the failure surfaces in real use. See the [Phase 9 findings](./phase9_validation_findings.md).
+
 **Symptom**: `AudioDeviceIOProc` callback continues firing at normal cadence, but every PCM sample is exactly `0.0f`. All metadata (frame count, timestamps, buffer pointers) remains valid. The user can still hear audio through their speakers. ([Apple Developer Forums](https://developer.apple.com/forums/thread/825780))
 
 **Observed behavior** (51-minute session on MacBook Air M2, macOS 26.5 Beta -- **note: this was observed on a beta OS; behavior may differ on macOS 15 release builds. E1 validation should confirm whether this reproduces on our target OS.**):

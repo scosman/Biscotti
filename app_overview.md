@@ -201,6 +201,8 @@ We could support both private and external models
 - "Stop recording" notification: detect end of meeting and suggest stopping audio recording
 - P2: system wide keyboard shortcut to start/stop recording. Configurable, disableable.
 - we should have a server delivered JSON file with known "meeting" apps. Bundle ID, name, etc. This lets us detect their audio/when meeting start, and being server driven json lets us update OTA.
+- P2: move from caf recordings to something crash proof. caf AAC-LC are variable rate, so if the process crashes, it's missing the pakt table, and has nothing. FLAC could be better choice?
+- P3: Settings to see file usage, and delete audio files. Calculates total usage of audio files, and can delete them. Lost ability to playback in app, or to re-transcribe. Later problem for when people have 50GB of audio.
 
 ## Design Style
 
@@ -224,3 +226,5 @@ Plan:
 ## Stack/Testing/CI/Etc
 
 When we get to starting the app itself, we want really great tooling. CI, linting, testing, etc. There should be a scaffolding stage.
+
+We deliberately keep the app target thin and push essentially everything into Swift packages — not just business logic but view models, navigation, networking, and most UI. The reason is structural: anything reachable by swift build/swift test builds without a simulator, code signing, or the Xcode project graph, which makes it fast, deterministic, and clean for both CI and coding agents. xcodebuild drags all of that in, so we minimize what depends on it. The app target is reduced to the composition root plus the irreducible Apple-platform glue (entitlements, App Intents, extensions, asset catalogs). We still ship an app and still test it, but app/UI tests run as a separate, non-gating CI tier (slower, occasionally flaky); the package test suite is what gates merges. For agentic work on the app shell, agents use `swift` CLI 99% of the time; for rare exceptions it can drive builds through XcodeBuildMCP rather than raw xcodebuild invocations.

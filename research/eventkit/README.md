@@ -4,6 +4,8 @@
 
 EventKit on macOS 15 provides everything Steak needs for read-only calendar integration. Request full access via `EKEventStore.requestFullAccessToEvents()` (requires the `NSCalendarsFullAccessUsageDescription` Info.plist key); enumerate calendars with `eventStore.calendars(for: .event)` so the user can toggle which ones feed into the app; fetch events with date-range predicates and copy all relevant fields into our own `Meeting` model at snapshot time. The API surface is mature, stable, and well-documented. The main subtlety is identifier instability for recurring/synced events (use a composite key) and the absence of a first-class "video conference URL" property (parse it from `notes`, `location`, and `url` fields with regex).
 
+> **Validated (Phase 10 / V2, Apple M4, macOS 15).** The full approach was exercised end-to-end against a real calendar account via the EventKitLab experiment. All core flows passed: permission request (full access + contacts), denial handling, calendar enumeration/filtering, date-range event fetching, full field availability in event detail, and conference-URL detection on real meetings. Three takeaways folded back here: **(1)** **Punt Contacts enrichment for V1** — it works mechanically but adds a second permission prompt for little value (resolves Open Question #3). **(2)** Conference detection via regex is sound and worked on real meetings, but the pattern set needs ongoing tuning for more platforms/URL formats. **(3)** Implementation gotcha: SwiftUI calendar-filter state must be an **observable stored property** — a `UserDefaults`-backed computed property is not tracked by `@Observable` and produces stale, non-live toggles (see Risks & Gotchas #9). Full per-test results: [`experiments/EventKitLab/VALIDATION.md`](../../experiments/EventKitLab/VALIDATION.md).
+
 ---
 
 ## Key Questions & Findings
@@ -415,6 +417,8 @@ Implement a `ConferenceURLDetector` utility that scans `event.url`, `event.notes
 
 8. **Memory.** `EKEvent` objects hold internal references to the `EKEventStore`. Holding many events in memory keeps the store alive. Copy fields into our own model and release the `EKEvent` references promptly.
 
+9. **`@Observable` does not track `UserDefaults`-backed computed properties (found in Phase 10 V2).** The calendar-filter selection (enabled calendar IDs) was first implemented as a computed property reading/writing `UserDefaults` directly. Under the Observation framework this produced stale UI — toggling a calendar persisted correctly but the list did not re-render until the view re-appeared. The Observation macro only tracks **stored** properties. Fix: keep an observable stored property (e.g. `private var savedEnabledIDs: Set<String>?`, `nil` = all-enabled default) as the source of truth and persist to `UserDefaults` in its setter; expose a computed accessor that resolves the default. This is the same class of bug seen in the AudioLab experiment (Phase 6b live-refresh). Applies to any persisted UI state in the production app.
+
 ---
 
 ## Open Questions for the Team
@@ -423,7 +427,7 @@ Implement a `ConferenceURLDetector` utility that scans `event.url`, `event.notes
 
 2. **Birthday / subscribed calendars:** Should we hide birthday and subscribed calendars by default in the filter UI, since they never have meetings? Or let the user toggle them off manually?
 
-3. **Contacts integration for attendee enrichment:** Using `contactPredicate` to look up attendee details (full name, company, photo, email) from the Contacts framework would significantly enrich the Meeting model. However, it requires a separate `NSContactsUsageDescription` permission. Is this worth the extra permission prompt in V1, or should it be deferred?
+3. ~~**Contacts integration for attendee enrichment:**~~ **RESOLVED (Phase 10 V2 — defer/drop for V1).** Validation showed the `contactPredicate` lookup works mechanically but returned zero matches for a tester who doesn't maintain Contacts — and it costs a second permission prompt (`NSContactsUsageDescription`). EventKit's own attendee data (name, role, status, type, and `mailto:`-parsed email) is sufficient for the Meeting model. Drop Contacts enrichment from V1; revisit only if a concrete need emerges.
 
 4. **Re-sync frequency:** How aggressively should we re-sync snapshots against EventKit? Options range from "never" (pure snapshot) to "on every `EKEventStoreChanged` notification" to "on app launch + notification." More aggressive sync keeps data fresh but adds complexity. Recommend: re-sync on notification + app launch, mark stale if source event deleted.
 

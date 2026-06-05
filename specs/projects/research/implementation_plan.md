@@ -25,5 +25,5 @@ Each coding phase also **writes** its experiment's `VALIDATION.md` manual test s
 
 ### Validation → human-in-the-loop runs of the pre-written scripts; record results into research docs
 - [ ] Phase 9: Run V1 (audio) with user; fold results into `research/audio/README.md` — **in progress**. Added `VALIDATION.md` Test 9 (build & runtime logs/warnings audit) as a catch-all sanity sweep. Tests 1–9 all run; pending final user sign-off to close.
-- [ ] Phase 10: Run V2 (eventkit) with user; fold results into `research/eventkit/README.md`
+- [x] Phase 10: Run V2 (eventkit) with user; fold results into `research/eventkit/README.md` — **done**. All 10 V2 tests run (M4/macOS 15). Found+fixed a live-toggle observation bug (Test 4); decided to punt Contacts enrichment (Test 7, resolves Open Q#3); conference detection validated. Results folded into the research doc.
 - [ ] Phase 11: Run V3 (argmaxkit) with user; fold results into `research/argmax/README.md`

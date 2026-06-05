@@ -77,7 +77,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
 5. Disable a calendar on the Calendars tab, return to Events, and re-fetch.
    - [ ] Events from the disabled calendar no longer appear.
 
-**Result:** _______________
+**Result:** **PASS.** Events fetched and sorted by start date, count label updated, title/time/calendar shown, all-day badges and conferencing video icons present. Disabling a calendar and re-fetching correctly removed that calendar's events.
 
 ### 6. Events Tab -- Event Detail Expansion
 
@@ -95,7 +95,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
 3. Click the same event again to collapse it.
    - [ ] The detail section hides.
 
-**Result:** _______________
+**Result:** **PASS.** Expanded detail showed organizer, location/URL, conference info, notes, status/availability, attendee list with roles/status/type, "[You]" marker, and identifiers. Collapse worked.
 
 ### 7. Events Tab -- Contacts Enrichment Comparison
 
@@ -109,7 +109,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
 4. Click **Hide Contacts Comparison** to toggle it off.
    - [ ] The purple enrichment sections disappear.
 
-**Result:** _______________
+**Result:** **PASS mechanically; feature to be PUNTED.** The comparison toggled on/off correctly and ran the `contactPredicate` lookup against the Contacts store, but found **zero** matches — the tester does not use the Contacts app, so there was nothing to match against. No code defect. **Product takeaway:** drop Contacts-enrichment from the V1 plan — it adds a second permission prompt (`NSContactsUsageDescription`) for little value when users don't maintain Contacts. This resolves research Open Question #3 (defer Contacts enrichment). EventKit's own attendee data (name, role, status, type, and parsed email) is sufficient for the Meeting model.
 
 ### 8. Data Report Tab -- Report Generation
 
@@ -126,7 +126,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] "Copied!" confirmation appears briefly.
    - [ ] Paste into a text editor to confirm the full report was copied.
 
-**Result:** _______________
+**Result:** **PASS (low value).** Report generated and copy-to-clipboard worked. Tester noted this test is largely a copy/paste check; the underlying field availability is already covered by the Events-tab detail (Test 6) and documented in `research/eventkit/README.md` §3.
 
 ### 9. Conference URL Detection (Spot Check)
 
@@ -136,7 +136,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
 2. If you have an event without any conferencing link:
    - [ ] No video icon is shown, and no conference info appears in the detail.
 
-**Result:** _______________
+**Result:** **PASS.** Conference detection worked well on real events — video icon shown and correct platform + join URL surfaced in detail; non-conferencing events showed no icon. Caveat: the regex set will need ongoing tuning to cover more platforms/URL formats, but the parse-from-notes/location/url approach is validated as sound.
 
 ### 10. Empty State Handling
 
@@ -148,19 +148,19 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] The "Generate Report" button is disabled (no events loaded).
 4. Re-enable calendars on the Calendars tab.
 
-**Result:** _______________
+**Result:** **PASS (low value).** Disabling all calendars produced an empty event list as expected. A basic smoke check.
 
 ## Summary
 
 | Test | Pass/Fail | Notes |
 |------|-----------|-------|
-| 1. Calendar Access | | |
-| 2. Contacts Access | | |
-| 3. Denial Handling | | |
-| 4. Calendar Filtering | | |
-| 5. Event Fetching | | |
-| 6. Event Detail | | |
-| 7. Contacts Enrichment | | |
-| 8. Data Report | | |
-| 9. Conference Detection | | |
-| 10. Empty States | | |
+| 1. Calendar Access | PASS | Prompt + Full Access confirmed. |
+| 2. Contacts Access | PASS | Prompt + Authorized confirmed. |
+| 3. Denial Handling | PASS | Denied state + working "Open System Settings". |
+| 4. Calendar Filtering | PASS (1 bug fixed) | Toggles didn't refresh live — fixed observable state (UserDefaults-backed computed property not tracked by `@Observable`). |
+| 5. Event Fetching | PASS | Sorted, counted, calendar-filtered correctly. |
+| 6. Event Detail | PASS | All fields + "[You]" + identifiers shown. |
+| 7. Contacts Enrichment | PUNTED | Worked mechanically; 0 matches (tester doesn't use Contacts). Drop from V1. |
+| 8. Data Report | PASS (low value) | Copy/paste smoke check. |
+| 9. Conference Detection | PASS | Works well on real meetings; regex needs ongoing tuning. |
+| 10. Empty States | PASS (low value) | Empty-list smoke check. |

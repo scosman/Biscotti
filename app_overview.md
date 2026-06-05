@@ -43,11 +43,12 @@ Use SwiftData for our data store
   - title
   - summary
   - attached audio file (not in sqlite, but should sync, swift data has option for this)
-  - transcript: data structure. Turn based, speaker IDs. Content of speech
+  - transcript: data structure. Turn based, speaker IDs. Content of speech.
+  - notes: custom notes.
   - etc.
 - Automatically syncs across my apple account using native SwiftData options
 - Add fields, relationships, and data models as needed. This is high level rough idea.
-- Maybe transcripts are their own datamodel, so we can create new version for a meeting (say better model, or better custom vocab), then meeting can show list (defaults to latest, but can see older ones too). Prob good to normalize.
+- Maybe transcripts are their own datamodel, so we can create new version for a meeting (say better model, or better custom vocab), then meeting can show list (defaults to latest, but can see older ones too).
 
 ## UI
 
@@ -105,7 +106,13 @@ We'll be a great onboarding wizard, as setup isn't trivial.
 We want to support custom vocabularies.
 - App wide custom vocab list in settings: my company name, my name, weird technology names, internal codewords
 - Meeting specific: merge app-wide list with keywords from meeting information: participant names, company names, maybe later even key words from title description (“Project Parakeet Team Meeting” > “Parakeet”)
+- Recording specific: a list I add manually to this meeting (post-hoc fix). P3
 - Pass the merged list to SDK for better transcripts.
+
+Note: since transcription is now downstream from the pairing of event<>recording, if the user corrects the assiociation (I had 2 meetings at same time, we attached wrong one) 
+ 1) correction should be possilbe 
+ 2) I should be able to re-transcribe after changing
+
 
 ## Producing Transcripts
 
@@ -176,11 +183,13 @@ Note: for the `experiment` I don’t think we need a library wrapper here like s
 We should have excellent notifications
 
  - At a event start time: pop it in, show link to join call if we can auto-extract, option to record. Some smarts on "meetings that have video conferening links", not any calenar appointment (a flight, dance recitle)
+   - Details: button to "Open and Record", secondary option for open and record separately if that's possible in MacOS notifications
  - When an ad-hock meeting starts (Facetime, Slack huddle, one off video converence), as detected by audio APIs, notificaiton to offer to record
+ - Stop recording notifications: ask to stop recording when audio from app stops. Ideally notification indicates it's going to automatically in 15s and counts down, and clicking is to keep recording.
 
 ## LLM Enhancements
 
-Will add this post V1, but we want to add
+Will add this post V1, but we want to add LLM based intelligence
 
 - Summarize meeting:
   - read the transcript, creates summary
@@ -188,21 +197,22 @@ Will add this post V1, but we want to add
   - read the transcript, creates action items
 - Name speakers
   - sortformer gives us “speaker A” / “speaker B” (confirm) but not “Steve” / “Mike”. An LLM could often figure this out: speaker A says “hi mike” at start, Speaker A is not mike (and if 2 people, B is mike). Speaker B says “hey mike, can you answer that” and speaker C talks next answering (that’s mike)
+- Extract custom vocab words from meeting invite: pick out words that might be helpful in custom vocab. Don't need "team"/"John", do need "cipralex"/"Saoirse". Meaningful words relating to topic. 
 - Etc.
 
 We could support both private and external models
-- Gemma 4 E4B or similar for local, via llama.cpp (I assume there’s a good swift wrapper)
-- External via “API key and openAI compatible API”
+- Gemma 4 E4B/12B or similar for local, via llama.cpp (I assume there’s a good swift wrapper)
+- External via “API key and openAI compatible base url”
 
 ## Misc App Reqs
 
 - Settings has a “Launch on startup” option, enabled by default
-- We've seen track alignment issues in recording: call comes in 10s after recording starts, and system audio track is off by 10s. This went away, but have seen sub-second drift after. We should investigate 1) tracking clock time of start of alignment, 2) adding silnce in start gaps, 3) If same type of gap is possible in middle (if so, offset won't save us)
-- "Stop recording" notification: detect end of meeting and suggest stopping audio recording
+- We've seen track alignment issues in recording: call comes in 10s after recording starts, and system audio track is off by 10s. This went away, but have seen sub-second drift after. We should investigate 1) tracking clock time of start of alignment, 2) adding silnce in start gaps, 3) If same type of gap is possible in middle (if so, offset won't save us). Note: haven't occured recently, so may be gone.
 - P2: system wide keyboard shortcut to start/stop recording. Configurable, disableable.
-- we should have a server delivered JSON file with known "meeting" apps. Bundle ID, name, etc. This lets us detect their audio/when meeting start, and being server driven json lets us update OTA.
-- P2: move from caf recordings to something crash proof. caf AAC-LC are variable rate, so if the process crashes, it's missing the pakt table, and has nothing. FLAC could be better choice?
-- P3: Settings to see file usage, and delete audio files. Calculates total usage of audio files, and can delete them. Lost ability to playback in app, or to re-transcribe. Later problem for when people have 50GB of audio.
+- we should have a server delivered JSON file with known "meeting" apps. Bundle ID -> name mapping for "Meeting detected" notifications, . This lets us detect their audio/when meeting start, and being server driven json lets us update OTA.
+  - also in file: known URL regexes for videoconferenging URLs so we know which events are meetings
+- DONE: move from caf recordings to something crash proof. caf AAC-LC are variable rate, so if the process crashes, it's missing the pakt table, and has nothing. FLAC could be better choice?
+- P3: Settings screen to see file usage, and delete audio files. Calculates total usage of audio files, and can delete them. Lost ability to playback in app, or to re-transcribe. Later problem for when people have 50GB of audio.
 
 ## Design Style
 

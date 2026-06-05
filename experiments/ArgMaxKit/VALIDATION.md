@@ -27,7 +27,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] Help text shows the audio file argument, `--model`, `--vocab`, `--json`, and `--sequential` options.
    - [ ] Description mentions WhisperKit and SpeakerKit.
 
-**Result:** _______________
+**Result:** **PASS** (run by agent, M4/macOS 15). Build clean (~3.4s). Help shows the `<audio-file>` argument and all of `--model` (default `large-v3_turbo`), `--vocab`, `--json`, `--sequential`; overview mentions WhisperKit STT + SpeakerKit Pyannote diarization.
 
 ### 2. Model Download & First Transcription
 
@@ -43,7 +43,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] A formatted transcript is printed showing speaker labels and timestamps.
    - [ ] Processing duration is reported at the top.
 
-**Result:** _______________
+**Result:** **PASS** (run by agent, M4/macOS 15, models already cached from a prior run so no download needed; CoreML compile was already cached too). Test audio: `~/Downloads/voice_test.mp3`, 25.1s, 3 speakers. Output: Model `large-v3_turbo`, Language `en`, Speakers 3, Segments 11, ~10.7s processing. Formatted transcript printed with speaker labels and timestamps.
 
 ### 3. Transcript Output Shape (Formatted)
 
@@ -55,7 +55,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] Word-level detail is shown with per-word confidence percentages.
    - [ ] Multiple speakers are detected (if the audio has multiple speakers).
 
-**Result:** _______________
+**Result:** **PASS, with one anomaly noted.** Header showed model/language/speaker count/segment count/processing duration. Each segment had a `[mm:ss.s -> mm:ss.s]` range + `Speaker N:` label; text matched the audio; per-word confidences present; 3 speakers detected. **Anomaly:** the final segment was `[00:52.5 -> 00:52.5] "Thank you"` with low confidence on "Thank" (39%) — a timestamp **past the 25.1s audio length**. This is a classic Whisper end-of-audio hallucination. Production should drop/clamp segments whose timestamps exceed the audio duration and/or filter very-low-confidence trailing single-word segments. See research doc.
 
 ### 4. JSON Output
 
@@ -74,7 +74,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] `speakerEmbeddings` is present (empty dict `{}` -- centroid embeddings are not exposed in free SDK v1.0.0; field reserved for future use).
    - [ ] JSON is valid and parses without errors (e.g. `python3 -m json.tool transcript.json`).
 
-**Result:** _______________
+**Result:** **PASS, after one bug fixed.** All required fields present — top-level `id`, `createdAt`, `modelVersion`, `language`, `speakerCount`, `segments`, `speakerEmbeddings`, `processingDuration`; per-segment `id`, `speakerID`, `speakerLabel`, `startTime`, `endTime`, `text`, `confidence`, `noSpeechProbability`, `words`; per-word `word`, `startTime`, `endTime`, `probability`, `speakerID`. `speakerEmbeddings` is `{}` as documented. **Bug found & fixed:** `--json` output was unparseable when redirected to a file because the CLI printed its banner + "Loading models…" progress lines to **stdout** ahead of the JSON. Fixed by routing all diagnostics and error messages to **stderr** (via a `printErr` helper), leaving stdout as pure result. After the fix, `... --json 2>/dev/null | python3 -m json.tool` parses cleanly. **Field note:** segment-level `confidence` and `noSpeechProbability` came back `0` for all segments — the meaningful confidence signal is at the **word** level (`probability`). Treat segment confidence as unpopulated in this SDK version.
 
 ### 5. Custom Vocabulary
 
@@ -87,7 +87,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] The CLI prints the vocabulary terms in the header.
    - [ ] Compare the transcript against the run without vocab: the specified terms should be more likely to appear correctly spelled (this is a soft bias, not a guarantee).
 
-**Result:** _______________
+**Result:** **PASS.** Ran with `--vocab "James,banana,Steak"`. Header echoed `Vocabulary: James, banana, Steak`; transcript produced normally and "James" appeared correctly spelled. (The clip already transcribed these terms correctly without vocab, so this confirms the prompt-bias plumbing works rather than demonstrating a correction; effect is a soft bias as documented.)
 
 ### 6. Sequential Loading Mode (8 GB Mac or Memory Test)
 
@@ -130,7 +130,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    ```
    - [ ] A clear error message is shown about audio loading failure.
 
-**Result:** _______________
+**Result:** **PASS** (run by agent). Nonexistent path → `Error: File not found: /tmp/nonexistent.wav` (checked before model load). Text file → `Error: Failed to load audio from <path>: ...` (the underlying AVFoundation/CoreAudio error code is appended; the human-readable prefix is clear). Minor polish opportunity: the file-not-found check is fast, but the invalid-audio case only fails after the "Loading models..." banner prints — consider validating audio decodability before the model-load banner.
 
 ### 9. Diarization Quality (Subjective)
 

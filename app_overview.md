@@ -212,6 +212,7 @@ We could support both private and external models
 - we should have a server delivered JSON file with known "meeting" apps. Bundle ID -> name mapping for "Meeting detected" notifications, . This lets us detect their audio/when meeting start, and being server driven json lets us update OTA.
   - also in file: known URL regexes for videoconferenging URLs so we know which events are meetings
 - DONE: move from caf recordings to something crash proof. caf AAC-LC are variable rate, so if the process crashes, it's missing the pakt table, and has nothing. FLAC could be better choice?
+- The audio-recording data model should be created on start, and linked to the path of the audio file as soon as we start streaming. No point in crash resistent recording, if it ends up orphaned in a temp dir. P2
 - P3: Settings screen to see file usage, and delete audio files. Calculates total usage of audio files, and can delete them. Lost ability to playback in app, or to re-transcribe. Later problem for when people have 50GB of audio.
 
 ## Design Style

@@ -1,3 +1,9 @@
+---
+status: complete
+---
+
+# Library Design
+
 ## Package & System Design
 
 We want to design how this app is structured. See app_overview.md, but we want self contained well tested swift packages, and a very thin app layer.

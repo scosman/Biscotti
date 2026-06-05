@@ -1,6 +1,6 @@
-# Steak — Repo Guide
+# Biscotti — Repo Guide
 
-Steak is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
+Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
 
 **Current stage:** planning is done; **the app is not built yet.** Hard technical bets are de-risked (research + experiments), and the package architecture + build roadmap are finalized. The next step is executing the roadmap (starting with scaffolding). There is no `Packages/` or app target yet — only the design docs, validated research, and disposable reference code in `experiments/`.
 

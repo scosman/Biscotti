@@ -4,7 +4,7 @@ status: complete
 
 # Functional Spec: Library Design
 
-This project is **architecture, not implementation, and not interface design**. Its output is the *shape* of the Steak codebase: which packages/components exist, what each is responsible for, who depends on whom, and the order to build them. It deliberately stops short of designing any concrete API. Each component's real interface is designed later by the task that builds that component, working inside the boundary this project draws.
+This project is **architecture, not implementation, and not interface design**. Its output is the *shape* of the Biscotti codebase: which packages/components exist, what each is responsible for, who depends on whom, and the order to build them. It deliberately stops short of designing any concrete API. Each component's real interface is designed later by the task that builds that component, working inside the boundary this project draws.
 
 See [`/app_overview.md`](../../../app_overview.md) for the product, and [`/research/README.md`](../../../research/README.md) for the already-validated technical findings this design builds on.
 

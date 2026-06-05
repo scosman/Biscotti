@@ -8,7 +8,7 @@ final class AudioStreamMonitor {
     private(set) var processes: [AudioProcess] = []
     private var listener: CoreAudioHelpers.ProcessListListener?
     private var processListeners: [AudioObjectID: CoreAudioHelpers.ProcessPropertyListener] = [:]
-    private let listenerQueue = DispatchQueue(label: "com.steak.audiolab.stream-monitor")
+    private let listenerQueue = DispatchQueue(label: "com.biscotti.audiolab.stream-monitor")
     private var isMonitoring = false
 
     func startMonitoring() {

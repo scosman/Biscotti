@@ -1,6 +1,6 @@
 name: EventKitLab
 options:
-  bundleIdPrefix: com.steak.experiments
+  bundleIdPrefix: com.biscotti.experiments
   deploymentTarget:
     macOS: "15.0"
   xcodeVersion: "26.3"
@@ -24,7 +24,7 @@ targets:
       - Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.eventkitlab
+        PRODUCT_BUNDLE_IDENTIFIER: com.biscotti.experiments.eventkitlab
         INFOPLIST_FILE: Sources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
     scheme:
@@ -40,7 +40,7 @@ targets:
       - target: EventKitLab
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.eventkitlab.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.biscotti.experiments.eventkitlab.tests
         GENERATE_INFOPLIST_FILE: "YES"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/EventKitLab.app/Contents/MacOS/EventKitLab"
         BUNDLE_LOADER: "$(TEST_HOST)"

@@ -1,6 +1,6 @@
 # EventKitLab Validation Script (V2)
 
-**Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15** (Phase 10). Permissions were reset before the run via `tccutil reset Calendar/AddressBook com.steak.experiments.eventkitlab` to exercise the not-determined → request flow.
+**Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15** (Phase 10). Permissions were reset before the run via `tccutil reset Calendar/AddressBook com.biscotti.experiments.eventkitlab` to exercise the not-determined → request flow.
 
 Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar account (iCloud, Google, Exchange, etc.) with at least a few events, some of which have video conferencing links and multiple attendees.
 

@@ -4,7 +4,7 @@ status: complete
 
 # Functional Spec: Research
 
-This project is **research, not product**. Its output is knowledge (decision docs) and disposable reference apps (experiments) that de-risk the Steak app's hard technical bets. Success is measured by whether, at the end, we can design the core app with **no significant remaining technical unknowns**.
+This project is **research, not product**. Its output is knowledge (decision docs) and disposable reference apps (experiments) that de-risk the Biscotti app's hard technical bets. Success is measured by whether, at the end, we can design the core app with **no significant remaining technical unknowns**.
 
 See [`/app_overview.md`](../../../app_overview.md) for the product this research serves.
 

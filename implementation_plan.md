@@ -2,7 +2,7 @@
 status: complete
 ---
 
-# Implementation Plan: Steak Build Roadmap
+# Implementation Plan: Biscotti Build Roadmap
 
 A dependency-ordered **roadmap of Projects**. Each entry is a future `/spec new project` with its own specing and phases — **not** a phase implemented from here. There is no `/spec implement` step for `library_design`; this plan spawns the next projects.
 
@@ -20,15 +20,15 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 
 ### Project 0 — Scaffolding & Tooling
 - **Archetype:** foundation (infrastructure).
-- **Delivers:** the repo skeleton that everything else is built in — buildable empty `SteakKit` package + thin `App` Xcode project that launches, with green CI.
-- **In scope:** the `Packages/` + `App/` workspace layout from `architecture.md`; `SteakKit` package skeleton; thin app-target shell; **dev signing** — lock in the **stable production bundle ID** (TCC grants depend on it) + ad-hoc/local signing for dev & CI builds (real Developer-ID notarization is the separate Distribution project); entitlements; CI (GitHub Actions) running the **gating package-test tier** and the **non-gating app/UI tier**; lint + format (fix & check) + pre-commit hook; agent/build integration (XcodeBuildMCP for the rare `xcodebuild` paths); repo `CLAUDE.md` with the check commands.
+- **Delivers:** the repo skeleton that everything else is built in — buildable empty `BiscottiKit` package + thin `App` Xcode project that launches, with green CI.
+- **In scope:** the `Packages/` + `App/` workspace layout from `architecture.md`; `BiscottiKit` package skeleton; thin app-target shell; **dev signing** — lock in the **stable production bundle ID** (TCC grants depend on it) + ad-hoc/local signing for dev & CI builds (real Developer-ID notarization is the separate Distribution project); entitlements; CI (GitHub Actions) running the **gating package-test tier** and the **non-gating app/UI tier**; lint + format (fix & check) + pre-commit hook; agent/build integration (XcodeBuildMCP for the rare `xcodebuild` paths); repo `CLAUDE.md` with the check commands.
 - **Depends on:** nothing.
 - **Risk:** **medium** — xcodebuild/CI reliability is the historically painful part; this Project exists largely to nail it once.
 
 ### Project 1 — Transcription Library
 - **Archetype:** foundation/library.
 - **Delivers:** the validated on-device STT+diarization library, running crash-isolated, with a CLI harness. Productionizes `experiments/ArgMaxKit`.
-- **In scope:** the `Transcription` package (diarized transcript from a **set of labeled audio files** (mic+system) given as paths — owns audio merging/muxing + the mic-vs-system speaker-ID signal; rich result, model download/cache/delete + disk check, rich status, memory/load-unload lifecycle, custom-vocab biasing input, output sanitization for known SDK quirks, re-transcribe); the `SteakTranscriber.xpc` glue target and **end-to-end XPC + CoreML isolation validation** (the last residual unknown from research); the CLI harness.
+- **In scope:** the `Transcription` package (diarized transcript from a **set of labeled audio files** (mic+system) given as paths — owns audio merging/muxing + the mic-vs-system speaker-ID signal; rich result, model download/cache/delete + disk check, rich status, memory/load-unload lifecycle, custom-vocab biasing input, output sanitization for known SDK quirks, re-transcribe); the `BiscottiTranscriber.xpc` glue target and **end-to-end XPC + CoreML isolation validation** (the last residual unknown from research); the CLI harness.
 - **Depends on:** Project 0.
 - **Risk:** **high** — pulled earliest to retire the XPC/CoreML risk first.
 
@@ -55,7 +55,7 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 ### Project 4 — MVP: Record → Transcribe App
 - **Archetype:** feature/integration. **First runnable, shippable app.**
 - **Delivers:** start recording a meeting, stop, get a diarized transcript stored and viewable — **no calendar, no auto-detection, no notifications, no home/search.**
-- **In scope (first slices of these components):** thin `Steak` app target (composition root); `AppShellUI` (basic window + sidebar + routing); `RecordingUI` (active-recording screen); `MeetingDetailUI` (basic — transcript + metadata; re-transcribe); `MeetingListUI` (basic past-meetings list to get back into a meeting); minimal `MenuBarUI` (start/stop, recent); `Recording` module (session lifecycle over AudioCapture, owns storage paths/locations, create+link record on start, persist into DataStore, recover orphaned recordings on launch); `TranscriptionService` module (hand audio paths to the engine → persist transcript version → status → re-transcribe); `Permissions` module (mic + system-audio, silence pre-check, denial recovery); minimal `DesignSystem`.
+- **In scope (first slices of these components):** thin `Biscotti` app target (composition root); `AppShellUI` (basic window + sidebar + routing); `RecordingUI` (active-recording screen); `MeetingDetailUI` (basic — transcript + metadata; re-transcribe); `MeetingListUI` (basic past-meetings list to get back into a meeting); minimal `MenuBarUI` (start/stop, recent); `Recording` module (session lifecycle over AudioCapture, owns storage paths/locations, create+link record on start, persist into DataStore, recover orphaned recordings on launch); `TranscriptionService` module (hand audio paths to the engine → persist transcript version → status → re-transcribe); `Permissions` module (mic + system-audio, silence pre-check, denial recovery); minimal `DesignSystem`.
 - **Depends on:** Projects 1, 2, 3 (+ 0).
 - **Risk:** **medium** — first real integration: permissions, capture→file→transcript→store→UI.
 

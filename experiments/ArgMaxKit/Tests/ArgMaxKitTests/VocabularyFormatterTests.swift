@@ -23,14 +23,14 @@ struct VocabularyFormatterTests {
 
     @Test("Multiple terms joined with commas")
     func multipleTerms() {
-        let result = VocabularyFormatter.formatPrompt(from: ["Steak", "Acme Corp", "Jordan"])
-        #expect(result == "Transcript mentioning: Steak, Acme Corp, Jordan.")
+        let result = VocabularyFormatter.formatPrompt(from: ["Biscotti", "Acme Corp", "Jordan"])
+        #expect(result == "Transcript mentioning: Biscotti, Acme Corp, Jordan.")
     }
 
     @Test("Whitespace is trimmed from terms")
     func whitespaceIsTrimmed() {
-        let result = VocabularyFormatter.formatPrompt(from: ["  Steak  ", " Acme "])
-        #expect(result == "Transcript mentioning: Steak, Acme.")
+        let result = VocabularyFormatter.formatPrompt(from: ["  Biscotti  ", " Acme "])
+        #expect(result == "Transcript mentioning: Biscotti, Acme.")
     }
 
     @Test("Very long vocabulary list is truncated to fit budget")
@@ -58,8 +58,8 @@ struct VocabularyFormatterTests {
 
     @Test("Empty strings are filtered out")
     func emptyStringsFiltered() {
-        let result = VocabularyFormatter.formatPrompt(from: ["", "Steak", "", "App"])
-        #expect(result == "Transcript mentioning: Steak, App.")
+        let result = VocabularyFormatter.formatPrompt(from: ["", "Biscotti", "", "App"])
+        #expect(result == "Transcript mentioning: Biscotti, App.")
     }
 
     @Test("Budget limits are respected")

@@ -8,7 +8,7 @@ import SpeakerKit
 /// `processAudio` call that returns a rich `TranscriptResult`. Models are
 /// lazily loaded on first use and can be explicitly unloaded to free memory.
 ///
-/// In the real Steak app this will run inside an XPC service for crash isolation.
+/// In the real Biscotti app this will run inside an XPC service for crash isolation.
 /// The CLI harness exercises the same code path in-process.
 public actor ArgMaxProcessor {
 

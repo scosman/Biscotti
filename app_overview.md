@@ -1,4 +1,4 @@
-# Steak App
+# Biscotti App
 
 A new MacOS app for recording meetings. Private, local, awesome.
 
@@ -214,6 +214,7 @@ We could support both private and external models
 - DONE: move from caf recordings to something crash proof. caf AAC-LC are variable rate, so if the process crashes, it's missing the pakt table, and has nothing. FLAC could be better choice?
 - The audio-recording data model should be created on start, and linked to the path of the audio file as soon as we start streaming. No point in crash resistent recording, if it ends up orphaned in a temp dir. P2
 - P3: Settings screen to see file usage, and delete audio files. Calculates total usage of audio files, and can delete them. Lost ability to playback in app, or to re-transcribe. Later problem for when people have 50GB of audio.
+- P3: consider moving from AAC to Opus encoding. Want to keep our crash recovery property (stream is valid if we crash, up until crash), but get Opus' better compression and reduce file sizes. Issue: Opus is supported by CoreAudio, but caf container, which breaks crash recovery. So doing this would either be a lot of work (custom Ogg streaming could work, not native), or a "after recording AAC, convert to Opus for long term archive/compression" (easier, better). Should consider later: could record higher qualtiy AAC stream initially (for crash recovery, 48khz/128kbps since temporary and not sweating storage), then Opus for archival long term storage (smaller, maintains quality). Could even do uncompressed intially (PCM/wav/FLAC). P3: all this does is drop us to 15MB/hour from 28MB/hour, not that important
 
 ## Design Style
 

@@ -325,7 +325,7 @@ let encoderSettings: [String: Any] = [
 | **Microphone** (user) | `AVAudioEngine` with `inputNode` tap | `NSMicrophoneUsageDescription` |
 | **Meeting detection** | `kAudioHardwarePropertyProcessObjectList` + `kAudioProcessPropertyBundleID` polling/listening | No additional permission |
 
-**Why not WhisperKit live streaming?** WhisperKit supports real-time streaming transcription by accepting `[Float]` PCM buffers via `transcribe(audioArray:)` and applying a LocalAgreement streaming policy for incremental results. In principle this could collapse the capture-file-process pipeline into a single live path. We evaluated and rejected it for Steak for three reasons: (1) Steak explicitly saves audio files to re-transcribe later with better models -- a live-only pipeline produces no archival recording. (2) Loading STT models during the meeting consumes 180 MB to 3.5 GB of RAM and significant CPU/NPU, directly violating the "lightweight, rock-solid recorder" requirement. (3) Coupling ML inference to the recorder means an inference crash or memory-pressure kill takes down recording too. WhisperKit streaming remains a viable architecture for apps that want live captions without archival, but for Steak the capture and transcription stages should be decoupled: record to file during the meeting, run WhisperKit on the file after the meeting ends. ([WhisperKit GitHub](https://github.com/argmaxinc/WhisperKit), [WhisperKit on macOS guide](https://www.helrabelo.dev/blog/whisperkit-on-macos-integrating-on-device-ml))
+**Why not WhisperKit live streaming?** WhisperKit supports real-time streaming transcription by accepting `[Float]` PCM buffers via `transcribe(audioArray:)` and applying a LocalAgreement streaming policy for incremental results. In principle this could collapse the capture-file-process pipeline into a single live path. We evaluated and rejected it for Biscotti for three reasons: (1) Biscotti explicitly saves audio files to re-transcribe later with better models -- a live-only pipeline produces no archival recording. (2) Loading STT models during the meeting consumes 180 MB to 3.5 GB of RAM and significant CPU/NPU, directly violating the "lightweight, rock-solid recorder" requirement. (3) Coupling ML inference to the recorder means an inference crash or memory-pressure kill takes down recording too. WhisperKit streaming remains a viable architecture for apps that want live captions without archival, but for Biscotti the capture and transcription stages should be decoupled: record to file during the meeting, run WhisperKit on the file after the meeting ends. ([WhisperKit GitHub](https://github.com/argmaxinc/WhisperKit), [WhisperKit on macOS guide](https://www.helrabelo.dev/blog/whisperkit-on-macos-integrating-on-device-ml))
 
 ### Stream Strategy
 
@@ -359,7 +359,7 @@ let encoderSettings: [String: Any] = [
 // 1. Create tap description targeting the meeting app (or global)
 let tapDesc = CATapDescription(processes: [meetingAppProcessID])  // or empty for global
 tapDesc.uuid = UUID()
-tapDesc.name = "steak-system-tap"
+tapDesc.name = "biscotti-system-tap"
 tapDesc.privateTap = true
 tapDesc.muteBehavior = .unmuted    // Don't mute the user's audio output
 tapDesc.exclusive = false

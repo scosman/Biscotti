@@ -80,7 +80,7 @@ All WhisperKit models are in the [`argmaxinc/whisperkit-coreml`](https://hugging
 - Initial model loading may take 15-90 seconds because CoreML compiles the models on-device after the first download.
 - Subsequent loads are "near-instant thanks to the OS-level compiled model cache" (Apple's `.mlmodelc` compilation cache).
 - The download for the full-precision turbo model (~3.1 GB) will take several minutes depending on connection speed; the quantized `_1307MB` variant is faster to download and may be a better default. SpeakerKit's ~33 MB model downloads quickly.
-- Steak should show a progress UI on first run ("Downloading speech models...") with the option to retry on failure. The SDK supports progress callbacks.
+- Biscotti should show a progress UI on first run ("Downloading speech models...") with the option to retry on failure. The SDK supports progress callbacks.
 
 **Sources:**
 - [Managing Models (Argmax Docs)](https://app.argmaxinc.com/docs/guides/managing-models)
@@ -209,8 +209,8 @@ WhisperKit's `DecodingOptions` exposes:
 
 The established workaround (from OpenAI Whisper community) is to set `promptTokens` to a tokenized string listing domain-specific terms. For example:
 ```swift
-// Tokenize a prompt like: "Meeting about Steak App with Acme Corp. Participants: Sam, Jordan."
-let promptText = "Transcript of a meeting about Steak App with Acme Corp. Participants: Sam, Jordan."
+// Tokenize a prompt like: "Meeting about Biscotti App with Acme Corp. Participants: Sam, Jordan."
+let promptText = "Transcript of a meeting about Biscotti App with Acme Corp. Participants: Sam, Jordan."
 let promptTokens = tokenizer.encode(text: promptText)
 let options = DecodingOptions(promptTokens: promptTokens)
 ```
@@ -240,7 +240,7 @@ Both `whisperKit.transcribe(audioArray:)` and `speakerKit.diarize(audioArray:)` 
 **Recommendation:**
 - **Record** mic and system audio as separate streams (per audio research R1) for maximum flexibility.
 - **Merge** the streams into a single mono mixdown before feeding to the SDK.
-- **Use the known stream provenance** as a heuristic to identify "me": if the mic-only stream has audio energy at a timestamp where SpeakerKit identifies a speaker transition, the speaker active on the mic stream is likely "me." This is post-processing logic in Steak, not an SDK feature.
+- **Use the known stream provenance** as a heuristic to identify "me": if the mic-only stream has audio energy at a timestamp where SpeakerKit identifies a speaker transition, the speaker active on the mic stream is likely "me." This is post-processing logic in Biscotti, not an SDK feature.
 - Store both the separate streams and the merged file so we can re-process later if the SDK adds multi-stream support.
 
 ---
@@ -257,7 +257,7 @@ Both `whisperKit.transcribe(audioArray:)` and `speakerKit.diarize(audioArray:)` 
 
 > **ERRATUM (verified in E3 against argmax-oss-swift v1.0.0):** `speakerCentroidEmbeddings`, `centroidCosineDistance(between:and:)`, and `nearestSpeakerCentroid(to:)` do **not** exist as public API on `DiarizationResult` in v1.0.0. The centroid embeddings are computed internally during Pyannote clustering but are not surfaced to callers. Cross-file speaker matching via centroid embeddings is therefore **not currently possible** without an SDK change or custom extraction of the internal clustering state. This is an open question for the ArgMax team (see questions section).
 
-**Recommendation for Steak:**
+**Recommendation for Biscotti:**
 - ~~Store `speakerCentroidEmbeddings` from every `DiarizationResult` in the Meeting data model.~~ **(ERRATUM: not available in v1.0.0 -- see note above.** The `TranscriptResult` data model reserves a `speakerEmbeddings` field for future use, but it will be empty until the SDK exposes centroid embeddings or we implement custom extraction.)
 - Build a simple speaker-matching system: after each meeting, compare centroid embeddings against a saved "known speakers" table using cosine distance. If distance is below a threshold, map the cluster ID to a known name. **(Blocked on embedding access -- add to ArgMax team questions.)**
 - The "me" speaker can be bootstrapped using the mic-stream heuristic (see section 5) and then confirmed/stored as a voiceprint for future matching.
@@ -285,16 +285,16 @@ Both `whisperKit.transcribe(audioArray:)` and `speakerKit.diarize(audioArray:)` 
 
 > **WARNING: XPC + WhisperKit/CoreML is UNTESTED.** No public documentation or community reports confirm that WhisperKit and CoreML inference work correctly inside an XPC service. Potential issues include: (a) Neural Engine (ANE) access from an XPC service process -- ANE scheduling may behave differently; (b) the CoreML compiled-model cache (`mlmodelc`) uses paths tied to the calling process's container, which may differ for the XPC service; (c) entitlement requirements for CoreML/ANE from a helper process are undocumented; (d) HuggingFace Hub cache access paths may need explicit configuration. **This MUST be validated early in E3 -- build a minimal XPC + WhisperKit proof-of-concept before building the full library.** If XPC proves unworkable, the fallback is a background Swift actor in-process (loses crash isolation but retains memory isolation via unloading).
 
-**XPC design for Steak:**
+**XPC design for Biscotti:**
 
 ```
-Steak.app
+Biscotti.app
 ├── Contents/
-│   ├── MacOS/Steak          (main app process)
+│   ├── MacOS/Biscotti          (main app process)
 │   └── XPCServices/
-│       └── SteakTranscriber.xpc   (ML worker)
+│       └── BiscottiTranscriber.xpc   (ML worker)
 │           ├── Info.plist
-│           └── SteakTranscriber    (executable)
+│           └── BiscottiTranscriber    (executable)
 ```
 
 The XPC service hosts WhisperKit + SpeakerKit. The main app sends audio file URLs and receives transcript results. The connection protocol:
@@ -427,14 +427,14 @@ Yes, partially:
 - **Float-array-based:** `transcribe(audioArray: [Float])` -- accepts pre-loaded 16 kHz PCM float arrays. This is the primary API for custom audio pipelines.
 - **Streaming/live:** The CLI supports `--stream` for microphone input. Programmatically, WhisperKit accepts a `SegmentDiscoveryCallback` to receive incremental results during transcription. The Pro SDK's local server provides a WebSocket-based real-time streaming API.
 
-**Tradeoffs for Steak:**
+**Tradeoffs for Biscotti:**
 
 | Approach | Pros | Cons |
 |----------|------|------|
 | **Capture to file, process after** (current plan) | Lightweight recorder; can re-transcribe with better models; no ML memory during meeting; rock-solid recording | No live transcript; delay after meeting ends |
 | **Feed live audio buffers to WhisperKit** | Near-real-time transcript during meeting | ~2-3 GB RAM during entire meeting (full turbo); NPU/GPU load during meeting may cause thermal throttling; model crash takes down recorder; can't easily re-transcribe; diarization doesn't support streaming in free SDK |
 
-**Recommendation:** Stick with the capture-to-file approach. The "lightweight, never-crashing recorder" goal conflicts directly with keeping a multi-GB ML model resident and running inference during the meeting. The WhisperKit streaming capability is documented here for future reference -- if Steak ever wants a "live captions" feature (P2+), it could run WhisperKit streaming in a separate XPC service that is independent of the recorder, but this is not V1.
+**Recommendation:** Stick with the capture-to-file approach. The "lightweight, never-crashing recorder" goal conflicts directly with keeping a multi-GB ML model resident and running inference during the meeting. The WhisperKit streaming capability is documented here for future reference -- if Biscotti ever wants a "live captions" feature (P2+), it could run WhisperKit streaming in a separate XPC service that is independent of the recorder, but this is not V1.
 
 ---
 
@@ -445,12 +445,12 @@ Yes, partially:
 - **Diarization (V1):** Pyannote v4 (community-1) via SpeakerKit (free SDK). ~33 MB model, ~1 second for 4 minutes of audio. Fully on-device, CC-BY-4.0 licensed. Matches SotA error rates per Argmax's Interspeech 2025 benchmarks across 13 datasets.
 
 **Future upgrade paths** (not V1):
-- **Diarization -- Precision-2:** pyannoteAI's commercial [Precision-2](https://huggingface.co/pyannote/speaker-diarization-precision-2) model claims ~37% better accuracy than community-1. It is available on-device through the [Argmax Marketplace](https://www.argmaxinc.com/blog/pyannote-argmax) as a SpeakerKit-compatible drop-in ("same familiar APIs, no code changes required"). However, it is paid (pricing not public; contact Argmax) and its default cloud API path sends audio to pyannoteAI servers, which conflicts with Steak's privacy goals. The on-device Marketplace variant is the only privacy-compatible option. Rejected for V1 due to cost and licensing complexity; revisit post-V1 if community-1 accuracy proves insufficient.
+- **Diarization -- Precision-2:** pyannoteAI's commercial [Precision-2](https://huggingface.co/pyannote/speaker-diarization-precision-2) model claims ~37% better accuracy than community-1. It is available on-device through the [Argmax Marketplace](https://www.argmaxinc.com/blog/pyannote-argmax) as a SpeakerKit-compatible drop-in ("same familiar APIs, no code changes required"). However, it is paid (pricing not public; contact Argmax) and its default cloud API path sends audio to pyannoteAI servers, which conflicts with Biscotti's privacy goals. The on-device Marketplace variant is the only privacy-compatible option. Rejected for V1 due to cost and licensing complexity; revisit post-V1 if community-1 accuracy proves insufficient.
 - **Diarization -- Sortformer:** nvidia/sortformer-v2-1 via Argmax Pro SDK. "Generational accuracy leap" per Argmax. Pro-only.
 - **STT -- Parakeet V3:** Via Argmax Pro SDK. 9x faster than Whisper, competitive accuracy. Swap requires only a config change in `ArgMaxProcessor`.
 
 ### Isolation Architecture
-- **XPC service** (`SteakTranscriber.xpc`) bundled in `Contents/XPCServices/` -- **pending validation in E3** (see warning in section 7).
+- **XPC service** (`BiscottiTranscriber.xpc`) bundled in `Contents/XPCServices/` -- **pending validation in E3** (see warning in section 7).
 - `NSXPCConnection` with `@objc` protocol for typed IPC.
 - `interruptionHandler` for crash recovery.
 - The main app imports only `ArgMaxKit` (our wrapper library), never WhisperKit/SpeakerKit directly.
@@ -554,7 +554,7 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 4. **XPC protocol limitations.** `NSXPCConnection` requires `@objc` protocols with Foundation types. Our `TranscriptResult` must be serialized to `Data` (JSON) for transport. This adds some overhead but is negligible for transcript-sized payloads. Swift Distributed Actors are an alternative but are less battle-tested for XPC.
 
-5. **No custom vocabulary on free SDK.** The `promptTokens` workaround helps but is limited to ~224 tokens and is a soft bias. If custom vocabulary accuracy is critical for Steak's value proposition, the Pro SDK may be necessary. Cost/licensing for Pro should be evaluated.
+5. **No custom vocabulary on free SDK.** The `promptTokens` workaround helps but is limited to ~224 tokens and is a soft bias. If custom vocabulary accuracy is critical for Biscotti's value proposition, the Pro SDK may be necessary. Cost/licensing for Pro should be evaluated.
 
 6. **Word timestamps are approximate.** The free SDK's word timestamps come from Whisper's built-in mechanism, not forced alignment. They are adequate for diarization matching and UI highlighting, but not sample-accurate. The Pro SDK offers forced alignment.
 
@@ -568,7 +568,7 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 11. **Full-precision turbo download size.** The full `large-v3_turbo` is ~3.1 GB -- a non-trivial first-run download. The quantized `_1307MB` variant cuts this to ~1.3 GB with only a minor accuracy trade (2.6% vs 2.41% WER). Consider defaulting to the quantized variant and offering the full-precision model as an opt-in "high quality" mode in settings.
 
-12. **Precision-2 upgrade requires commercial license.** If V1 diarization accuracy proves insufficient, upgrading to pyannote Precision-2 via Argmax Marketplace is the privacy-compatible path but requires paid licensing (pricing not public). The cloud API path sends audio off-device and is incompatible with Steak's privacy goals.
+12. **Precision-2 upgrade requires commercial license.** If V1 diarization accuracy proves insufficient, upgrading to pyannote Precision-2 via Argmax Marketplace is the privacy-compatible path but requires paid licensing (pricing not public). The cloud API path sends audio off-device and is incompatible with Biscotti's privacy goals.
 
 13. **Segment-level confidence is unpopulated (found in Phase 11 V3).** In the free SDK v1.0.0, every transcript segment's `confidence` (and `noSpeechProbability`) came back as `0`, while per-**word** `probability` values were meaningful (ranging ~40%–100%). Any confidence-based UI or filtering must aggregate word-level probabilities; do not rely on segment `confidence`.
 
@@ -582,7 +582,7 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 ### For the ArgMax Team
 
-We have been building Steak, a macOS meeting recorder that uses the free `argmax-oss-swift` SDK for post-meeting transcription with WhisperKit + SpeakerKit. Before we finalize the implementation, we would appreciate confirmation on a few points:
+We have been building Biscotti, a macOS meeting recorder that uses the free `argmax-oss-swift` SDK for post-meeting transcription with WhisperKit + SpeakerKit. Before we finalize the implementation, we would appreciate confirmation on a few points:
 
 **Confirm this approach sounds good:**
 > We plan to use `openai_whisper-large-v3_turbo` for STT and Pyannote v4 (community-1) via SpeakerKit for diarization, processing audio files after meetings end (not real-time). We want to run both in an XPC service for crash isolation (has anyone tested WhisperKit/CoreML inside an XPC service?). We capture mic + system audio as separate streams, merge to mono for SDK input, and use the mic stream to heuristically identify "me." We would like to store speaker centroid embeddings and use cosine distance to match speakers across meetings, but we found that `speakerCentroidEmbeddings` is not exposed as public API in v1.0.0 (see section 6 erratum) -- is there a way to access these, or is this planned? Custom vocabulary is passed via `promptTokens`. Does this approach sound reasonable, and are there any pitfalls you would flag?
@@ -605,7 +605,7 @@ We have been building Steak, a macOS meeting recorder that uses the free `argmax
 
 8. **pyannote Precision-2 (future interest):** We are shipping V1 with the free community-1 model but may want to upgrade to Precision-2 via Argmax Marketplace post-launch. For planning purposes: what is the pricing/licensing model for the on-device Marketplace version? Does the "no code changes required" claim mean we literally just change a config line, or are there additional setup steps?
 
-### For the Steak Team
+### For the Biscotti Team
 
 1. **Diarization accuracy bar:** V1 ships with Pyannote v4 community-1. If real-world testing reveals insufficient speaker separation (e.g., frequent misattribution in 3+ speaker meetings), Precision-2 via Argmax Marketplace is the upgrade path -- but requires commercial licensing. Monitor diarization quality in V1 to decide if/when to pursue this.
 

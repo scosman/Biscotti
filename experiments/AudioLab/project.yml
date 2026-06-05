@@ -1,6 +1,6 @@
 name: AudioLab
 options:
-  bundleIdPrefix: com.steak.experiments
+  bundleIdPrefix: com.biscotti.experiments
   deploymentTarget:
     macOS: "15.0"
   xcodeVersion: "26.3"
@@ -24,7 +24,7 @@ targets:
       - Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.audiolab
+        PRODUCT_BUNDLE_IDENTIFIER: com.biscotti.experiments.audiolab
         INFOPLIST_FILE: Sources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
     scheme:
@@ -40,7 +40,7 @@ targets:
       - target: AudioLab
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.steak.experiments.audiolab.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.biscotti.experiments.audiolab.tests
         GENERATE_INFOPLIST_FILE: "YES"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AudioLab.app/Contents/MacOS/AudioLab"
         BUNDLE_LOADER: "$(TEST_HOST)"

@@ -2,7 +2,7 @@
 
 ## Summary
 
-EventKit on macOS 15 provides everything Steak needs for read-only calendar integration. Request full access via `EKEventStore.requestFullAccessToEvents()` (requires the `NSCalendarsFullAccessUsageDescription` Info.plist key); enumerate calendars with `eventStore.calendars(for: .event)` so the user can toggle which ones feed into the app; fetch events with date-range predicates and copy all relevant fields into our own `Meeting` model at snapshot time. The API surface is mature, stable, and well-documented. The main subtlety is identifier instability for recurring/synced events (use a composite key) and the absence of a first-class "video conference URL" property (parse it from `notes`, `location`, and `url` fields with regex).
+EventKit on macOS 15 provides everything Biscotti needs for read-only calendar integration. Request full access via `EKEventStore.requestFullAccessToEvents()` (requires the `NSCalendarsFullAccessUsageDescription` Info.plist key); enumerate calendars with `eventStore.calendars(for: .event)` so the user can toggle which ones feed into the app; fetch events with date-range predicates and copy all relevant fields into our own `Meeting` model at snapshot time. The API surface is mature, stable, and well-documented. The main subtlety is identifier instability for recurring/synced events (use a composite key) and the absence of a first-class "video conference URL" property (parse it from `notes`, `location`, and `url` fields with regex).
 
 > **Validated (Phase 10 / V2, Apple M4, macOS 15).** The full approach was exercised end-to-end against a real calendar account via the EventKitLab experiment. All core flows passed: permission request (full access + contacts), denial handling, calendar enumeration/filtering, date-range event fetching, full field availability in event detail, and conference-URL detection on real meetings. Three takeaways folded back here: **(1)** **Punt Contacts enrichment for V1** — it works mechanically but adds a second permission prompt for little value (resolves Open Question #3). **(2)** Conference detection via regex is sound and worked on real meetings, but the pattern set needs ongoing tuning for more platforms/URL formats. **(3)** Implementation gotcha: SwiftUI calendar-filter state must be an **observable stored property** — a `UserDefaults`-backed computed property is not tracked by `@Observable` and produces stale, non-live toggles (see Risks & Gotchas #9). Full per-test results: [`experiments/EventKitLab/VALIDATION.md`](../../experiments/EventKitLab/VALIDATION.md).
 
@@ -18,7 +18,7 @@ EventKit on macOS 15 provides everything Steak needs for read-only calendar inte
 
 ```xml
 <key>NSCalendarsFullAccessUsageDescription</key>
-<string>Steak reads your calendar to show upcoming meetings and enrich recordings with event details like title, participants, and description.</string>
+<string>Biscotti reads your calendar to show upcoming meetings and enrich recordings with event details like title, participants, and description.</string>
 ```
 
 This string is displayed verbatim in the system permission alert. Without it, TCC silently denies the request.
@@ -251,7 +251,7 @@ EventKit identifiers are not perfectly stable:
 
 #### Recommended Strategy
 
-**Snapshot-and-store at meeting creation time.** When Steak associates a recording with a calendar event:
+**Snapshot-and-store at meeting creation time.** When Biscotti associates a recording with a calendar event:
 
 1. **Copy all needed fields** into our own SwiftData `CalendarEventSnapshot` model (a sub-item of `Meeting`, so it can be cleared in one swipe if the pairing was wrong, per app_overview.md).
 2. **Store a composite key** for re-linking:

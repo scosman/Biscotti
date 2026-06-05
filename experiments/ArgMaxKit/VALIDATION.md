@@ -81,13 +81,13 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
 1. Choose 2-3 distinctive terms from the audio (e.g. a person's name, company name, or technical term that Whisper might misspell).
 2. Run with vocabulary:
    ```
-   swift run argmaxkit-cli /path/to/your/audio.wav --vocab "Steak,Acme Corp,Jordan"
+   swift run argmaxkit-cli /path/to/your/audio.wav --vocab "Biscotti,Acme Corp,Jordan"
    ```
 3. Verify:
    - [ ] The CLI prints the vocabulary terms in the header.
    - [ ] Compare the transcript against the run without vocab: the specified terms should be more likely to appear correctly spelled (this is a soft bias, not a guarantee).
 
-**Result:** **PASS.** Ran with `--vocab "James,banana,Steak"`. Header echoed `Vocabulary: James, banana, Steak`; transcript produced normally and "James" appeared correctly spelled. (The clip already transcribed these terms correctly without vocab, so this confirms the prompt-bias plumbing works rather than demonstrating a correction; effect is a soft bias as documented.)
+**Result:** **PASS.** Ran with `--vocab "James,banana,Biscotti"`. Header echoed `Vocabulary: James, banana, Biscotti`; transcript produced normally and "James" appeared correctly spelled. (The clip already transcribed these terms correctly without vocab, so this confirms the prompt-bias plumbing works rather than demonstrating a correction; effect is a soft bias as documented.)
 
 ### 6. Sequential Loading Mode (8 GB Mac or Memory Test)
 

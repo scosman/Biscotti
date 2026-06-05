@@ -37,7 +37,7 @@ Each experiment is **independent** (own project/package), so one can be thrown a
 - **Swift 6.2 / Xcode 26.3, target arm64 macOS 15.0.** Strict concurrency on (Swift 6 default).
 - **UI experiments (AudioLab, EventKitLab):** scaffolded with **XcodeGen** — a checked-in `project.yml` generates the `.xcodeproj`. The `.xcodeproj` is **git-ignored**; regenerate with `xcodegen generate`. This keeps the source of truth diffable and agent-friendly.
 - **Library experiment (ArgMaxKit):** plain **Swift Package Manager** (`Package.swift`) — a library product + an executable CLI harness target. Depends on `argmax-oss-swift` via SPM.
-- **Code signing:** **ad-hoc** (`CODE_SIGN_IDENTITY = "-"`, `CODE_SIGN_STYLE = Manual`, `CODE_SIGNING_REQUIRED = NO` where needed). Stable `PRODUCT_BUNDLE_IDENTIFIER` per app (`com.steak.experiments.<name>`) so TCC permission grants persist across rebuilds.
+- **Code signing:** **ad-hoc** (`CODE_SIGN_IDENTITY = "-"`, `CODE_SIGN_STYLE = Manual`, `CODE_SIGNING_REQUIRED = NO` where needed). Stable `PRODUCT_BUNDLE_IDENTIFIER` per app (`com.biscotti.experiments.<name>`) so TCC permission grants persist across rebuilds.
 - **Sandbox:** experiments run **non-sandboxed** (no App Sandbox entitlement) to keep TCC/permission testing simple. Notarization/sandbox implications for the *real* app are an R4 research deliverable, not an experiment requirement.
 
 ### Automated Checks (run by coding agents before "ready for CR")

@@ -14,7 +14,7 @@ Build a disposable macOS SwiftUI reference app at `/experiments/EventKitLab/` th
 - Create `project.yml` for XcodeGen matching AudioLab's pattern: macOS 15+, arm64, ad-hoc signing, non-sandboxed, Swift 6.2.
 - Info.plist with `NSCalendarsFullAccessUsageDescription` and `NSContactsUsageDescription`.
 - App entry point (`EventKitLabApp.swift`) with a multi-tab SwiftUI layout: Permission, Calendars, Events, Data Report.
-- Bundle ID: `com.steak.experiments.eventkitlab`.
+- Bundle ID: `com.biscotti.experiments.eventkitlab`.
 
 ### 2. Snapshot model types
 - `CalendarEventSnapshot`: our own Codable struct capturing all useful EKEvent/EKCalendarItem fields.

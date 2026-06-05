@@ -4,7 +4,7 @@ import Foundation
 import Synchronization
 import os
 
-private let logger = Logger(subsystem: "com.steak.experiments.audiolab", category: "SystemAudioCapture")
+private let logger = Logger(subsystem: "com.biscotti.experiments.audiolab", category: "SystemAudioCapture")
 
 enum CaptureMode: String, CaseIterable, Identifiable, Sendable {
     case global = "Global (all system audio)"
@@ -223,7 +223,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         let thread = Thread { [weak self] in
             self?.writerLoop()
         }
-        thread.name = "com.steak.audiolab.system-writer"
+        thread.name = "com.biscotti.audiolab.system-writer"
         thread.qualityOfService = .userInteractive
         writerThread = thread
         thread.start()

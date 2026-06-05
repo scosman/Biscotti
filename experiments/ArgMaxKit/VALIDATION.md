@@ -102,7 +102,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
 3. (Optional) Monitor memory via Activity Monitor during processing:
    - [ ] In sequential mode, peak memory should be lower than non-sequential (STT model is unloaded before diarization model loads).
 
-**Result:** _______________
+**Result:** **PASS** (functional). Header showed `Sequential: true`; transcript produced successfully (3 speakers, 11 segments, ~10.0s processing — comparable to non-sequential on this 25s clip). Peak-memory delta not measured (Activity Monitor step skipped; the agent run can't observe live memory). Memory benefit is the documented design intent; not quantified here.
 
 ### 7. Quantized Model (Optional, for 8 GB Macs)
 
@@ -115,7 +115,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - [ ] A transcript is produced.
    - [ ] Quality is acceptable (may be slightly less accurate than full-precision).
 
-**Result:** _______________
+**Result:** **NOT RUN (optional).** The quantized `large-v3_turbo_1307MB` variant is not in the local HuggingFace cache and would require a fresh ~1.3 GB download; skipped to avoid an unprompted large download during the agent-driven run. The full-precision path is fully validated above; the quantized variant is an optional memory optimization for 8 GB Macs and can be spot-checked later if needed.
 
 ### 8. Error Handling
 
@@ -144,32 +144,34 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
    - Missed speaker changes?
    - Segments with "No Speaker Matched"?
 
-**Result:** _______________
+**Result:** **PASS (good, on a small sample).** On the 25s clip, 3 distinct speaker IDs were assigned and transitions tracked the content well: Speaker 0 = the narrator ("This is a thing we actually need to do…", "Say something for real, James."), Speaker 1 = the deliberately-silly "banana" voice ("Banana, banana", "Okay, find my banana head."), Speaker 2 = the third, normal voice ("And what would you like me to say?", "I would like more food, please."). No "No Speaker Matched" segments. Single-speaker stretches stayed on one ID. **Caveat:** sample is short (25s, scripted) — not a stress test of overlapping speech, crosstalk, or many speakers. The deliberately-altered "banana" voice was split into its own speaker, which is the correct behavior for a voice that genuinely sounds different but is a reminder that diarization keys on vocal characteristics, not identity. Recommend a longer real-meeting sample for a fuller quality read.
 
 ### 10. Performance Measurement
 
 1. Note the processing duration from the transcript header.
 2. Compare against the audio file duration.
 3. Record:
-   - Audio duration: _____ seconds
-   - Processing duration: _____ seconds
-   - Real-time factor: _____ x (processing / audio)
-   - Hardware: _____ (e.g. M1 Pro 16 GB, M2 Air 8 GB)
-   - Model: _____ (e.g. large-v3_turbo)
+   - Audio duration: 25.1 seconds
+   - Processing duration: ~10.7 seconds (non-sequential); ~10.0 seconds (sequential)
+   - Real-time factor: ~0.43x (processing / audio) — faster than real time
+   - Hardware: Apple M4 MacBook Pro, macOS 15
+   - Model: large-v3_turbo (full precision)
 
-**Result:** _______________
+**Result:** **PASS.** ~0.43x real-time on warm models (models + CoreML already compiled/cached). Note this excludes one-time first-run costs: ~3.1 GB STT + ~33 MB diarization download, plus 15–90s CoreML compilation. For the production app these are paid once at setup. RTF on a 25s clip is indicative only; longer files amortize fixed model-load overhead and should show a better steady-state RTF.
 
 ## Summary
 
 | Test | Pass/Fail | Notes |
 |------|-----------|-------|
-| 1. CLI Help | | |
-| 2. Model Download & First Transcription | | |
-| 3. Transcript Output Shape | | |
-| 4. JSON Output | | |
-| 5. Custom Vocabulary | | |
-| 6. Sequential Loading | | |
-| 7. Quantized Model (optional) | | |
-| 8. Error Handling | | |
-| 9. Diarization Quality | | |
-| 10. Performance | | |
+| 1. CLI Help | PASS | All options + WhisperKit/SpeakerKit described. |
+| 2. Model Download & First Transcription | PASS | Models cached; transcript w/ speakers + timestamps. |
+| 3. Transcript Output Shape | PASS (1 anomaly) | All fields present; trailing hallucinated segment past audio length. |
+| 4. JSON Output | PASS (1 bug fixed) | Banner polluted stdout in `--json`; fixed → diagnostics now on stderr. Segment-level confidence is 0 (word-level is the real signal). |
+| 5. Custom Vocabulary | PASS | Vocab echoed in header; soft-bias plumbing works. |
+| 6. Sequential Loading | PASS (functional) | `Sequential: true`, transcript produced; memory delta not measured. |
+| 7. Quantized Model (optional) | NOT RUN | Optional; would need ~1.3 GB download (not cached). |
+| 8. Error Handling | PASS | Clear errors for missing file & non-audio file. |
+| 9. Diarization Quality | PASS (small sample) | 3 speakers, transitions tracked content; short scripted clip only. |
+| 10. Performance | PASS | ~0.43x real-time (warm models) on M4. |
+
+**Validation run summary:** Run by the coding agent on an Apple M4 / macOS 15 with models pre-cached, against `~/Downloads/voice_test.mp3` (25.1s, 3 speakers). 8 of 10 tests PASS (Test 7 optional/not-run; Test 6 functionally passes, memory unquantified). One bug found and fixed (`--json` stdout pollution → diagnostics moved to stderr). Findings folded into `research/argmax/README.md`.

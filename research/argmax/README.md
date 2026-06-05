@@ -6,6 +6,8 @@
 
 **Licensing note:** The `argmax-oss-swift` package is MIT-licensed, but vendors HuggingFace Hub Swift and Tokenizers sources under their original Apache-2.0 license inside ArgmaxCore. The free SpeakerKit community model (`speakerkit-coreml`) is CC-BY-4.0.
 
+> **Validated (Phase 11 / V3, Apple M4, macOS 15).** The WhisperKit + SpeakerKit pipeline was exercised end-to-end via the ArgMaxKit CLI against a 25s, 3-speaker clip (models pre-cached). STT transcription, word-level confidences, multi-speaker diarization, JSON output, custom-vocabulary prompt bias, sequential loading, and error handling all work. Steady-state speed was ~0.43× real-time on warm models. **Three findings folded into Risks & Gotchas below:** (13) word-level `probability` is the real confidence signal — **segment-level `confidence` came back `0`** (unpopulated in free SDK v1.0.0); (14) Whisper emits **trailing hallucinated segments with timestamps past the audio length** (a low-confidence "Thank you" at 52.5s on a 25.1s clip) — production must clamp/drop out-of-range segments; (15) a CLI bug where `--json` diagnostics polluted stdout was found and fixed (diagnostics → stderr). Full per-test results: [`experiments/ArgMaxKit/VALIDATION.md`](../../experiments/ArgMaxKit/VALIDATION.md). NOT exercised: XPC isolation (Gotcha #3 remains untested), 8 GB-class memory measurement, the quantized model variant, and any long/overlapping-speech stress test.
+
 ## Key Questions & Findings
 
 ### 1. Model Confirmation (PRIORITY): Parakeet V3 & sortformer-v2-1 on Free SDK
@@ -567,6 +569,12 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 11. **Full-precision turbo download size.** The full `large-v3_turbo` is ~3.1 GB -- a non-trivial first-run download. The quantized `_1307MB` variant cuts this to ~1.3 GB with only a minor accuracy trade (2.6% vs 2.41% WER). Consider defaulting to the quantized variant and offering the full-precision model as an opt-in "high quality" mode in settings.
 
 12. **Precision-2 upgrade requires commercial license.** If V1 diarization accuracy proves insufficient, upgrading to pyannote Precision-2 via Argmax Marketplace is the privacy-compatible path but requires paid licensing (pricing not public). The cloud API path sends audio off-device and is incompatible with Steak's privacy goals.
+
+13. **Segment-level confidence is unpopulated (found in Phase 11 V3).** In the free SDK v1.0.0, every transcript segment's `confidence` (and `noSpeechProbability`) came back as `0`, while per-**word** `probability` values were meaningful (ranging ~40%–100%). Any confidence-based UI or filtering must aggregate word-level probabilities; do not rely on segment `confidence`.
+
+14. **Whisper emits trailing hallucinated segments past the audio length (found in Phase 11 V3).** On a 25.1s clip, the final emitted segment was a low-confidence "Thank you" timestamped at **52.5s** — well beyond the audio. This is a well-known Whisper end-of-audio hallucination. The production pipeline must **drop or clamp segments whose start/end exceed the actual audio duration**, and consider filtering very-low-confidence trailing single-word segments, before persisting or displaying transcripts.
+
+15. **CLI/tooling: keep machine-readable output on stdout, diagnostics on stderr (found & fixed in Phase 11 V3).** The ArgMaxKit CLI originally printed its banner and progress lines to stdout ahead of the `--json` payload, making redirected output unparseable. Fixed by routing all diagnostics/errors to stderr. A reminder for any production tooling or export path: machine-readable output must not be interleaved with human-readable status text.
 
 ---
 

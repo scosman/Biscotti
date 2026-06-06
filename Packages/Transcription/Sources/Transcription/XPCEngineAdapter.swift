@@ -3,9 +3,8 @@ import Foundation
 /// Adapts the `@objc` `TranscriberServiceProtocol` (XPC proxy) to the async
 /// Swift `TranscriptionEngine` seam.
 ///
-/// Encodes `ProcessorConfig` as JSON for transport, decodes `Data` replies
-/// back to `TranscriptResult`, and maps XPC-specific failures to
-/// `TranscriptionError.workerInterrupted` / `.workerUnavailable`.
+/// Decodes `Data` replies back to `TranscriptResult`, and maps XPC-specific
+/// failures to `TranscriptionError.workerInterrupted` / `.workerUnavailable`.
 ///
 /// The adapter does NOT own the `NSXPCConnection` lifecycle -- it receives
 /// a proxy provider closure (the testable seam). The `Transcriber` actor
@@ -19,19 +18,12 @@ import Foundation
 /// `workerInterrupted`.
 final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     private let proxyProvider: @Sendable () -> (any TranscriberServiceProtocol)?
-    let config: ProcessorConfig
 
-    /// - Parameters:
-    ///   - proxyProvider: Returns the current XPC proxy, or nil if unavailable.
-    ///   - config: The `ProcessorConfig` this adapter was built with. Used for
-    ///     `ensureModelsDownloaded` to ensure the correct model variant is
-    ///     downloaded (e.g. ramAware quantized on 8GB machines).
+    /// - Parameter proxyProvider: Returns the current XPC proxy, or nil if unavailable.
     init(
-        proxyProvider: @escaping @Sendable () -> (any TranscriberServiceProtocol)?,
-        config: ProcessorConfig
+        proxyProvider: @escaping @Sendable () -> (any TranscriberServiceProtocol)?
     ) {
         self.proxyProvider = proxyProvider
-        self.config = config
     }
 
     // MARK: - TranscriptionEngine
@@ -40,10 +32,9 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         progress _: @Sendable (Double) -> Void
     ) async throws {
         let proxy = try requireProxy()
-        let configData = try encodeConfig(config)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            proxy.ensureModelsDownloaded(configData: configData) { error in
+            proxy.ensureModelsDownloaded { error in
                 if let error {
                     continuation.resume(throwing: self.mapError(error))
                 } else {
@@ -54,18 +45,14 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     }
 
     func processAudio(
-        micPath: String?,
-        systemPath: String?,
-        mergedPath: String?,
-        config: ProcessorConfig,
+        micPath: String,
+        systemPath: String,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         let proxy = try requireProxy()
         let request = XPCProcessRequest(
             micPath: micPath,
             systemPath: systemPath,
-            mergedPath: mergedPath,
-            config: config,
             customVocabulary: customVocabulary
         )
         let requestData = try encodeRequest(request)
@@ -122,16 +109,6 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
             throw TranscriptionError.workerUnavailable
         }
         return proxy
-    }
-
-    private func encodeConfig(_ config: ProcessorConfig) throws -> Data {
-        do {
-            return try JSONEncoder().encode(config)
-        } catch {
-            throw TranscriptionError.invalidInput(
-                "Failed to encode ProcessorConfig: \(error.localizedDescription)"
-            )
-        }
     }
 
     private func encodeRequest(_ request: XPCProcessRequest) throws -> Data {

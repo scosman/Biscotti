@@ -8,7 +8,8 @@ import WhisperKit
 /// and SpeakerKit (diarization) in the calling process. Used by the CLI harness
 /// and as the fallback when no XPC host is present.
 public actor InProcessTranscriptionEngine: TranscriptionEngine {
-    private let config: ProcessorConfig
+    private let method: TranscriptionMethod
+    private let resolvedSettings: ResolvedMethodSettings
     private let statusMachine: ModelStatusMachine
     private let diskSpaceChecker: DiskSpaceChecking
     private var whisperKit: WhisperKit?
@@ -18,11 +19,11 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     /// Full-precision turbo ~3.1 GB + SpeakerKit ~33 MB; quantized ~1.3 GB + 33 MB.
     /// We use a conservative estimate based on the model name.
     private var estimatedDownloadBytes: Int64 {
-        if config.sttModel.contains("1307MB") {
+        if resolvedSettings.sttModel.contains("1307MB") {
             1_400_000_000 // ~1.3 GB + headroom
-        } else if config.sttModel.contains("954MB") {
+        } else if resolvedSettings.sttModel.contains("954MB") {
             1_050_000_000
-        } else if config.sttModel.contains("1049MB") {
+        } else if resolvedSettings.sttModel.contains("1049MB") {
             1_150_000_000
         } else {
             3_300_000_000 // full-precision ~3.1 GB + headroom
@@ -30,19 +31,21 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     }
 
     public init(
-        config: ProcessorConfig = .ramAware()
+        method: TranscriptionMethod = .current
     ) {
-        self.config = config
+        self.method = method
+        resolvedSettings = MethodResolver.resolve(method)
         statusMachine = ModelStatusMachine(initial: .needsDownload)
         diskSpaceChecker = SystemDiskSpaceChecker()
     }
 
     /// Internal init for testing with an injected disk-space checker.
     init(
-        config: ProcessorConfig = .ramAware(),
+        method: TranscriptionMethod = .current,
         diskSpaceChecker: DiskSpaceChecking
     ) {
-        self.config = config
+        self.method = method
+        resolvedSettings = MethodResolver.resolve(method)
         statusMachine = ModelStatusMachine(initial: .needsDownload)
         self.diskSpaceChecker = diskSpaceChecker
     }
@@ -63,36 +66,32 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         progress(1.0)
     }
 
-    /// Process audio using the passed-in `config` for all behavior in this call,
-    /// including model loading/downloading, decoding options, and diarization strategy.
     public func processAudio(
-        micPath: String?,
-        systemPath: String?,
-        mergedPath: String?,
-        config: ProcessorConfig,
+        micPath: String,
+        systemPath: String,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         let mergeResult = try loadAndMergeAudio(
-            micPath: micPath, systemPath: systemPath, mergedPath: mergedPath
+            micPath: micPath, systemPath: systemPath
         )
 
         await statusMachine.transition(to: .running)
 
         let sttResults = try await runSTT(
-            audioArray: mergeResult.samples, config: config, customVocabulary: customVocabulary
+            audioArray: mergeResult.samples, customVocabulary: customVocabulary
         )
 
-        if config.sequentialLoading { await unloadWhisperKit() }
+        if resolvedSettings.sequentialLoading { await unloadWhisperKit() }
 
         let diarization = try await runDiarization(audioArray: mergeResult.samples)
 
-        if config.sequentialLoading { await unloadSpeakerKit() }
+        if resolvedSettings.sequentialLoading { await unloadSpeakerKit() }
 
         let result = assembleResult(
             sttResults: sttResults, diarization: diarization,
-            config: config, audioDuration: mergeResult.duration, startTime: startTime
+            audioDuration: mergeResult.duration, startTime: startTime
         )
 
         await statusMachine.transition(to: .ready)
@@ -136,8 +135,8 @@ private extension InProcessTranscriptionEngine {
         guard whisperKit == nil else { return }
         do {
             let whisperConfig = WhisperKitConfig(
-                model: config.sttModel,
-                modelRepo: config.sttModelRepo,
+                model: resolvedSettings.sttModel,
+                modelRepo: resolvedSettings.sttModelRepo,
                 verbose: false,
                 load: false,
                 download: true
@@ -176,32 +175,21 @@ private extension InProcessTranscriptionEngine {
 
 private extension InProcessTranscriptionEngine {
     func loadAndMergeAudio(
-        micPath: String?, systemPath: String?, mergedPath: String?
+        micPath: String, systemPath: String
     ) throws -> MergeResult {
-        guard micPath != nil || systemPath != nil || mergedPath != nil else {
-            throw TranscriptionError.invalidInput(
-                "At least one audio path (mic, system, or merged) must be provided"
-            )
-        }
-
-        if let mergedPath {
-            let samples = try loadAudioSamples(fromPath: mergedPath)
-            return try AudioMerger.wrapMerged(samples)
-        }
-
-        let micSamples = try micPath.map { try loadAudioSamples(fromPath: $0) }
-        let systemSamples = try systemPath.map { try loadAudioSamples(fromPath: $0) }
+        let micSamples = try loadAudioSamples(fromPath: micPath)
+        let systemSamples = try loadAudioSamples(fromPath: systemPath)
         return try AudioMerger.merge(mic: micSamples, system: systemSamples)
     }
 
     func runSTT(
-        audioArray: [Float], config: ProcessorConfig, customVocabulary: [String]
+        audioArray: [Float], customVocabulary: [String]
     ) async throws -> [TranscriptionResult] {
         do {
-            try await ensureWhisperKitLoaded(config: config)
+            try await ensureWhisperKitLoaded()
 
             var decodingOptions = DecodingOptions(
-                wordTimestamps: config.enableWordTimestamps
+                wordTimestamps: resolvedSettings.enableWordTimestamps
             )
 
             if let promptText = VocabularyFormatter.formatPrompt(from: customVocabulary) {
@@ -248,11 +236,10 @@ private extension InProcessTranscriptionEngine {
     func assembleResult(
         sttResults: [TranscriptionResult],
         diarization: DiarizationResult,
-        config: ProcessorConfig,
         audioDuration: TimeInterval,
         startTime: CFAbsoluteTime
     ) -> TranscriptResult {
-        let strategy: SpeakerInfoStrategy = switch config.diarizationStrategy {
+        let strategy: SpeakerInfoStrategy = switch resolvedSettings.diarizationStrategy {
         case .subsegment: .subsegment
         case .segment: .segment
         }
@@ -267,7 +254,7 @@ private extension InProcessTranscriptionEngine {
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
         let rawResult = TranscriptResult(
-            modelVersion: config.sttModel,
+            transcriptionMethodId: method.id,
             language: language,
             speakerCount: diarization.speakerCount,
             segments: segments,
@@ -303,13 +290,13 @@ private extension InProcessTranscriptionEngine {
         }
     }
 
-    func ensureWhisperKitLoaded(config: ProcessorConfig) async throws {
+    func ensureWhisperKitLoaded() async throws {
         if whisperKit == nil {
             await statusMachine.transition(to: .loading)
             do {
                 let whisperConfig = WhisperKitConfig(
-                    model: config.sttModel,
-                    modelRepo: config.sttModelRepo,
+                    model: resolvedSettings.sttModel,
+                    modelRepo: resolvedSettings.sttModelRepo,
                     verbose: false,
                     load: true,
                     download: true

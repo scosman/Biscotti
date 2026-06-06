@@ -19,7 +19,7 @@ struct HostedClientTests {
         flag.value = true
 
         do {
-            _ = try await transcriber.processAudio(merged: makeMergedURL())
+            _ = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
             Issue.record("Expected workerInterrupted error")
         } catch {
             #expect(error as? TranscriptionError == .workerInterrupted)
@@ -40,14 +40,14 @@ struct HostedClientTests {
         // First: simulate interruption
         flag.value = true
         do {
-            _ = try await transcriber.processAudio(merged: makeMergedURL())
+            _ = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
             Issue.record("Expected workerInterrupted error")
         } catch {
             #expect(error as? TranscriptionError == .workerInterrupted)
         }
 
         // Second: flag was cleared, next call should succeed
-        let result = try await transcriber.processAudio(merged: makeMergedURL())
+        let result = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
         #expect(result.language == "en")
         #expect(await stubEngine.processAudioCallCount == 1) // Only the successful call
     }
@@ -84,7 +84,7 @@ struct HostedClientTests {
         )
 
         do {
-            _ = try await transcriber.processAudio(merged: makeMergedURL())
+            _ = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
             Issue.record("Expected error")
         } catch {
             #expect(error as? TranscriptionError == .modelLoadFailed("GPU not available"))
@@ -157,15 +157,11 @@ struct HostedClientTests {
 struct XPCEngineAdapterTests {
     @Test("throws workerUnavailable when proxy is nil")
     func unavailableProxy() async {
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { nil },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { nil })
 
         do {
             _ = try await adapter.processAudio(
-                micPath: nil, systemPath: nil, mergedPath: "/tmp/test.wav",
-                config: .default, customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -175,10 +171,7 @@ struct XPCEngineAdapterTests {
 
     @Test("ensureModelsDownloaded throws workerUnavailable when proxy is nil")
     func ensureModelsUnavailable() async {
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { nil },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { nil })
 
         do {
             try await adapter.ensureModelsDownloaded(progress: { _ in })
@@ -190,10 +183,7 @@ struct XPCEngineAdapterTests {
 
     @Test("status returns .ready (XPC adapter cannot query worker status)")
     func statusReturnsReady() async {
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { nil },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { nil })
 
         let status = await adapter.status()
         #expect(status == .ready)
@@ -205,32 +195,19 @@ struct XPCEngineAdapterRoundTripTests {
     @Test("processAudio round-trips request through mock service and returns result")
     func processAudioRoundTrip() async throws {
         let mockService = MockTranscriberService()
-        let expectedResult = makeFixtureResult(modelVersion: "round-trip-model")
+        let expectedResult = makeFixtureResult(transcriptionMethodId: "round-trip-method")
         mockService.processAudioResult = expectedResult
 
-        let adapterConfig = ProcessorConfig(
-            sttModel: "large-v3_turbo_1307MB",
-            sequentialLoading: true
-        )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: adapterConfig
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
-        let callConfig = ProcessorConfig(
-            sttModel: "large-v3_turbo_1307MB",
-            sequentialLoading: true
-        )
         let result = try await adapter.processAudio(
             micPath: "/tmp/mic.wav",
             systemPath: "/tmp/system.wav",
-            mergedPath: nil,
-            config: callConfig,
             customVocabulary: ["Biscotti", "WhisperKit"]
         )
 
         // Verify the result round-tripped correctly
-        #expect(result.modelVersion == "round-trip-model")
+        #expect(result.transcriptionMethodId == "round-trip-method")
         #expect(result.language == "en")
         #expect(result.segments.count == 1)
         #expect(result.segments[0].text == "Hello world")
@@ -240,45 +217,13 @@ struct XPCEngineAdapterRoundTripTests {
         #expect(receivedRequest != nil)
         #expect(receivedRequest?.micPath == "/tmp/mic.wav")
         #expect(receivedRequest?.systemPath == "/tmp/system.wav")
-        #expect(receivedRequest?.mergedPath == nil)
-        #expect(receivedRequest?.config.sttModel == "large-v3_turbo_1307MB")
-        #expect(receivedRequest?.config.sequentialLoading == true)
         #expect(receivedRequest?.customVocabulary == ["Biscotti", "WhisperKit"])
-    }
-
-    @Test("ensureModelsDownloaded sends adapter's config, not .default")
-    func ensureModelsDownloadedUsesAdapterConfig() async throws {
-        let mockService = MockTranscriberService()
-
-        // Build the adapter with a non-default config (the 8GB quantized variant)
-        let ramAwareConfig = ProcessorConfig(
-            sttModel: "large-v3_turbo_1307MB",
-            sequentialLoading: true
-        )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: ramAwareConfig
-        )
-
-        try await adapter.ensureModelsDownloaded(progress: { _ in })
-
-        // The worker must have received the adapter's config, NOT .default
-        let receivedConfig = mockService.lastDownloadConfig
-        #expect(receivedConfig != nil)
-        #expect(receivedConfig?.sttModel == "large-v3_turbo_1307MB")
-        #expect(receivedConfig?.sequentialLoading == true)
-
-        // Verify it is different from .default (the bug being caught)
-        #expect(receivedConfig != ProcessorConfig.default)
     }
 
     @Test("unloadModels round-trips through mock service")
     func unloadModelsRoundTrip() async {
         let mockService = MockTranscriberService()
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         await adapter.unloadModels()
 
@@ -291,15 +236,11 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.processAudioError = NSError(
             domain: NSCocoaErrorDomain, code: 4097, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
             _ = try await adapter.processAudio(
-                micPath: nil, systemPath: nil, mergedPath: "/tmp/test.wav",
-                config: .default, customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
             )
             Issue.record("Expected workerInterrupted")
         } catch {
@@ -313,15 +254,11 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.processAudioError = NSError(
             domain: NSCocoaErrorDomain, code: 4099, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
             _ = try await adapter.processAudio(
-                micPath: nil, systemPath: nil, mergedPath: "/tmp/test.wav",
-                config: .default, customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -337,15 +274,11 @@ struct XPCEngineAdapterRoundTripTests {
             domain: NSCocoaErrorDomain, code: 4864,
             userInfo: [NSLocalizedDescriptionKey: "decoding failure"]
         )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
             _ = try await adapter.processAudio(
-                micPath: nil, systemPath: nil, mergedPath: "/tmp/test.wav",
-                config: .default, customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
             )
             Issue.record("Expected transcriptionFailed")
         } catch {
@@ -363,10 +296,7 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.ensureModelsError = NSError(
             domain: NSCocoaErrorDomain, code: 4097, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(
-            proxyProvider: { mockService },
-            config: .default
-        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
             try await adapter.ensureModelsDownloaded(progress: { _ in })

@@ -59,7 +59,7 @@ public enum TranscriptSanitizer {
         return TranscriptResult(
             id: result.id,
             createdAt: result.createdAt,
-            modelVersion: result.modelVersion,
+            transcriptionMethodId: result.transcriptionMethodId,
             language: result.language,
             speakerCount: result.speakerCount,
             segments: segments,

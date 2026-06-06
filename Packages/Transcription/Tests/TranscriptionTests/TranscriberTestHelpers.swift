@@ -23,10 +23,8 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     }
 
     func processAudio(
-        micPath _: String?,
-        systemPath _: String?,
-        mergedPath _: String?,
-        config _: ProcessorConfig,
+        micPath _: String,
+        systemPath _: String,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         processAudioCallCount += 1
@@ -98,9 +96,9 @@ final class MockXPCConnection: TranscriberXPCConnecting, @unchecked Sendable {
 // MARK: - Test Helpers
 
 /// A fixture `TranscriptResult` for tests.
-func makeFixtureResult(modelVersion: String = "test-model") -> TranscriptResult {
+func makeFixtureResult(transcriptionMethodId: String = "v1") -> TranscriptResult {
     TranscriptResult(
-        modelVersion: modelVersion,
+        transcriptionMethodId: transcriptionMethodId,
         language: "en",
         speakerCount: 1,
         segments: [
@@ -120,8 +118,8 @@ func makeFixtureResult(modelVersion: String = "test-model") -> TranscriptResult 
     )
 }
 
-func makeMergedURL() -> URL {
-    URL(fileURLWithPath: "/tmp/test-merged.wav")
+func makeAudioURL() -> URL {
+    URL(fileURLWithPath: "/tmp/test-audio.wav")
 }
 
 // MARK: - ProgressCollector
@@ -158,14 +156,6 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
         lock.lock()
         defer { lock.unlock() }
         return _lastProcessRequest
-    }
-
-    /// The most recent `ProcessorConfig` received by `ensureModelsDownloaded`.
-    private var _lastDownloadConfig: ProcessorConfig?
-    var lastDownloadConfig: ProcessorConfig? {
-        lock.lock()
-        defer { lock.unlock() }
-        return _lastDownloadConfig
     }
 
     /// The result to return from `processAudio`.
@@ -221,19 +211,8 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
     }
 
     func ensureModelsDownloaded(
-        configData: Data,
         reply: @escaping @Sendable (Error?) -> Void
     ) {
-        do {
-            let config = try JSONDecoder().decode(ProcessorConfig.self, from: configData)
-            lock.lock()
-            _lastDownloadConfig = config
-            lock.unlock()
-        } catch {
-            reply(error)
-            return
-        }
-
         reply(ensureModelsError)
     }
 

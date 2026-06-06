@@ -14,23 +14,16 @@ public protocol TranscriptionEngine: Sendable {
 
     /// Process audio files and return a diarized transcript.
     ///
-    /// At least one of `micPath`, `systemPath`, or `mergedPath` must be provided.
-    /// When both mic and system paths are given, the engine merges them to mono
-    /// 16 kHz before running STT + diarization. `mergedPath` is for re-transcription
-    /// of a pre-merged file.
+    /// Both `micPath` and `systemPath` are required — the engine merges them
+    /// to mono 16 kHz in memory before running STT + diarization. The engine
+    /// uses ``TranscriptionMethod/current`` internally; the result carries
+    /// the method id in ``TranscriptResult/transcriptionMethodId``.
     ///
-    /// The `config` parameter controls all behavior for this call, including model
-    /// variant selection, decoding options, and diarization strategy. Implementations
-    /// must use this config consistently (including for model loading/downloading)
-    /// rather than mixing it with any stored default.
-    ///
-    /// - Throws: `TranscriptionError.invalidInput` if no paths are given or audio
-    ///   files are empty/unreadable.
+    /// - Throws: `TranscriptionError.invalidInput` if audio files are
+    ///   empty/unreadable.
     func processAudio(
-        micPath: String?,
-        systemPath: String?,
-        mergedPath: String?,
-        config: ProcessorConfig,
+        micPath: String,
+        systemPath: String,
         customVocabulary: [String]
     ) async throws -> TranscriptResult
 

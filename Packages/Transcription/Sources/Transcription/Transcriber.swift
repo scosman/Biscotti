@@ -18,7 +18,7 @@ public actor Transcriber {
     }
 
     private let backend: Backend
-    private let config: ProcessorConfig
+    private let method: TranscriptionMethod
     private let engine: any TranscriptionEngine
 
     /// Current status, tracked here so statusStream can emit without
@@ -36,14 +36,14 @@ public actor Transcriber {
     ///
     /// - Parameters:
     ///   - backend: `.inProcess` or `.hosted(serviceName:)`.
-    ///   - config: Processor configuration (model variant, options).
-    public init(backend: Backend, config: ProcessorConfig = .ramAware()) {
+    ///   - method: The transcription method to use (default: `.current`).
+    public init(backend: Backend, method: TranscriptionMethod = .current) {
         self.backend = backend
-        self.config = config
+        self.method = method
 
         switch backend {
         case .inProcess:
-            engine = InProcessTranscriptionEngine(config: config)
+            engine = InProcessTranscriptionEngine(method: method)
             xpcConnection = nil
             interruptedFlag = nil
 
@@ -55,8 +55,7 @@ public actor Transcriber {
             engine = XPCEngineAdapter(
                 proxyProvider: { [weak connection] in
                     connection?.remoteObjectProxy()
-                },
-                config: config
+                }
             )
             connection.setInterruptionHandler {
                 flag.value = true
@@ -68,13 +67,13 @@ public actor Transcriber {
     /// Internal initializer for testing: inject a custom engine and optional XPC connection.
     init(
         backend: Backend,
-        config: ProcessorConfig = .ramAware(),
+        method: TranscriptionMethod = .current,
         engine: any TranscriptionEngine,
         xpcConnection: (any TranscriberXPCConnecting)? = nil,
         interruptedFlag: InterruptedFlag? = nil
     ) {
         self.backend = backend
-        self.config = config
+        self.method = method
         self.engine = engine
         self.xpcConnection = xpcConnection
         self.interruptedFlag = interruptedFlag
@@ -104,26 +103,26 @@ public actor Transcriber {
 
     /// Process audio files and return a diarized transcript.
     ///
+    /// Both `mic` and `system` URLs are required. The engine merges them
+    /// internally. If only one stream was recorded, pass an empty/silent
+    /// file for the other.
+    ///
     /// - Parameters:
-    ///   - mic: URL to the mic audio file, or nil.
-    ///   - system: URL to the system audio file, or nil.
-    ///   - merged: URL to a pre-merged audio file, or nil.
+    ///   - mic: URL to the mic audio file.
+    ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms for biasing.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
-        mic: URL? = nil,
-        system: URL? = nil,
-        merged: URL? = nil,
+        mic: URL,
+        system: URL,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         try checkInterrupted()
         emitStatus(.running)
         do {
             let result = try await engine.processAudio(
-                micPath: mic?.path,
-                systemPath: system?.path,
-                mergedPath: merged?.path,
-                config: config,
+                micPath: mic.path,
+                systemPath: system.path,
                 customVocabulary: customVocabulary
             )
             emitStatus(.ready)
@@ -135,17 +134,19 @@ public actor Transcriber {
         }
     }
 
-    /// Re-transcribe an already-merged audio file with a potentially different vocabulary.
+    /// Re-transcribe previously recorded audio with a potentially different vocabulary.
     ///
     /// - Parameters:
-    ///   - merged: URL to the merged audio file.
+    ///   - mic: URL to the mic audio file.
+    ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
-        merged: URL,
+        mic: URL,
+        system: URL,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
-        try await processAudio(merged: merged, customVocabulary: customVocabulary)
+        try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)
     }
 
     /// Explicitly unload all models from memory.

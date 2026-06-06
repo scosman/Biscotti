@@ -23,7 +23,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
 - [x] **Phase 1.3 — Client + XPC adapter + error mapping.** *(committed `7914f09`; superseded by 1.5: drops `config`/`merged`.)*
 - [x] **Phase 1.4 — CLI harness (`transcribe-cli`).** *(committed `5fb832e`; superseded by 1.5: drops `--model`/`--merged`.)*
 
-- [ ] **Phase 1.5 — Realign Transcription to the signed-off spec.**
+- [x] **Phase 1.5 — Realign Transcription to the signed-off spec.**
   Bring the committed package to the reviewed design (see [`components/transcription.md`](components/transcription.md) → "Code changes vs the committed Phase 1 package"):
   - Replace `TranscriptResult.modelVersion` → **`transcriptionMethodId`**; introduce `TranscriptionMethod` (`.v1` / `.current`).
   - **Remove** the public `ProcessorConfig` + `DiarizationStrategy` input types; fold their settings (model variant, word-timestamps, diarization strategy) into the **internal** method resolver, keeping RAM-aware quantization + sequential-load internal.

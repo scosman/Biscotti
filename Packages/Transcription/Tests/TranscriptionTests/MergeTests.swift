@@ -6,6 +6,10 @@ import Testing
 // scaffolding for a later phase that will add file-loading integration tests (loading real
 // WAV files through AudioProcessor and merging them). The current tests exercise the merge
 // logic with in-memory float arrays, which does not require audio files.
+//
+// The merge API takes two non-optional `[Float]` streams; an empty array means "that stream
+// was not recorded". There is no pre-merged input path — re-transcribe always re-merges from
+// the two source streams.
 
 @Suite("AudioMerger")
 struct MergeTests {
@@ -98,13 +102,13 @@ struct MergeTests {
         #expect(result.labels[1].endSample == 3)
     }
 
-    // MARK: - Single-stream inputs
+    // MARK: - Single-stream inputs (the other stream is empty)
 
     @Test("Mic only: output is the mic samples with mic label")
     func micOnlyPassthrough() throws {
         let mic: [Float] = [0.5, 0.3, -0.2]
 
-        let result = try AudioMerger.merge(mic: mic, system: nil)
+        let result = try AudioMerger.merge(mic: mic, system: [])
 
         #expect(result.samples == mic)
         #expect(result.labels.count == 1)
@@ -117,61 +121,11 @@ struct MergeTests {
     func systemOnlyPassthrough() throws {
         let system: [Float] = [0.1, 0.4]
 
-        let result = try AudioMerger.merge(mic: nil, system: system)
+        let result = try AudioMerger.merge(mic: [], system: system)
 
         #expect(result.samples == system)
         #expect(result.labels.count == 1)
         #expect(result.labels[0].label == .system)
-    }
-
-    // MARK: - Merged (pre-merged) input
-
-    @Test("wrapMerged wraps samples with merged label")
-    func wrapMergedSamples() throws {
-        let samples: [Float] = [0.1, 0.2, 0.3]
-
-        let result = try AudioMerger.wrapMerged(samples)
-
-        #expect(result.samples == samples)
-        #expect(result.labels.count == 1)
-        #expect(result.labels[0].label == .merged)
-    }
-
-    @Test("wrapMerged throws invalidInput on empty samples")
-    func wrapMergedEmptyThrows() {
-        #expect(throws: TranscriptionError.self) {
-            _ = try AudioMerger.wrapMerged([])
-        }
-    }
-
-    // MARK: - Invalid input
-
-    @Test("Both nil throws invalidInput")
-    func bothNilThrows() {
-        #expect(throws: TranscriptionError.self) {
-            _ = try AudioMerger.merge(mic: nil, system: nil)
-        }
-    }
-
-    @Test("Both empty throws invalidInput")
-    func bothEmptyThrows() {
-        #expect(throws: TranscriptionError.self) {
-            _ = try AudioMerger.merge(mic: [], system: [])
-        }
-    }
-
-    @Test("Mic nil and system empty throws invalidInput")
-    func micNilSystemEmptyThrows() {
-        #expect(throws: TranscriptionError.self) {
-            _ = try AudioMerger.merge(mic: nil, system: [])
-        }
-    }
-
-    @Test("Mic empty and system nil throws invalidInput")
-    func micEmptySystemNilThrows() {
-        #expect(throws: TranscriptionError.self) {
-            _ = try AudioMerger.merge(mic: [], system: nil)
-        }
     }
 
     @Test("Non-empty mic with empty system uses mic only")
@@ -184,6 +138,15 @@ struct MergeTests {
         #expect(result.labels[0].label == .mic)
     }
 
+    // MARK: - Invalid input
+
+    @Test("Both empty throws invalidInput")
+    func bothEmptyThrows() {
+        #expect(throws: TranscriptionError.self) {
+            _ = try AudioMerger.merge(mic: [], system: [])
+        }
+    }
+
     // MARK: - Duration
 
     @Test("Duration calculated from sample count at 16 kHz")
@@ -191,7 +154,7 @@ struct MergeTests {
         // 16000 samples = 1.0 second at 16 kHz
         let samples = [Float](repeating: 0.1, count: 16000)
 
-        let result = try AudioMerger.merge(mic: samples, system: nil)
+        let result = try AudioMerger.merge(mic: samples, system: [])
 
         #expect(abs(result.duration - 1.0) < 0.0001)
     }
@@ -200,7 +163,7 @@ struct MergeTests {
     func shortDuration() throws {
         let samples = [Float](repeating: 0.1, count: 1600)
 
-        let result = try AudioMerger.merge(mic: samples, system: nil)
+        let result = try AudioMerger.merge(mic: samples, system: [])
 
         #expect(abs(result.duration - 0.1) < 0.0001)
     }

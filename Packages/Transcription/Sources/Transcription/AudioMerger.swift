@@ -5,7 +5,6 @@ public enum StreamLabel: Sendable, Equatable {
     case mic
     case system
     case both
-    case merged
 }
 
 /// A range of samples in the merged output with its source label.
@@ -50,56 +49,40 @@ public enum AudioMerger {
     /// handles resampling and channel conversion automatically.
     ///
     /// - Parameters:
-    ///   - mic: Mono 16 kHz samples from the microphone, or nil if not available.
-    ///   - system: Mono 16 kHz samples from system audio, or nil if not available.
+    ///   - mic: Mono 16 kHz samples from the microphone.
+    ///   - system: Mono 16 kHz samples from system audio.
     /// - Returns: A `MergeResult` with the merged samples and label info.
-    /// - Throws: `TranscriptionError.invalidInput` if both inputs are nil or all
-    ///   provided inputs have zero samples.
+    /// - Throws: `TranscriptionError.invalidInput` if both inputs have zero samples.
     public static func merge(
-        mic: [Float]?,
-        system: [Float]?
+        mic: [Float],
+        system: [Float]
     ) throws -> MergeResult {
-        let micSamples = mic.flatMap { $0.isEmpty ? nil : $0 }
-        let systemSamples = system.flatMap { $0.isEmpty ? nil : $0 }
+        let hasMic = !mic.isEmpty
+        let hasSystem = !system.isEmpty
 
-        guard micSamples != nil || systemSamples != nil else {
+        guard hasMic || hasSystem else {
             throw TranscriptionError.invalidInput(
-                "At least one audio stream (mic or system) must be provided with non-zero samples"
+                "At least one audio stream (mic or system) must contain non-zero samples"
             )
         }
 
-        switch (micSamples, systemSamples) {
-        case let (.some(micData), .some(sysData)):
-            return mergeTwoStreams(mic: micData, system: sysData)
-        case let (.some(micData), .none):
+        switch (hasMic, hasSystem) {
+        case (true, true):
+            return mergeTwoStreams(mic: mic, system: system)
+        case (true, false):
             return MergeResult(
-                samples: micData,
-                labels: [LabeledRange(startSample: 0, endSample: micData.count, label: .mic)]
+                samples: mic,
+                labels: [LabeledRange(startSample: 0, endSample: mic.count, label: .mic)]
             )
-        case let (.none, .some(sysData)):
+        case (false, true):
             return MergeResult(
-                samples: sysData,
-                labels: [LabeledRange(startSample: 0, endSample: sysData.count, label: .system)]
+                samples: system,
+                labels: [LabeledRange(startSample: 0, endSample: system.count, label: .system)]
             )
-        case (.none, .none):
+        case (false, false):
             // Already guarded above; unreachable
             throw TranscriptionError.invalidInput("No audio streams provided")
         }
-    }
-
-    /// Wrap a pre-merged audio array as a `MergeResult`.
-    ///
-    /// - Parameter samples: Mono 16 kHz samples from an already-merged file.
-    /// - Returns: A `MergeResult` labeled as `.merged`.
-    /// - Throws: `TranscriptionError.invalidInput` if samples is empty.
-    public static func wrapMerged(_ samples: [Float]) throws -> MergeResult {
-        guard !samples.isEmpty else {
-            throw TranscriptionError.invalidInput("Merged audio must contain non-zero samples")
-        }
-        return MergeResult(
-            samples: samples,
-            labels: [LabeledRange(startSample: 0, endSample: samples.count, label: .merged)]
-        )
     }
 
     // MARK: - Private

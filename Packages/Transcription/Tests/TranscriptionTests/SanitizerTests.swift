@@ -43,7 +43,7 @@ struct SanitizerTests {
 
     private func makeResult(segments: [TranscriptSegment]) -> TranscriptResult {
         TranscriptResult(
-            modelVersion: "large-v3_turbo",
+            transcriptionMethodId: "large-v3_turbo",
             language: "en",
             speakerCount: 1,
             segments: segments,
@@ -204,7 +204,7 @@ struct SanitizerTests {
 
         #expect(sanitized.id == result.id)
         #expect(sanitized.createdAt == result.createdAt)
-        #expect(sanitized.modelVersion == result.modelVersion)
+        #expect(sanitized.transcriptionMethodId == result.transcriptionMethodId)
         #expect(sanitized.language == result.language)
         #expect(sanitized.speakerCount == result.speakerCount)
         #expect(sanitized.processingDuration == result.processingDuration)

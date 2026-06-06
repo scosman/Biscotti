@@ -55,7 +55,7 @@ func formatResultText(_ result: TranscriptResult) -> String {
 
     lines.append("Transcript Result")
     lines.append("=================")
-    lines.append("Model:      \(result.modelVersion)")
+    lines.append("Method:     \(result.transcriptionMethodId)")
     lines.append("Language:   \(result.language)")
     lines.append("Speakers:   \(result.speakerCount)")
     lines.append("Segments:   \(result.segments.count)")

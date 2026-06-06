@@ -11,7 +11,7 @@ struct JSONOutputFormattingTests {
         TranscriptResult(
             id: UUID(uuidString: "12345678-1234-1234-1234-123456789ABC") ?? UUID(),
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),
-            modelVersion: "large-v3_turbo",
+            transcriptionMethodId: "large-v3_turbo",
             language: "en",
             speakerCount: 2,
             segments: [
@@ -50,7 +50,7 @@ struct JSONOutputFormattingTests {
         decoder.dateDecodingStrategy = .iso8601
         let decoded = try decoder.decode(TranscriptResult.self, from: data)
 
-        #expect(decoded.modelVersion == "large-v3_turbo")
+        #expect(decoded.transcriptionMethodId == "large-v3_turbo")
         #expect(decoded.language == "en")
         #expect(decoded.speakerCount == 2)
         #expect(decoded.segments.count == 1)
@@ -107,7 +107,7 @@ struct JSONOutputFormattingTests {
 struct TextOutputFormattingTests {
     private func makeTestResult() -> TranscriptResult {
         TranscriptResult(
-            modelVersion: "large-v3_turbo",
+            transcriptionMethodId: "large-v3_turbo",
             language: "en",
             speakerCount: 2,
             segments: [
@@ -186,7 +186,7 @@ struct TextOutputFormattingTests {
     @Test("Text output includes speaker embeddings when present")
     func textOutputIncludesEmbeddings() {
         let result = TranscriptResult(
-            modelVersion: "test",
+            transcriptionMethodId: "test",
             language: "en",
             speakerCount: 1,
             segments: [],
@@ -225,7 +225,11 @@ struct OutputWriterInlineTests {
 struct AudioPathPreflightTests {
     @Test("Validation rejects a --mic path that does not exist")
     func micPathNotFound() throws {
-        let cli = try TranscribeCLI.parse(["--mic", "/nonexistent/audio.wav"])
+        // Mic is checked before system, so a missing mic fails fast even with a valid system.
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/nonexistent/audio.wav",
+            "--system", "/usr/bin/true"
+        ])
         let writer = CapturingOutputWriter()
         #expect(throws: (any Error).self) {
             try cli.validateAudioPaths(writer: writer)
@@ -236,7 +240,10 @@ struct AudioPathPreflightTests {
 
     @Test("Validation rejects a --system path that does not exist")
     func systemPathNotFound() throws {
-        let cli = try TranscribeCLI.parse(["--system", "/no/such/file.m4a"])
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/usr/bin/true",
+            "--system", "/no/such/file.m4a"
+        ])
         let writer = CapturingOutputWriter()
         #expect(throws: (any Error).self) {
             try cli.validateAudioPaths(writer: writer)
@@ -245,20 +252,12 @@ struct AudioPathPreflightTests {
         #expect(writer.stderrText.contains("--system"))
     }
 
-    @Test("Validation rejects a --merged path that does not exist")
-    func mergedPathNotFound() throws {
-        let cli = try TranscribeCLI.parse(["--merged", "/missing/merged.caf"])
-        let writer = CapturingOutputWriter()
-        #expect(throws: (any Error).self) {
-            try cli.validateAudioPaths(writer: writer)
-        }
-        #expect(writer.stderrText.contains("/missing/merged.caf"))
-        #expect(writer.stderrText.contains("--merged"))
-    }
-
-    @Test("Validation passes when file exists on disk")
+    @Test("Validation passes when both files exist on disk")
     func existingPathPasses() throws {
-        let cli = try TranscribeCLI.parse(["--mic", "/usr/bin/true"])
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/usr/bin/true",
+            "--system", "/usr/bin/true"
+        ])
         let writer = CapturingOutputWriter()
         try cli.validateAudioPaths(writer: writer)
         #expect(writer.stderrLines.isEmpty)

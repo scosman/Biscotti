@@ -6,6 +6,7 @@ import Testing
 // MARK: - Capturing output writer for tests
 
 /// A test double that captures stdout/stderr writes for assertion.
+/// Shared across the CLI test suites (also used by CLIOutputTests).
 final class CapturingOutputWriter: OutputWriter, @unchecked Sendable {
     private let lock = NSLock()
     private var _stdoutLines: [String] = []
@@ -62,31 +63,21 @@ final class CapturingOutputWriter: OutputWriter, @unchecked Sendable {
 
 @Suite("CLI argument parsing")
 struct CLIArgumentParsingTests {
-    @Test("Parses --mic, --system, --merged paths")
+    @Test("Parses --mic and --system paths")
     func argumentParsingPaths() throws {
         let cli = try TranscribeCLI.parse([
             "--mic", "/path/to/mic.wav",
-            "--system", "/path/to/system.wav",
-            "--merged", "/path/to/merged.wav"
+            "--system", "/path/to/system.wav"
         ])
         #expect(cli.mic == "/path/to/mic.wav")
         #expect(cli.system == "/path/to/system.wav")
-        #expect(cli.merged == "/path/to/merged.wav")
-    }
-
-    @Test("Parses --model flag")
-    func argumentParsingModel() throws {
-        let cli = try TranscribeCLI.parse([
-            "--mic", "/audio.wav",
-            "--model", "large-v3_turbo_1307MB"
-        ])
-        #expect(cli.model == "large-v3_turbo_1307MB")
     }
 
     @Test("Parses --vocab comma-separated list")
     func argumentParsingVocab() throws {
         let cli = try TranscribeCLI.parse([
-            "--mic", "/audio.wav",
+            "--mic", "/mic.wav",
+            "--system", "/system.wav",
             "--vocab", "Biscotti,WhisperKit,CoreML"
         ])
         #expect(cli.vocab == "Biscotti,WhisperKit,CoreML")
@@ -95,39 +86,42 @@ struct CLIArgumentParsingTests {
     @Test("Parses --json flag")
     func argumentParsingJsonFlag() throws {
         let cli = try TranscribeCLI.parse([
-            "--mic", "/audio.wav",
+            "--mic", "/mic.wav",
+            "--system", "/system.wav",
             "--json"
         ])
         #expect(cli.json == true)
     }
 
-    @Test("Default values when flags are omitted")
+    @Test("Default values when optional flags are omitted")
     func argumentParsingDefaultValues() throws {
-        let cli = try TranscribeCLI.parse(["--mic", "/audio.wav"])
-        #expect(cli.model == nil)
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/mic.wav",
+            "--system", "/system.wav"
+        ])
         #expect(cli.vocab == nil)
         #expect(cli.json == false)
     }
 
-    @Test("Validation rejects zero audio paths")
-    func validationRequiresAtLeastOneAudioPath() {
-        // ArgumentParser's parse() calls validate(), so parse itself throws
-        // when no audio paths are provided.
+    @Test("Parsing fails when --system is missing")
+    func requiresSystemPath() {
         #expect(throws: (any Error).self) {
-            _ = try TranscribeCLI.parse([])
+            _ = try TranscribeCLI.parse(["--mic", "/mic.wav"])
         }
     }
 
-    @Test("Validation passes with only --mic")
-    func validationPassesWithMicOnly() throws {
-        let cli = try TranscribeCLI.parse(["--mic", "/audio.wav"])
-        try cli.validate() // should not throw
+    @Test("Parsing fails when --mic is missing")
+    func requiresMicPath() {
+        #expect(throws: (any Error).self) {
+            _ = try TranscribeCLI.parse(["--system", "/system.wav"])
+        }
     }
 
-    @Test("Validation passes with only --merged")
-    func validationPassesWithMergedOnly() throws {
-        let cli = try TranscribeCLI.parse(["--merged", "/merged.wav"])
-        try cli.validate() // should not throw
+    @Test("Parsing fails with no audio paths")
+    func validationRequiresAudioPaths() {
+        #expect(throws: (any Error).self) {
+            _ = try TranscribeCLI.parse([])
+        }
     }
 }
 
@@ -157,23 +151,5 @@ struct VocabParsingTests {
     func emptyString() {
         let terms = parseVocab("")
         #expect(terms.isEmpty)
-    }
-}
-
-// MARK: - Config building tests
-
-@Suite("Config building helper")
-struct ConfigBuildingTests {
-    @Test("Uses specified model when provided")
-    func specifiedModel() {
-        let config = buildConfig(model: "large-v3_turbo_1307MB")
-        #expect(config.sttModel == "large-v3_turbo_1307MB")
-    }
-
-    @Test("Uses RAM-aware default when model is nil")
-    func defaultModel() {
-        let config = buildConfig(model: nil)
-        // ramAware() picks based on physical memory; just verify it's non-empty
-        #expect(!config.sttModel.isEmpty)
     }
 }

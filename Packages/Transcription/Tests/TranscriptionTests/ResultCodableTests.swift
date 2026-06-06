@@ -129,7 +129,7 @@ struct ResultCodableTests {
         )
 
         let result = TranscriptResult(
-            modelVersion: "large-v3_turbo",
+            transcriptionMethodId: "large-v3_turbo",
             language: "en",
             speakerCount: 2,
             segments: [segment],
@@ -141,7 +141,7 @@ struct ResultCodableTests {
         let decoded = try JSONDecoder().decode(TranscriptResult.self, from: data)
 
         #expect(decoded.id == result.id)
-        #expect(decoded.modelVersion == "large-v3_turbo")
+        #expect(decoded.transcriptionMethodId == "large-v3_turbo")
         #expect(decoded.language == "en")
         #expect(decoded.speakerCount == 2)
         #expect(decoded.segments.count == 1)
@@ -158,7 +158,7 @@ struct ResultCodableTests {
         ]
 
         let result = TranscriptResult(
-            modelVersion: "test",
+            transcriptionMethodId: "test",
             language: "en",
             speakerCount: 3,
             segments: [],
@@ -178,7 +178,7 @@ struct ResultCodableTests {
     @Test("TranscriptResult conforms to Identifiable")
     func transcriptResultIdentifiable() {
         let result = TranscriptResult(
-            modelVersion: "test",
+            transcriptionMethodId: "test",
             language: "en",
             speakerCount: 0,
             segments: [],
@@ -192,7 +192,7 @@ struct ResultCodableTests {
     @Test("TranscriptResult with empty segments round-trips")
     func emptySegmentsRoundTrip() throws {
         let result = TranscriptResult(
-            modelVersion: "large-v3_turbo_1307MB",
+            transcriptionMethodId: "large-v3_turbo_1307MB",
             language: "fr",
             speakerCount: 0,
             segments: [],
@@ -211,7 +211,7 @@ struct ResultCodableTests {
     @Test("JSON contains expected field names")
     func jsonFieldNames() throws {
         let result = TranscriptResult(
-            modelVersion: "test",
+            transcriptionMethodId: "test",
             language: "en",
             speakerCount: 1,
             segments: [],
@@ -222,7 +222,7 @@ struct ResultCodableTests {
         let data = try JSONEncoder().encode(result)
         let jsonString = try #require(String(data: data, encoding: .utf8))
 
-        #expect(jsonString.contains("\"modelVersion\""))
+        #expect(jsonString.contains("\"transcriptionMethodId\""))
         #expect(jsonString.contains("\"language\""))
         #expect(jsonString.contains("\"speakerCount\""))
         #expect(jsonString.contains("\"segments\""))

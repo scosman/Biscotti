@@ -98,8 +98,10 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     /// When this transcript was created.
     public let createdAt: Date
 
-    /// WhisperKit model variant used (e.g. "large-v3_turbo").
-    public let modelVersion: String
+    /// Opaque transcription method identifier (e.g. "v1").
+    /// Records which method produced this result, enabling re-transcribe
+    /// with the same or a newer method.
+    public let transcriptionMethodId: String
 
     /// Detected language code (e.g. "en").
     public let language: String
@@ -121,7 +123,7 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     public init(
         id: UUID = UUID(),
         createdAt: Date = Date(),
-        modelVersion: String,
+        transcriptionMethodId: String,
         language: String,
         speakerCount: Int,
         segments: [TranscriptSegment],
@@ -130,7 +132,7 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     ) {
         self.id = id
         self.createdAt = createdAt
-        self.modelVersion = modelVersion
+        self.transcriptionMethodId = transcriptionMethodId
         self.language = language
         self.speakerCount = speakerCount
         self.segments = segments

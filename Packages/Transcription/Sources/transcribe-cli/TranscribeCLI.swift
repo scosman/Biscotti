@@ -12,21 +12,15 @@ struct TranscribeCLI: AsyncParsableCommand {
         automatically on first run (~3 GB for STT, ~33 MB for diarization).
         First-run CoreML compilation may take 15-90 seconds.
 
-        Provide at least one audio path (--mic, --system, or --merged).
+        Both --mic and --system paths are required.
         """
     )
 
     @Option(name: .long, help: "Path to the mic audio file.")
-    var mic: String?
+    var mic: String
 
     @Option(name: .long, help: "Path to the system audio file.")
-    var system: String?
-
-    @Option(name: .long, help: "Path to a pre-merged audio file.")
-    var merged: String?
-
-    @Option(name: .long, help: "WhisperKit model variant (default: RAM-aware selection).")
-    var model: String?
+    var system: String
 
     @Option(name: .long, help: "Comma-separated custom vocabulary terms.")
     var vocab: String?
@@ -34,28 +28,19 @@ struct TranscribeCLI: AsyncParsableCommand {
     @Flag(name: .long, help: "Output TranscriptResult as JSON to stdout.")
     var json: Bool = false
 
-    func validate() throws {
-        guard mic != nil || system != nil || merged != nil else {
-            throw ValidationError(
-                "At least one audio path (--mic, --system, or --merged) is required."
-            )
-        }
-    }
-
     func run() async throws {
         let writer = StandardOutputWriter()
 
         let vocabTerms = parseVocab(vocab)
-        let config = buildConfig(model: model)
 
         // Pre-flight: verify all provided audio paths exist before doing any work.
         try validateAudioPaths(writer: writer)
 
         writer.writeStderr("transcribe-cli")
         writer.writeStderr("==============")
-        printInputSummary(config: config, vocabTerms: vocabTerms, writer: writer)
+        printInputSummary(vocabTerms: vocabTerms, writer: writer)
 
-        let transcriber = Transcriber(backend: .inProcess, config: config)
+        let transcriber = Transcriber(backend: .inProcess)
 
         writer.writeStderr("Downloading models (if needed)...")
         try await transcriber.ensureModelsDownloaded { progress in
@@ -66,10 +51,11 @@ struct TranscribeCLI: AsyncParsableCommand {
         writer.writeStderr("") // newline after progress
 
         writer.writeStderr("Processing audio...")
+        let micURL = URL(fileURLWithPath: (mic as NSString).expandingTildeInPath)
+        let systemURL = URL(fileURLWithPath: (system as NSString).expandingTildeInPath)
         let result = try await transcriber.processAudio(
-            mic: mic.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) },
-            system: system.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) },
-            merged: merged.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) },
+            mic: micURL,
+            system: systemURL,
             customVocabulary: vocabTerms
         )
 
@@ -86,14 +72,12 @@ struct TranscribeCLI: AsyncParsableCommand {
 
     /// Fail fast if any provided audio path does not exist on disk.
     func validateAudioPaths(writer: some OutputWriter) throws {
-        let paths: [(label: String, path: String?)] = [
+        let paths: [(label: String, path: String)] = [
             ("--mic", mic),
-            ("--system", system),
-            ("--merged", merged)
+            ("--system", system)
         ]
 
         for (label, raw) in paths {
-            guard let raw else { continue }
             let expanded = (raw as NSString).expandingTildeInPath
             guard FileManager.default.fileExists(atPath: expanded) else {
                 writer.writeStderr("Error: file not found for \(label): \(raw)")
@@ -103,12 +87,11 @@ struct TranscribeCLI: AsyncParsableCommand {
     }
 
     private func printInputSummary(
-        config: ProcessorConfig, vocabTerms: [String], writer: some OutputWriter
+        vocabTerms: [String], writer: some OutputWriter
     ) {
-        if let mic { writer.writeStderr("Mic:        \(mic)") }
-        if let system { writer.writeStderr("System:     \(system)") }
-        if let merged { writer.writeStderr("Merged:     \(merged)") }
-        writer.writeStderr("Model:      \(config.sttModel)")
+        writer.writeStderr("Mic:        \(mic)")
+        writer.writeStderr("System:     \(system)")
+        writer.writeStderr("Method:     \(TranscriptionMethod.current.id)")
         if !vocabTerms.isEmpty {
             writer.writeStderr("Vocabulary: \(vocabTerms.joined(separator: ", "))")
         }
@@ -122,14 +105,4 @@ struct TranscribeCLI: AsyncParsableCommand {
 func parseVocab(_ raw: String?) -> [String] {
     guard let raw, !raw.isEmpty else { return [] }
     return raw.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-}
-
-/// Build a `ProcessorConfig` from the optional `--model` flag.
-/// When no model is specified, uses the RAM-aware default.
-func buildConfig(model: String?) -> ProcessorConfig {
-    if let model {
-        ProcessorConfig(sttModel: model)
-    } else {
-        .ramAware()
-    }
 }

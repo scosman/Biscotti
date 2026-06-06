@@ -16,10 +16,11 @@ struct InProcessClientTests {
         )
 
         let result = try await transcriber.processAudio(
-            merged: makeMergedURL()
+            mic: makeAudioURL(),
+            system: makeAudioURL()
         )
 
-        #expect(result.modelVersion == expectedResult.modelVersion)
+        #expect(result.transcriptionMethodId == expectedResult.transcriptionMethodId)
         #expect(result.language == "en")
         #expect(result.segments.count == 1)
         #expect(await stubEngine.processAudioCallCount == 1)
@@ -93,11 +94,12 @@ struct InProcessClientTests {
         )
 
         let result = try await transcriber.reTranscribe(
-            merged: makeMergedURL(),
+            mic: makeAudioURL(),
+            system: makeAudioURL(),
             customVocabulary: ["test"]
         )
 
-        #expect(result.modelVersion == expectedResult.modelVersion)
+        #expect(result.transcriptionMethodId == expectedResult.transcriptionMethodId)
         #expect(await stubEngine.processAudioCallCount == 1)
     }
 
@@ -133,7 +135,7 @@ struct InProcessClientTests {
             if statuses.count == 1 {
                 // Trigger a processAudio which should emit .running then .ready
                 Task {
-                    _ = try? await transcriber.processAudio(merged: makeMergedURL())
+                    _ = try? await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
                 }
             }
             // Collect a few statuses then break
@@ -161,7 +163,7 @@ struct InProcessClientTests {
         )
 
         do {
-            _ = try await transcriber.processAudio(merged: makeMergedURL())
+            _ = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
             Issue.record("Expected error to be thrown")
         } catch {
             let transcriptionError = error as? TranscriptionError
@@ -183,7 +185,7 @@ struct InProcessClientTests {
         )
 
         do {
-            _ = try await transcriber.processAudio(merged: makeMergedURL())
+            _ = try await transcriber.processAudio(mic: makeAudioURL(), system: makeAudioURL())
             Issue.record("Expected error to be thrown")
         } catch {
             let transcriptionError = error as? TranscriptionError

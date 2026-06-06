@@ -28,7 +28,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   `Transcriber` actor with `.inProcess` and `.hosted` backends; the `@objc TranscriberServiceProtocol` and the adapter to/from `TranscriptionEngine`; `interruptionHandler` → `workerInterrupted`; `statusStream`.
   **Done when:** `ClientErrorMappingTests` pass (stub connection seam; simulated interruption is retriable). *(The real `.xpc` bundle is built in Stage 4; the hosted path is unit-tested via a seam here.)*
 
-- [ ] **Phase 1.4 — CLI harness (`transcribe-cli`).**
+- [x] **Phase 1.4 — CLI harness (`transcribe-cli`).**
   Argument-parser CLI over the **in-process** engine; JSON `TranscriptResult` → stdout, diagnostics → stderr.
   **Done when:** `CLITests` pass (in-process run over the bundled fixture; nothing non-JSON on stdout).
 

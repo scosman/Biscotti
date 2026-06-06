@@ -10,10 +10,12 @@ let package = Package(
         .macOS(.v15)
     ],
     products: [
-        .library(name: "Transcription", targets: ["Transcription"])
+        .library(name: "Transcription", targets: ["Transcription"]),
+        .executable(name: "transcribe-cli", targets: ["transcribe-cli"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0")
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -25,9 +27,21 @@ let package = Package(
             path: "Sources/Transcription",
             swiftSettings: warningsAsErrors
         ),
+        .executableTarget(
+            name: "transcribe-cli",
+            dependencies: [
+                "Transcription",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/transcribe-cli",
+            swiftSettings: warningsAsErrors
+        ),
         .testTarget(
             name: "TranscriptionTests",
-            dependencies: ["Transcription"],
+            dependencies: [
+                "Transcription",
+                "transcribe-cli"
+            ],
             path: "Tests/TranscriptionTests",
             resources: [.copy("Fixtures")],
             swiftSettings: warningsAsErrors

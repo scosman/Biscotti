@@ -20,7 +20,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   Create `Packages/Transcription` (`Package.swift` pinning `argmax-oss-swift`, `swift-tools-version: 6.0`); port `ProcessorConfig` (+`ramAware`), `DiarizationStrategy`, `TranscriptResult/Segment/Word`, `VocabularyFormatter`, `TranscriptSanitizer`, `TranscriptionError`, `ModelStatus`.
   **Done when:** `build` + `test` green; `VocabularyFormatterTests`, `SanitizerTests`, `ResultCodableTests`, `ConfigTests` pass.
 
-- [ ] **Phase 1.2 — Engine seam + in-process engine + merge + status machine.**
+- [x] **Phase 1.2 — Engine seam + in-process engine + merge + status machine.**
   `TranscriptionEngine` protocol; `InProcessTranscriptionEngine` (refactor of `ArgMaxProcessor` behind the protocol); two-stream merge to mono 16 kHz with label retention; `ModelStatus` transitions; disk-space pre-check.
   **Done when:** `MergeTests`, `StatusMachineTests` pass (stub worker + bundled fixture clip; no live model download).
 

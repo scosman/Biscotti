@@ -16,11 +16,12 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0")
     ],
     targets: [
-        // Note: Transcription has no target-level dependency on argmax-oss-swift yet.
-        // The package dependency is pinned now; it will be linked to this target in
-        // Phase 1.2 when the WhisperKit/SpeakerKit integration is built.
         .target(
             name: "Transcription",
+            dependencies: [
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "SpeakerKit", package: "argmax-oss-swift")
+            ],
             path: "Sources/Transcription",
             swiftSettings: warningsAsErrors
         ),
@@ -28,6 +29,7 @@ let package = Package(
             name: "TranscriptionTests",
             dependencies: ["Transcription"],
             path: "Tests/TranscriptionTests",
+            resources: [.copy("Fixtures")],
             swiftSettings: warningsAsErrors
         )
     ],

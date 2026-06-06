@@ -21,15 +21,20 @@ build: ## Build all SPM packages
 	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
 
 test: ## GATING: run package tests
-	@for pkg in $(PACKAGES); do echo "==> Testing $$pkg"; swift test --package-path $$pkg || exit 1; done
+	@for pkg in $(PACKAGES); do \
+	  echo "==> Testing $$pkg"; \
+	  swift test --package-path $$pkg 2>&1 \
+	    | grep -E 'recorded an issue|with [0-9]+ issue|Test run with [0-9]|Executed [0-9]+ test|: error:|error generated|no such module|cannot find|Build complete!' ; \
+	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
+	done
 
 lint: ## Check formatting + lint (non-mutating)
-	swiftformat $(LINT_PATHS) --lint --cache ignore
-	swiftlint lint --strict --no-cache $(LINT_PATHS)
+	swiftformat $(LINT_PATHS) --lint --quiet --cache ignore
+	swiftlint lint --strict --quiet --no-cache $(LINT_PATHS)
 
 format: ## Auto-format then autofix lint
-	swiftformat $(LINT_PATHS) --cache ignore
-	swiftlint lint --fix --no-cache $(LINT_PATHS)
+	swiftformat $(LINT_PATHS) --quiet --cache ignore
+	swiftlint lint --fix --quiet --no-cache $(LINT_PATHS)
 
 precommit-checks: ## The pre-commit checks (format + lint + test); the hook and hooks-mcp both call this
 	$(MAKE) format

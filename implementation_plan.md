@@ -48,6 +48,18 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 
 > **Projects 1–3 are mutually independent** (each only needs Scaffolding) and can run in parallel. Recommended risk-priority if serialized: **Transcription first** (biggest residual unknown), then Audio Capture, then Data Store.
 
+### Project 4 - Manual Test App
+
+See specs/project/manual_test_app
+
+### Project 5 - AI test set
+
+Create a new test set for "AI tests". These can be run via CLI just fine, but require downloading gigabytes of models, and long expensive processing (audio transcibe, speaker ID, LLM tests). We want to isolate these (not required every small commit), but still automated tests, not relying on manual.
+
+ - Create the test set/tag, excluded by default when running `make test`
+ - Add new make command to run these.
+ - Add them for Project 1, which should be testable this way. You'll need a reference audio file with ground truth transcription (ask user for this). Should be slightly flexbile in tests: speaker count correct, levechtien distance of full transcript small but not exact.
+
 ---
 
 ## Stage B — First runnable app

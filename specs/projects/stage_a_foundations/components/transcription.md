@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Transcription (`Packages/Transcription`)
@@ -18,12 +18,13 @@ These decisions are settled and must not be re-derived. This section exists so t
 
 | Decision | Research finding | Spec/code obligation |
 |---|---|---|
-| **STT model** | `openai_whisper-large-v3_turbo` (full-precision, ~3.1 GB, 2.41% WER); quantized `_1307MB` (~1.3 GB, 2.6% WER) on ≤8 GB Macs | `ProcessorConfig.ramAware()` auto-selects by available RAM |
-| **Diarization model** | Pyannote v4 community-1 via SpeakerKit (~33 MB, CC-BY-4.0) | Hardcoded; no model selector for diarization in V1 |
+| **Transcription method (blended id)** | V1 offers **no transcription options** — one fixed method | A single opaque, extensible **`transcriptionMethodId`** (`"v1"`) bakes in every output-affecting parameter (STT model + quantization, diarization model, diarization strategy, word-timestamps). The engine owns the id→settings mapping; **no model/strategy/config input param**. The result **returns** the id; the data model stores it. Adding `"v2"` later is additive. |
+| **STT model (inside `v1`)** | `openai_whisper-large-v3_turbo` (full-precision, ~3.1 GB, 2.41% WER); quantized `_1307MB` (~1.3 GB, 2.6% WER) on ≤8 GB Macs | Part of method `v1`; RAM-aware quantization is an **internal** detail of running `v1` (not a caller option) |
+| **Diarization model + strategy (inside `v1`)** | Pyannote v4 community-1 via SpeakerKit (~33 MB, CC-BY-4.0); `.subsegment` merge strategy | Part of method `v1`; not separately selectable in V1 |
 | **XPC crash isolation** | XPC service for crash + memory isolation; in-process actor fallback | `Transcriber` has `.hosted` / `.inProcess` backends |
-| **Custom vocabulary** | `promptTokens` workaround (~224-token budget); Pro swap via `[String]` API | `VocabularyFormatter` formats + truncates; caller passes `[String]` |
+| **Custom vocabulary** | `promptTokens` workaround (~224-token budget); Pro swap via `[String]` API | `VocabularyFormatter` formats + truncates; caller passes `[String]` (the one per-meeting input, separate from the method) |
 | **Output sanitization** | Drop/clamp segments past audio length (gotcha #14); segment `confidence==0` unreliable — derive from word `probability` (gotcha #13) | `TranscriptSanitizer` mandatory pass |
-| **Sequential model load/unload** | STT then diarize, unload between, for memory-safe 8 GB operation | `sequentialLoading` flag on `ProcessorConfig` |
+| **Sequential model load/unload** | STT then diarize, unload between, for memory-safe 8 GB operation | **internal** to the engine on ≤8 GB (not a caller option) |
 | **Two-stream merge** | SDK takes single `[Float]` 16 kHz mono; merge mic+system, retain provenance labels (research §5) | `AudioMerger` sums/normalizes, emits `LabeledRange` |
 | **Centroid embeddings** | NOT exposed as public API in v1.0.0 (erratum §6); `speakerEmbeddings` field reserved but empty | Field present, always `[:]` in V1 |
 | **CLI stdout/stderr** | JSON to stdout, all diagnostics to stderr (gotcha #15) | `transcribe-cli` uses `OutputWriter` abstraction |
@@ -32,23 +33,42 @@ These decisions are settled and must not be re-derived. This section exists so t
 | **Offline first run** | STT model too large to bundle (~1.3–3.1 GB); SpeakerKit ~33 MB MAY be bundled | `needsDownload` / `downloadFailed` errors, never a silent hang |
 | **Model download/cache** | HuggingFace Hub cache `~/.cache/huggingface/hub/`; `WhisperKitConfig.modelFolder` override; progress callbacks supported | `ensureModelsDownloaded(progress:)` with disk-space pre-check |
 | **Model deletion** | Unload sets instances to nil (WhisperKit); `unloadModels()` (SpeakerKit) | `unloadModels()` on both engine and client |
-| **Re-transcribe** | Result records `modelVersion`; same pipeline, different vocab or model | `reTranscribe(merged:customVocabulary:)` on `Transcriber` |
+| **Re-transcribe** | Result records `transcriptionMethodId`; same pipeline, possibly different vocab (or a future method) | `reTranscribe(mic:system:customVocabulary:)` on `Transcriber` (re-merges from the two source streams) |
 
 ## Public Interface
 
 The library splits into three seams: the **engine worker** (does the ML), the **client** the app holds, and the **value types**.
 
-### Value types (productionized from the experiment, mostly unchanged)
+### Value types
 
-`ProcessorConfig`, `DiarizationStrategy`, `TranscriptResult`, `TranscriptSegment`, `TranscriptWord` carry over from `experiments/ArgMaxKit/Sources/ArgMaxKit/Models.swift` essentially as-is (all `Sendable, Codable`). One addition for variant selection:
+`TranscriptResult`, `TranscriptSegment`, `TranscriptWord` carry over from `experiments/ArgMaxKit/Sources/ArgMaxKit/Models.swift` (all `Sendable, Codable`), with **one change**: the result reports the method, not a raw model string —
 
 ```swift
-public extension ProcessorConfig {
-    /// Picks the quantized `_1307MB` variant on ≤8 GB Macs, full-precision otherwise,
-    /// and turns on sequentialLoading on ≤8 GB. Used as the production default.
-    static func ramAware(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> ProcessorConfig
+public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
+    public let id: UUID
+    public let createdAt: Date
+    public let transcriptionMethodId: String   // e.g. "v1" — replaces the old `modelVersion`
+    public let language: String
+    public let speakerCount: Int
+    public let segments: [TranscriptSegment]
+    public let speakerEmbeddings: [Int: [Float]] // reserved; empty in v1.0.0 (erratum §6)
+    public let processingDuration: TimeInterval
 }
 ```
+
+**The transcription method** is a single opaque, extensible identity — there is **no model/strategy/config input** in V1:
+
+```swift
+public struct TranscriptionMethod: Sendable, Equatable {
+    public let id: String                       // "v1"
+    public static let v1 = TranscriptionMethod(id: "v1")
+    public static let current = v1              // the default the engine uses
+    // The id→concrete-settings mapping (Whisper large-v3-turbo + RAM-aware quantization,
+    // Pyannote v4 community-1, .subsegment, word-timestamps on) is an INTERNAL detail.
+}
+```
+
+The old `ProcessorConfig`/`DiarizationStrategy` public input types are removed — their settings are now internal to `TranscriptionMethod.v1` (incl. RAM-aware quantization + sequential-load on ≤8 GB).
 
 ### Model status (new — the rich status the spec requires)
 
@@ -74,23 +94,24 @@ public protocol TranscriptionEngine: Sendable {
         progress: @Sendable (Double) -> Void
     ) async throws
     func processAudio(
-        micPath: String?, systemPath: String?, mergedPath: String?,
-        config: ProcessorConfig, customVocabulary: [String]
-    ) async throws -> TranscriptResult
+        micPath: String, systemPath: String,
+        customVocabulary: [String]
+    ) async throws -> TranscriptResult     // uses TranscriptionMethod.current; returns its id in the result
     func unloadModels() async
     func status() async -> ModelStatus
 }
 ```
 
-- Input is **labeled paths** (`micPath`/`systemPath`), not a pre-merged blob — the engine owns the merge to mono 16 kHz `[Float]` and keeps the labels (research §5). `mergedPath` is accepted for re-transcribe of an already-merged file. At least one path required (else `invalidInput`).
+- Input is the two **labeled source paths** (`micPath` + `systemPath`) — **never a pre-merged file**. The engine is the *only* component with "audio expertise": it merges the two streams to a mono 16 kHz `[Float]` **transiently, in memory**, retaining provenance labels (research §5), and discards it after the run. We persist **only** mic + system (no third "merged" file ever stored). **Re-transcribe re-merges from the same two source files** — so a transcript can always be regenerated from the durable streams. Both paths required; empty/zero-sample → `invalidInput`.
 
 ### The in-process worker (the real ML; the CLI + tests use this directly)
 
 ```swift
 public actor InProcessTranscriptionEngine: TranscriptionEngine {
-    public init(config: ProcessorConfig = .ramAware())
+    public init(method: TranscriptionMethod = .current)
     // … implements the protocol; this is today's ArgMaxProcessor, refactored
     //    behind the protocol, plus merge-of-two-streams and sanitization.
+    //    Resolves `method` → concrete settings internally (incl. RAM-aware quantization).
 }
 ```
 
@@ -105,11 +126,11 @@ public actor Transcriber {
         case inProcess
     }
 
-    public init(backend: Backend, config: ProcessorConfig = .ramAware())
+    public init(backend: Backend, method: TranscriptionMethod = .current)
 
     public func ensureModelsDownloaded(progress: (@Sendable (Double) -> Void)?) async throws
-    public func processAudio(mic: URL?, system: URL?, merged: URL?, customVocabulary: [String]) async throws -> TranscriptResult
-    public func reTranscribe(merged: URL, customVocabulary: [String]) async throws -> TranscriptResult
+    public func processAudio(mic: URL, system: URL, customVocabulary: [String]) async throws -> TranscriptResult
+    public func reTranscribe(mic: URL, system: URL, customVocabulary: [String]) async throws -> TranscriptResult
     public func unloadModels() async throws
     public func statusStream() -> AsyncStream<ModelStatus>
     public func isAvailable() async -> Bool
@@ -148,7 +169,7 @@ Confidence is derived from word-level `probability` only; segment-level `confide
 
 ### CLI harness (`transcribe-cli`)
 
-`transcribe [--mic <path>] [--system <path>] [--merged <path>] [--model <id>] [--vocab a,b,c] [--json]` → runs the **in-process** engine, prints `TranscriptResult` JSON to **stdout**, all diagnostics/progress to **stderr** (gotcha #15).
+`transcribe --mic <path> --system <path> [--vocab a,b,c] [--json]` → runs the **in-process** engine with `TranscriptionMethod.current` (no model/method flag in V1; merges the two streams internally), prints `TranscriptResult` JSON (incl. `transcriptionMethodId`) to **stdout**, all diagnostics/progress to **stderr** (gotcha #15).
 
 ## Internal Design
 
@@ -179,11 +200,15 @@ The library's design supports automated ground-truth testing:
 
 - `VocabularyFormatterTests` — prompt formatting + ~224-token truncation (carry over + extend).
 - `SanitizerTests` — drops a segment timestamped past audio length (the 52.5 s / 25.1 s case); keeps in-range; derives confidence from word probabilities; segment `confidence==0` ignored.
-- `MergeTests` — two mono fixtures → one 16 kHz array of expected length; labels retained; single-stream and merged-only inputs accepted; empty/zero-sample → `invalidInput`.
+- `MergeTests` — two mono fixtures → one 16 kHz array of expected length; provenance labels retained; mismatched lengths handled; empty/zero-sample → `invalidInput`. (No merged-file input path — merge is always from the two source streams.)
 - `StatusMachineTests` — needsDownload→downloading(progress)→compiling→loading→ready→running→ready transitions.
 - `ClientErrorMappingTests` — stub engine throwing → mapped `TranscriptionError`; simulated interruption → `workerInterrupted` (retriable), next call succeeds.
-- `ResultCodableTests` — `TranscriptResult` JSON round-trips (carry over `TranscriptResultTests`).
-- `ConfigTests` — `ramAware` picks quantized + sequentialLoading at 8 GB, full at 16 GB+ (carry over `ProcessorConfigTests`).
+- `ResultCodableTests` — `TranscriptResult` JSON round-trips, incl. `transcriptionMethodId`.
+- `MethodResolutionTests` — `TranscriptionMethod.current.id == "v1"`; the internal resolver picks quantized + sequential-load at ≤8 GB and full-precision at 16 GB+ (replaces the old `ProcessorConfigTests`; the RAM logic is now internal to method resolution).
 - `CLITests` — in-process run over a tiny bundled fixture yields JSON on stdout, nothing non-JSON on stdout.
 
 **Deferred to Manual Test App:** real model download/compile, real XPC crash-isolation under memory pressure, on-device transcription quality, ANE/cache-path/8 GB behavior.
+
+## Code changes vs. the committed Phase 1 package (for the realign phase)
+
+The committed code (Phases 1.1–1.4) predates these decisions. The Transcription realign phase must: replace `TranscriptResult.modelVersion` → `transcriptionMethodId`; introduce `TranscriptionMethod` (`.v1`/`.current`); **remove** the public `ProcessorConfig` + `DiarizationStrategy` input types (fold their settings into the internal method resolver, keeping RAM-aware quantization + sequential-load internal); drop the `config:`/`mergedPath:` params from `TranscriptionEngine`/`Transcriber`/CLI (`processAudio(mic:system:vocab:)`, no `merged`); and report real download progress + emit `.compiling`/`.loading` (SpeakerKit `load:false`). Plus the ground-truth AI test (Project 5).

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Functional Spec: Stage A Foundations
@@ -39,19 +39,19 @@ Turn a recording's audio files into a rich, diarized transcript, fully on-device
 ### 1.2 Features & behaviors
 
 - **Diarized transcript from labeled audio files.** Input is a **set of labeled audio file paths** (mic stream + system stream), not a pre-merged blob. The library **owns the merge/mux** to the single mono 16 kHz `[Float]` the SDK consumes (per [research §5](../../../research/argmax/README.md): SDK takes one merged array; no time-aligned multi-stream API). Stream provenance (which file is mic vs. system) is **retained as a labeled input** so a later project can use it for "me" identification — V1 only needs to merge correctly and not lose the labels.
-- **STT + diarization pipeline.** WhisperKit (`openai_whisper-large-v3_turbo`, or a quantized variant) + SpeakerKit (Pyannote v4 community-1), merged via `addSpeakerInfo(to:)` with a selectable strategy (`.subsegment` default / `.segment`).
-- **Model management.** Download, cache, delete; disk-space pre-check before download; rich status that a UI can drive: `needsDownload`, `downloading(progress)`, `compiling`, `loading`, `ready`, `running`, `error`. Variant selection (full-precision vs. quantized) is caller-configurable with a sensible RAM-aware default.
+- **Single transcription method (no options in V1).** WhisperKit (`openai_whisper-large-v3_turbo`) + SpeakerKit (Pyannote v4 community-1, `.subsegment` merge) are bundled behind **one opaque, extensible method id `"v1"`** (`transcriptionMethodId`) that bakes in every output-affecting parameter (STT model + quantization, diarization model + strategy, word-timestamps). **There is no model/strategy/config input** — the engine uses `v1` and **returns** its id in the result; the data model stores it. Adding `"v2"` later is additive.
+- **Model management.** Download, cache; disk-space pre-check before download; rich status a UI can drive: `needsDownload`, `downloading(progress)`, `compiling`, `loading`, `ready`, `running`, `error`. RAM-aware quantization (quantized on ≤8 GB, full-precision on 16 GB+) is an **internal** detail of running `v1`, not a caller option.
 - **Crash-isolated worker.** An in-process **client** talks to an out-of-process **worker** over `NSXPCConnection`. The worker hosts WhisperKit/SpeakerKit; the app/library client never imports them directly. On worker crash the `interruptionHandler` fires, the next call auto-relaunches the worker (launchd), and the client surfaces a retriable error. **The `.xpc` service bundle itself is glue that lives in a host app** — in Stage A that host is the Manual Test App (decided); the package provides everything except the bundle/Info.plist/entry-point. The library MUST also expose an **in-process fallback path** (background actor) usable when no XPC host is present (e.g. the CLI harness and unit tests), per the research fallback.
 - **Memory lifecycle.** Explicit load / unload; sequential STT-then-diarize with unload-between as the memory-safe mode for 8 GB Macs; both-resident allowed on 16 GB+.
 - **Custom-vocabulary biasing.** Accept a `[String]` vocabulary; format into a natural-language prompt; tokenize and pass as `promptTokens` (the free-SDK workaround, ~224-token budget). API takes the `[String]` so a future Pro-SDK swap needs no caller change. (`VocabularyFormatter` already exists in the experiment.)
 - **Output sanitization (mandatory, from validation).** Before returning a transcript: **drop/clamp segments whose start/end exceed the actual audio duration** (Whisper end-of-audio hallucination — a "Thank you" at 52.5 s on a 25.1 s clip was observed, [gotcha #14](../../../research/argmax/README.md)); treat **segment-level `confidence` as unreliable** (came back `0` in free SDK v1.0.0 — derive any confidence from word-level `probability`, [gotcha #13]); optionally drop very-low-confidence trailing single-word segments.
-- **Re-transcribe.** Re-run an existing recording (e.g. after vocab change). The result records the model version used so versions can be compared/stored.
-- **CLI harness.** Successor to `argmaxkit-cli`: take audio file path(s) + options, print the rich transcript as JSON to **stdout**, all diagnostics/progress to **stderr** ([gotcha #15]). The CLI exercises the **in-process path** (no XPC host), keeping it runnable under `swift run` / tests.
+- **Re-transcribe.** Re-run from the recording's **mic + system** source streams (it re-merges; no stored merged file). The result records the `transcriptionMethodId` + vocabulary used so the app can detect staleness and compare versions.
+- **CLI harness.** Successor to `argmaxkit-cli`: `--mic` + `--system` (+ optional `--vocab`), print the rich transcript JSON to **stdout**, all diagnostics/progress to **stderr** ([gotcha #15]). No model/method flag. The CLI exercises the **in-process path** (no XPC host), runnable under `swift run` / tests.
 
 ### 1.3 Contracts
 
-- **In:** ordered, labeled audio file URLs (mic, system); a config (model variant, repo, word-timestamps on/off, diarization strategy); an optional `[String]` custom vocabulary.
-- **Out:** a rich `Codable`, `Sendable` transcript value — segments with speaker id/label, start/end, text, word-level timings + probabilities, detected language, speaker count, model version, processing duration. A reserved (empty in v1.0.0) speaker-embeddings field for future cross-file matching ([§6 erratum]).
+- **In:** the two labeled source audio URLs (mic + system); an optional `[String]` custom vocabulary. **No model/method/config parameter** (method is fixed `v1` in V1).
+- **Out:** a rich `Codable`, `Sendable` transcript value — segments with speaker id/label, start/end, text, word-level timings + probabilities, detected language, speaker count, **`transcriptionMethodId`**, processing duration. A reserved (empty in v1.0.0) speaker-embeddings field for future cross-file matching ([§6 erratum]).
 - **Errors:** a typed error taxonomy covering needs-download, insufficient-disk, download-failed, model-load-failed, worker-unavailable/crashed (retriable), transcription-failed, invalid-input. (`ArgMaxError` exists in the experiment as a starting point.)
 
 ### 1.4 Edge cases
@@ -110,7 +110,7 @@ The SwiftData persistence layer and single owner of persistent types. A module i
 
 ### 3.2 Features & behaviors
 
-- **Schema.** `Meeting`/`Event` core; **versioned Transcript records** (multiple transcripts per meeting, each tagged with model version + created date); **audio-file references** (paths/bookmarks to the mic/system/merged files — the store holds references, not blobs); a **calendar-snapshot sub-item** that captures useful event fields and is **clearable in one operation** (survives the EventKit link breaking); **notes**; **settings**.
+- **Schema.** `Meeting` core (a recording; a calendar event is an optional `CalendarSnapshot` on it, not a separate top-level entity for V1); **`Person`** as its own model (name + email; recurs across meetings via a many-to-many `participants` relationship + `organizer` — reserved for future voiceprints); **versioned Transcript records** that record **every input affecting the output** (model version, diarization strategy, vocabulary used, mapped calendar-event id) so the app can detect a transcript is stale and offer re-transcribe; **audio-file references** (paths/bookmarks to the **mic + system** files only — no merged file; merge is transient in Transcription); a **calendar-snapshot sub-item** (with its own id) clearable in one operation (survives the EventKit link breaking); **user notes** (distinct from the event's notes); **settings**.
 - **Container/config.** A configurable `ModelContainer` (on-disk for the app; **in-memory for tests**); a **sync-ready** configuration (CloudKit option wired but **off** — actual sync is Project 12). The store must be safe to construct against an in-memory container so the entire module unit-tests with no disk and no app.
 - **CRUD, queries, utilities.** Create/read/update/delete; the common fetches the app will need (recent meetings, upcoming, by id).
 - **Event ↔ recording association + correction.** Associate a recording with an event; **correct** a wrong association later.

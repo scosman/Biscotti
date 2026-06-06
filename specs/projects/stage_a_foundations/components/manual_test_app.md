@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Manual Test App (`ManualTestApp/` + `ManualTestKit` + `BiscottiTranscriber.xpc`)
@@ -92,7 +92,7 @@ The real `.xpc` bundle: glue source (`main.swift` entry point, Info.plist, entit
 
 ## Test scripts (content, from the experiment `VALIDATION.md` files)
 
-- **Audio Capture:** request permissions → confirm two dialogs → timed two-stream capture → auto-check two `.m4a` exist with sane sizes → playback quality (mic? system?) → route-change-mid-recording (AirPods) → monitoring lists the active meeting app.
+- **Audio Capture:** request permissions → confirm two dialogs → timed two-stream capture → auto-check two `.aac` (ADTS AAC) exist with sane sizes → playback quality (mic? system?) → route-change-mid-recording (AirPods) → crash-safety (kill mid-record; partial `.aac` still decodes) → monitoring lists the active meeting app.
 - **Transcription:** model download (progress + disk check) → transcribe a recorded clip **over the real XPC service** → auto-check diarized output has ≥2 speakers and **no segment past audio length** → **crash-isolation**: kill the worker mid-run, confirm host survives and a retry succeeds → custom-vocab bias spot-check.
 
 ## Results file, CI gate, CLAUDE.md convention

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Architecture: Stage A Foundations
@@ -60,9 +60,9 @@ This top-level doc holds only what is **shared across the four**: the workspace 
 |---|---|---|
 | Transcription package tools version | `swift-tools-version: 6.0` (argmax-oss-swift v1.0.0 requires 6.0), `swiftLanguageModes: [.v6]`, warnings-as-errors via `-warnings-as-errors` unsafeFlag | matches `experiments/ArgMaxKit/Package.swift` + scaffolding |
 | AudioCapture / DataStore / ManualTestKit | match `BiscottiKit` manifest (`6.1` tools, `.v6` mode, warnings-as-errors) | scaffolding |
-| STT model | `openai_whisper-large-v3_turbo`; **quantized `_turbo_1307MB` is the default in tests** (reproducible, 8 GB-safe); full-precision opt-in | research/argmax §2 |
-| Diarization model | Pyannote v4 community-1 via SpeakerKit (~33 MB); MAY be bundled | research/argmax |
-| Merge for SDK | merge mic+system to **mono 16 kHz `[Float]`** in Transcription; retain stream labels | research/argmax §5 |
+| Transcription method | **one opaque, extensible `transcriptionMethodId` (`"v1"`)** bundling STT model + quantization, diarization model + strategy, word-timestamps. **No model/strategy/config input in V1**; the engine returns the id, the data model stores it | decided / research/argmax |
+| STT + diarization (inside `v1`) | `openai_whisper-large-v3_turbo` (RAM-aware quantized `_1307MB` on ≤8 GB, internal) + Pyannote v4 community-1 (~33 MB) + `.subsegment` | research/argmax §2 |
+| Merge for SDK | merge mic+system to **mono 16 kHz `[Float]`** in Transcription, **transiently in memory** (never stored — no merged file); re-transcribe re-merges from the two sources; retain provenance labels | research/argmax §5 |
 | Capture: system audio | **global** Core Audio process tap (`stereoGlobalTapButExcludeProcesses`) + aggregate device (distinct UID, default-output sub-device, `isPrivate`) — not per-process | phase9 #3 |
 | Capture: mic | **plain `AVAudioEngine`** input-node tap (NOT VPIO); client format = mono processing format; frame count ÷ channelCount (M-series mic is a 3-ch beamforming array) | phase9 #1 |
 | Record format | **record ADTS AAC directly** via `ExtAudioFile` + `kAudioFileAAC_ADTSType` — AAC-LC **mono, 24 kHz, 64 kbps**, `.aac` files; self-syncing → crash-safe with **no finalization**. **No CAF, no PCM scratch, no encode-on-stop.** Bitrate via `AudioConverter` + NULL-`CFArrayRef` `ConverterConfig` commit | **phase9 #5 RESOLVED** |

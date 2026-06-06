@@ -16,9 +16,9 @@ Phased build order. Detail for every file lives in [`architecture.md`](architect
 
 - [x] **Phase 2 — Agent command surface via hooks-mcp.**
   Create `hooks_mcp.yaml` (actions = thin wrappers over the `make` targets) and `.mcp.json` registering the `biscotti-hooks` server (`uvx hooks-mcp`). `uv` is **already installed outside Homebrew** — do **not** add it to the `Brewfile`. Include the actions whose targets work today (`bootstrap`, `build`, `test`, `lint`, `format`); `generate`/`build_app`/`test_app` actions may be stubbed now but only become runnable once the app target lands in Phase 3. XcodeBuildMCP (npx/node) is deferred to Phase 4.
-  **Done when:** `.mcp.json` + `hooks_mcp.yaml` are valid and `uvx hooks-mcp` launches and lists the actions; after the user enables the server in Claude Code (one-time approval — note for the human), `build`/`test`/`lint`/`format` run **green via the MCP tool** (not Bash), confirming the sandbox is bypassed.
+  **Done when:** `.mcp.json` + `hooks_mcp.yaml` are valid and `uvx hooks-mcp` launches and lists the actions; after the user enables the server in Claude Code (one-time approval — note for the human), `build`/`test`/`lint`/`format` run **green via the MCP tool** (not Bash), confirming the sandbox is bypassed. *(Committed: 7417dfc.)*
 
-- [ ] **Phase 3 — Thin app target via XcodeGen.**
+- [x] **Phase 3 — Thin app target via XcodeGen.**
   Create `App/` (`project.yml`, `Sources/BiscottiApp.swift` bare window, `Resources/Info.plist` usage strings, placeholder `Assets.xcassets`, `Biscotti.entitlements`); add `generate/build-app/test-app` to the `Makefile`; add the corresponding `generate`/`build_app`/`test_app` actions to `hooks_mcp.yaml` if not already present.
   **Done when:** `make build-app` (run via hooks-mcp) generates the project and builds ad-hoc, and launching the built app shows the placeholder window rendering `BiscottiKit.marker`. (One-time manual launch, recorded in the phase notes.)
 

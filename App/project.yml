@@ -1,0 +1,51 @@
+name: Biscotti
+options:
+  bundleIdPrefix: net.scosman
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    CLANG_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    OTHER_SWIFT_FLAGS: "$(inherited) -warnings-as-errors"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"          # ad-hoc; real cert is Project 9
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  BiscottiKit:
+    path: ../Packages/BiscottiKit
+
+targets:
+  Biscotti:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Biscotti.entitlements
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: BiscottiKit
+        product: BiscottiKit
+
+schemes:
+  Biscotti:
+    build:
+      targets:
+        Biscotti: all
+    run:
+      config: Debug
+    test:
+      config: Debug

@@ -7,6 +7,14 @@
         "hooks-mcp"
       ],
       "env": {}
+    },
+    "xcodebuildmcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "xcodebuildmcp@latest",
+        "mcp"
+      ]
     }
   }
 }

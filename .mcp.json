@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "hooks-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "hooks-mcp"
+      ],
+      "env": {}
+    }
+  }
+}

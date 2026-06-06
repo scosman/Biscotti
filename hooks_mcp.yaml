@@ -1,0 +1,39 @@
+server_name: "Biscotti"
+server_description: "Biscotti dev commands — thin wrappers over the Makefile."
+
+actions:
+  - name: "bootstrap"
+    description: "Install dev tools via Homebrew (brew bundle)"
+    command: "make bootstrap"
+
+  - name: "generate"
+    description: "Generate the Xcode project from project.yml"
+    command: "make generate"
+
+  - name: "build"
+    description: "Build all SPM packages"
+    command: "make build"
+
+  - name: "test"
+    description: "Gating: run the package test suite (swift test)"
+    command: "make test"
+
+  - name: "lint"
+    description: "Check formatting + lint (non-mutating)"
+    command: "make lint"
+
+  - name: "format"
+    description: "Auto-format and autofix lint"
+    command: "make format"
+
+  # build_app/test_app wrap xcodebuild, which is very verbose. The Makefile uses
+  # `xcodebuild -quiet` (warnings/errors + final status only); here we additionally
+  # tail the result so an MCP tool response stays bounded. `pipefail` keeps make's
+  # exit code so failures still surface as errors.
+  - name: "build_app"
+    description: "Non-gating: generate project + build the app (xcodebuild)"
+    command: "bash -c 'set -o pipefail; make build-app 2>&1 | tail -n 30'"
+
+  - name: "test_app"
+    description: "Non-gating: run the app test scheme"
+    command: "bash -c 'set -o pipefail; make test-app 2>&1 | tail -n 30'"

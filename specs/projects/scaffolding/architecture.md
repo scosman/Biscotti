@@ -286,7 +286,8 @@ clean: ## Remove build artifacts + generated project
 brew "xcodegen"
 brew "swiftlint"
 brew "swiftformat"
-# uv (for hooks_mcp/uvx) and node (for XcodeBuildMCP/npx) added in Phase 3.
+# uv (for hooks_mcp/uvx, Phase 2) is already installed outside Homebrew — NOT listed here.
+# node (for XcodeBuildMCP/npx) is added in Phase 4.
 ```
 
 ---
@@ -412,9 +413,11 @@ actions:
 ```json
 {
   "mcpServers": {
-    "biscotti-hooks": {
+    "hooks-mcp": {
+      "type": "stdio",
       "command": "uvx",
-      "args": ["hooks-mcp", "--working-directory", "."]
+      "args": ["hooks-mcp"],
+      "env": {}
     },
     "xcodebuildmcp": {
       "command": "npx",
@@ -424,7 +427,9 @@ actions:
 }
 ```
 
-> Launch commands per upstream docs (`uvx hooks-mcp`; `npx -y xcodebuildmcp@latest mcp`). The coder verifies both against the current upstream READMEs at build time and pins versions if drift is a concern. `uv` and `node` are in the `Brewfile`.
+> **Server key = `hooks-mcp`.** Claude Code derives the tool-name prefix from the server key, so the actions surface as `mcp__hooks-mcp__build`, `…__test`, etc. (as documented in root `CLAUDE.md`). `hooks-mcp` defaults its working directory to cwd, so no `--working-directory` arg is needed.
+> **Phasing:** the `hooks-mcp` server (uvx) is added in **Phase 2** — it is the agent command surface that runs `make` targets *outside* the Bash sandbox (which cannot run `swift build`/`xcodebuild`). The `xcodebuildmcp` server (npx) is added in **Phase 4** alongside `node`. So `.mcp.json` is created in Phase 2 with only `hooks-mcp` and gains `xcodebuildmcp` in Phase 4.
+> Launch commands per upstream docs (`uvx hooks-mcp`; `npx -y xcodebuildmcp@latest mcp`). The coder verifies both against the current upstream READMEs at build time and pins versions if drift is a concern. `uv` is already installed outside Homebrew; `node` is added to the `Brewfile` in Phase 4.
 
 ---
 

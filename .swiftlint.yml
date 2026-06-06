@@ -1,0 +1,38 @@
+strict: true
+included:
+  - Packages
+  - App
+excluded:
+  - .build
+  - Packages/BiscottiKit/.build
+  - App/Biscotti.xcodeproj
+  - "**/DerivedData"
+
+# SwiftFormat owns formatting — disable SwiftLint's overlapping formatting rules
+# so the two tools never disagree.
+disabled_rules:
+  - trailing_comma
+  - opening_brace
+  - colon
+  - comma
+  - vertical_whitespace
+  - trailing_whitespace
+  # sorted_imports conflicts with SwiftFormat's --importgrouping testable-bottom
+  # (SwiftLint alphabetizes; SwiftFormat groups @testable at bottom). SwiftFormat
+  # is the authoritative formatter, so this rule is disabled here.
+  - sorted_imports
+
+# Opt into a stricter set (the author's "stricter ruleset" ask).
+# Note: unused_declaration and unused_import are omitted — they require
+# `swiftlint analyze` (not `swiftlint lint`) and would silently do nothing
+# in our lint pass. Add a separate analyze step if those rules are wanted.
+opt_in_rules:
+  - force_unwrapping
+  - empty_count
+  - first_where
+  - contains_over_filter_count
+  - closure_spacing
+  - redundant_type_annotation
+  - explicit_init
+  - fatal_error_message
+  - prefer_self_type_over_type_of_self

@@ -1,0 +1,7 @@
+--swiftversion 6.0
+--exclude .build,**/.build,App/Biscotti.xcodeproj,DerivedData
+# Deliberate rule choices live here; SwiftFormat is the authoritative formatter.
+--self remove
+--importgrouping testable-bottom
+--commas inline
+--trimwhitespace always

@@ -2,7 +2,7 @@
 
 Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
 
-**Current stage:** planning is done; **the app is not built yet.** Hard technical bets are de-risked (research + experiments), and the package architecture + build roadmap are finalized. The next step is executing the roadmap (starting with scaffolding). There is no `Packages/` or app target yet — only the design docs, validated research, and disposable reference code in `experiments/`.
+**Current stage:** scaffolding is complete (Project 0). The `Packages/BiscottiKit` package, `App/` target (XcodeGen), `Makefile` command surface, `hooks-mcp` agent integration, CI, and lint/format tooling are all in place. The next step is building the foundation libraries per the roadmap (`implementation_plan.md`).
 
 > This file is a map. Read the specific docs below before acting; don't rely on this summary alone for decisions.
 
@@ -68,11 +68,51 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 ## Conventions & gotchas
 
 - **Apple Silicon, macOS 15+ only.** Newest APIs are fair game; no Intel/older-macOS support.
-- **Swift-package-first.** The app target stays thin (composition root + Apple glue); everything testable lives in packages under `Packages/` so it runs via `swift build`/`swift test` with no `xcodebuild`/signing. See `architecture.md` → "Thin-App Composition." *(Scaffolding in progress — Project 0: `Packages/BiscottiKit`, the `Makefile` command surface, and the `hooks-mcp` server now exist; the app target, CI, and XcodeBuildMCP are still being set up. See `specs/projects/scaffolding/implementation_plan.md`.)*
+- **Swift-package-first.** The app target stays thin (composition root + Apple glue); everything testable lives in packages under `Packages/` so it runs via `swift build`/`swift test` with no `xcodebuild`/signing. See `architecture.md` → "Thin-App Composition."
 - **Agents: run builds/tests through the `hooks-mcp` MCP server, not Bash.** The `Makefile` is the canonical command surface, but `swift build`, `swift test`, and `xcodebuild` **fail under the agent Bash sandbox** — llbuild's build-system file writes hit a silent sandbox denial that no SwiftPM flag, scratch-path, or `--disable-sandbox` fixes. The `hooks-mcp` tools (`mcp__hooks-mcp__build`, `…__test`, `…__build_app`, `…__generate`, `…__bootstrap`, etc.) run the *same* `make` targets in the MCP server process, **outside** the sandbox — use them for anything that compiles. Only `mcp__hooks-mcp__lint` / `…__format` (and their `make lint`/`make format` equivalents) are also safe to run directly in Bash. Humans and CI invoke `make` directly as usual.
 - **The design is shape-level.** When building a component, *you* design its real API inside the boundary `architecture.md` draws — don't expect interfaces there, and don't add them to that doc.
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
+- **Bundle ID is locked:** `net.scosman.biscotti`. Do not change it (TCC grants persist against it). Signing/notarization are deferred to Project 9.
+
+---
+
+## Build & checks
+
+### Makefile (the canonical command surface)
+
+All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-commit hook, and `hooks-mcp` all invoke the same targets.
+
+| Target | Does | Gating? |
+|---|---|---|
+| `make bootstrap` | Install dev tools via Homebrew (`brew bundle`) | — |
+| `make generate` | Generate `App/Biscotti.xcodeproj` from `App/project.yml` (XcodeGen) | — |
+| `make build` | `swift build` all SPM packages | — |
+| `make test` | `swift test` across packages | Yes |
+| `make lint` | `swiftformat --lint` + `swiftlint --strict` (non-mutating) | Yes |
+| `make format` | Auto-format (SwiftFormat then SwiftLint `--fix`) | — |
+| `make build-app` | `make generate` + `xcodebuild` the app (ad-hoc signed) | Non-gating |
+| `make test-app` | App/UI test scheme (empty for now) | Non-gating |
+| `make hooks` | Opt-in: point git at `.githooks/pre-commit` | — |
+| `make ci` | What the gating CI job runs: `lint` + `test` + `build` | — |
+| `make clean` | Remove `.build/`, `DerivedData/`, generated `.xcodeproj` | — |
+
+### CI (two tiers)
+
+- **`package-tier`** (gating, required check): runs `make ci` (lint + test + build) on `macos-15`. This is the merge gate.
+- **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.
+
+### Agent command surface (hooks-mcp)
+
+Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).
+
+**XcodeBuildMCP** is also registered in `.mcp.json` for interactive xcodebuild/run/launch/log operations that a `make` target cannot model.
+
+### Pre-commit hook (opt-in)
+
+Run `make hooks` once to enable. The hook runs `make format` (+ re-stages), `make lint`, and `make test` before each commit. It blocks on the first failure. Package tests only — never `xcodebuild`.
+
+---
 
 ## When you change things
 

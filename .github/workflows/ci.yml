@@ -1,0 +1,43 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  package-tier:
+    name: Packages (lint + test)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            ~/Library/Caches/Homebrew/downloads
+          key: brew-${{ hashFiles('Brewfile') }}
+          restore-keys: brew-
+      - name: Install dev tools
+        run: brew bundle --file=Brewfile
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: Packages/BiscottiKit/.build
+          key: spm-${{ hashFiles('Packages/BiscottiKit/Package.swift', '**/Package.resolved') }}
+          restore-keys: spm-
+      - name: Lint + test + build
+        run: make ci
+
+  app-tier:
+    name: App build (xcodebuild)
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      # Only xcodegen is needed here — swiftlint/swiftformat are not used,
+      # and BiscottiKit is built by xcodebuild as a local package dependency.
+      - name: Install dev tools
+        run: brew install xcodegen
+      - name: Generate + build app
+        run: make build-app

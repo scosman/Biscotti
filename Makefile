@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PACKAGES := Packages/BiscottiKit
 LINT_PATHS := $(wildcard Packages App)
 
-.PHONY: help bootstrap generate build test lint format build-app test-app clean
+.PHONY: help bootstrap generate build test lint format build-app test-app hooks ci clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -40,6 +40,12 @@ test-app: generate ## NON-GATING: app test scheme (empty for now)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug test
+
+hooks: ## Enable the opt-in pre-commit hook
+	git config core.hooksPath .githooks
+	@echo "Pre-commit hook enabled (.githooks)."
+
+ci: lint test build ## What the gating CI job runs
 
 clean: ## Remove build artifacts + generated project
 	rm -rf .build $(PACKAGES)/.build App/Biscotti.xcodeproj

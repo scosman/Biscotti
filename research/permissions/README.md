@@ -59,7 +59,7 @@ On macOS, TCC permission prompts typically only appear **once**. If the user den
 | **System audio (Core Audio taps)** | If using the private TCC probe: detect denial and show a similar banner pointing to the "Screen & System Audio Recording" pane. Without the probe: detect silence (zero-filled buffers for N seconds after starting the tap) and show a warning: "System audio capture was denied. Please enable it in System Settings." Open `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`. |
 | **Calendar** | Show a banner: "Calendar access lets Biscotti show your upcoming meetings. Open System Settings to enable it." Link to the Calendars pane. The app remains fully functional for manual recording without calendar access, so this is not a blocking denial. Also handle the `.writeOnly` status (see Risk #4 and R2 -- EventKit research for details on the Sonoma downgrade). |
 
-**Important:** `tccutil reset <service> <bundle-id>` can clear a permission grant/denial for testing, e.g. `tccutil reset Microphone com.biscotti.app`. Useful during development.
+**Important:** `tccutil reset <service> <bundle-id>` can clear a permission grant/denial for testing, e.g. `tccutil reset Microphone net.scosman.biscotti`. Useful during development.
 
 ---
 
@@ -213,7 +213,7 @@ Sources:
 <string>Biscotti reads your calendar to show upcoming meetings and enrich recordings with event details.</string>
 ```
 
-**Bundle identifier:** `com.biscotti.app` (stable across builds so TCC grants persist).
+**Bundle identifier:** `net.scosman.biscotti` (locked production ID; stable across builds so TCC grants persist).
 
 **Summary of what triggers each prompt:**
 
@@ -241,7 +241,7 @@ Sources:
 
 4. **Calendar permission downgrade on macOS Sonoma+.** Apps previously granted calendar access are downgraded to write-only when the user upgrades to macOS Sonoma / iOS 17 ([Discover Calendar and EventKit -- WWDC23](https://developer.apple.com/videos/play/wwdc2023/10052/)). Calling `requestFullAccessToEvents()` does **not** automatically re-prompt the user -- the consent alert only appears the first time the app asks, and subsequent calls return the current (downgraded) status without showing a dialog. The app must detect `.writeOnly` or `.denied` from `EKEventStore.authorizationStatus(for: .event)` and deep-link the user to System Settings > Privacy & Security > Calendars so they can manually re-enable Full Access. See also R2 (EventKit research) for the full calendar permission handling strategy.
 
-5. **Ad-hoc signed experiments won't persist TCC grants reliably.** During development with ad-hoc signing, TCC permission grants can be lost across rebuilds if the bundle ID or code signature changes. Use a stable `PRODUCT_BUNDLE_IDENTIFIER` (e.g., `com.biscotti.experiments.audiolab`) and keep `CODE_SIGN_IDENTITY = "-"` consistent.
+5. **Ad-hoc signed experiments won't persist TCC grants reliably.** During development with ad-hoc signing, TCC permission grants can be lost across rebuilds if the bundle ID or code signature changes. Use a stable `PRODUCT_BUNDLE_IDENTIFIER` (e.g., `net.scosman.biscotti.experiments.audiolab`) and keep `CODE_SIGN_IDENTITY = "-"` consistent.
 
 6. **macOS Tahoe (26) note.** Plain (non-bundled) executables no longer appear in the Screen & System Audio Recording pane in System Settings. This does not affect Biscotti (it is a bundled .app), but it could affect CLI-based experiment harnesses like ArgMaxKit's CLI.
 
@@ -253,7 +253,7 @@ Sources:
 
 2. **App Store distribution ever?** If we ever want to ship on the Mac App Store, we need App Sandbox. Core Audio taps under sandbox are not well-tested in the community. This would need dedicated investigation. For now, the plan is Developer ID distribution only.
 
-3. **Persistent bundle identity strategy.** For TCC grants to survive across app updates, the bundle ID and team ID must remain constant. We should lock in the production bundle ID early (e.g., `com.biscotti.app` or a domain-based ID) and the Apple Developer team ID.
+3. **Persistent bundle identity strategy.** For TCC grants to survive across app updates, the bundle ID and team ID must remain constant. The production bundle ID is locked: `net.scosman.biscotti`. The Apple Developer team ID should also be locked early.
 
 4. **Custom usage-description strings.** The strings above are drafts. Product/design should review the wording for each `NS*UsageDescription` value, as they appear verbatim in the system permission dialog. Clear, honest, specific wording significantly improves grant rates.
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "› pre-commit: format"
+make format
+# Re-stage anything formatting changed, so the commit includes the tidied result.
+git add -u
+
+echo "› pre-commit: lint"
+make lint
+
+echo "› pre-commit: test (swift test — packages only, never xcodebuild)"
+make test
+
+echo "✓ pre-commit passed"

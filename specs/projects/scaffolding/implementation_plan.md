@@ -22,7 +22,7 @@ Phased build order. Detail for every file lives in [`architecture.md`](architect
   Create `App/` (`project.yml`, `Sources/BiscottiApp.swift` bare window, `Resources/Info.plist` usage strings, placeholder `Assets.xcassets`, `Biscotti.entitlements`); add `generate/build-app/test-app` to the `Makefile`; add the corresponding `generate`/`build_app`/`test_app` actions to `hooks_mcp.yaml` if not already present.
   **Done when:** `make build-app` (run via hooks-mcp) generates the project and builds ad-hoc, and launching the built app shows the placeholder window rendering `BiscottiKit.marker`. (One-time manual launch, recorded in the phase notes.)
 
-- [ ] **Phase 4 — CI, git hooks, XcodeBuildMCP, and docs.**
+- [x] **Phase 4 — CI, git hooks, XcodeBuildMCP, and docs.**
   Add `.github/workflows/ci.yml` (gating `package-tier` + non-gating `app-tier`); `.githooks/pre-commit` + `make hooks`; add the `xcodebuildmcp` server to `.mcp.json` and `node` to the `Brewfile` (for `npx`); update root `CLAUDE.md` ("Build & checks" section documenting the Makefile, the two CI tiers, and **hooks-mcp as the agent command surface**; remove the "not scaffolded yet" caveats); correct the bundle ID in `research/permissions/README.md`.
   **Done when:** CI runs on a branch with `package-tier` green (then set as the required check), `app-tier` reporting non-gating; `make hooks` + a deliberate violation blocks a commit; `xcodebuildmcp` actions are listable; docs reflect reality.
 

@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PACKAGES := Packages/BiscottiKit
 LINT_PATHS := $(wildcard Packages App)
 
-.PHONY: help bootstrap generate build test lint format build-app test-app hooks ci clean
+.PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -30,6 +30,11 @@ lint: ## Check formatting + lint (non-mutating)
 format: ## Auto-format then autofix lint
 	swiftformat $(LINT_PATHS) --cache ignore
 	swiftlint lint --fix --no-cache $(LINT_PATHS)
+
+precommit-checks: ## The pre-commit checks (format + lint + test); the hook and hooks-mcp both call this
+	$(MAKE) format
+	$(MAKE) lint
+	$(MAKE) test
 
 build-app: generate ## NON-GATING: build the app via xcodebuild (ad-hoc)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \

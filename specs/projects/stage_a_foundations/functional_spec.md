@@ -1,5 +1,5 @@
 ---
-status: complete
+status: draft
 ---
 
 # Functional Spec: Stage A Foundations
@@ -77,22 +77,22 @@ The low-level systems engine for capturing and monitoring macOS audio. No app or
 ### 2.2 Features & behaviors
 
 - **Two-stream capture.** Mic via `AVAudioEngine` input-node tap; **global** system audio via Core Audio process tap + aggregate device (global, not per-process — per [Phase 9 validation](../../../research/audio/phase9_validation_findings.md), per-process capture was dropped; global also sidesteps the Teams silent-capture issue). Two independent mono streams, each to its own file, sharing a start reference timestamp for later alignment. The caller provides the write paths (the library does **not** choose storage locations).
-- **Crash-safe write, then repackage.** Record **PCM into CAF** during capture (CAF+AAC is *not* crash-safe — AAC needs a `pakt` chunk written only on close), then on stop **encode to AAC `.m4a`** for long-term storage ([finding #5](../../../research/audio/phase9_validation_findings.md)). Storage format: **ADTS AAC-LC, mono, 24 kHz, 64 kbps** (24 kHz covers the 16 kHz STT models with headroom). A partially written CAF remains decodable up to the last frame after a crash.
-- **Route-change survival (non-negotiable).** A meeting starting *is* a route change. Listen for default input/output device changes and Bluetooth state changes; tear down and rebuild the tap + aggregate device (output change) or restart the engine (input change) with a sub-second gap. **This is the headline reliability requirement for a meeting recorder.**
-- **Per-process audio monitoring (detection signal only).** Observe `kAudioHardwarePropertyProcessObjectList` + per-process bundle ID / input-active / output-active as an **event stream**, for a later `MeetingDetection` module to match against a watchlist. Monitoring is per-process; **capture is global** — these are separate concerns.
+- **Crash-safe direct write (ADTS AAC — no CAF, no encode-on-stop).** Record **ADTS AAC directly** during capture via `ExtAudioFile` + `kAudioFileAAC_ADTSType` (AAC-LC, **mono, 24 kHz, 64 kbps**; 24 kHz covers the 16 kHz STT models with headroom). ADTS frames are **self-syncing** (each carries a sync word + length), so a crash-truncated file decodes up to the last complete frame with **no finalization step** — crash-safe *and* compressed *and* native in a single writer. Output files are `.aac`. **No CAF, no PCM scratch, no encode-on-stop conversion** ([finding #5 RESOLVED](../../../research/audio/phase9_validation_findings.md) — this supersedes the earlier PCM→CAF→M4A idea). Bitrate is set on the encoder's `AudioConverter` (`kAudioConverterEncodeBitRate`), committed via a NULL `CFArrayRef` `kExtAudioFileProperty_ConverterConfig` (the validated fix for the `EXC_BAD_ACCESS` crash).
+- **Route-change survival (non-negotiable, file-preserving).** A meeting starting *is* a route change. **Mic:** handle `AVAudioEngineConfigurationChange` — re-query the input format fresh (sample rate *and* channel count can both change; the M-series built-in mic is a 3-channel beamforming array), reinstall the tap with a new converter, restart the engine, **keeping the same `ExtAudioFile` open** (no re-create, no `eraseFile`). **System (output change):** tear down + rebuild the tap + aggregate device, **keeping the same file open**. Sub-second gap, never lose prior audio. **This is the headline reliability requirement.**
+- **Per-process audio monitoring (detection signal only).** Push-based: register per-process `kAudioProcessPropertyIsRunning` listeners (NOT `IsRunningInput`/`IsRunningOutput`, which post **no** notifications on macOS — validated), and on each fire re-read both input/output running state; reconcile listeners against `kAudioHardwarePropertyProcessObjectList` changes. Emits an **event stream** for a later `MeetingDetection` module to match against a watchlist. Monitoring is per-process; **capture is global** — separate concerns.
 - **Two-stream start alignment** and **zero-buffer detection scaffolding.** Keep the RMS health-monitor (`RMSMonitor` exists) in place but **leave it unwired** by default (the all-zero tap failure did not reproduce on macOS 15; wiring it is solving a non-problem — [Test 7](../../../research/audio/phase9_validation_findings.md)); expose it so it can be wired if the failure ever surfaces.
-- **Permission-denial inference.** No public API checks system-audio permission status → on capture start, detect zero-filled buffers in the first ~2 s and report a probable missing grant (silence-detection pre-check, per [research](../../../research/permissions/README.md)); the library *reports* this — it does not own TCC prompts.
+- **Permission handling.** **Mic:** definitive preflight via `AVCaptureDevice.authorizationStatus(for: .audio)` — `.authorized` → record; `.notDetermined` → request then record if granted; `.denied`/`.restricted` → refuse to start and report (there is no usable OSStatus for mic denial). **System audio:** no public status API → detect zero-filled buffers in the first ~2 s and report a probable missing grant (silence-detection backstop, currently deferred/unwired per Test 7). The library *reports*; it does not own TCC prompts/UI.
 
 ### 2.3 Contracts
 
-- **In:** caller-provided write paths/URLs for the mic and system files; start/stop control; a selection of which signals to emit (capture, monitor, or both).
-- **Out:** two finished `.m4a` files at the requested locations with a shared start timestamp; a live state surface (elapsed, levels) for UI; an async event stream for per-process audio activity; capture-failure / probable-permission-denied reports.
-- **Errors:** capture-start-failed, tap/aggregate-device-failed, mic-engine-failed, conversion-failed (CAF retained as fallback), probable-permission-denied.
+- **In:** caller-provided write paths/URLs for the mic and system `.aac` files; start/stop control; a selection of which signals to emit (capture, monitor, or both).
+- **Out:** two `.aac` files (ADTS AAC) at the requested locations, **valid as-written** (no post-processing), with a shared start timestamp; a live state surface (elapsed, levels) for UI; an async event stream for per-process audio activity; capture-failure / permission reports.
+- **Errors:** capture-start-failed, tap/aggregate-device-failed, mic-engine-failed, mic-permission-denied, probable-(system-audio)-permission-denied.
 
 ### 2.4 Edge cases
 
-- Conversion CAF→M4A fails → keep the CAF (playable everywhere) and report; never lose audio.
-- Device switch mid-capture → rebuild within sub-second; no crash, no permanent silence.
+- Crash mid-recording → the partial `.aac` files decode up to the last complete ADTS frame; nothing lost but the in-progress frame (no finalization needed).
+- Device switch mid-capture → file-preserving rebuild within sub-second; no crash, no permanent silence, no audio loss.
 - Multi-output-device level attenuation → best-effort gain compensation by channel count ([§6b](../../../research/audio/README.md)); low priority.
 - Microsoft Teams → covered by the global-tap default; ScreenCaptureKit fallback remains a documented contingency, **not built** in V1.
 

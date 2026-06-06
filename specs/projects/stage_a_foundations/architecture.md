@@ -1,5 +1,5 @@
 ---
-status: complete
+status: draft
 ---
 
 # Architecture: Stage A Foundations
@@ -63,11 +63,13 @@ This top-level doc holds only what is **shared across the four**: the workspace 
 | STT model | `openai_whisper-large-v3_turbo`; **quantized `_turbo_1307MB` is the default in tests** (reproducible, 8 GB-safe); full-precision opt-in | research/argmax §2 |
 | Diarization model | Pyannote v4 community-1 via SpeakerKit (~33 MB); MAY be bundled | research/argmax |
 | Merge for SDK | merge mic+system to **mono 16 kHz `[Float]`** in Transcription; retain stream labels | research/argmax §5 |
-| Capture: system audio | **global** Core Audio process tap + aggregate device (not per-process) | phase9 validation |
-| Capture: mic | `AVAudioEngine` input-node tap | research/audio |
-| Record format | record **PCM→CAF** (crash-safe), encode on stop to **ADTS AAC-LC, mono, 24 kHz, 64 kbps `.m4a`** | phase9 finding #5 / §3 |
+| Capture: system audio | **global** Core Audio process tap (`stereoGlobalTapButExcludeProcesses`) + aggregate device (distinct UID, default-output sub-device, `isPrivate`) — not per-process | phase9 #3 |
+| Capture: mic | **plain `AVAudioEngine`** input-node tap (NOT VPIO); client format = mono processing format; frame count ÷ channelCount (M-series mic is a 3-ch beamforming array) | phase9 #1 |
+| Record format | **record ADTS AAC directly** via `ExtAudioFile` + `kAudioFileAAC_ADTSType` — AAC-LC **mono, 24 kHz, 64 kbps**, `.aac` files; self-syncing → crash-safe with **no finalization**. **No CAF, no PCM scratch, no encode-on-stop.** Bitrate via `AudioConverter` + NULL-`CFArrayRef` `ConverterConfig` commit | **phase9 #5 RESOLVED** |
+| Route-change survival | **file-preserving**: keep the same `ExtAudioFile` open across mic `AVAudioEngineConfigurationChange` (re-query format, reinstall tap, restart) and system output-device rebuild | phase9 #2 |
 | Zero-buffer RMS monitor | keep in place, **unwired** by default | phase9 Test 7 |
-| System-audio permission check | silence/zero-buffer detection in first ~2 s (no private TCC API) | research/permissions |
+| Permission check | **mic:** definitive `AVCaptureDevice.authorizationStatus` preflight (refuse-to-start on denied); **system audio:** zero-buffer heuristic in first ~2 s (no public API), deferred/unwired | phase9 Test 4 / research/permissions |
+| Live monitoring | push-based per-process `kAudioProcessPropertyIsRunning` listeners (NOT `IsRunningInput/Output` — no notifications), reconciled against the process list | phase9 #8 |
 | XPC host (Stage A) | the **Manual Test App** hosts `BiscottiTranscriber.xpc`; Transcription also offers an **in-process actor fallback** | decided / research/argmax §7 |
 | DataStore container | configurable; **in-memory for tests**; CloudKit option wired-but-off | architecture §4 |
 | Manual-test results | checked-in JSON; CI gate on "all marked run"; CLAUDE.md staleness convention | decided / manual_test_app overview |

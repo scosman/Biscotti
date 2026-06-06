@@ -1,5 +1,5 @@
 ---
-status: complete
+status: draft
 ---
 
 # Component: Manual Test App (`ManualTestApp/` + `ManualTestKit` + `BiscottiTranscriber.xpc`)

@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-PACKAGES := Packages/BiscottiKit
+PACKAGES := Packages/BiscottiKit Packages/Transcription
 LINT_PATHS := $(wildcard Packages App)
 
 .PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean
@@ -18,10 +18,10 @@ generate: ## Generate the Xcode project from project.yml
 	cd App && xcodegen generate
 
 build: ## Build all SPM packages
-	swift build --package-path $(PACKAGES)
+	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
 
 test: ## GATING: run package tests
-	swift test --package-path $(PACKAGES)
+	@for pkg in $(PACKAGES); do echo "==> Testing $$pkg"; swift test --package-path $$pkg || exit 1; done
 
 lint: ## Check formatting + lint (non-mutating)
 	swiftformat $(LINT_PATHS) --lint --cache ignore
@@ -53,5 +53,6 @@ hooks: ## Enable the opt-in pre-commit hook
 ci: lint test build ## What the gating CI job runs
 
 clean: ## Remove build artifacts + generated project
-	rm -rf .build $(PACKAGES)/.build App/Biscotti.xcodeproj
+	rm -rf .build App/Biscotti.xcodeproj
+	@for pkg in $(PACKAGES); do rm -rf $$pkg/.build; done
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Biscotti-*

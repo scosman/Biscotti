@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-PACKAGES := Packages/BiscottiKit Packages/Transcription
+PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
 LINT_PATHS := $(wildcard Packages App)
 
 .PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean

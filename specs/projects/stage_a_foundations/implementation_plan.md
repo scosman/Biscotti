@@ -36,7 +36,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
 
 → [`components/audio_capture.md`](components/audio_capture.md)
 
-- [ ] **Phase 2.1 — Package + pure logic carry-over.**
+- [x] **Phase 2.1 — Package + pure logic carry-over.**
   Create `Packages/AudioCapture` (matches BiscottiKit manifest); port `EncoderSettings` (`voiceM4A`), `RMSMonitor`, frame-count + process-parsing helpers, `RecordingFileManager`, `CoreAudioHelpers` (C APIs behind a seam), `CaptureError`.
   **Done when:** `EncoderSettingsTests`, `RMSMonitorTests`, `AudioFrameCountTests`, `AudioProcessTests`, `RecordingFileManagerTests` pass.
 

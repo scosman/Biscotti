@@ -1,0 +1,254 @@
+import Foundation
+
+/// The client the app holds for transcription. Supports two backends:
+/// `.inProcess` (runs the engine in this process) and `.hosted` (talks
+/// to an XPC service by name).
+///
+/// For `.hosted`, owns the `NSXPCConnection`, sets the `interruptionHandler`,
+/// and maps worker crashes to `TranscriptionError.workerInterrupted` (retriable --
+/// the next call auto-relaunches the worker via launchd).
+public actor Transcriber {
+    /// Which backend to use for transcription.
+    public enum Backend: Sendable {
+        /// Connect to the named XPC service (app/test-app context).
+        case hosted(serviceName: String)
+
+        /// Run the engine in this process (CLI, unit tests, no-XPC contexts).
+        case inProcess
+    }
+
+    private let backend: Backend
+    private let config: ProcessorConfig
+    private let engine: any TranscriptionEngine
+
+    /// Current status, tracked here so statusStream can emit without
+    /// crossing into the engine's actor isolation.
+    private var currentStatus: ModelStatus = .needsDownload
+
+    // XPC-specific state (only used for .hosted)
+    private var xpcConnection: (any TranscriberXPCConnecting)?
+    private let interruptedFlag: InterruptedFlag?
+
+    /// For statusStream
+    private var statusContinuations: [UUID: AsyncStream<ModelStatus>.Continuation] = [:]
+
+    /// Create a Transcriber with the specified backend.
+    ///
+    /// - Parameters:
+    ///   - backend: `.inProcess` or `.hosted(serviceName:)`.
+    ///   - config: Processor configuration (model variant, options).
+    public init(backend: Backend, config: ProcessorConfig = .ramAware()) {
+        self.backend = backend
+        self.config = config
+
+        switch backend {
+        case .inProcess:
+            engine = InProcessTranscriptionEngine(config: config)
+            xpcConnection = nil
+            interruptedFlag = nil
+
+        case let .hosted(serviceName):
+            let connection = TranscriberXPCConnectionImpl(serviceName: serviceName)
+            xpcConnection = connection
+            let flag = InterruptedFlag()
+            interruptedFlag = flag
+            engine = XPCEngineAdapter(
+                proxyProvider: { [weak connection] in
+                    connection?.remoteObjectProxy()
+                },
+                config: config
+            )
+            connection.setInterruptionHandler {
+                flag.value = true
+            }
+            connection.activate()
+        }
+    }
+
+    /// Internal initializer for testing: inject a custom engine and optional XPC connection.
+    init(
+        backend: Backend,
+        config: ProcessorConfig = .ramAware(),
+        engine: any TranscriptionEngine,
+        xpcConnection: (any TranscriberXPCConnecting)? = nil,
+        interruptedFlag: InterruptedFlag? = nil
+    ) {
+        self.backend = backend
+        self.config = config
+        self.engine = engine
+        self.xpcConnection = xpcConnection
+        self.interruptedFlag = interruptedFlag
+    }
+
+    // MARK: - Public API
+
+    /// Download models if not already cached.
+    ///
+    /// - Parameter progress: Optional progress callback (0.0...1.0).
+    public func ensureModelsDownloaded(
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
+        try checkInterrupted()
+        emitStatus(.downloading(progress: 0.0))
+        do {
+            try await engine.ensureModelsDownloaded(
+                progress: progress ?? { _ in }
+            )
+            emitStatus(.ready)
+        } catch {
+            let mapped = mapToTranscriptionError(error)
+            emitStatus(.error(mapped))
+            throw mapped
+        }
+    }
+
+    /// Process audio files and return a diarized transcript.
+    ///
+    /// - Parameters:
+    ///   - mic: URL to the mic audio file, or nil.
+    ///   - system: URL to the system audio file, or nil.
+    ///   - merged: URL to a pre-merged audio file, or nil.
+    ///   - customVocabulary: Custom vocabulary terms for biasing.
+    /// - Returns: A rich diarized `TranscriptResult`.
+    public func processAudio(
+        mic: URL? = nil,
+        system: URL? = nil,
+        merged: URL? = nil,
+        customVocabulary: [String] = []
+    ) async throws -> TranscriptResult {
+        try checkInterrupted()
+        emitStatus(.running)
+        do {
+            let result = try await engine.processAudio(
+                micPath: mic?.path,
+                systemPath: system?.path,
+                mergedPath: merged?.path,
+                config: config,
+                customVocabulary: customVocabulary
+            )
+            emitStatus(.ready)
+            return result
+        } catch {
+            let mapped = mapToTranscriptionError(error)
+            emitStatus(.error(mapped))
+            throw mapped
+        }
+    }
+
+    /// Re-transcribe an already-merged audio file with a potentially different vocabulary.
+    ///
+    /// - Parameters:
+    ///   - merged: URL to the merged audio file.
+    ///   - customVocabulary: Custom vocabulary terms.
+    /// - Returns: A rich diarized `TranscriptResult`.
+    public func reTranscribe(
+        merged: URL,
+        customVocabulary: [String] = []
+    ) async throws -> TranscriptResult {
+        try await processAudio(merged: merged, customVocabulary: customVocabulary)
+    }
+
+    /// Explicitly unload all models from memory.
+    public func unloadModels() async {
+        await engine.unloadModels()
+        emitStatus(.needsDownload)
+    }
+
+    /// An `AsyncStream` of model status updates.
+    ///
+    /// The stream yields the current status immediately upon subscription,
+    /// then emits subsequent changes. Finishes when the `Transcriber` is
+    /// deallocated or the consumer cancels.
+    ///
+    /// **Note:** The emitted statuses are an approximation of the underlying engine's
+    /// status machine. For the `.inProcess` backend the engine tracks the full lifecycle
+    /// (`.compiling`, `.loading`, etc.), but the `Transcriber` layer emits a simplified
+    /// view (`.downloading`, `.running`, `.ready`, `.error`). This avoids coupling the
+    /// public stream to engine internals while still providing useful UI-driving status.
+    public func statusStream() -> AsyncStream<ModelStatus> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            // Register the continuation BEFORE yielding the current status so
+            // that any update emitted between the capture and registration is
+            // not lost.
+            self.statusContinuations[id] = continuation
+            continuation.yield(self.currentStatus)
+            continuation.onTermination = { @Sendable _ in
+                Task { [weak self] in
+                    await self?.removeContinuation(id: id)
+                }
+            }
+        }
+    }
+
+    /// Check if the backend is available and responsive.
+    ///
+    /// For `.inProcess`, returns true if the engine status is `.ready`.
+    /// For `.hosted`, returns true if the XPC proxy is reachable and
+    /// the connection has not been interrupted.
+    public func isAvailable() async -> Bool {
+        switch backend {
+        case .inProcess:
+            let engineStatus = await engine.status()
+            return engineStatus == .ready
+
+        case .hosted:
+            if let flag = interruptedFlag, flag.value { return false }
+            guard let connection = xpcConnection else { return false }
+            return connection.remoteObjectProxy() != nil
+        }
+    }
+
+    // MARK: - Private
+
+    private func checkInterrupted() throws {
+        guard let flag = interruptedFlag else { return }
+        if flag.value {
+            // Clear the flag so the next call can succeed (worker auto-relaunches)
+            flag.value = false
+            throw TranscriptionError.workerInterrupted
+        }
+    }
+
+    private func emitStatus(_ status: ModelStatus) {
+        currentStatus = status
+        for (_, continuation) in statusContinuations {
+            continuation.yield(status)
+        }
+    }
+
+    private func removeContinuation(id: UUID) {
+        statusContinuations.removeValue(forKey: id)
+    }
+
+    private func mapToTranscriptionError(_ error: Error) -> TranscriptionError {
+        if let transcriptionError = error as? TranscriptionError { return transcriptionError }
+        return .transcriptionFailed(error.localizedDescription)
+    }
+}
+
+/// Thread-safe mutable flag for XPC interruption state.
+///
+/// The `NSXPCConnection` interruption handler runs on an arbitrary queue,
+/// outside the `Transcriber` actor. This class provides a thread-safe way
+/// for the handler to signal the interruption, which the actor reads on
+/// next call.
+final class InterruptedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+
+    init() {}
+
+    var value: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _value
+        }
+        set {
+            lock.lock()
+            _value = newValue
+            lock.unlock()
+        }
+    }
+}

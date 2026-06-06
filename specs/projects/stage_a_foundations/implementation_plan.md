@@ -24,7 +24,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   `TranscriptionEngine` protocol; `InProcessTranscriptionEngine` (refactor of `ArgMaxProcessor` behind the protocol); two-stream merge to mono 16 kHz with label retention; `ModelStatus` transitions; disk-space pre-check.
   **Done when:** `MergeTests`, `StatusMachineTests` pass (stub worker + bundled fixture clip; no live model download).
 
-- [ ] **Phase 1.3 — Client + XPC adapter + error mapping.**
+- [x] **Phase 1.3 — Client + XPC adapter + error mapping.**
   `Transcriber` actor with `.inProcess` and `.hosted` backends; the `@objc TranscriberServiceProtocol` and the adapter to/from `TranscriptionEngine`; `interruptionHandler` → `workerInterrupted`; `statusStream`.
   **Done when:** `ClientErrorMappingTests` pass (stub connection seam; simulated interruption is retriable). *(The real `.xpc` bundle is built in Stage 4; the hosted path is unit-tested via a seam here.)*
 

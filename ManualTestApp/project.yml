@@ -78,5 +78,14 @@ schemes:
         ManualTestApp: all
     run:
       config: Debug
+      # Expose SRCROOT to the launched app so ResultsStore writes to the
+      # checked-in ManualTestApp/Results/manual_test_results.json (see
+      # ScriptTabView.resultsFileURL). SRCROOT is a build-time setting and is
+      # NOT in the runtime env unless passed through here; Xcode expands the
+      # $(SRCROOT) reference at launch.
+      environmentVariables:
+        - variable: SRCROOT
+          value: $(SRCROOT)
+          isEnabled: true
     test:
       config: Debug

@@ -76,7 +76,6 @@ schemes:
     build:
       targets:
         ManualTestApp: all
-        BiscottiTranscriber: all
     run:
       config: Debug
     test:

@@ -59,7 +59,9 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
         "com.hnc.Discord",
         "com.apple.FaceTime",
         "com.apple.Safari",
-        "company.thebrowser.Browser"
+        "company.thebrowser.Browser",
+        "com.apple.avconferenced",
+        "com.apple.WebKit.GPU"
     ]
 
     public static let meetingAppNames: [String: String] = [
@@ -72,6 +74,8 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
         "com.hnc.Discord": "Discord",
         "com.apple.FaceTime": "FaceTime",
         "com.apple.Safari": "Safari",
-        "company.thebrowser.Browser": "Arc Browser"
+        "company.thebrowser.Browser": "Arc Browser",
+        "com.apple.avconferenced": "avconferenced",
+        "com.apple.WebKit.GPU": "WebKit (GPU Process)"
     ]
 }

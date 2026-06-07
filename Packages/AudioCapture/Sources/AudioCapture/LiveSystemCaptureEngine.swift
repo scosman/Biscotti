@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import CoreAudio
 import Foundation
@@ -10,7 +11,8 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 ///
 /// Creates a process tap + aggregate device referencing the default output
 /// device, installs an IOProc that copies buffers through a lock-free ring
-/// buffer to a writer thread, which writes PCM to a CAF file.
+/// buffer to a writer thread, which writes ADTS AAC directly via
+/// `ExtAudioFile`.
 ///
 /// This is a thin hardware adapter -- all orchestration lives in
 /// `AudioRecorder`. Tested only by the Manual Test App.
@@ -45,8 +47,15 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// Buffer samples fed to the permission checker for zero-detection.
     let permissionChecker: LiveSystemPermissionChecker
 
-    init(permissionChecker: LiveSystemPermissionChecker = LiveSystemPermissionChecker()) {
+    /// Encoder settings used for ADTS AAC file creation.
+    private let encoder: EncoderSettings
+
+    init(
+        permissionChecker: LiveSystemPermissionChecker = LiveSystemPermissionChecker(),
+        encoder: EncoderSettings = .voice
+    ) {
         self.permissionChecker = permissionChecker
+        self.encoder = encoder
     }
 
     func start(writingTo url: URL) async throws {
@@ -130,54 +139,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
             throw CaptureError.aggregateDeviceFailed(status)
         }
         aggregateDeviceID = aggID
-    }
-
-    private func openAudioFile(url: URL) throws {
-        guard let tapFormat = queryTapFormat() else {
-            throw CaptureError.tapCreationFailed(-2)
-        }
-
-        tapSampleRate = tapFormat.mSampleRate
-
-        // Write PCM CAF (crash-safe).
-        var cafASBD = AudioStreamBasicDescription(
-            mSampleRate: tapFormat.mSampleRate,
-            mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: tapFormat.mBytesPerPacket,
-            mFramesPerPacket: 1,
-            mBytesPerFrame: tapFormat.mBytesPerFrame,
-            mChannelsPerFrame: tapFormat.mChannelsPerFrame,
-            mBitsPerChannel: 32,
-            mReserved: 0
-        )
-
-        var fileRef: ExtAudioFileRef?
-        let status = ExtAudioFileCreateWithURL(
-            url as CFURL,
-            kAudioFileCAFType,
-            &cafASBD,
-            nil,
-            AudioFileFlags.eraseFile.rawValue,
-            &fileRef
-        )
-        guard status == noErr, let file = fileRef else {
-            throw CaptureError.tapCreationFailed(status)
-        }
-        audioFile = file
-    }
-
-    private func queryTapFormat() -> AudioStreamBasicDescription? {
-        var format = AudioStreamBasicDescription()
-        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioTapPropertyFormat,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let status = AudioObjectGetPropertyData(tapObjectID, &address, 0, nil, &size, &format)
-        guard status == noErr else { return nil }
-        return format
     }
 
     // MARK: - Writer Thread
@@ -330,5 +291,79 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         if capturingFlag.load(ordering: .acquiring) {
             teardown()
         }
+    }
+}
+
+// MARK: - Audio File Setup
+
+extension LiveSystemCaptureEngine {
+    private func openAudioFile(url: URL) throws {
+        guard let tapFormat = queryTapFormat() else {
+            throw CaptureError.tapCreationFailed(-2)
+        }
+
+        tapSampleRate = tapFormat.mSampleRate
+
+        // Create an ADTS AAC file — the encoder fills in packet details.
+        var outputASBD = encoder.outputASBD()
+        var fileRef: ExtAudioFileRef?
+        let createStatus = ExtAudioFileCreateWithURL(
+            url as CFURL,
+            encoder.fileType,
+            &outputASBD,
+            nil,
+            AudioFileFlags.eraseFile.rawValue,
+            &fileRef
+        )
+        guard createStatus == noErr, let file = fileRef else {
+            throw CaptureError.tapCreationFailed(createStatus)
+        }
+
+        // Client format = the tap's native PCM format. ExtAudioFile converts
+        // PCM → AAC on each write. We use the tap's format (not encoder's
+        // processingFormat) because the system tap delivers at its own
+        // sample rate and channel count.
+        var clientASBD = AudioStreamBasicDescription(
+            mSampleRate: tapFormat.mSampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: tapFormat.mBytesPerPacket,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: tapFormat.mBytesPerFrame,
+            mChannelsPerFrame: tapFormat.mChannelsPerFrame,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        let clientStatus = ExtAudioFileSetProperty(
+            file,
+            kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
+            &clientASBD
+        )
+        guard clientStatus == noErr else {
+            ExtAudioFileDispose(file)
+            throw CaptureError.tapCreationFailed(clientStatus)
+        }
+
+        // Commit the target bit rate after the converter exists.
+        let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
+        if brStatus != noErr {
+            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
+        }
+
+        audioFile = file
+    }
+
+    private func queryTapFormat() -> AudioStreamBasicDescription? {
+        var format = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(tapObjectID, &address, 0, nil, &size, &format)
+        guard status == noErr else { return nil }
+        return format
     }
 }

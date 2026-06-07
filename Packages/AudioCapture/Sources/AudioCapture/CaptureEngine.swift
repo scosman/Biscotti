@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Seam for a single audio capture stream (mic or system).
@@ -51,4 +52,17 @@ public protocol DeviceChangeProvider: Sendable {
 /// Tests: return a canned Bool.
 public protocol SystemPermissionChecker: Sendable {
     func probableDenied() async -> Bool
+}
+
+/// Seam for mic permission preflight.
+///
+/// Real: wraps `AVCaptureDevice.authorizationStatus(for: .audio)`.
+/// Tests: inject a canned `AVAuthorizationStatus`.
+public protocol MicPermissionChecker: Sendable {
+    func authorizationStatus() -> AVAuthorizationStatus
+
+    /// Requests mic access from the user. Returns `true` if granted.
+    ///
+    /// Called when `authorizationStatus()` returns `.notDetermined`.
+    func requestAccess() async -> Bool
 }

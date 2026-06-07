@@ -8,15 +8,19 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 
 /// Live microphone capture via AVAudioEngine input-node tap.
 ///
-/// Writes PCM to a CAF file. Handles route-change survival internally:
-/// on `AVAudioEngineConfigurationChange`, re-queries the input format,
-/// reinstalls the tap with a fresh converter, and restarts the engine.
+/// Writes ADTS AAC directly via `ExtAudioFile`. Handles route-change
+/// survival internally: on `AVAudioEngineConfigurationChange`, re-queries
+/// the input format, reinstalls the tap with a fresh converter, and
+/// restarts the engine.
 ///
 /// This is a thin hardware adapter -- all orchestration lives in
 /// `AudioRecorder`. Tested only by the Manual Test App.
 final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
     private let engine = AVAudioEngine()
-    private let processingFormat: AVAudioFormat
+    private let encoder: EncoderSettings
+    private var processingFormat: AVAudioFormat {
+        encoder.processingFormat
+    }
 
     /// Stores the `ExtAudioFileRef` (an opaque pointer) as an atomic integer
     /// so the real-time tap callback can read it without taking a lock.
@@ -37,8 +41,8 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
-    init(encoder: EncoderSettings = .voiceM4A) {
-        processingFormat = encoder.processingFormat
+    init(encoder: EncoderSettings = .voice) {
+        self.encoder = encoder
     }
 
     func start(writingTo url: URL) async throws {
@@ -51,10 +55,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        let file = try Self.createExtAudioFile(
-            url: url,
-            clientFormat: processingFormat
-        )
+        let file = try createExtAudioFile(url: url)
         setExtFile(file)
 
         do {
@@ -112,29 +113,26 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     // MARK: - ExtAudioFile creation
 
-    private static func createExtAudioFile(
-        url: URL,
-        clientFormat: AVAudioFormat
-    ) throws -> ExtAudioFileRef {
-        // Write PCM to CAF (crash-safe: no pakt chunk needed for uncompressed).
-        var cafASBD = clientFormat.streamDescription.pointee
+    private func createExtAudioFile(url: URL) throws -> ExtAudioFileRef {
+        // Create an ADTS AAC file — the encoder fills in packet details.
+        var outputASBD = encoder.outputASBD()
         var fileRef: ExtAudioFileRef?
         let createStatus = ExtAudioFileCreateWithURL(
             url as CFURL,
-            kAudioFileCAFType,
-            &cafASBD,
+            encoder.fileType,
+            &outputASBD,
             nil,
             AudioFileFlags.eraseFile.rawValue,
             &fileRef
         )
         guard createStatus == noErr, let file = fileRef else {
             throw CaptureError.micEngineFailed(
-                "Failed to create CAF file (OSStatus \(createStatus))"
+                "Failed to create ADTS AAC file (OSStatus \(createStatus))"
             )
         }
 
-        // Client format matches the file format (PCM), so no converter needed.
-        var clientASBD = clientFormat.streamDescription.pointee
+        // Set client format to PCM so ExtAudioFile converts PCM → AAC on write.
+        var clientASBD = processingFormat.streamDescription.pointee
         let clientStatus = ExtAudioFileSetProperty(
             file,
             kExtAudioFileProperty_ClientDataFormat,
@@ -146,6 +144,12 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
             throw CaptureError.micEngineFailed(
                 "Failed to set client format (OSStatus \(clientStatus))"
             )
+        }
+
+        // Commit the target bit rate after the converter exists.
+        let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
+        if brStatus != noErr {
+            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
         }
 
         return file

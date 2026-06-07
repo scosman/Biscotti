@@ -69,6 +69,32 @@ struct AudioProcessTests {
         #expect(process.displayName == "Unknown (99)")
     }
 
+    @Test("avconferenced is recognized")
+    func avconferencedRecognized() {
+        let proc = AudioProcess(
+            id: 20,
+            bundleID: "com.apple.avconferenced",
+            pid: 2000,
+            isRunningInput: false,
+            isRunningOutput: true
+        )
+        #expect(proc.isMeetingApp)
+        #expect(proc.displayName == "avconferenced")
+    }
+
+    @Test("WebKit GPU Process is recognized")
+    func webKitGPURecognized() {
+        let proc = AudioProcess(
+            id: 21,
+            bundleID: "com.apple.WebKit.GPU",
+            pid: 2001,
+            isRunningInput: false,
+            isRunningOutput: true
+        )
+        #expect(proc.isMeetingApp)
+        #expect(proc.displayName == "WebKit (GPU Process)")
+    }
+
     @Test("all known bundle IDs have display names")
     func allKnownHaveDisplayNames() {
         for bundleID in AudioProcess.knownMeetingBundleIDs {

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import os
 import QuartzCore
@@ -7,9 +8,9 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Two-stream audio recorder composing a system-audio engine and a mic engine.
 ///
 /// Both streams share a single `CACurrentMediaTime()` start reference for
-/// alignment. On stop, PCM CAFs are encoded to AAC `.m4a` via
-/// `RecordingFileManager`. Route-change events are handled by stopping
-/// and restarting the affected engine without tearing down the session.
+/// alignment. Each stream writes ADTS AAC directly during capture via
+/// `ExtAudioFile` — no post-recording encode step. Route-change events are
+/// handled by reconnecting the affected engine without tearing down the session.
 public actor AudioRecorder {
     // MARK: - Dependencies (injected via seams)
 
@@ -17,6 +18,7 @@ public actor AudioRecorder {
     private let micEngine: any CaptureEngine
     private let deviceChangeProvider: any DeviceChangeProvider
     private let permissionChecker: any SystemPermissionChecker
+    private let micPermissionChecker: any MicPermissionChecker
     private let encoder: EncoderSettings
 
     // MARK: - Session state
@@ -39,12 +41,14 @@ public actor AudioRecorder {
         micEngine: some CaptureEngine,
         deviceChangeProvider: some DeviceChangeProvider,
         permissionChecker: some SystemPermissionChecker,
-        encoder: EncoderSettings = .voiceM4A
+        micPermissionChecker: some MicPermissionChecker,
+        encoder: EncoderSettings = .voice
     ) {
         self.systemEngine = systemEngine
         self.micEngine = micEngine
         self.deviceChangeProvider = deviceChangeProvider
         self.permissionChecker = permissionChecker
+        self.micPermissionChecker = micPermissionChecker
         self.encoder = encoder
     }
 
@@ -52,14 +56,30 @@ public actor AudioRecorder {
 
     /// Starts both capture streams against caller-provided paths.
     ///
-    /// Throws on engine setup failure. If the system engine starts but
-    /// the mic fails, the system engine is stopped before re-throwing.
+    /// Checks mic permission before starting engines. Throws
+    /// `CaptureError.micPermissionDenied` if the mic is denied or restricted.
+    /// If the system engine starts but the mic fails, the system engine is
+    /// stopped before re-throwing.
     public func start(paths: CapturePaths) async throws {
         guard !_isRecording else { return }
 
+        // Mic permission preflight.
+        let micStatus = micPermissionChecker.authorizationStatus()
+        switch micStatus {
+        case .authorized:
+            break
+        case .notDetermined:
+            let granted = await micPermissionChecker.requestAccess()
+            guard granted else {
+                throw CaptureError.micPermissionDenied
+            }
+        default:
+            throw CaptureError.micPermissionDenied
+        }
+
         // Start system audio first (the longer-setup path).
         do {
-            try await systemEngine.start(writingTo: paths.systemCAF)
+            try await systemEngine.start(writingTo: paths.systemAAC)
         } catch {
             logger.error("System engine start failed: \(error.localizedDescription)")
             throw error
@@ -67,7 +87,7 @@ public actor AudioRecorder {
 
         // Start mic. On failure, tear down the system engine.
         do {
-            try await micEngine.start(writingTo: paths.micCAF)
+            try await micEngine.start(writingTo: paths.micAAC)
         } catch {
             logger.error("Mic engine start failed: \(error.localizedDescription)")
             await systemEngine.stop()
@@ -86,20 +106,9 @@ public actor AudioRecorder {
         startRouteChangeListener()
     }
 
-    /// Stops capture, encodes both CAFs to `.m4a`, and returns an `EncodeResult`.
-    ///
-    /// Both encodes are attempted independently. On partial failure, the
-    /// result contains the succeeded URL(s) alongside the error, so callers
-    /// can recover whichever stream succeeded. The original CAFs are always
-    /// retained on failure (audio is never lost).
-    ///
-    /// If called while not recording, returns `nil` (no-op).
-    @discardableResult
-    public func stop() async throws -> EncodeResult? {
-        guard _isRecording, let paths else {
-            // Not recording -- nothing to do.
-            return nil
-        }
+    /// Stops capture. Idempotent — safe to call when not recording.
+    public func stop() async {
+        guard _isRecording else { return }
 
         _isRecording = false
         routeChangeTask?.cancel()
@@ -110,56 +119,9 @@ public actor AudioRecorder {
         await systemEngine.stop()
         await micEngine.stop()
 
-        logger.info("Capture stopped, encoding CAFs to M4A")
+        logger.info("Capture stopped")
         emitState()
         finishAllContinuations()
-
-        // Encode both CAFs independently so a failure in one doesn't
-        // prevent the caller from recovering the other.
-        var micURL: URL?
-        var micError: Error?
-        var systemURL: URL?
-        var systemError: Error?
-
-        do {
-            try RecordingFileManager.encodeToM4A(
-                source: paths.micCAF,
-                destination: paths.micOutput,
-                settings: encoder
-            )
-            micURL = paths.micOutput
-        } catch {
-            micError = error
-            logger.error("Mic encode failed (CAF retained): \(error.localizedDescription)")
-        }
-
-        do {
-            try RecordingFileManager.encodeToM4A(
-                source: paths.systemCAF,
-                destination: paths.systemOutput,
-                settings: encoder
-            )
-            systemURL = paths.systemOutput
-        } catch {
-            systemError = error
-            logger.error("System encode failed (CAF retained): \(error.localizedDescription)")
-        }
-
-        let result = EncodeResult(
-            mic: micURL,
-            system: systemURL,
-            micError: micError,
-            systemError: systemError
-        )
-
-        // If either encode failed, throw so callers who don't inspect
-        // the result still learn something went wrong -- but the result
-        // is returned alongside the throw via the `partialEncodeFailure` case.
-        if let firstError = micError ?? systemError {
-            throw CaptureError.partialEncodeFailed(result: result, underlying: firstError)
-        }
-
-        return result
     }
 
     // MARK: - State stream
@@ -284,13 +246,14 @@ public extension AudioRecorder {
     /// Creates a recorder wired to real Core Audio / AVAudioEngine backends.
     ///
     /// Use this for production; use the main `init` with fakes for tests.
-    static func live(encoder: EncoderSettings = .voiceM4A) -> AudioRecorder {
+    static func live(encoder: EncoderSettings = .voice) -> AudioRecorder {
         let permissionChecker = LiveSystemPermissionChecker()
         return AudioRecorder(
-            systemEngine: LiveSystemCaptureEngine(permissionChecker: permissionChecker),
+            systemEngine: LiveSystemCaptureEngine(permissionChecker: permissionChecker, encoder: encoder),
             micEngine: LiveMicCaptureEngine(encoder: encoder),
             deviceChangeProvider: LiveDeviceChangeProvider(),
             permissionChecker: permissionChecker,
+            micPermissionChecker: LiveMicPermissionChecker(),
             encoder: encoder
         )
     }

@@ -52,10 +52,10 @@ struct StartAlignmentTests {
         #expect(ctx.systemEngine.startCount == 1)
         #expect(ctx.micEngine.startCount == 1)
 
-        // System was given the system CAF URL
-        #expect(ctx.systemEngine.lastURL == ctx.paths.systemCAF)
-        // Mic was given the mic CAF URL
-        #expect(ctx.micEngine.lastURL == ctx.paths.micCAF)
+        // System was given the system AAC URL
+        #expect(ctx.systemEngine.lastURL == ctx.paths.systemAAC)
+        // Mic was given the mic AAC URL
+        #expect(ctx.micEngine.lastURL == ctx.paths.micAAC)
 
         ctx.deviceChangeProvider.finish()
     }

@@ -10,10 +10,6 @@ struct AudioRecorderTests {
         let ctx = try TestRecorderFactory.make()
         defer { TestRecorderFactory.cleanup(ctx) }
 
-        // Write synthetic CAF files so RecordingFileManager has something to encode.
-        try createTestCAF(at: ctx.paths.micCAF)
-        try createTestCAF(at: ctx.paths.systemCAF)
-
         try await ctx.recorder.start(paths: ctx.paths)
 
         // isRecording should be true
@@ -24,28 +20,21 @@ struct AudioRecorderTests {
         }
 
         ctx.deviceChangeProvider.finish()
-        let result = try await ctx.recorder.stop()
-
-        // Output files should exist.
-        #expect(result != nil)
-        #expect(result?.mic != nil)
-        #expect(result?.system != nil)
-        #expect(try FileManager.default.fileExists(atPath: #require(result?.mic?.path)))
-        #expect(try FileManager.default.fileExists(atPath: #require(result?.system?.path)))
+        await ctx.recorder.stop()
 
         // Engines were stopped.
         #expect(ctx.systemEngine.stopCount == 1)
         #expect(ctx.micEngine.stopCount == 1)
     }
 
-    @Test("stop() when not recording returns nil (no-op)")
+    @Test("stop() when not recording is a no-op")
     func stopWhenNotRecordingIsNoOp() async throws {
         let ctx = try TestRecorderFactory.make()
         defer { TestRecorderFactory.cleanup(ctx) }
 
         // Never started -- stop should be a no-op, not throw.
-        let result = try await ctx.recorder.stop()
-        #expect(result == nil)
+        await ctx.recorder.stop()
+        #expect(ctx.systemEngine.stopCount == 0)
     }
 
     @Test("stateStream emits updates with isRecording true")
@@ -95,22 +84,16 @@ struct AudioRecorderTests {
 
     @Test("CapturePaths stores URLs correctly")
     func capturePathsStoresURLs() {
-        let micCAF = URL(fileURLWithPath: "/tmp/mic.caf")
-        let sysCAF = URL(fileURLWithPath: "/tmp/sys.caf")
-        let micOut = URL(fileURLWithPath: "/tmp/mic.m4a")
-        let sysOut = URL(fileURLWithPath: "/tmp/sys.m4a")
+        let micAAC = URL(fileURLWithPath: "/tmp/mic.aac")
+        let sysAAC = URL(fileURLWithPath: "/tmp/sys.aac")
 
         let paths = CapturePaths(
-            micCAF: micCAF,
-            systemCAF: sysCAF,
-            micOutput: micOut,
-            systemOutput: sysOut
+            micAAC: micAAC,
+            systemAAC: sysAAC
         )
 
-        #expect(paths.micCAF == micCAF)
-        #expect(paths.systemCAF == sysCAF)
-        #expect(paths.micOutput == micOut)
-        #expect(paths.systemOutput == sysOut)
+        #expect(paths.micAAC == micAAC)
+        #expect(paths.systemAAC == sysAAC)
     }
 
     @Test("DeviceChangeEvent equality")
@@ -120,21 +103,69 @@ struct AudioRecorderTests {
         #expect(DeviceChangeEvent.outputChanged != DeviceChangeEvent.inputChanged)
     }
 
-    // MARK: - Helpers
+    @Test("start() throws micPermissionDenied when denied")
+    func startThrowsOnMicDenied() async throws {
+        let ctx = try TestRecorderFactory.make(micAuthStatus: .denied)
+        defer { TestRecorderFactory.cleanup(ctx) }
 
-    private func createTestCAF(at url: URL, sampleRate: Double = 24000, duration: Double = 0.5) throws {
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
-        // swiftlint:disable:next force_unwrapping
-        let file = try AVAudioFile(forWriting: url, settings: format!.settings)
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        // swiftlint:disable:next force_unwrapping
-        let buffer = AVAudioPCMBuffer(pcmFormat: format!, frameCapacity: frameCount)!
-        buffer.frameLength = frameCount
-        // swiftlint:disable:next force_unwrapping
-        let samples = buffer.floatChannelData![0]
-        for idx in 0 ..< Int(frameCount) {
-            samples[idx] = sinf(Float(idx) * 2.0 * .pi * 440.0 / Float(sampleRate))
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start to throw micPermissionDenied")
+        } catch let error as CaptureError {
+            #expect(error == .micPermissionDenied)
         }
-        try file.write(from: buffer)
+
+        // Neither engine should have been started.
+        #expect(ctx.systemEngine.startCount == 0)
+        #expect(ctx.micEngine.startCount == 0)
+    }
+
+    @Test("start() proceeds when notDetermined and requestAccess grants")
+    func startProceedsOnNotDeterminedGranted() async throws {
+        let ctx = try TestRecorderFactory.make(micAuthStatus: .notDetermined, requestAccessResult: true)
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        // Should succeed — requestAccess returns true.
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        #expect(ctx.systemEngine.startCount == 1)
+        #expect(ctx.micEngine.startCount == 1)
+
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+    }
+
+    @Test("start() throws micPermissionDenied when notDetermined and requestAccess denies")
+    func startThrowsOnNotDeterminedDenied() async throws {
+        let ctx = try TestRecorderFactory.make(micAuthStatus: .notDetermined, requestAccessResult: false)
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start to throw micPermissionDenied")
+        } catch let error as CaptureError {
+            #expect(error == .micPermissionDenied)
+        }
+
+        // Neither engine should have been started.
+        #expect(ctx.systemEngine.startCount == 0)
+        #expect(ctx.micEngine.startCount == 0)
+    }
+
+    @Test("start() throws micPermissionDenied when restricted")
+    func startThrowsOnMicRestricted() async throws {
+        let ctx = try TestRecorderFactory.make(micAuthStatus: .restricted)
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start to throw micPermissionDenied")
+        } catch let error as CaptureError {
+            #expect(error == .micPermissionDenied)
+        }
+
+        // Neither engine should have been started.
+        #expect(ctx.systemEngine.startCount == 0)
+        #expect(ctx.micEngine.startCount == 0)
     }
 }

@@ -39,7 +39,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
 - [x] **Phase 2.1 — Package + pure logic carry-over.** *(committed `930c488`; **superseded by 2.3** — `EncoderSettings`/`RecordingFileManager` are CAF/M4A-based, wrong.)*
 - [x] **Phase 2.2 — Capture engine + route-change + permission inference.** *(committed `d4c0e81`+`7c3f387`; **superseded by 2.3** — PCM→CAF→M4A, wrong container.)*
 
-- [ ] **Phase 2.3 — Resolve 2.1 + 2.2: ADTS AAC rewrite + permission preflight + watchlist.**
+- [x] **Phase 2.3 — Resolve 2.1 + 2.2: ADTS AAC rewrite + permission preflight + watchlist.**
   Bring the committed AudioCapture package to the signed-off spec (see [`components/audio_capture.md`](components/audio_capture.md)). Resolves the issues from **both** 2.1 and 2.2 together:
   - **ADTS AAC direct** in both live engines: `kAudioFileCAFType` → `kAudioFileAAC_ADTSType` via `ExtAudioFile`; `EncoderSettings` becomes the ADTS encoder config (`.voice`, `outputASBD()`, `applyBitRate()` with the NULL-`CFArrayRef` ConverterConfig commit; drop `avSettings`/`voiceM4A`).
   - **Delete** `RecordingFileManager.encodeToM4A` and the encode-on-stop step; collapse `CapturePaths` to two `.aac` URLs; `stop()` returns nothing (files final as written); remove `conversionFailed`/`partialEncodeFailed`; add `micPermissionDenied`.

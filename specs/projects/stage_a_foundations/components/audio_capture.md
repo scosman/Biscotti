@@ -108,8 +108,19 @@ public struct AudioProcess: Sendable, Equatable, Identifiable {
     public let isRunningOutput: Bool
 }
 
+/// Seam for audio process activity observation.
+/// Real: Core Audio property listeners. Tests: inject synthetic lists.
+public protocol ProcessActivitySource: Sendable {
+    func currentProcesses() -> [AudioProcess]
+    func processChanges() -> AsyncStream<Void>
+}
+
 public actor AudioActivityMonitor {
-    public init()
+    public init(source: some ProcessActivitySource)
+
+    /// Convenience factory wiring the live Core Audio source.
+    public static func live() -> AudioActivityMonitor
+
     /// Emits the current set whenever process list or per-process
     /// running state changes (push-based, no polling).
     public func activityStream() -> AsyncStream<[AudioProcess]>

@@ -66,3 +66,18 @@ public protocol MicPermissionChecker: Sendable {
     /// Called when `authorizationStatus()` returns `.notDetermined`.
     func requestAccess() async -> Bool
 }
+
+/// Seam for audio process activity observation.
+///
+/// Real: Core Audio property listeners (`kAudioHardwarePropertyProcessObjectList`
+/// + per-process `kAudioProcessPropertyIsRunning`).
+/// Tests: inject synthetic process lists and push change notifications.
+public protocol ProcessActivitySource: Sendable {
+    /// Returns the current snapshot of audio processes.
+    func currentProcesses() -> [AudioProcess]
+
+    /// Returns a stream that fires whenever the process list changes or
+    /// any tracked process's running state toggles. The consumer should
+    /// call `currentProcesses()` to get the updated snapshot.
+    func processChanges() -> AsyncStream<Void>
+}

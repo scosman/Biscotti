@@ -147,6 +147,94 @@ enum CoreAudioHelpers {
         )
     }
 
+    // MARK: - Process List Listener
+
+    /// Handle for a system-level process list listener, used for removal.
+    struct ProcessListListener: @unchecked Sendable {
+        let block: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
+        let queue: DispatchQueue
+    }
+
+    /// Registers a listener for `kAudioHardwarePropertyProcessObjectList` changes.
+    /// Returns a handle that must be passed to `removeProcessListListener` for cleanup,
+    /// or `nil` if registration failed.
+    @discardableResult
+    static func addProcessListListener(
+        queue: DispatchQueue,
+        handler: @escaping @Sendable () -> Void
+    ) -> ProcessListListener? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyProcessObjectList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let block: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void = { _, _ in
+            handler()
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &address, queue, block
+        )
+        guard status == noErr else { return nil }
+        return ProcessListListener(block: block, queue: queue)
+    }
+
+    /// Removes a previously-registered process list listener.
+    static func removeProcessListListener(_ listener: ProcessListListener) {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyProcessObjectList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &address, listener.queue, listener.block
+        )
+    }
+
+    // MARK: - Per-Process Property Listener
+
+    /// Handle for a per-process property listener, used for removal.
+    struct ProcessPropertyListener: @unchecked Sendable {
+        let objectID: AudioObjectID
+        let propertySelector: AudioObjectPropertySelector
+        let block: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
+        let queue: DispatchQueue
+    }
+
+    /// Registers a listener for a specific property on a single audio process object.
+    /// Returns `nil` if the process ID is invalid (registration fails).
+    static func addProcessPropertyListener(
+        processID: AudioObjectID,
+        property: AudioObjectPropertySelector,
+        queue: DispatchQueue,
+        handler: @escaping @Sendable () -> Void
+    ) -> ProcessPropertyListener? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: property,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let block: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void = { _, _ in
+            handler()
+        }
+        let status = AudioObjectAddPropertyListenerBlock(processID, &address, queue, block)
+        guard status == noErr else { return nil }
+        return ProcessPropertyListener(
+            objectID: processID, propertySelector: property, block: block, queue: queue
+        )
+    }
+
+    /// Removes a previously-registered per-process property listener.
+    static func removeProcessPropertyListener(_ listener: ProcessPropertyListener) {
+        var address = AudioObjectPropertyAddress(
+            mSelector: listener.propertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            listener.objectID, &address, listener.queue, listener.block
+        )
+    }
+
     // MARK: - Single-Process I/O State
 
     static func processIOState(for processID: AudioObjectID) -> (isRunningInput: Bool, isRunningOutput: Bool) {

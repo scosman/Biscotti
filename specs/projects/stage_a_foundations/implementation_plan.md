@@ -46,7 +46,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   - Keep route-change **file-preserving** (already correct); add **mic `AVCaptureDevice.authorizationStatus` preflight** (refuse-to-start on denied); add `com.apple.avconferenced` + `com.apple.WebKit.GPU` to the seed watchlist.
   **Done when:** `build` + `test` green; tests reworked — `EncoderSettingsTests` (ADTS/24k/mono/64k + `outputASBD`/`applyBitRate`), `StartAlignmentTests`, `RouteChangeTests` (file-preserving; only initial `start` creates the file), permission-preflight test; CAF/M4A tests removed.
 
-- [ ] **Phase 2.4 — Per-process monitoring.**
+- [x] **Phase 2.4 — Per-process monitoring.**
   `AudioActivityMonitor` (never built) + `AudioProcess` event stream — **push-based** per-process `kAudioProcessPropertyIsRunning` listeners (NOT `IsRunningInput`/`Output`), reconciled against `kAudioHardwarePropertyProcessObjectList` changes.
   **Done when:** `ProcessPropertyListenerTests` pass (synthetic process-list + running-state changes).
 

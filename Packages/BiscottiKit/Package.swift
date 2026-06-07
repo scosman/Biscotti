@@ -5,7 +5,8 @@ let package = Package(
     name: "BiscottiKit",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "BiscottiKit", targets: ["BiscottiKit"])
+        .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
+        .library(name: "DataStore", targets: ["DataStore"])
     ],
     targets: [
         .target(
@@ -15,6 +16,15 @@ let package = Package(
         .testTarget(
             name: "BiscottiKitTests",
             dependencies: ["BiscottiKit"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "DataStore",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "DataStoreTests",
+            dependencies: ["DataStore"],
             swiftSettings: warningsAsErrors
         )
     ],

@@ -54,7 +54,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
 
 → [`components/data_store.md`](components/data_store.md)
 
-- [ ] **Phase 3.1 — Schema + container + CRUD + people.**
+- [x] **Phase 3.1 — Schema + container + CRUD + people.**
   Add the `DataStore` target to `BiscottiKit`; the `@Model` types per the signed-off schema — `Meeting`, `Person` (many-to-many `participants` + one-to-many `organizer`, SwiftData-native inverses), `TranscriptRecord`, `TranscriptSegmentRecord`, `TranscriptWordRecord`, `AudioFileRef` (mic/system), `CalendarSnapshot` (expanded fields + link keys), `AppSettings`; `DataStore` actor with `.onDisk`/`.inMemory` storage, CloudKit-ready-but-off config; `VersionedSchema` + empty `SchemaMigrationPlan`; meeting CRUD + recent/upcoming; `findOrCreatePerson` / `setParticipants`.
   **Done when:** `ContainerTests`, `MeetingCRUDTests`, `PeopleTests` pass against an in-memory container.
 

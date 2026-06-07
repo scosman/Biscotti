@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
-        .library(name: "DataStore", targets: ["DataStore"])
+        .library(name: "DataStore", targets: ["DataStore"]),
+        .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription")
@@ -31,6 +32,15 @@ let package = Package(
         .testTarget(
             name: "DataStoreTests",
             dependencies: ["DataStore", .product(name: "Transcription", package: "Transcription")],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ManualTestKit",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ManualTestKitTests",
+            dependencies: ["ManualTestKit"],
             swiftSettings: warningsAsErrors
         )
     ],

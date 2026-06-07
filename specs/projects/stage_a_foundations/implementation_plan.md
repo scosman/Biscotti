@@ -66,7 +66,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
 
 → [`components/manual_test_app.md`](components/manual_test_app.md). Depends on the **realigned** libraries (1.5, 2.3, 2.4, 3.x).
 
-- [ ] **Phase 4.1 — `ManualTestKit` (testable harness logic).**
+- [x] **Phase 4.1 — `ManualTestKit` (testable harness logic).**
   Add the `ManualTestKit` target to `BiscottiKit`; `TestStep/TestScript/TestStatus/TestResult/CheckOutcome/ResultsStore`; define the two `TestScript`s (Audio Capture, Transcription) as values; auto-check helpers (two `.aac` exist + sane size, "no segment past duration").
   **Done when:** `ResultsStoreTests`, `ScriptShapeTests`, `CIGateTests`, `CheckOutcomeTests` pass.
 

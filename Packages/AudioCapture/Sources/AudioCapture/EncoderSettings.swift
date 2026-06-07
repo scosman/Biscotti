@@ -103,7 +103,7 @@ public struct EncoderSettings: Sendable, Equatable {
 
     /// PCM format for the mic tap pre-conversion (and the ExtAudioFile client
     /// format). Returns a standard float format at the configured sample rate
-    /// and channel count.
+    /// and channel count — matching the validated AudioLab experiment.
     public var processingFormat: AVAudioFormat {
         // AVAudioFormat only returns nil for invalid channel layouts;
         // standard mono/stereo rates always succeed.

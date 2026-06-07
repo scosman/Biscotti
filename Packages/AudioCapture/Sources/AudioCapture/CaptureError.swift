@@ -18,3 +18,23 @@ public enum CaptureError: Error, Sendable, Equatable {
     /// Mic permission was denied or restricted.
     case micPermissionDenied
 }
+
+extension CaptureError: LocalizedError {
+    /// Human-readable reason. Without this, the bridged `NSError` only exposes
+    /// the case index (e.g. "CaptureError error 2"), hiding the OSStatus /
+    /// converter / format details carried in the associated values.
+    public var errorDescription: String? {
+        switch self {
+        case let .tapCreationFailed(status):
+            "System audio tap creation failed (OSStatus \(status))"
+        case let .aggregateDeviceFailed(status):
+            "Aggregate device creation failed (OSStatus \(status))"
+        case let .micEngineFailed(message):
+            "Mic engine failed: \(message)"
+        case .probablePermissionDenied:
+            "System audio appears blocked (all-zero buffers) — grant Screen & System Audio Recording in Settings."
+        case .micPermissionDenied:
+            "Microphone permission denied or restricted."
+        }
+    }
+}

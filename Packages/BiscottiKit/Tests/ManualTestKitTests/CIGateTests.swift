@@ -103,26 +103,33 @@ struct CIGateTests {
             .deletingLastPathComponent() // repo root
     }
 
-    @Test("Seed results file reports all step IDs as unrun")
-    func seedFileAllUnrun() throws {
-        let seedURL = CIGateTests.repoRoot()
+    @Test("Results file parses and covers every canonical step ID")
+    func resultsFileCoversAllStepIDs() throws {
+        let resultsURL = CIGateTests.repoRoot()
             .appendingPathComponent("ManualTestApp")
             .appendingPathComponent("Results")
             .appendingPathComponent("manual_test_results.json")
 
-        // Verify the seed file exists so this test fails clearly if it's moved.
+        // Verify the file exists so this test fails clearly if it's moved.
         #expect(
-            FileManager.default.fileExists(atPath: seedURL.path),
-            "Seed file not found at \(seedURL.path)"
+            FileManager.default.fileExists(atPath: resultsURL.path),
+            "Results file not found at \(resultsURL.path)"
         )
 
-        let store = ResultsStore(fileURL: seedURL)
+        let store = ResultsStore(fileURL: resultsURL)
+        // Must parse as a valid results dictionary.
+        let results = try store.load()
         let allIDs = store.allStepIDs(in: allScripts)
-        let unrunIDs = try store.unrun(in: allScripts)
 
-        // The seed file should contain every step ID from allScripts, all marked not-run.
+        // Every canonical step ID must have an entry (any status). This catches
+        // script/results drift WITHOUT constraining the human-recorded status:
+        // this file is the live Phase 4.5 results store (populated on real
+        // hardware), not a pristine seed, so saved pass/fail results must coexist
+        // with a green `make test`. The non-gating `manual-tests-check` is what
+        // tracks whether every step has actually been run.
         #expect(allIDs.count == 21, "Expected 21 total step IDs (12 audio + 9 transcription)")
-        #expect(unrunIDs.count == 21, "Seed file should have all 21 steps as not-run")
-        #expect(unrunIDs == allIDs, "Every step ID should be unrun in the seed file")
+        for id in allIDs {
+            #expect(results[id] != nil, "Results file is missing an entry for step '\(id)'")
+        }
     }
 }

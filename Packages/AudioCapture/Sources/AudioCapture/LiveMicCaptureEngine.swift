@@ -18,9 +18,17 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let encoder: EncoderSettings
-    private var processingFormat: AVAudioFormat {
-        encoder.processingFormat
-    }
+
+    /// The mic tap's PCM target format and the ExtAudioFile client format.
+    ///
+    /// **Stored, not recomputed.** `EncoderSettings.processingFormat` builds a
+    /// fresh `AVAudioFormat` on every access; reading `streamDescription.pointee`
+    /// off such a temporary returns an interior pointer into an object ARC frees
+    /// on the same line, yielding an all-zero ASBD (`mFormatID == 0` →
+    /// `kExtAudioFileError_NonPCMClientFormat`, -66563). Holding one retained
+    /// instance keeps that pointer valid — the AudioLab experiment used a
+    /// `static let` for exactly this reason.
+    private let processingFormat: AVAudioFormat
 
     /// Stores the `ExtAudioFileRef` (an opaque pointer) as an atomic integer
     /// so the real-time tap callback can read it without taking a lock.
@@ -43,6 +51,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     init(encoder: EncoderSettings = .voice) {
         self.encoder = encoder
+        processingFormat = encoder.processingFormat
     }
 
     func start(writingTo url: URL) async throws {
@@ -54,6 +63,9 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        logger.info(
+            "Mic start: input \(Int(inputFormat.sampleRate))Hz / \(inputFormat.channelCount)ch"
+        )
 
         let file = try createExtAudioFile(url: url)
         setExtFile(file)
@@ -65,7 +77,11 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         } catch {
             inputNode.removeTap(onBus: 0)
             closeExtFile()
-            throw CaptureError.micEngineFailed(error.localizedDescription)
+            let detail = "engine start failed " +
+                "(input \(Int(inputFormat.sampleRate))Hz/\(inputFormat.channelCount)ch): " +
+                error.localizedDescription
+            logger.error("\(detail)")
+            throw CaptureError.micEngineFailed(detail)
         }
 
         configObserver = NotificationCenter.default.addObserver(

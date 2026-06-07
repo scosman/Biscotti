@@ -52,6 +52,44 @@ public actor AudioRecorder {
         self.encoder = encoder
     }
 
+    // MARK: - Permissions
+
+    /// Surfaces both TCC permission prompts (microphone + system audio) **without**
+    /// running the recording pipeline.
+    ///
+    /// The microphone prompt comes from the real authorization API. System-audio
+    /// capture has **no** permission API — the prompt only appears when a Core Audio
+    /// process tap is created — so it's surfaced by briefly starting and stopping the
+    /// *system* engine alone. The microphone `AVAudioEngine`/AAC encoder is never
+    /// touched here, so this can't fail for capture-pipeline reasons.
+    ///
+    /// - Parameter systemProbePath: scratch file the system engine writes during the
+    ///   brief probe (safe to discard; a real recording overwrites the real paths).
+    /// - Returns: whether microphone access is authorized.
+    @discardableResult
+    public func requestPermissions(systemProbePath: URL) async -> Bool {
+        // Microphone: real authorization API → dialog only when not yet determined.
+        let micGranted: Bool = switch micPermissionChecker.authorizationStatus() {
+        case .authorized:
+            true
+        case .notDetermined:
+            await micPermissionChecker.requestAccess()
+        default:
+            false
+        }
+
+        // System audio: no API — creating the process tap triggers the prompt.
+        // Start + stop ONLY the system engine; never the mic engine.
+        do {
+            try await systemEngine.start(writingTo: systemProbePath)
+            await systemEngine.stop()
+        } catch {
+            logger.error("System-audio permission probe failed: \(error.localizedDescription)")
+        }
+
+        return micGranted
+    }
+
     // MARK: - Start / Stop
 
     /// Starts both capture streams against caller-provided paths.

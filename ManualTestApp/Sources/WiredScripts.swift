@@ -1,3 +1,4 @@
+import AppKit
 import AudioCapture
 import AVFoundation
 import Foundation
@@ -72,8 +73,11 @@ enum WiredScripts {
                             at: captureDirectory,
                             withIntermediateDirectories: true
                         )
-                        try await recorder.start(paths: paths)
-                        await recorder.stop()
+                        // Only request permissions — do NOT start the recording
+                        // engine. This triggers the mic + system-audio TCC prompts
+                        // without touching the mic AVAudioEngine/encoder.
+                        let probe = captureDirectory.appendingPathComponent("permission_probe.aac")
+                        await recorder.requestPermissions(systemProbePath: probe)
                     }
                 case "ac_start_recording":
                     return .action(id: id, label: label) {
@@ -86,6 +90,14 @@ enum WiredScripts {
                 case "ac_stop_recording":
                     return .action(id: id, label: label) {
                         await recorder.stop()
+                        // Reveal both recordings in Finder so the human can play
+                        // them for the playback questions that follow — there is
+                        // otherwise no UI to open the captures folder.
+                        await MainActor.run {
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                [paths.micAAC, paths.systemAAC]
+                            )
+                        }
                     }
                 default:
                     return step

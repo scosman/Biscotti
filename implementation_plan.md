@@ -18,6 +18,8 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 
 ## Stage A — Foundations (no runnable app yet)
 
+> **Delivery status (Stage A build).** Projects 0–3 and the Stage-A Manual Test App are **built and autonomously green** (`lint` + `test` + `build_app`), delivered via the `stage_a_foundations` spec project: **Project 1 — Transcription** (`Packages/Transcription`, incl. the shared `XPCServices/BiscottiTranscriber.xpc` glue), **Project 2 — Audio Capture** (`Packages/AudioCapture`, ADTS-AAC capture + per-process monitoring), **Project 3 — Data Store** (`DataStore` module in `BiscottiKit`), plus **`ManualTestKit` + `ManualTestApp`** (the hardware test harness) and the `manual-tests-check` CI gate. **Hardware/human sign-off is still pending:** the Manual Test App's *Phase 4.5* — running every scripted test on real Apple-silicon hardware — has not been done yet, so the `manual-tests-check` gate is intentionally RED until those results are recorded. The library-level **AI test set** for Transcription (Project 5 below) and transcript-text **search** (Project 7) remain as their own future projects.
+
 ### Project 0 — Scaffolding & Tooling
 - **Archetype:** foundation (infrastructure).
 - **Delivers:** the repo skeleton that everything else is built in — buildable empty `BiscottiKit` package + thin `App` Xcode project that launches, with green CI.

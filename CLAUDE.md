@@ -2,7 +2,7 @@
 
 Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
 
-**Current stage:** scaffolding is complete (Project 0). The `Packages/BiscottiKit` package, `App/` target (XcodeGen), `Makefile` command surface, `hooks-mcp` agent integration, CI, and lint/format tooling are all in place. The next step is building the foundation libraries per the roadmap (`implementation_plan.md`).
+**Current stage:** Scaffolding (Project 0) and the **Stage A foundations** are built. Beyond the scaffolding (`BiscottiKit`, `App/`, `Makefile`, `hooks-mcp`, CI, lint/format), the repo now has the `Transcription` and `AudioCapture` packages, the `DataStore` + `ManualTestKit` modules in `BiscottiKit`, the `ManualTestApp` (XcodeGen) that hosts the shared `XPCServices/BiscottiTranscriber.xpc`, and a manual-test CI gate — all green on `lint`/`test`/`build_app`. **The one remaining Stage A step is the human Phase 4.5:** running `ManualTestApp` on real Apple-silicon hardware to fill in the pass/fail results (the non-gating `manual-tests-check` job is RED by design until then). The next *product* step after 4.5 is the MVP (Record → Transcribe). See the roadmap (`implementation_plan.md`).
 
 > This file is a map. Read the specific docs below before acting; don't rely on this summary alone for decisions.
 

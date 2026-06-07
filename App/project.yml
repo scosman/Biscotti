@@ -33,6 +33,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti
         INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
         CODE_SIGN_ENTITLEMENTS: Biscotti.entitlements
         MARKETING_VERSION: "0.0.1"
         CURRENT_PROJECT_VERSION: "1"

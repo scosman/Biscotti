@@ -74,7 +74,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   Create `ManualTestApp/` (`project.yml`, Info.plist mic+system usage strings, entitlements, non-sandboxed) — thin SwiftUI `TabView` + generic script-runner, wiring `ManualTestKit` + `AudioRecorder` + `Transcriber(.inProcess)` (realigned API); results via `ResultsStore`.
   **Done when:** `build_app` (non-gating) builds `ManualTestApp` green; harness logic still `test`-green.
 
-- [ ] **Phase 4.3 — `BiscottiTranscriber.xpc` service + hosted wiring.**
+- [x] **Phase 4.3 — `BiscottiTranscriber.xpc` service + hosted wiring.**
   Create the **shared** glue in `XPCServices/BiscottiTranscriber/` (`main.swift`, Info.plist, entitlements) linking the `Transcription` package behind `TranscriberServiceProtocol`; declare the `.xpc` target in `ManualTestApp/project.yml` (sources → `../XPCServices/BiscottiTranscriber`); switch the Transcription tab to `Transcriber(.hosted(...))`. *(Project 4's `App/project.yml` later re-declares the same target against these same files — no reimplementation.)*
   **Done when:** `build_app` builds the app **and** the embedded `.xpc` green.
 

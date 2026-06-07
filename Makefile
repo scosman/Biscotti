@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
-LINT_PATHS := $(wildcard Packages App ManualTestApp)
+LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
 .PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean
 

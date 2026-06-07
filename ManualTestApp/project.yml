@@ -47,12 +47,35 @@ targets:
         product: Transcription
       - package: AudioCapture
         product: AudioCapture
+      - target: BiscottiTranscriber
+        embed: true
+
+  BiscottiTranscriber:
+    type: xpc-service
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: ../XPCServices/BiscottiTranscriber
+        excludes:
+          - "*.plist"
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiTranscriber
+        INFOPLIST_FILE: ../XPCServices/BiscottiTranscriber/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiTranscriber/BiscottiTranscriber.entitlements
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: Transcription
+        product: Transcription
 
 schemes:
   ManualTestApp:
     build:
       targets:
         ManualTestApp: all
+        BiscottiTranscriber: all
     run:
       config: Debug
     test:

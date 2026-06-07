@@ -31,8 +31,10 @@ enum WiredScripts {
     /// Shared recorder instance (actor -- thread-safe).
     private static let recorder = AudioRecorder.live()
 
-    /// Shared transcriber instance (actor -- .inProcess, no XPC).
-    private static let transcriber = Transcriber(backend: .inProcess)
+    /// Shared transcriber instance (actor -- hosted via BiscottiTranscriber.xpc).
+    private static let transcriber = Transcriber(
+        backend: .hosted(serviceName: "net.scosman.biscotti.BiscottiTranscriber")
+    )
 
     /// Directory for captured audio files.
     private static var captureDirectory: URL {

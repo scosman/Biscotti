@@ -29,6 +29,19 @@ jobs:
       - name: Lint + test + build
         run: make ci
 
+  # Manual test gate — verifies that every manual-test step in the results file
+  # has been marked pass or fail. This is EXPECTED RED until a human runs
+  # ManualTestApp on real hardware and commits the results (Phase 4.5).
+  # Non-blocking (continue-on-error); informational only like app-tier.
+  manual-tests-check:
+    name: Manual tests check
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manual test results
+        run: make manual-tests-check
+
   app-tier:
     name: App build (xcodebuild)
     runs-on: macos-15

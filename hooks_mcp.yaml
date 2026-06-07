@@ -47,3 +47,7 @@ actions:
   - name: "test_app"
     description: "Non-gating: run the app test scheme"
     command: "bash -c 'set -o pipefail; make test-app 2>&1 | tail -n 30'"
+
+  - name: "manual_tests_check"
+    description: "Check that all manual test step IDs have been run (expected RED until Phase 4.5)"
+    command: "bash -c 'set -o pipefail; make manual-tests-check 2>&1 | tail -n 50'"

@@ -1,0 +1,86 @@
+{
+  "ac_crash_safety_check" : {
+    "status" : "not-run",
+    "stepID" : "ac_crash_safety_check"
+  },
+  "ac_crash_safety_setup" : {
+    "status" : "not-run",
+    "stepID" : "ac_crash_safety_setup"
+  },
+  "ac_files_exist" : {
+    "status" : "not-run",
+    "stepID" : "ac_files_exist"
+  },
+  "ac_monitoring" : {
+    "status" : "not-run",
+    "stepID" : "ac_monitoring"
+  },
+  "ac_playback_mic" : {
+    "status" : "not-run",
+    "stepID" : "ac_playback_mic"
+  },
+  "ac_playback_system" : {
+    "status" : "not-run",
+    "stepID" : "ac_playback_system"
+  },
+  "ac_request_permissions" : {
+    "status" : "not-run",
+    "stepID" : "ac_request_permissions"
+  },
+  "ac_route_change" : {
+    "status" : "not-run",
+    "stepID" : "ac_route_change"
+  },
+  "ac_start_recording" : {
+    "status" : "not-run",
+    "stepID" : "ac_start_recording"
+  },
+  "ac_stop_recording" : {
+    "status" : "not-run",
+    "stepID" : "ac_stop_recording"
+  },
+  "ac_timed_capture" : {
+    "status" : "not-run",
+    "stepID" : "ac_timed_capture"
+  },
+  "ac_two_dialogs" : {
+    "status" : "not-run",
+    "stepID" : "ac_two_dialogs"
+  },
+  "tx_crash_host_survives" : {
+    "status" : "not-run",
+    "stepID" : "tx_crash_host_survives"
+  },
+  "tx_crash_retry" : {
+    "status" : "not-run",
+    "stepID" : "tx_crash_retry"
+  },
+  "tx_crash_setup" : {
+    "status" : "not-run",
+    "stepID" : "tx_crash_setup"
+  },
+  "tx_custom_vocab" : {
+    "status" : "not-run",
+    "stepID" : "tx_custom_vocab"
+  },
+  "tx_model_disk" : {
+    "status" : "not-run",
+    "stepID" : "tx_model_disk"
+  },
+  "tx_model_download" : {
+    "status" : "not-run",
+    "stepID" : "tx_model_download"
+  },
+  "tx_no_hallucination" : {
+    "status" : "not-run",
+    "stepID" : "tx_no_hallucination"
+  },
+  "tx_speakers" : {
+    "status" : "not-run",
+    "stepID" : "tx_speakers"
+  },
+  "tx_transcribe" : {
+    "status" : "not-run",
+    "stepID" : "tx_transcribe"
+  }
+}

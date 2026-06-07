@@ -78,7 +78,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   Create the **shared** glue in `XPCServices/BiscottiTranscriber/` (`main.swift`, Info.plist, entitlements) linking the `Transcription` package behind `TranscriberServiceProtocol`; declare the `.xpc` target in `ManualTestApp/project.yml` (sources → `../XPCServices/BiscottiTranscriber`); switch the Transcription tab to `Transcriber(.hosted(...))`. *(Project 4's `App/project.yml` later re-declares the same target against these same files — no reimplementation.)*
   **Done when:** `build_app` builds the app **and** the embedded `.xpc` green.
 
-- [ ] **Phase 4.4 — CI gate + CLAUDE.md convention + seed results file.**
+- [x] **Phase 4.4 — CI gate + CLAUDE.md convention + seed results file.**
   Add `make manual-tests-check` (+ `hooks_mcp` action) and a CI job that fails if any known test id is `not-run`; seed `ManualTestApp/Results/manual_test_results.json` all `not-run`; add the CLAUDE.md staleness rule.
   **Done when:** `lint`+`test`+`build_app` green; gate logic unit-tested + correctly reports the seed as not-all-run. **By design `manual-tests-check` is RED from here until 4.5** — not part of the "automated green" bar.
 

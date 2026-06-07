@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
 LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
-.PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean
+.PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -60,6 +60,9 @@ hooks: ## Enable the opt-in pre-commit hook
 	@echo "Pre-commit hook enabled (.githooks)."
 
 ci: lint test build ## What the gating CI job runs
+
+manual-tests-check: ## Check that all manual test step IDs have been run (expected RED until Phase 4.5)
+	swift run --package-path Packages/BiscottiKit manual-tests-check ManualTestApp/Results/manual_test_results.json
 
 clean: ## Remove build artifacts + generated projects
 	rm -rf .build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj

@@ -96,16 +96,18 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make test-app` | App/UI test scheme (empty for now) | Non-gating |
 | `make hooks` | Opt-in: point git at `.githooks/pre-commit` | — |
 | `make ci` | What the gating CI job runs: `lint` + `test` + `build` | — |
+| `make manual-tests-check` | Check all manual-test steps have been run (expected RED until Phase 4.5) | Non-gating |
 | `make clean` | Remove `.build/`, `DerivedData/`, generated `.xcodeproj` | — |
 
-### CI (two tiers)
+### CI (three tiers)
 
 - **`package-tier`** (gating, required check): runs `make ci` (lint + test + build) on `macos-15`. This is the merge gate.
 - **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.
+- **`manual-tests-check`** (non-gating, `continue-on-error`): runs `make manual-tests-check` on `macos-15`. Expected RED until Phase 4.5 (when a human runs the manual tests on real hardware). Informational only — never blocks merge.
 
 ### Agent command surface (hooks-mcp)
 
-Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__precommit_checks`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).
+Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__precommit_checks`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`, `mcp__hooks-mcp__manual_tests_check`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).
 
 **XcodeBuildMCP** is also registered in `.mcp.json` for interactive xcodebuild/run/launch/log operations that a `make` target cannot model.
 
@@ -126,4 +128,4 @@ The `precommit_checks` run must be the **last thing before the commit** — if y
 ## When you change things
 
 - Updating product intent → `app_overview.md`. Updating the topology → `architecture.md`. Re-ordering/scoping work → `implementation_plan.md`. Correcting a technical finding → the relevant `research/<area>/README.md`.
-- *(Once the manual-test harness exists: mark impacted manual tests as "unrun" when touching the libraries they cover — this section will be updated with specifics then.)*
+- **Manual test staleness rule:** when you touch `Packages/Transcription` or `Packages/AudioCapture`, mark that library's manual tests as `not-run` in `ManualTestApp/Results/manual_test_results.json`. Either hand-edit the file (set `"status": "not-run"` for each step with the matching prefix: `ac_*` for AudioCapture, `tx_*` for Transcription) or use `ResultsStore.markScriptNotRun(scriptID:allStepIDs:)` from `ManualTestKit`. This causes `make manual-tests-check` (and its CI gate) to fail until a human re-runs the affected tests on real hardware and commits the updated results.

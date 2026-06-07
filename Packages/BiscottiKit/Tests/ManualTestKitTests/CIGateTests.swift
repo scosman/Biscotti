@@ -88,4 +88,41 @@ struct CIGateTests {
         let ids = store.allStepIDs(in: [CIGateTests.tinyScript, secondScript])
         #expect(ids == ["t1", "t2", "t3", "e1"])
     }
+
+    // MARK: - Seed file integration
+
+    /// Resolves the repo-root path from the test source file's location.
+    /// The test file lives at Packages/BiscottiKit/Tests/ManualTestKitTests/ — five
+    /// levels below the repo root.
+    private static func repoRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // ManualTestKitTests/
+            .deletingLastPathComponent() // Tests/
+            .deletingLastPathComponent() // BiscottiKit/
+            .deletingLastPathComponent() // Packages/
+            .deletingLastPathComponent() // repo root
+    }
+
+    @Test("Seed results file reports all step IDs as unrun")
+    func seedFileAllUnrun() throws {
+        let seedURL = CIGateTests.repoRoot()
+            .appendingPathComponent("ManualTestApp")
+            .appendingPathComponent("Results")
+            .appendingPathComponent("manual_test_results.json")
+
+        // Verify the seed file exists so this test fails clearly if it's moved.
+        #expect(
+            FileManager.default.fileExists(atPath: seedURL.path),
+            "Seed file not found at \(seedURL.path)"
+        )
+
+        let store = ResultsStore(fileURL: seedURL)
+        let allIDs = store.allStepIDs(in: allScripts)
+        let unrunIDs = try store.unrun(in: allScripts)
+
+        // The seed file should contain every step ID from allScripts, all marked not-run.
+        #expect(allIDs.count == 21, "Expected 21 total step IDs (12 audio + 9 transcription)")
+        #expect(unrunIDs.count == 21, "Seed file should have all 21 steps as not-run")
+        #expect(unrunIDs == allIDs, "Every step ID should be unrun in the seed file")
+    }
 }

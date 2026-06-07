@@ -42,6 +42,11 @@ let package = Package(
             name: "ManualTestKitTests",
             dependencies: ["ManualTestKit"],
             swiftSettings: warningsAsErrors
+        ),
+        .executableTarget(
+            name: "manual-tests-check",
+            dependencies: ["ManualTestKit"],
+            swiftSettings: warningsAsErrors
         )
     ],
     swiftLanguageModes: [.v6]

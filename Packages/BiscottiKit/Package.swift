@@ -8,6 +8,9 @@ let package = Package(
         .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
         .library(name: "DataStore", targets: ["DataStore"])
     ],
+    dependencies: [
+        .package(name: "Transcription", path: "../Transcription")
+    ],
     targets: [
         .target(
             name: "BiscottiKit",
@@ -20,11 +23,14 @@ let package = Package(
         ),
         .target(
             name: "DataStore",
+            dependencies: [
+                .product(name: "Transcription", package: "Transcription")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(
             name: "DataStoreTests",
-            dependencies: ["DataStore"],
+            dependencies: ["DataStore", .product(name: "Transcription", package: "Transcription")],
             swiftSettings: warningsAsErrors
         )
     ],

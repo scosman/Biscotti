@@ -18,7 +18,7 @@ public actor DataStore {
     }
 
     private let container: ModelContainer
-    private let context: ModelContext
+    let context: ModelContext
 
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
@@ -190,7 +190,7 @@ public actor DataStore {
 
     // MARK: - Private
 
-    private func save() throws {
+    func save() throws {
         do {
             try context.save()
         } catch {

@@ -58,7 +58,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   Add the `DataStore` target to `BiscottiKit`; the `@Model` types per the signed-off schema — `Meeting`, `Person` (many-to-many `participants` + one-to-many `organizer`, SwiftData-native inverses), `TranscriptRecord`, `TranscriptSegmentRecord`, `TranscriptWordRecord`, `AudioFileRef` (mic/system), `CalendarSnapshot` (expanded fields + link keys), `AppSettings`; `DataStore` actor with `.onDisk`/`.inMemory` storage, CloudKit-ready-but-off config; `VersionedSchema` + empty `SchemaMigrationPlan`; meeting CRUD + recent/upcoming; `findOrCreatePerson` / `setParticipants`.
   **Done when:** `ContainerTests`, `MeetingCRUDTests`, `PeopleTests` pass against an in-memory container.
 
-- [ ] **Phase 3.2 — Transcripts (modeled segments + input tracking), audio refs, snapshot, association, search.**
+- [x] **Phase 3.2 — Transcripts (modeled segments + input tracking), audio refs, snapshot, association, search.**
   Versioned transcripts mapping `TranscriptResult` → `TranscriptSegmentRecord`/`TranscriptWordRecord` rows (ordered via `index`); record inputs (`transcriptionMethodId`, `vocabularyUsed`, `mappedEventIdentifier`) + `preferredTranscriptIsStale`; audio refs + `markAudioPresence`; clearable snapshot; associate/correct; basic title+participant `search` (transcript-text search deferred to Project 7).
   **Done when:** `TranscriptVersioningTests`, `TranscriptInputTrackingTests`, `SegmentMappingTests`, `AudioRefTests`, `SnapshotTests`, `AssociationTests`, `SearchTests` pass.
 

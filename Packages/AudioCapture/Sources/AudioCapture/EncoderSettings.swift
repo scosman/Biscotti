@@ -91,13 +91,19 @@ public struct EncoderSettings: Sendable, Equatable {
         }
 
         // 3. Commit the converter config change back to ExtAudioFile.
-        //    The value is a NULL CFArrayRef (pointer-sized).
-        var nullArray: CFArray?
+        //    The value is a NULL `CFArrayRef`, expressed as a pointer-sized
+        //    null `UnsafeRawPointer?`. Both are identical bytes at runtime, but
+        //    taking `&` of a managed `CFArray?` and passing it to a C `void *`
+        //    triggers a compiler warning (and is a real bridging hazard for any
+        //    non-NULL value). Passing a `UInt32` here instead crashes
+        //    ExtAudioFile, which derefs the 4 bytes as a `CFArray`. Matches the
+        //    validated AudioLab experiment.
+        var nullConfig: UnsafeRawPointer?
         return ExtAudioFileSetProperty(
             extFile,
             kExtAudioFileProperty_ConverterConfig,
-            UInt32(MemoryLayout<CFArray?>.size),
-            &nullArray
+            UInt32(MemoryLayout<UnsafeRawPointer?>.size),
+            &nullConfig
         )
     }
 

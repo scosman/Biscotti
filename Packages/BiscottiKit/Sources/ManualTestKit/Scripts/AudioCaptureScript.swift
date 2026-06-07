@@ -22,7 +22,18 @@ public extension TestScript {
             ),
             .instruction(
                 id: "ac_timed_capture",
-                text: "Speak into the mic and play system audio (e.g. a video) for 15+ seconds, then stop."
+                text: "Press 'Run' on Start Recording, speak into the mic and play system audio "
+                    + "(e.g. a video) for 15+ seconds, then press 'Run' on Stop Recording."
+            ),
+            .action(
+                id: "ac_start_recording",
+                label: "Start Recording (stop manually when done)",
+                run: { /* wired by the app target */ }
+            ),
+            .action(
+                id: "ac_stop_recording",
+                label: "Stop Recording",
+                run: { /* wired by the app target */ }
             ),
             .autoCheck(
                 id: "ac_files_exist",

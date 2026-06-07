@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
-LINT_PATHS := $(wildcard Packages App)
+LINT_PATHS := $(wildcard Packages App ManualTestApp)
 
 .PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean
 
@@ -14,8 +14,9 @@ bootstrap: ## Install dev tools via Homebrew
 	@command -v brew >/dev/null || { echo "Install Homebrew first: https://brew.sh"; exit 1; }
 	brew bundle --file=Brewfile
 
-generate: ## Generate the Xcode project from project.yml
+generate: ## Generate Xcode projects from project.yml files
 	cd App && xcodegen generate
+	cd ManualTestApp && xcodegen generate
 
 build: ## Build all SPM packages
 	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
@@ -41,8 +42,11 @@ precommit-checks: ## The pre-commit checks (format + lint + test); the hook and 
 	$(MAKE) lint
 	$(MAKE) test
 
-build-app: generate ## NON-GATING: build the app via xcodebuild (ad-hoc)
+build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
+	  -destination 'platform=macOS,arch=arm64' \
+	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
+	cd ManualTestApp && xcodebuild -quiet -project ManualTestApp.xcodeproj -scheme ManualTestApp \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
 
@@ -57,7 +61,8 @@ hooks: ## Enable the opt-in pre-commit hook
 
 ci: lint test build ## What the gating CI job runs
 
-clean: ## Remove build artifacts + generated project
-	rm -rf .build App/Biscotti.xcodeproj
+clean: ## Remove build artifacts + generated projects
+	rm -rf .build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj
 	@for pkg in $(PACKAGES); do rm -rf $$pkg/.build; done
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Biscotti-*
+	rm -rf ~/Library/Developer/Xcode/DerivedData/ManualTestApp-*

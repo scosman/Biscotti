@@ -70,7 +70,7 @@ Each phase ends with the standard CR loop + commit (agent commit protocol: `mcp_
   Add the `ManualTestKit` target to `BiscottiKit`; `TestStep/TestScript/TestStatus/TestResult/CheckOutcome/ResultsStore`; define the two `TestScript`s (Audio Capture, Transcription) as values; auto-check helpers (two `.aac` exist + sane size, "no segment past duration").
   **Done when:** `ResultsStoreTests`, `ScriptShapeTests`, `CIGateTests`, `CheckOutcomeTests` pass.
 
-- [ ] **Phase 4.2 — App shell (XcodeGen project).**
+- [x] **Phase 4.2 — App shell (XcodeGen project).**
   Create `ManualTestApp/` (`project.yml`, Info.plist mic+system usage strings, entitlements, non-sandboxed) — thin SwiftUI `TabView` + generic script-runner, wiring `ManualTestKit` + `AudioRecorder` + `Transcriber(.inProcess)` (realigned API); results via `ResultsStore`.
   **Done when:** `build_app` (non-gating) builds `ManualTestApp` green; harness logic still `test`-green.
 

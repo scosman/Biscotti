@@ -408,7 +408,7 @@ enum AudioLabError: LocalizedError {
     case failedToCreateIOProc(OSStatus)
     case failedToStartDevice(OSStatus)
     case failedToSetEncoderBitRate(OSStatus)
-    case micEngineStartFailed(Error)
+    case micSessionStartFailed(Error)
 
     var errorDescription: String? {
         switch self {
@@ -430,8 +430,8 @@ enum AudioLabError: LocalizedError {
             return "Failed to start device (OSStatus \(s))"
         case .failedToSetEncoderBitRate(let s):
             return "Failed to set encoder bit rate (OSStatus \(s))"
-        case .micEngineStartFailed(let error):
-            return "Mic engine start failed: \(error.localizedDescription)"
+        case .micSessionStartFailed(let error):
+            return "Mic capture session start failed: \(error.localizedDescription)"
         }
     }
 }

@@ -110,29 +110,24 @@ final class RecordingCoordinator {
         guard !isRecording else { return }
         lastError = nil
 
-        // TEMP: isolate mic from system-audio tap — set false to re-enable system capture
-        let micOnlyDiagnostic = true
-
         let timestamp = RecordingFileManager.generateTimestamp()
         let paths = RecordingFileManager.filePaths(timestamp: timestamp)
 
         micFileURL = paths.mic
         systemFileURL = paths.system
 
-        if !micOnlyDiagnostic {
-            let sysCapture = SystemAudioCapture(
-                fileURL: paths.system,
-                captureMode: captureMode,
-                targetProcessID: targetProcessID
-            )
-            systemCapture = sysCapture
+        let sysCapture = SystemAudioCapture(
+            fileURL: paths.system,
+            captureMode: captureMode,
+            targetProcessID: targetProcessID
+        )
+        systemCapture = sysCapture
 
-            do {
-                try sysCapture.start()
-            } catch {
-                lastError = "System audio: \(error.localizedDescription)"
-                return
-            }
+        do {
+            try sysCapture.start()
+        } catch {
+            lastError = "System audio: \(error.localizedDescription)"
+            return
         }
 
         let mic = MicCapture(fileURL: paths.mic)

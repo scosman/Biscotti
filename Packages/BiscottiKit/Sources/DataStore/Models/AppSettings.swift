@@ -5,8 +5,8 @@ import SwiftData
 
 /// Singleton-ish application settings stored in SwiftData.
 @Model public final class AppSettings: @unchecked Sendable {
-    public var customVocabulary: [String]
-    public var launchAtLogin: Bool
+    public var customVocabulary: [String] = []
+    public var launchAtLogin: Bool = false
 
     public init(
         customVocabulary: [String] = [],

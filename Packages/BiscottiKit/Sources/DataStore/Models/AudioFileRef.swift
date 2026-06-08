@@ -13,16 +13,14 @@ public enum AudioRole: String, Codable, Sendable {
 
 /// A reference to a recorded audio file on disk. Two per meeting (mic + system).
 @Model public final class AudioFileRef: @unchecked Sendable {
-    #Unique<AudioFileRef>([\.id])
-
-    public var id: UUID
-    public var role: AudioRole
+    public var id = UUID()
+    public var role = AudioRole.mic
     /// Security-scoped bookmark for sandbox-safe access.
     public var bookmark: Data?
-    public var path: String
-    public var byteSize: Int64
+    public var path: String = ""
+    public var byteSize: Int64 = 0
     /// False when the file is missing on disk (detected by `markAudioPresence`).
-    public var isPresent: Bool
+    public var isPresent: Bool = true
 
     public init(
         id: UUID = UUID(),

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import AudioToolbox
 import CoreAudio
 import CoreMedia
@@ -34,6 +35,10 @@ final class MicCapture: @unchecked Sendable {
     private var runtimeErrorObserver: NSObjectProtocol?
     private var hasDeviceChangeListener = false
 
+    // Diagnostics (touched only on sampleQueue — no lock needed)
+    private var hasLoggedSourceFormat = false
+    private var framesWritten: Int64 = 0
+
     /// Called off the main thread on unrecoverable errors.
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
@@ -53,7 +58,7 @@ final class MicCapture: @unchecked Sendable {
         _isCapturing = true
         lock.unlock()
 
-        guard let device = AVCaptureDevice.default(for: .audio) else {
+        guard let device = MicCaptureDeviceResolver.systemDefaultInputDevice() else {
             setNotCapturing()
             throw AudioLabError.micSessionStartFailed(
                 NSError(domain: "AudioLab", code: -1,
@@ -78,6 +83,7 @@ final class MicCapture: @unchecked Sendable {
             do {
                 try configureAndStartSession(input: input)
             } catch {
+                print("[MicCapture] session start FAILED: \(error)")
                 closeExtFile()
                 setNotCapturing()
                 onUnrecoverableError?(error)
@@ -90,6 +96,11 @@ final class MicCapture: @unchecked Sendable {
         guard _isCapturing else { lock.unlock(); return }
         _isCapturing = false
         lock.unlock()
+
+        sampleQueue.async { [weak self] in
+            guard let self else { return }
+            print("[MicCapture] stopped — wrote \(framesWritten) frames")
+        }
 
         removeDeviceChangeListener()
         sessionQueue.async { [weak self] in
@@ -125,20 +136,11 @@ final class MicCapture: @unchecked Sendable {
         }
         captureSession.addInput(input)
         let output = AVCaptureAudioDataOutput()
-        // Request mono LPCM at our target rate. This makes CMIO handle the
-        // channel downmix + sample-rate conversion internally, which avoids
-        // the CMIO_Unit_Converter_Audio failure that produces zero-byte
-        // output when another app (FaceTime/Zoom) holds the mic in Voice
-        // Processing mode. It also means delivered buffers already match
-        // EncoderSettings.processingFormat, so no AVAudioConverter needed.
-        output.audioSettings = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: EncoderSettings.sampleRate,
-            AVNumberOfChannelsKey: Int(EncoderSettings.channels),
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-        ]
+        // Deliver the mic's native format (nil = no internal conversion).
+        // CMIO's internal converter fails to resample/downmix when we're
+        // the sole audio client (→ zero-byte file). Our processSampleBuffer
+        // already converts any source format to mono 24 kHz via AVAudioConverter.
+        output.audioSettings = nil
         let delegate = SampleBufferDelegate(micCapture: self)
         output.setSampleBufferDelegate(delegate, queue: sampleQueue)
         guard captureSession.canAddOutput(output) else {
@@ -150,6 +152,7 @@ final class MicCapture: @unchecked Sendable {
         captureSession.addOutput(output)
         captureSession.commitConfiguration()
         captureSession.startRunning()
+        print("[MicCapture] startRunning; session.isRunning=\(captureSession.isRunning)")
         session = captureSession
         audioOutput = output
         sampleDelegate = delegate
@@ -179,10 +182,18 @@ final class MicCapture: @unchecked Sendable {
         let targetFormat = EncoderSettings.processingFormat
         let sourceFormat = pcmBuffer.format
 
+        if !hasLoggedSourceFormat {
+            hasLoggedSourceFormat = true
+            print("[MicCapture] source format: \(sourceFormat.sampleRate) Hz, " +
+                "\(sourceFormat.channelCount) ch, interleaved=\(sourceFormat.isInterleaved)")
+        }
+
+        let written: AVAudioPCMBuffer
         if sourceFormat.sampleRate == targetFormat.sampleRate,
            sourceFormat.channelCount == targetFormat.channelCount
         {
             MicCaptureFileHelper.writeBuffer(pcmBuffer, to: file)
+            written = pcmBuffer
         } else {
             guard let converter = converterForSource(sourceFormat),
                   let converted = MicCaptureFileHelper.convert(
@@ -190,7 +201,9 @@ final class MicCapture: @unchecked Sendable {
                   )
             else { return }
             MicCaptureFileHelper.writeBuffer(converted, to: file)
+            written = converted
         }
+        framesWritten += Int64(written.frameLength)
     }
 
     private func converterForSource(_ sourceFormat: AVAudioFormat) -> AVAudioConverter? {
@@ -231,7 +244,7 @@ final class MicCapture: @unchecked Sendable {
         }
         teardownSession()
         do {
-            guard let device = AVCaptureDevice.default(for: .audio) else {
+            guard let device = MicCaptureDeviceResolver.systemDefaultInputDevice() else {
                 throw AudioLabError.micSessionStartFailed(
                     NSError(domain: "AudioLab", code: -1,
                             userInfo: [NSLocalizedDescriptionKey: "No audio device"])
@@ -390,6 +403,58 @@ private final class SampleBufferDelegate: NSObject,
         _: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from _: AVCaptureConnection
     ) {
         micCapture?.processSampleBuffer(sampleBuffer)
+    }
+}
+
+/// Resolves the system default input device as an `AVCaptureDevice`.
+///
+/// `AVCaptureDevice.default(for: .audio)` can bind a Continuity/iPhone
+/// device that only delivers audio when another app is actively using it.
+/// Core Audio's `kAudioHardwarePropertyDefaultInputDevice` returns the
+/// real system default — the same device AVAudioEngine would use.
+///
+/// Falls back to `AVCaptureDevice.default(for: .audio)` if any Core Audio
+/// step fails.
+private enum MicCaptureDeviceResolver {
+    static func systemDefaultInputDevice() -> AVCaptureDevice? {
+        // Step 1: get the default input AudioDeviceID from the HAL.
+        guard let deviceID: AudioDeviceID = CoreAudioHelpers.getPropertyData(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioDeviceID.self
+        ), deviceID != kAudioObjectUnknown else {
+            print("[MicCapture] could not get default input device ID; falling back")
+            return fallbackDevice()
+        }
+
+        // Step 2: get the UID string for that device.
+        guard let uid = CoreAudioHelpers.deviceUID(for: deviceID) else {
+            print("[MicCapture] could not get UID for device \(deviceID); falling back")
+            return fallbackDevice()
+        }
+
+        // Step 3: resolve to AVCaptureDevice via uniqueID.
+        if let device = AVCaptureDevice(uniqueID: uid) {
+            let name = device.localizedName, id = device.uniqueID
+            print("[MicCapture] using input device: \(name) [\(id)] (source: systemDefaultUID)")
+            return device
+        }
+
+        // UID valid in Core Audio but not in AVCaptureDevice — fall back.
+        print("[MicCapture] AVCaptureDevice not found for UID '\(uid)'; falling back")
+        return fallbackDevice()
+    }
+
+    private static func fallbackDevice() -> AVCaptureDevice? {
+        let device = AVCaptureDevice.default(for: .audio)
+        if let device {
+            print("[MicCapture] using input device: \(device.localizedName) [\(device.uniqueID)] (source: fallback)")
+        }
+        return device
     }
 }
 

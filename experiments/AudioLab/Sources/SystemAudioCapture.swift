@@ -72,10 +72,15 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
         os_unfair_lock_unlock(&_lock)
 
-        try createTapAndAggregate()
-        try openAudioFile()
-        startWriterThread()
-        try startIOProc()
+        do {
+            try createTapAndAggregate()
+            try openAudioFile()
+            startWriterThread()
+            try startIOProc()
+        } catch {
+            teardownPartialState()
+            throw error
+        }
 
         os_unfair_lock_lock(&_lock)
         _isCapturing = true
@@ -97,15 +102,6 @@ final class SystemAudioCapture: @unchecked Sendable {
     // MARK: - Setup
 
     private func createTapAndAggregate() throws {
-        // Look up the default output device -- the aggregate device must
-        // reference it as a sub-device so Core Audio knows which hardware
-        // stream the tap should intercept.
-        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
-              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
-        else {
-            throw AudioLabError.couldNotQueryOutputDevice
-        }
-
         let tapUUID = UUID()
         let tapDesc: CATapDescription
         if captureMode == .perProcess, let processID = targetProcessID {
@@ -125,9 +121,12 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
         tapObjectID = tapID
 
-        // The aggregate device gets its own UID, distinct from the tap UUID.
-        // It must list the output device as a sub-device and declare it as
-        // the main sub-device so the tap's audio is routed into the IOProc.
+        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
+              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
+        else {
+            throw AudioLabError.couldNotQueryOutputDevice
+        }
+
         let aggregateUID = UUID().uuidString
         let aggConfig: [String: Any] = [
             kAudioAggregateDeviceUIDKey as String: aggregateUID,
@@ -346,6 +345,42 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     // MARK: - Teardown
+
+    /// Cleans up any state created during a partial `start()` failure.
+    /// Safe to call at any point during setup -- only tears down resources
+    /// that were actually created. Unlike `teardown()`, this does not
+    /// unconditionally wait on the writer semaphore (which would deadlock
+    /// if the writer thread was never started).
+    private func teardownPartialState() {
+        if let procID = ioProcID {
+            AudioDeviceStop(aggregateDeviceID, procID)
+            AudioDeviceDestroyIOProcID(aggregateDeviceID, procID)
+            ioProcID = nil
+        }
+
+        // Only signal and join the writer thread if it was actually started.
+        // writerDone starts at 0, so waiting without a prior signal() deadlocks.
+        if writerThread != nil {
+            writerRunning.store(0, ordering: .releasing)
+            writerDone.wait()
+            writerThread = nil
+        }
+
+        if aggregateDeviceID != kAudioObjectUnknown {
+            AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
+            aggregateDeviceID = kAudioObjectUnknown
+        }
+
+        if tapObjectID != kAudioObjectUnknown {
+            AudioHardwareDestroyProcessTap(tapObjectID)
+            tapObjectID = kAudioObjectUnknown
+        }
+
+        if let file = audioFile {
+            ExtAudioFileDispose(file)
+            audioFile = nil
+        }
+    }
 
     private func teardown() {
         // Stop the IOProc first so no new buffers are enqueued

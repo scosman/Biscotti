@@ -116,20 +116,10 @@ final class RecordingCoordinator {
         micFileURL = paths.mic
         systemFileURL = paths.system
 
-        let sysCapture = SystemAudioCapture(
-            fileURL: paths.system,
-            captureMode: captureMode,
-            targetProcessID: targetProcessID
-        )
-        systemCapture = sysCapture
-
-        do {
-            try sysCapture.start()
-        } catch {
-            lastError = "System audio: \(error.localizedDescription)"
-            return
-        }
-
+        // Start the mic BEFORE system audio. The mic capture works reliably in
+        // isolation; starting system audio first appears to make the mic only
+        // capture while audio is playing (sole-client / activation ordering).
+        // Bringing the mic's AVCaptureSession up first is a quick test of that.
         let mic = MicCapture(fileURL: paths.mic)
         mic.onUnrecoverableError = { [weak self] error in
             Task { @MainActor in
@@ -141,8 +131,22 @@ final class RecordingCoordinator {
         do {
             try mic.start()
         } catch {
-            systemCapture?.stop()
             lastError = "Microphone: \(error.localizedDescription)"
+            return
+        }
+
+        let sysCapture = SystemAudioCapture(
+            fileURL: paths.system,
+            captureMode: captureMode,
+            targetProcessID: targetProcessID
+        )
+        systemCapture = sysCapture
+
+        do {
+            try sysCapture.start()
+        } catch {
+            micCapture?.stop()
+            lastError = "System audio: \(error.localizedDescription)"
             return
         }
 

@@ -83,15 +83,23 @@ public actor Transcriber {
 
     /// Download models if not already cached.
     ///
-    /// - Parameter progress: Optional progress callback (0.0...1.0).
+    /// - Parameter status: Optional callback receiving a human-readable status
+    ///   message for each download stage (e.g. "Downloading speech-to-text
+    ///   model"). There is no numeric percentage — see ``TranscriptionEngine``.
     public func ensureModelsDownloaded(
-        progress: (@Sendable (Double) -> Void)? = nil
+        status: (@Sendable (String) -> Void)? = nil
     ) async throws {
         try checkInterrupted()
         emitStatus(.downloading(progress: 0.0))
+        // For the hosted backend, status arrives over the reverse XPC channel
+        // rather than through the engine call, so route it via the connection.
+        // For .inProcess this is a no-op (xpcConnection is nil) and the engine
+        // calls the closure directly.
+        xpcConnection?.setStatusHandler(status)
+        defer { xpcConnection?.setStatusHandler(nil) }
         do {
             try await engine.ensureModelsDownloaded(
-                progress: progress ?? { _ in }
+                status: status ?? { _ in }
             )
             emitStatus(.ready)
         } catch {
@@ -153,6 +161,17 @@ public actor Transcriber {
     public func unloadModels() async {
         await engine.unloadModels()
         emitStatus(.needsDownload)
+    }
+
+    /// Delete all downloaded models from disk and unload them from memory,
+    /// returning to a clean `needsDownload` state. The next
+    /// ``ensureModelsDownloaded(status:)`` will re-download.
+    ///
+    /// Unloads first so the worker releases the models before the files are
+    /// removed, and so its in-memory "already downloaded" state is reset.
+    public func clearCache() async throws {
+        await unloadModels()
+        try ModelStorage.clearCache()
     }
 
     /// An `AsyncStream` of model status updates.

@@ -11,18 +11,27 @@ public extension TestScript {
         title: "Transcription",
         steps: [
             .action(
+                id: "tx_clear_cache",
+                label: "Clear model cache (delete downloaded models)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .action(
                 id: "tx_model_download",
-                label: "Download transcription model (shows progress)",
-                run: { /* wired by the app target */ }
+                label: "Download transcription model (shows status)",
+                run: { _ in /* wired by the app target */ }
             ),
             .humanQuestion(
                 id: "tx_model_disk",
-                prompt: "Does the model download succeed and report on-disk size?"
+                prompt: "While downloading, did the status message update through the "
+                    + "stages (\"Downloading speech-to-text model\", then \"Downloading "
+                    + "speaker ID model\")? If you skipped Clear cache and the models "
+                    + "were already cached, it finishes instantly with no status — that "
+                    + "is expected; mark Pass."
             ),
             .action(
                 id: "tx_transcribe",
                 label: "Transcribe a recorded audio clip",
-                run: { /* wired by the app target */ }
+                run: { _ in /* wired by the app target */ }
             ),
             .autoCheck(
                 id: "tx_speakers",

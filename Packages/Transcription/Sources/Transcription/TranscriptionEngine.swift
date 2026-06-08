@@ -4,12 +4,17 @@
 /// protocol. All inputs are transport-friendly (paths/strings) and the output
 /// is the Codable `TranscriptResult`, so it can cross a process boundary as JSON.
 public protocol TranscriptionEngine: Sendable {
-    /// Download models if not already cached. Reports progress via the callback.
+    /// Download models if not already cached.
+    ///
+    /// The `status` callback receives a human-readable message for each download
+    /// stage (e.g. "Downloading speech-to-text model"). There is no numeric
+    /// percentage: the underlying SDK only exposes file-count-weighted progress,
+    /// which is misleading for a repo with one multi-GB file among small ones.
     ///
     /// Throws `TranscriptionError.insufficientDisk` if there is not enough space,
     /// or `TranscriptionError.downloadFailed` on network/IO errors.
     func ensureModelsDownloaded(
-        progress: @Sendable (Double) -> Void
+        status: @escaping @Sendable (String) -> Void
     ) async throws
 
     /// Process audio files and return a diarized transcript.

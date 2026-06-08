@@ -1,5 +1,15 @@
+import Combine
 import ManualTestKit
 import SwiftUI
+
+/// Holds the latest status message for a running `.action` step so the view can
+/// show a caption. Mutated on the main actor from the action's `status`
+/// callback (which may be invoked off the main thread, e.g. from the XPC
+/// status channel).
+@MainActor
+final class StepStatusModel: ObservableObject {
+    @Published var message: String?
+}
 
 /// Renders a single `TestStep` with interaction controls and a status badge.
 struct StepView: View {
@@ -11,6 +21,7 @@ struct StepView: View {
     @State private var errorMessage: String?
     @State private var checkOutcome: CheckOutcome?
     @State private var noteText = ""
+    @StateObject private var statusModel = StepStatusModel()
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -41,7 +52,7 @@ struct StepView: View {
     private func actionView(
         id: String,
         label: String,
-        run: @escaping @Sendable () async throws -> Void
+        run: @escaping @Sendable (@escaping @Sendable (String) -> Void) async throws -> Void
     ) -> some View {
         Text(label).font(.headline)
 
@@ -55,6 +66,12 @@ struct StepView: View {
                 ProgressView()
                     .controlSize(.small)
             }
+        }
+
+        if isRunning, let message = statusModel.message {
+            Text(message)
+                .foregroundStyle(.secondary)
+                .font(.caption)
         }
 
         if let errorMessage {
@@ -134,19 +151,30 @@ struct StepView: View {
 
     // MARK: - Actions
 
+    @MainActor
     private func executeAction(
         id: String,
-        run: @escaping @Sendable () async throws -> Void
+        run: @escaping @Sendable (@escaping @Sendable (String) -> Void) async throws -> Void
     ) async {
         isRunning = true
         errorMessage = nil
+        statusModel.message = nil
+
+        // The status callback may fire off the main thread (the model-download
+        // status arrives over XPC), so hop to the main actor to update state.
+        let model = statusModel
+        let report: @Sendable (String) -> Void = { message in
+            Task { @MainActor in model.message = message }
+        }
+
         do {
-            try await run()
+            try await run(report)
             onResult(TestResult(stepID: id, status: .pass, timestamp: .now))
         } catch {
             errorMessage = error.localizedDescription
             onResult(TestResult(stepID: id, status: .fail, note: error.localizedDescription, timestamp: .now))
         }
+        statusModel.message = nil
         isRunning = false
     }
 

@@ -43,12 +43,9 @@ struct TranscribeCLI: AsyncParsableCommand {
         let transcriber = Transcriber(backend: .inProcess)
 
         writer.writeStderr("Downloading models (if needed)...")
-        try await transcriber.ensureModelsDownloaded { progress in
-            writer.writeStderrInline(
-                String(format: "\rDownload progress: %.0f%%", progress * 100)
-            )
+        try await transcriber.ensureModelsDownloaded { status in
+            writer.writeStderr(status)
         }
-        writer.writeStderr("") // newline after progress
 
         writer.writeStderr("Processing audio...")
         let micURL = URL(fileURLWithPath: (mic as NSString).expandingTildeInPath)

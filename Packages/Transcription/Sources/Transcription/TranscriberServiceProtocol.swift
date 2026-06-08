@@ -44,3 +44,15 @@ import Foundation
         reply: @escaping @Sendable (Bool) -> Void
     )
 }
+
+/// The reverse `@objc` XPC protocol: the **client** exports an object conforming
+/// to this so the worker can stream download status messages back during
+/// `ensureModelsDownloaded`. Without it the worker's status would have nowhere
+/// to go (a one-shot reply handler cannot carry intermediate updates).
+///
+/// The call is fire-and-forget (no reply), so a dropped update during teardown
+/// is harmless.
+@objc public protocol TranscriberStatusReporting {
+    /// Report a human-readable download status message for the current stage.
+    func reportDownloadStatus(_ status: String)
+}

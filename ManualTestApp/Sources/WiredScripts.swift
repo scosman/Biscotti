@@ -68,7 +68,7 @@ enum WiredScripts {
             case let .action(id, label, _):
                 switch id {
                 case "ac_request_permissions":
-                    return .action(id: id, label: label) {
+                    return .action(id: id, label: label) { _ in
                         try FileManager.default.createDirectory(
                             at: captureDirectory,
                             withIntermediateDirectories: true
@@ -80,7 +80,7 @@ enum WiredScripts {
                         await recorder.requestPermissions(systemProbePath: probe)
                     }
                 case "ac_start_recording":
-                    return .action(id: id, label: label) {
+                    return .action(id: id, label: label) { _ in
                         try FileManager.default.createDirectory(
                             at: captureDirectory,
                             withIntermediateDirectories: true
@@ -88,7 +88,7 @@ enum WiredScripts {
                         try await recorder.start(paths: paths)
                     }
                 case "ac_stop_recording":
-                    return .action(id: id, label: label) {
+                    return .action(id: id, label: label) { _ in
                         await recorder.stop()
                         // Reveal both recordings in Finder so the human can play
                         // them for the playback questions that follow — there is
@@ -134,14 +134,16 @@ enum WiredScripts {
             switch step {
             case let .action(id, label, _):
                 switch id {
+                case "tx_clear_cache":
+                    return .action(id: id, label: label) { _ in
+                        try await transcriber.clearCache()
+                    }
                 case "tx_model_download":
-                    return .action(id: id, label: label) {
-                        try await transcriber.ensureModelsDownloaded { progress in
-                            _ = progress
-                        }
+                    return .action(id: id, label: label) { status in
+                        try await transcriber.ensureModelsDownloaded(status: status)
                     }
                 case "tx_transcribe":
-                    return .action(id: id, label: label) {
+                    return .action(id: id, label: label) { _ in
                         let result = try await transcriber.processAudio(
                             mic: paths.micAAC,
                             system: paths.systemAAC

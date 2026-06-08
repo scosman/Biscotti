@@ -14,7 +14,7 @@ public extension TestScript {
             .action(
                 id: "ac_request_permissions",
                 label: "Request audio permissions (mic + system)",
-                run: { /* wired by the app target */ }
+                run: { _ in /* wired by the app target */ }
             ),
             .humanQuestion(
                 id: "ac_two_dialogs",
@@ -28,12 +28,12 @@ public extension TestScript {
             .action(
                 id: "ac_start_recording",
                 label: "Start Recording (stop manually when done)",
-                run: { /* wired by the app target */ }
+                run: { _ in /* wired by the app target */ }
             ),
             .action(
                 id: "ac_stop_recording",
                 label: "Stop Recording",
-                run: { /* wired by the app target */ }
+                run: { _ in /* wired by the app target */ }
             ),
             .autoCheck(
                 id: "ac_files_exist",

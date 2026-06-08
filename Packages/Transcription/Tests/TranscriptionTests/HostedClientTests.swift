@@ -174,7 +174,7 @@ struct XPCEngineAdapterTests {
         let adapter = XPCEngineAdapter(proxyProvider: { nil })
 
         do {
-            try await adapter.ensureModelsDownloaded(progress: { _ in })
+            try await adapter.ensureModelsDownloaded(status: { _ in })
             Issue.record("Expected workerUnavailable")
         } catch {
             #expect(error as? TranscriptionError == .workerUnavailable)
@@ -299,7 +299,7 @@ struct XPCEngineAdapterRoundTripTests {
         let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
-            try await adapter.ensureModelsDownloaded(progress: { _ in })
+            try await adapter.ensureModelsDownloaded(status: { _ in })
             Issue.record("Expected workerInterrupted")
         } catch {
             #expect(error as? TranscriptionError == .workerInterrupted)

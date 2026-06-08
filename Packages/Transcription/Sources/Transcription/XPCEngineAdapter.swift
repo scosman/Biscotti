@@ -29,8 +29,13 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     // MARK: - TranscriptionEngine
 
     func ensureModelsDownloaded(
-        progress _: @Sendable (Double) -> Void
+        status _: @escaping @Sendable (String) -> Void
     ) async throws {
+        // Status is NOT delivered through this call's reply handler — a
+        // one-shot reply cannot stream intermediate updates. Instead the worker
+        // pushes status back over the reverse `TranscriberStatusReporting`
+        // channel, which the `Transcriber` actor wires to the caller's closure
+        // before invoking this method. Here we only await completion.
         let proxy = try requireProxy()
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

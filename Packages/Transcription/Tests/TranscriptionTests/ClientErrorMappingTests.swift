@@ -39,22 +39,22 @@ struct InProcessClientTests {
         #expect(await stubEngine.ensureModelsCallCount == 1)
     }
 
-    @Test("ensureModelsDownloaded passes progress callback")
-    func inProcessEnsureModelsProgress() async throws {
+    @Test("ensureModelsDownloaded passes status callback")
+    func inProcessEnsureModelsStatus() async throws {
         let stubEngine = StubTranscriptionEngine()
         let transcriber = Transcriber(
             backend: .inProcess,
             engine: stubEngine
         )
 
-        let collector = ProgressCollector()
+        let collector = StatusCollector()
         try await transcriber.ensureModelsDownloaded { value in
             collector.append(value)
         }
 
         let values = collector.values
-        #expect(values.contains(0.5))
-        #expect(values.contains(1.0))
+        #expect(values.contains("Downloading test model"))
+        #expect(values.contains("Models ready"))
     }
 
     @Test("isAvailable returns true when engine status is ready")

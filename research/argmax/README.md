@@ -53,15 +53,17 @@ Both WhisperKit and SpeakerKit download models automatically from HuggingFace on
 - Background downloads are supported: `modelStore.downloadModelInBackground()` persists progress across foreground-to-background transitions and survives app kills on iOS.
 
 **Where models are stored on disk:**
-Default HuggingFace Hub cache: `~/.cache/huggingface/hub/` on macOS, structured as:
-```
-~/.cache/huggingface/hub/
-├── models--argmaxinc--whisperkit-coreml/
-│   └── snapshots/<revision>/openai_whisper-large-v3_turbo/
-└── models--argmaxinc--speakerkit-coreml/
-    └── snapshots/<revision>/...
-```
-The `WhisperKitConfig.modelFolder` property lets you override the storage location. The `HF_HUB_CACHE` environment variable also works.
+
+> **Corrected after implementation (Project: Transcription).** The actual default for `argmax-oss-swift` v1.0.0 is **not** `~/.cache/huggingface/hub/`. The vendored Hub client (`ArgmaxCore.HubApi`) defaults `downloadBase` to **`~/Documents/huggingface`**, and resolves a repo to `downloadBase/models/<repo-id>` (no `snapshots/<revision>` indirection):
+> ```
+> ~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3_turbo/…
+> ~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/…
+> ```
+> Dropping a multi-GB cache into `~/Documents` is wrong for app-support data, so **Biscotti overrides `downloadBase` to `~/Library/Application Support/Biscotti`** (see `Packages/Transcription/Sources/Transcription/ModelStorage.swift`). Models then live at `~/Library/Application Support/Biscotti/models/argmaxinc/{whisperkit,speakerkit}-coreml/…`. The override is passed to `WhisperKitConfig(downloadBase:)`, `WhisperKit.download(downloadBase:)`, and `PyannoteConfig(downloadBase:)` at every construction site.
+
+The `WhisperKitConfig.modelFolder` property pins an exact folder (bypassing the Hub layout); `downloadBase` (above) is the right knob for relocating the whole cache. The `HF_HUB_CACHE` environment variable is **not** honored by this vendored client.
+
+**Download progress is unusable — report a status message instead.** The Hub client's `Progress` (the value passed to `WhisperKit`'s `progressCallback`) is **file-count weighted**: `snapshot(...)` builds `Progress(totalUnitCount: filenames.count)` and gives every file `pendingUnitCount: 1` *regardless of size*, downloading them sequentially. For the whisper repo (several small files + one multi-GB weight file) the bar jumps to ~85% as the small files finish, then crawls through the last ~15% during the bulk of the actual download. The true byte counts exist one layer down (`Downloader` gets `totalBytesWritten/totalBytesExpectedToWrite` and streams to an `.incomplete` file) but are **not** surfaced in a byte-weighted aggregate, and the `(Progress, Double?)` overload's `Double` is throughput/speed, not a byte fraction. Rather than hack around it (disk polling, or our own HEAD-request size weighting), **Biscotti shows no percentage** — `ensureModelsDownloaded(status:)` reports a per-stage status string ("Downloading speech-to-text model", "Downloading speaker ID model") and the UI shows a spinner + that message. Downloads use the plain `WhisperKit(config)` / `SpeakerKit(config)` initializers (silent, but correct).
 
 **On-disk sizes:**
 

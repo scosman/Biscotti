@@ -53,17 +53,16 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     // MARK: - TranscriptionEngine
 
     public func ensureModelsDownloaded(
-        progress: @Sendable (Double) -> Void
+        status: @escaping @Sendable (String) -> Void
     ) async throws {
         try await checkDiskSpace()
-
         await statusMachine.transition(to: .downloading(progress: 0.0))
-        progress(0.0)
 
-        try await downloadWhisperKitIfNeeded(progress: progress)
-        try await downloadSpeakerKitIfNeeded(progress: progress)
-
-        progress(1.0)
+        // No numeric progress: the SDK's only progress signal is file-count
+        // weighted (one ~3 GB file counts the same as a tiny config), which is
+        // misleading, so we report a status message per stage instead.
+        try await downloadWhisperKitIfNeeded(status: status)
+        try await downloadSpeakerKitIfNeeded(status: status)
     }
 
     public func processAudio(
@@ -106,68 +105,6 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
     public func status() async -> ModelStatus {
         await statusMachine.current
-    }
-}
-
-// MARK: - Download helpers
-
-private extension InProcessTranscriptionEngine {
-    func checkDiskSpace() async throws {
-        do {
-            try diskSpaceChecker.checkAvailableSpace(requiredBytes: estimatedDownloadBytes)
-        } catch let error as TranscriptionError {
-            await statusMachine.transition(to: .error(error))
-            throw error
-        } catch {
-            // Unexpected error type from the checker; wrap it
-            let wrappedError = TranscriptionError.insufficientDisk(
-                requiredBytes: estimatedDownloadBytes,
-                availableBytes: 0
-            )
-            await statusMachine.transition(to: .error(wrappedError))
-            throw wrappedError
-        }
-    }
-
-    func downloadWhisperKitIfNeeded(
-        progress: @Sendable (Double) -> Void
-    ) async throws {
-        guard whisperKit == nil else { return }
-        do {
-            let whisperConfig = WhisperKitConfig(
-                model: resolvedSettings.sttModel,
-                modelRepo: resolvedSettings.sttModelRepo,
-                verbose: false,
-                load: false,
-                download: true
-            )
-            whisperKit = try await WhisperKit(whisperConfig)
-            await statusMachine.transition(to: .downloading(progress: 0.8))
-            progress(0.8)
-        } catch {
-            let wrappedError = TranscriptionError.downloadFailed(
-                "WhisperKit download failed: \(error.localizedDescription)"
-            )
-            await statusMachine.transition(to: .error(wrappedError))
-            throw wrappedError
-        }
-    }
-
-    func downloadSpeakerKitIfNeeded(
-        progress: @Sendable (Double) -> Void
-    ) async throws {
-        guard speakerKit == nil else { return }
-        do {
-            speakerKit = try await SpeakerKit()
-            await statusMachine.transition(to: .downloading(progress: 1.0))
-            progress(1.0)
-        } catch {
-            let wrappedError = TranscriptionError.downloadFailed(
-                "SpeakerKit download failed: \(error.localizedDescription)"
-            )
-            await statusMachine.transition(to: .error(wrappedError))
-            throw wrappedError
-        }
     }
 }
 
@@ -294,14 +231,9 @@ private extension InProcessTranscriptionEngine {
         if whisperKit == nil {
             await statusMachine.transition(to: .loading)
             do {
-                let whisperConfig = WhisperKitConfig(
-                    model: resolvedSettings.sttModel,
-                    modelRepo: resolvedSettings.sttModelRepo,
-                    verbose: false,
-                    load: true,
-                    download: true
+                whisperKit = try await WhisperKit(
+                    makeWhisperConfig(load: true, download: true)
                 )
-                whisperKit = try await WhisperKit(whisperConfig)
             } catch {
                 let wrappedError = TranscriptionError.modelLoadFailed(
                     "WhisperKit init failed: \(error.localizedDescription)"
@@ -318,7 +250,9 @@ private extension InProcessTranscriptionEngine {
     func ensureSpeakerKitLoaded() async throws {
         if speakerKit == nil {
             do {
-                speakerKit = try await SpeakerKit()
+                speakerKit = try await SpeakerKit(
+                    makeSpeakerConfig(download: true, load: false)
+                )
             } catch {
                 let wrappedError = TranscriptionError.modelLoadFailed(
                     "SpeakerKit init failed: \(error.localizedDescription)"
@@ -339,5 +273,75 @@ private extension InProcessTranscriptionEngine {
     func unloadSpeakerKit() async {
         await speakerKit?.unloadModels()
         speakerKit = nil
+    }
+}
+
+// MARK: - Download helpers
+
+private extension InProcessTranscriptionEngine {
+    func checkDiskSpace() async throws {
+        do {
+            try diskSpaceChecker.checkAvailableSpace(requiredBytes: estimatedDownloadBytes)
+        } catch let error as TranscriptionError {
+            await statusMachine.transition(to: .error(error))
+            throw error
+        } catch {
+            let wrappedError = TranscriptionError.insufficientDisk(
+                requiredBytes: estimatedDownloadBytes,
+                availableBytes: 0
+            )
+            await statusMachine.transition(to: .error(wrappedError))
+            throw wrappedError
+        }
+    }
+
+    func downloadWhisperKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
+        guard whisperKit == nil else { return }
+        status("Downloading speech-to-text model")
+        do {
+            whisperKit = try await WhisperKit(makeWhisperConfig(load: false, download: true))
+        } catch {
+            let wrappedError = TranscriptionError.downloadFailed(
+                "WhisperKit download failed: \(error.localizedDescription)"
+            )
+            await statusMachine.transition(to: .error(wrappedError))
+            throw wrappedError
+        }
+    }
+
+    func downloadSpeakerKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
+        guard speakerKit == nil else { return }
+        status("Downloading speaker ID model")
+        do {
+            speakerKit = try await SpeakerKit(makeSpeakerConfig(download: true, load: false))
+        } catch {
+            let wrappedError = TranscriptionError.downloadFailed(
+                "SpeakerKit download failed: \(error.localizedDescription)"
+            )
+            await statusMachine.transition(to: .error(wrappedError))
+            throw wrappedError
+        }
+    }
+
+    /// Build a WhisperKit configuration anchored at the shared cache location.
+    func makeWhisperConfig(load: Bool, download: Bool) -> WhisperKitConfig {
+        WhisperKitConfig(
+            model: resolvedSettings.sttModel,
+            downloadBase: ModelStorage.downloadBase,
+            modelRepo: resolvedSettings.sttModelRepo,
+            verbose: false,
+            load: load,
+            download: download
+        )
+    }
+
+    /// Build a SpeakerKit (Pyannote) configuration anchored at the shared cache.
+    func makeSpeakerConfig(download: Bool, load: Bool) -> PyannoteConfig {
+        PyannoteConfig(
+            downloadBase: ModelStorage.downloadBase.path,
+            download: download,
+            load: load,
+            verbose: false
+        )
     }
 }

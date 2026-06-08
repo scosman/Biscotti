@@ -15,11 +15,11 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     var ensureModelsCallCount = 0
     var unloadCallCount = 0
 
-    func ensureModelsDownloaded(progress: @Sendable (Double) -> Void) async throws {
+    func ensureModelsDownloaded(status: @escaping @Sendable (String) -> Void) async throws {
         ensureModelsCallCount += 1
         if let error = ensureModelsError { throw error }
-        progress(0.5)
-        progress(1.0)
+        status("Downloading test model")
+        status("Models ready")
     }
 
     func processAudio(
@@ -64,6 +64,7 @@ final class MockXPCConnection: TranscriberXPCConnecting, @unchecked Sendable {
     var proxy: (any TranscriberServiceProtocol)?
     var interruptionHandler: (@Sendable () -> Void)?
     var invalidationHandler: (@Sendable () -> Void)?
+    var statusHandler: (@Sendable (String) -> Void)?
     var activateCalled = false
     var invalidateCalled = false
 
@@ -77,6 +78,10 @@ final class MockXPCConnection: TranscriberXPCConnecting, @unchecked Sendable {
 
     func setInvalidationHandler(_ handler: @escaping @Sendable () -> Void) {
         invalidationHandler = handler
+    }
+
+    func setStatusHandler(_ handler: (@Sendable (String) -> Void)?) {
+        statusHandler = handler
     }
 
     func activate() {
@@ -122,20 +127,20 @@ func makeAudioURL() -> URL {
     URL(fileURLWithPath: "/tmp/test-audio.wav")
 }
 
-// MARK: - ProgressCollector
+// MARK: - StatusCollector
 
-/// Thread-safe collector for progress values in @Sendable closures.
-final class ProgressCollector: @unchecked Sendable {
+/// Thread-safe collector for status messages in @Sendable closures.
+final class StatusCollector: @unchecked Sendable {
     private let lock = NSLock()
-    private var _values: [Double] = []
+    private var _values: [String] = []
 
-    var values: [Double] {
+    var values: [String] {
         lock.lock()
         defer { lock.unlock() }
         return _values
     }
 
-    func append(_ value: Double) {
+    func append(_ value: String) {
         lock.lock()
         _values.append(value)
         lock.unlock()

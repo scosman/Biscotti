@@ -38,6 +38,14 @@ final class MicCapture: @unchecked Sendable {
     /// Called off the main thread on unrecoverable errors.
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
+    /// Called off the main thread exactly once, when the first sample buffer is
+    /// delivered (proof the mic's input IO is live). The argument is the host-
+    /// clock time in seconds of that first frame (its presentation timestamp) —
+    /// the recording's t=0. Used to start system capture only after the mic is
+    /// genuinely running, and to align the two tracks.
+    var onStarted: (@Sendable (Double) -> Void)?
+    private var didNotifyStarted = false // guarded by `lock`
+
     var isCapturing: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -165,6 +173,7 @@ final class MicCapture: @unchecked Sendable {
     }
 
     fileprivate func processSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        notifyStartedIfNeeded(sampleBuffer)
         guard let file = currentExtFile() else { return }
         guard let pcmBuffer = MicCaptureFileHelper.pcmBuffer(from: sampleBuffer) else { return }
 
@@ -183,6 +192,19 @@ final class MicCapture: @unchecked Sendable {
             else { return }
             MicCaptureFileHelper.writeBuffer(converted, to: file)
         }
+    }
+
+    /// Fires `onStarted` exactly once, with the host-clock time (seconds) of the
+    /// first sample's presentation timestamp. Falls back to 0 if the timestamp
+    /// is invalid (alignment padding is then skipped, but capture still starts).
+    private func notifyStartedIfNeeded(_ sampleBuffer: CMSampleBuffer) {
+        lock.lock()
+        if didNotifyStarted { lock.unlock(); return }
+        didNotifyStarted = true
+        lock.unlock()
+
+        let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+        onStarted?(seconds.isFinite ? seconds : 0)
     }
 
     private func converterForSource(_ sourceFormat: AVAudioFormat) -> AVAudioConverter? {

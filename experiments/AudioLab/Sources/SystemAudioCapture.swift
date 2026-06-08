@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreAudio
 import Foundation
+import QuartzCore
 import Synchronization
 import os
 
@@ -36,6 +37,24 @@ final class SystemAudioCapture: @unchecked Sendable {
     private let targetProcessID: AudioObjectID?
     private var tapSampleRate: Double = EncoderSettings.sampleRate
 
+    /// Host-clock time (seconds, same base as `AudioConvertHostTimeToNanos`) of
+    /// the mic's first delivered sample — the recording's t=0. The system tap
+    /// starts slightly later and produces no frames until audio plays, so its
+    /// first frame's host time minus this anchor is the exact gap we prepend as
+    /// leading silence to align the two tracks. Set in `start()` before the
+    /// writer thread is spawned.
+    private var micAnchorSeconds: Double = 0
+    /// `CACurrentMediaTime()` captured when `start()` runs. Used as a clock-
+    /// agnostic upper bound on leading silence: the gap can't exceed the real
+    /// wall-time the capture has been running. Guards against a bogus mic anchor
+    /// (e.g. if the mic PTS clock ever differed from the tap host clock) writing
+    /// a wildly over-long silence.
+    private var systemStartWall: CFTimeInterval = 0
+    /// Writer-thread-only: whether leading silence has been written yet.
+    private var didWriteLeadingSilence = false
+    /// Absolute backstop on prepended silence.
+    private static let maxLeadingSilenceSeconds: Double = 3600
+
     private var _lock = os_unfair_lock()
     private var _isCapturing = false
     private var _writeError: OSStatus?
@@ -64,13 +83,20 @@ final class SystemAudioCapture: @unchecked Sendable {
         self.targetProcessID = targetProcessID
     }
 
-    func start() throws {
+    /// - Parameter micAnchorSeconds: host-clock seconds of the mic's first
+    ///   delivered sample (the recording's t=0). The system track is padded with
+    ///   leading silence so its first real frame lines up with the mic. Pass 0
+    ///   to disable alignment padding.
+    func start(micAnchorSeconds: Double) throws {
         os_unfair_lock_lock(&_lock)
         guard !_isCapturing else {
             os_unfair_lock_unlock(&_lock)
             return
         }
         os_unfair_lock_unlock(&_lock)
+
+        self.micAnchorSeconds = micAnchorSeconds
+        systemStartWall = CACurrentMediaTime()
 
         do {
             try createTapAndAggregate()
@@ -260,6 +286,14 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     private func processEntry(_ entry: AudioRingBuffer.Entry) {
+        // Before the first real frame, prepend leading silence so the system
+        // track's first frame lines up with the mic's first frame (recording
+        // t=0). Runs once, on the writer thread.
+        if !didWriteLeadingSilence {
+            didWriteLeadingSilence = true
+            writeLeadingSilence(channelCount: entry.channelCount, firstFrameHostTime: entry.hostTime)
+        }
+
         let frameCount = Int(entry.frameCount)
         let channelCount = Int(max(entry.channelCount, 1))
         let sampleCount = frameCount * channelCount
@@ -303,6 +337,55 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
     }
 
+    /// Writes `T_sys - micAnchor` worth of silent frames to the front of the
+    /// file so the system track aligns with the mic track. `firstFrameHostTime`
+    /// is the mach host time of the system tap's first captured frame; the gap
+    /// to `micAnchorSeconds` is the precise start offset between the two streams
+    /// (it covers both the deferred tap start and any idle-until-audio delay).
+    /// Runs on the writer thread (allocation is fine here).
+    private func writeLeadingSilence(channelCount: UInt32, firstFrameHostTime: UInt64) {
+        guard firstFrameHostTime != 0, micAnchorSeconds > 0, let file = audioFile else { return }
+
+        let sysSeconds = Double(AudioConvertHostTimeToNanos(firstFrameHostTime)) / 1_000_000_000
+        let gap = sysSeconds - micAnchorSeconds
+        guard gap > 0 else { return }
+
+        // Clock-agnostic upper bound: the gap can't exceed how long the capture
+        // has actually been running (plus slack for the mic->system start hop).
+        // This caps a bogus anchor without trusting the host-clock comparison.
+        let wallBound = max(0, CACurrentMediaTime() - systemStartWall) + 1.0
+        let cappedSeconds = min(gap, wallBound, Self.maxLeadingSilenceSeconds)
+        if cappedSeconds < gap {
+            logger.warning("Leading-silence gap \(Int(gap))s exceeds bound; clamping to \(Int(cappedSeconds))s")
+        }
+
+        var framesRemaining = Int((cappedSeconds * tapSampleRate).rounded())
+        guard framesRemaining > 0 else { return }
+        logger.info("Aligning system track: prepending \(framesRemaining) frames (~\(Int(cappedSeconds * 1000))ms) of leading silence")
+
+        let ch = Int(max(channelCount, 1))
+        let chunkFrames = 8192
+        var silence = [Float](repeating: 0, count: chunkFrames * ch)
+        silence.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            while framesRemaining > 0 {
+                let n = min(chunkFrames, framesRemaining)
+                let buffer = AudioBuffer(
+                    mNumberChannels: channelCount,
+                    mDataByteSize: UInt32(n * ch * MemoryLayout<Float>.size),
+                    mData: base
+                )
+                var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
+                let status = ExtAudioFileWrite(file, UInt32(n), &bufferList)
+                if status != noErr {
+                    logger.error("Leading-silence write failed: \(status)")
+                    return
+                }
+                framesRemaining -= n
+            }
+        }
+    }
+
     // MARK: - IOProc
 
     private func startIOProc() throws {
@@ -313,7 +396,7 @@ final class SystemAudioCapture: @unchecked Sendable {
             &procID,
             aggregateDeviceID,
             nil
-        ) { inNow, inInputData, inInputTime, outOutputData, inOutputTime in
+        ) { _, inInputData, inInputTime, _, _ in
             let buffers = UnsafeMutableAudioBufferListPointer(
                 UnsafeMutablePointer(mutating: inInputData)
             )
@@ -329,8 +412,13 @@ final class SystemAudioCapture: @unchecked Sendable {
 
             // Lock-free enqueue into pre-allocated ring buffer slots.
             // No heap allocation, no locks. If ring is full or buffer exceeds
-            // slot size, the drop is counted atomically.
-            _ = ring.enqueue(bufferList: inInputData, frameCount: frameCount)
+            // slot size, the drop is counted atomically. The frame's host time
+            // travels with it so the writer can align the track start.
+            _ = ring.enqueue(
+                bufferList: inInputData,
+                frameCount: frameCount,
+                hostTime: inInputTime.pointee.mHostTime
+            )
         }
 
         guard status == noErr, let id = procID else {

@@ -116,14 +116,27 @@ final class RecordingCoordinator {
         micFileURL = paths.mic
         systemFileURL = paths.system
 
-        // Start the mic FIRST. The mic's AVCaptureSession must establish its
-        // input IO before the system tap's aggregate device touches the HAL;
-        // otherwise the aggregate starves the mic's cold-start on an idle
-        // machine (no other app driving the output device's IO cycle).
+        // Start the mic FIRST, and only bring up the system tap once the mic has
+        // actually delivered its first sample buffer. The mic's AVCaptureSession
+        // start is asynchronous; creating the system tap's aggregate device
+        // before the mic's input IO is live can starve the mic's cold-start (both
+        // tracks then stay empty until some audio plays). Gating the system start
+        // on the mic's first sample makes "mic-first" deterministic — and the
+        // first sample's host time gives us the recording's t=0 to align the
+        // two tracks against (see startSystemCapture).
         let mic = MicCapture(fileURL: paths.mic)
         mic.onUnrecoverableError = { [weak self] error in
             Task { @MainActor in
                 self?.lastError = "Microphone (route change): \(error.localizedDescription)"
+            }
+        }
+        mic.onStarted = { [weak self] micAnchorSeconds in
+            Task { @MainActor in
+                self?.startSystemCapture(
+                    micAnchorSeconds: micAnchorSeconds,
+                    captureMode: captureMode,
+                    targetProcessID: targetProcessID
+                )
             }
         }
         micCapture = mic
@@ -136,25 +149,41 @@ final class RecordingCoordinator {
             return
         }
 
+        startMediaTime = CACurrentMediaTime()
+        startTime = Date()
+        isRecording = true
+    }
+
+    /// Brings up system-audio capture once the mic is confirmed live (its first
+    /// sample arrived). System capture is fatal: if it fails to start we tear the
+    /// whole recording down. `micAnchorSeconds` (the mic's first-frame host time)
+    /// is forwarded so the system track is padded with leading silence to align
+    /// with the mic.
+    private func startSystemCapture(
+        micAnchorSeconds: Double,
+        captureMode: CaptureMode,
+        targetProcessID: AudioObjectID?
+    ) {
+        // Bail if the recording was stopped before the mic warmed up, or if
+        // system capture has already started (onStarted fires once, but guard).
+        guard isRecording, micCapture != nil, systemCapture == nil,
+              let systemURL = systemFileURL else { return }
+
         let sysCapture = SystemAudioCapture(
-            fileURL: paths.system,
+            fileURL: systemURL,
             captureMode: captureMode,
             targetProcessID: targetProcessID
         )
 
         do {
-            try sysCapture.start()
+            try sysCapture.start(micAnchorSeconds: micAnchorSeconds)
             systemCapture = sysCapture
         } catch {
             micCapture?.stop()
             micCapture = nil
             lastError = "System audio: \(error.localizedDescription)"
-            return
+            isRecording = false
         }
-
-        startMediaTime = CACurrentMediaTime()
-        startTime = Date()
-        isRecording = true
     }
 
     func stopRecording() {

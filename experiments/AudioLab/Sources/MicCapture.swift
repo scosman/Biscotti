@@ -35,10 +35,6 @@ final class MicCapture: @unchecked Sendable {
     private var runtimeErrorObserver: NSObjectProtocol?
     private var hasDeviceChangeListener = false
 
-    // Diagnostics (touched only on sampleQueue — no lock needed)
-    private var hasLoggedSourceFormat = false
-    private var framesWritten: Int64 = 0
-
     /// Called off the main thread on unrecoverable errors.
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
@@ -83,7 +79,6 @@ final class MicCapture: @unchecked Sendable {
             do {
                 try configureAndStartSession(input: input)
             } catch {
-                print("[MicCapture] session start FAILED: \(error)")
                 closeExtFile()
                 setNotCapturing()
                 onUnrecoverableError?(error)
@@ -96,11 +91,6 @@ final class MicCapture: @unchecked Sendable {
         guard _isCapturing else { lock.unlock(); return }
         _isCapturing = false
         lock.unlock()
-
-        sampleQueue.async { [weak self] in
-            guard let self else { return }
-            print("[MicCapture] stopped — wrote \(framesWritten) frames")
-        }
 
         removeDeviceChangeListener()
         sessionQueue.async { [weak self] in
@@ -152,7 +142,6 @@ final class MicCapture: @unchecked Sendable {
         captureSession.addOutput(output)
         captureSession.commitConfiguration()
         captureSession.startRunning()
-        print("[MicCapture] startRunning; session.isRunning=\(captureSession.isRunning)")
         session = captureSession
         audioOutput = output
         sampleDelegate = delegate
@@ -182,18 +171,10 @@ final class MicCapture: @unchecked Sendable {
         let targetFormat = EncoderSettings.processingFormat
         let sourceFormat = pcmBuffer.format
 
-        if !hasLoggedSourceFormat {
-            hasLoggedSourceFormat = true
-            print("[MicCapture] source format: \(sourceFormat.sampleRate) Hz, " +
-                "\(sourceFormat.channelCount) ch, interleaved=\(sourceFormat.isInterleaved)")
-        }
-
-        let written: AVAudioPCMBuffer
         if sourceFormat.sampleRate == targetFormat.sampleRate,
            sourceFormat.channelCount == targetFormat.channelCount
         {
             MicCaptureFileHelper.writeBuffer(pcmBuffer, to: file)
-            written = pcmBuffer
         } else {
             guard let converter = converterForSource(sourceFormat),
                   let converted = MicCaptureFileHelper.convert(
@@ -201,9 +182,7 @@ final class MicCapture: @unchecked Sendable {
                   )
             else { return }
             MicCaptureFileHelper.writeBuffer(converted, to: file)
-            written = converted
         }
-        framesWritten += Int64(written.frameLength)
     }
 
     private func converterForSource(_ sourceFormat: AVAudioFormat) -> AVAudioConverter? {
@@ -427,34 +406,25 @@ private enum MicCaptureDeviceResolver {
             ),
             type: AudioDeviceID.self
         ), deviceID != kAudioObjectUnknown else {
-            print("[MicCapture] could not get default input device ID; falling back")
             return fallbackDevice()
         }
 
         // Step 2: get the UID string for that device.
         guard let uid = CoreAudioHelpers.deviceUID(for: deviceID) else {
-            print("[MicCapture] could not get UID for device \(deviceID); falling back")
             return fallbackDevice()
         }
 
         // Step 3: resolve to AVCaptureDevice via uniqueID.
         if let device = AVCaptureDevice(uniqueID: uid) {
-            let name = device.localizedName, id = device.uniqueID
-            print("[MicCapture] using input device: \(name) [\(id)] (source: systemDefaultUID)")
             return device
         }
 
         // UID valid in Core Audio but not in AVCaptureDevice — fall back.
-        print("[MicCapture] AVCaptureDevice not found for UID '\(uid)'; falling back")
         return fallbackDevice()
     }
 
     private static func fallbackDevice() -> AVCaptureDevice? {
-        let device = AVCaptureDevice.default(for: .audio)
-        if let device {
-            print("[MicCapture] using input device: \(device.localizedName) [\(device.uniqueID)] (source: fallback)")
-        }
-        return device
+        AVCaptureDevice.default(for: .audio)
     }
 }
 

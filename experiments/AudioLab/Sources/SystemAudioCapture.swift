@@ -5,7 +5,7 @@ import QuartzCore
 import Synchronization
 import os
 
-private let logger = Logger(subsystem: "com.biscotti.experiments.audiolab", category: "SystemAudioCapture")
+private let logger = Log.system
 
 enum CaptureMode: String, CaseIterable, Identifiable, Sendable {
     case global = "Global (all system audio)"
@@ -52,6 +52,9 @@ final class SystemAudioCapture: @unchecked Sendable {
     private var systemStartWall: CFTimeInterval = 0
     /// Writer-thread-only: whether leading silence has been written yet.
     private var didWriteLeadingSilence = false
+    /// Writer-thread-only diagnostic counters.
+    private var writerEntriesProcessed = 0
+    private var writerFramesWritten = 0
     /// Absolute backstop on prepended silence.
     private static let maxLeadingSilenceSeconds: Double = 3600
 
@@ -98,12 +101,15 @@ final class SystemAudioCapture: @unchecked Sendable {
         self.micAnchorSeconds = micAnchorSeconds
         systemStartWall = CACurrentMediaTime()
 
+        logger.event("start() mode=\(captureMode.rawValue) micAnchor=\(micAnchorSeconds)s")
+
         do {
             try createTapAndAggregate()
             try openAudioFile()
             startWriterThread()
             try startIOProc()
         } catch {
+            logger.err("start() FAILED: \(error.localizedDescription)")
             teardownPartialState()
             throw error
         }
@@ -111,6 +117,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         os_unfair_lock_lock(&_lock)
         _isCapturing = true
         os_unfair_lock_unlock(&_lock)
+        logger.event("start() complete — capturing system audio")
     }
 
     func stop() {
@@ -122,7 +129,9 @@ final class SystemAudioCapture: @unchecked Sendable {
         _isCapturing = false
         os_unfair_lock_unlock(&_lock)
 
+        logger.event("stop() requested")
         teardown()
+        logger.event("stopped. totals: entries=\(writerEntriesProcessed) framesWritten=\(writerFramesWritten)")
     }
 
     // MARK: - Setup
@@ -143,15 +152,20 @@ final class SystemAudioCapture: @unchecked Sendable {
         var tapID: AudioObjectID = kAudioObjectUnknown
         var status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
         guard status == noErr else {
+            logger.err("AudioHardwareCreateProcessTap failed: \(osStatusString(status))")
             throw AudioLabError.failedToCreateProcessTap(status)
         }
         tapObjectID = tapID
+        logger.event("created process tap id=\(tapID) mode=\(captureMode.rawValue)")
 
         guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
               let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
         else {
+            logger.err("could not query default output device for aggregate")
             throw AudioLabError.couldNotQueryOutputDevice
         }
+        let outputName = CoreAudioHelpers.deviceName(for: outputDeviceID) ?? "?"
+        logger.event("aggregate main output: \"\(outputName)\" uid=\(outputUID)")
 
         let aggregateUID = UUID().uuidString
         let aggConfig: [String: Any] = [
@@ -175,11 +189,13 @@ final class SystemAudioCapture: @unchecked Sendable {
         var aggID: AudioObjectID = kAudioObjectUnknown
         status = AudioHardwareCreateAggregateDevice(aggConfig as CFDictionary, &aggID)
         guard status == noErr else {
+            logger.err("AudioHardwareCreateAggregateDevice failed: \(osStatusString(status))")
             AudioHardwareDestroyProcessTap(tapObjectID)
             tapObjectID = kAudioObjectUnknown
             throw AudioLabError.failedToCreateAggregateDevice(status)
         }
         aggregateDeviceID = aggID
+        logger.event("created aggregate device id=\(aggID)")
     }
 
     private func openAudioFile() throws {
@@ -188,6 +204,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
 
         tapSampleRate = tapFormat.mSampleRate
+        logger.event("tap format: \(Int(tapFormat.mSampleRate))Hz \(tapFormat.mChannelsPerFrame)ch")
 
         var outputASBD = EncoderSettings.outputASBD()
         var fileRef: ExtAudioFileRef?
@@ -255,12 +272,38 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     private func writerLoop() {
+        let loopStart = CACurrentMediaTime()
+        var lastHeartbeat = loopStart
+        var warnedNoData = false
+
         while writerRunning.load(ordering: .acquiring) == 1 {
             var didWork = false
             while let entry = ringBuffer.dequeue() {
                 didWork = true
+                if writerEntriesProcessed == 0 {
+                    logger.event(
+                        "FIRST system audio buffer (\(entry.frameCount) frames, " +
+                            "\(entry.channelCount)ch). Tap is live."
+                    )
+                }
+                writerEntriesProcessed += 1
                 processEntry(entry)
             }
+
+            let now = CACurrentMediaTime()
+            if !warnedNoData, writerEntriesProcessed == 0, now - loopStart > 3 {
+                warnedNoData = true
+                logger.err("WATCHDOG: no system audio buffers 3s after start (aggregate \(aggregateDeviceID)).")
+            }
+            if now - lastHeartbeat >= 2 {
+                lastHeartbeat = now
+                let dropped = ringBuffer.droppedBuffers.load(ordering: .acquiring)
+                logger.event(
+                    "heartbeat entries=\(writerEntriesProcessed) framesWritten=\(writerFramesWritten) " +
+                        "dropped=\(dropped)"
+                )
+            }
+
             if !didWork {
                 // Brief yield to avoid busy-spinning when the ring buffer is empty.
                 // ~1ms is short enough to keep latency low but long enough to avoid
@@ -326,7 +369,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
         let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
         if writeStatus != noErr {
-            logger.error("ExtAudioFileWrite failed: \(writeStatus)")
+            logger.err("ExtAudioFileWrite failed: \(osStatusString(writeStatus))")
 
             // Record the first write error so it can be surfaced to the UI.
             os_unfair_lock_lock(&_lock)
@@ -334,6 +377,8 @@ final class SystemAudioCapture: @unchecked Sendable {
                 _writeError = writeStatus
             }
             os_unfair_lock_unlock(&_lock)
+        } else {
+            writerFramesWritten += frameCount
         }
     }
 
@@ -422,14 +467,17 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
 
         guard status == noErr, let id = procID else {
+            logger.err("AudioDeviceCreateIOProcIDWithBlock failed: \(osStatusString(status))")
             throw AudioLabError.failedToCreateIOProc(status)
         }
         ioProcID = id
 
         let startStatus = AudioDeviceStart(aggregateDeviceID, id)
         guard startStatus == noErr else {
+            logger.err("AudioDeviceStart failed: \(osStatusString(startStatus))")
             throw AudioLabError.failedToStartDevice(startStatus)
         }
+        logger.event("IOProc started on aggregate \(aggregateDeviceID)")
     }
 
     // MARK: - Teardown

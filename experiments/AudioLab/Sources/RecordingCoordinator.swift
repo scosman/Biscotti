@@ -50,7 +50,13 @@ final class RecordingCoordinator {
     func startRecording(captureMode: CaptureMode, targetProcessID: AudioObjectID?) {
         guard !isRecording else { return }
 
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        Log.coordinator.event(
+            "startRecording mode=\(captureMode.rawValue) target=\(targetProcessID.map { "\($0)" } ?? "nil") " +
+                "micAuth=\(authStatus.rawValue)"
+        )
+
+        switch authStatus {
         case .authorized:
             beginCapture(captureMode: captureMode, targetProcessID: targetProcessID)
 
@@ -115,6 +121,7 @@ final class RecordingCoordinator {
 
         micFileURL = paths.mic
         systemFileURL = paths.system
+        Log.coordinator.event("beginCapture mic=\(paths.mic.lastPathComponent) system=\(paths.system.lastPathComponent)")
 
         // Start the mic FIRST, and only bring up the system tap once the mic has
         // actually delivered its first sample buffer. The mic's AVCaptureSession
@@ -126,11 +133,13 @@ final class RecordingCoordinator {
         // two tracks against (see startSystemCapture).
         let mic = MicCapture(fileURL: paths.mic)
         mic.onUnrecoverableError = { [weak self] error in
+            Log.coordinator.err("mic unrecoverable error: \(error.localizedDescription)")
             Task { @MainActor in
                 self?.lastError = "Microphone (route change): \(error.localizedDescription)"
             }
         }
         mic.onStarted = { [weak self] micAnchorSeconds in
+            Log.coordinator.event("mic onStarted (anchor=\(micAnchorSeconds)s) → bringing up system capture")
             Task { @MainActor in
                 self?.startSystemCapture(
                     micAnchorSeconds: micAnchorSeconds,
@@ -144,6 +153,7 @@ final class RecordingCoordinator {
         do {
             try mic.start()
         } catch {
+            Log.coordinator.err("mic.start() threw: \(error.localizedDescription)")
             micCapture = nil
             lastError = "Microphone: \(error.localizedDescription)"
             return
@@ -178,7 +188,9 @@ final class RecordingCoordinator {
         do {
             try sysCapture.start(micAnchorSeconds: micAnchorSeconds)
             systemCapture = sysCapture
+            Log.coordinator.event("system capture started")
         } catch {
+            Log.coordinator.err("system capture FAILED — tearing down recording: \(error.localizedDescription)")
             micCapture?.stop()
             micCapture = nil
             lastError = "System audio: \(error.localizedDescription)"
@@ -188,6 +200,10 @@ final class RecordingCoordinator {
 
     func stopRecording() {
         guard isRecording else { return }
+
+        Log.coordinator.event(
+            "stopRecording — mic file=\(micFileSize) bytes, system file=\(systemFileSize) bytes"
+        )
 
         let sysCapture = systemCapture
         systemCapture?.stop()

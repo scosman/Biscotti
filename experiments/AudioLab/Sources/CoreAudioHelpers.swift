@@ -1,5 +1,53 @@
 import CoreAudio
 import Foundation
+import os
+
+/// Central `os.Logger` instances for AudioLab.
+///
+/// This is a dev/experiment app, so we log verbosely: every major lifecycle
+/// event (start / stop / reconfigure / route change / error), a periodic
+/// heartbeat per capture, and watchdog faults when a stream stalls. We never
+/// log per audio frame — heartbeats summarise counters instead.
+///
+/// View live:
+///   log stream --predicate 'subsystem == "com.biscotti.experiments.audiolab"' --level debug
+/// Or open Console.app and filter the subsystem.
+enum Log {
+    static let subsystem = "com.biscotti.experiments.audiolab"
+
+    static let mic = Logger(subsystem: subsystem, category: "MicCapture")
+    static let system = Logger(subsystem: subsystem, category: "SystemAudioCapture")
+    static let coordinator = Logger(subsystem: subsystem, category: "RecordingCoordinator")
+    static let device = Logger(subsystem: subsystem, category: "Device")
+}
+
+/// Convenience wrappers that force `.public` privacy so dynamic values (device
+/// names, formats, statuses) are actually visible in Console — by default
+/// `os.Logger` redacts interpolated strings as `<private>`. Names are chosen to
+/// avoid colliding with `Logger`'s own `info`/`warning`/`error`/`fault`.
+extension Logger {
+    func event(_ message: String) { info("\(message, privacy: .public)") }
+    func warn(_ message: String) { warning("\(message, privacy: .public)") }
+    func err(_ message: String) { error("\(message, privacy: .public)") }
+}
+
+/// Formats a Core Audio `OSStatus` as its signed integer plus, when the bytes
+/// are printable, the four-character code (e.g. `560227702 ('!obj')`). Most
+/// Core Audio / AudioToolbox errors are FourCCs that are unreadable as ints.
+func osStatusString(_ status: OSStatus) -> String {
+    guard status != noErr else { return "noErr" }
+    let raw = UInt32(bitPattern: status)
+    let bytes = [
+        UInt8((raw >> 24) & 0xFF),
+        UInt8((raw >> 16) & 0xFF),
+        UInt8((raw >> 8) & 0xFF),
+        UInt8(raw & 0xFF),
+    ]
+    if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }), let cc = String(bytes: bytes, encoding: .ascii) {
+        return "\(status) ('\(cc)')"
+    }
+    return "\(status)"
+}
 
 enum CoreAudioHelpers {
 
@@ -160,6 +208,124 @@ enum CoreAudioHelpers {
                 mElement: kAudioObjectPropertyElementMain
             )
         )
+    }
+
+    /// Returns the AudioObjectID for the default system input device.
+    static func defaultInputDeviceID() -> AudioObjectID? {
+        getPropertyData(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioObjectID.self
+        )
+    }
+
+    // MARK: - Device Diagnostics
+
+    /// Human-readable device name (e.g. "MacBook Pro Microphone").
+    static func deviceName(for deviceID: AudioObjectID) -> String? {
+        getStringProperty(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        )
+    }
+
+    /// The device's current nominal sample rate (Hz). A voice-processing
+    /// meeting app often drops the built-in mic to a voice rate (16/24 kHz).
+    static func nominalSampleRate(for deviceID: AudioObjectID) -> Double? {
+        getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyNominalSampleRate,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: Float64.self
+        )
+    }
+
+    /// Whether *any* process (including other apps) currently has IO running on
+    /// this device. A meeting app holding the mic shows up here.
+    static func isDeviceRunningSomewhere(_ deviceID: AudioObjectID) -> Bool? {
+        guard let value: UInt32 = getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: UInt32.self
+        ) else { return nil }
+        return value != 0
+    }
+
+    /// The device's transport type. Useful to spot when the default input has
+    /// been swapped to a voice-processing aggregate / virtual device.
+    static func transportType(for deviceID: AudioObjectID) -> UInt32? {
+        getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: UInt32.self
+        )
+    }
+
+    static func transportTypeString(_ type: UInt32) -> String {
+        switch type {
+        case kAudioDeviceTransportTypeBuiltIn: return "built-in"
+        case kAudioDeviceTransportTypeAggregate: return "aggregate"
+        case kAudioDeviceTransportTypeVirtual: return "virtual"
+        case kAudioDeviceTransportTypeUSB: return "usb"
+        case kAudioDeviceTransportTypeBluetooth: return "bluetooth"
+        case kAudioDeviceTransportTypeBluetoothLE: return "bluetooth-le"
+        case kAudioDeviceTransportTypeHDMI: return "hdmi"
+        case kAudioDeviceTransportTypeDisplayPort: return "displayport"
+        case kAudioDeviceTransportTypeAirPlay: return "airplay"
+        case kAudioDeviceTransportTypeAVB: return "avb"
+        case kAudioDeviceTransportTypeThunderbolt: return "thunderbolt"
+        case kAudioDeviceTransportTypeUnknown: return "unknown"
+        default: return "0x" + String(type, radix: 16)
+        }
+    }
+
+    /// One-line snapshot of the current default input device plus every process
+    /// holding input. Logged at mic start and by the stall watchdog so we can
+    /// see whether a meeting app (FaceTime → `com.apple.avconferenced`, browser
+    /// meetings → `com.apple.WebKit.GPU`, Slack → `…slackmacgap.helper`) owns
+    /// the mic in voice-processing mode.
+    static func inputDiagnosticsSnapshot() -> String {
+        var parts: [String] = []
+
+        if let deviceID = defaultInputDeviceID(), deviceID != kAudioObjectUnknown {
+            let name = deviceName(for: deviceID) ?? "?"
+            let uid = deviceUID(for: deviceID) ?? "?"
+            let rate = nominalSampleRate(for: deviceID).map { "\(Int($0))Hz" } ?? "?"
+            let transport = transportType(for: deviceID).map(transportTypeString) ?? "?"
+            let running = isDeviceRunningSomewhere(deviceID).map { $0 ? "running" : "idle" } ?? "?"
+            parts.append("default-input id=\(deviceID) \"\(name)\" uid=\(uid) \(rate) \(transport) \(running)")
+        } else {
+            parts.append("default-input <none>")
+        }
+
+        let inputHolders = allAudioProcesses().filter { $0.isRunningInput }
+        if inputHolders.isEmpty {
+            parts.append("input-holders: none")
+        } else {
+            let described = inputHolders.map { "\($0.bundleID)(pid \($0.pid))" }.joined(separator: ", ")
+            parts.append("input-holders: \(described)")
+        }
+
+        return parts.joined(separator: " | ")
     }
 
     // MARK: - Listener Registration

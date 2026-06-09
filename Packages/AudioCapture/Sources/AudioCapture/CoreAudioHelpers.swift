@@ -147,6 +147,54 @@ enum CoreAudioHelpers {
         )
     }
 
+    // MARK: - Device Rate Queries
+
+    /// Returns the AudioObjectID for the default system input device.
+    static func defaultInputDeviceID() -> AudioObjectID? {
+        getPropertyData(
+            objectID: AudioObjectID(kAudioObjectSystemObject),
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioObjectID.self
+        )
+    }
+
+    /// The device's current nominal sample rate (Hz).
+    static func nominalSampleRate(for deviceID: AudioObjectID) -> Double? {
+        getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyNominalSampleRate,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: Float64.self
+        )
+    }
+
+    /// Sets a device's nominal sample rate (Hz). Returns the `OSStatus`.
+    ///
+    /// Used to raise the default output device to the input's rate so the
+    /// VPIO duplex unit (one shared IO clock) can drive a valid downlink
+    /// without a `-10875` input/output format mismatch. The HAL applies
+    /// the change asynchronously -- poll `nominalSampleRate(for:)` until
+    /// it reflects the new value.
+    @discardableResult
+    static func setNominalSampleRate(_ rate: Double, for deviceID: AudioObjectID) -> OSStatus {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value = rate
+        return AudioObjectSetPropertyData(
+            deviceID, &address, 0, nil, UInt32(MemoryLayout<Float64>.size), &value
+        )
+    }
+
     // MARK: - Process List Listener
 
     /// Handle for a system-level process list listener, used for removal.

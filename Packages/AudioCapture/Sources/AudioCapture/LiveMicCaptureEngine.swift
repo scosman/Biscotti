@@ -1,51 +1,40 @@
 import AudioToolbox
 @preconcurrency import AVFoundation
+import CoreAudio
 import Foundation
 import os
 import Synchronization
 
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "LiveMicCapture")
 
-/// Live microphone capture via AVAudioEngine input-node tap.
+/// Live microphone capture via **VoiceProcessingIO** (`AVAudioEngine`
+/// with `inputNode.setVoiceProcessingEnabled(true)`).
 ///
-/// Writes ADTS AAC directly via `ExtAudioFile`. Handles route-change
-/// survival internally: on `AVAudioEngineConfigurationChange`, re-queries
-/// the input format, reinstalls the tap with a fresh converter, and
-/// restarts the engine.
+/// VPIO is the only route to the loud, normalised, noise-suppressed
+/// processed mono (the plain input tap records the raw beamformer array,
+/// near-silent during meetings). See `experiments/AudioLab/NOTES.md`.
 ///
 /// This is a thin hardware adapter -- all orchestration lives in
 /// `AudioRecorder`. Tested only by the Manual Test App.
 final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
-    private let engine = AVAudioEngine()
     private let encoder: EncoderSettings
-
-    /// The mic tap's PCM target format and the ExtAudioFile client format.
-    ///
-    /// **Stored, not recomputed.** `EncoderSettings.processingFormat` builds a
-    /// fresh `AVAudioFormat` on every access; reading `streamDescription.pointee`
-    /// off such a temporary returns an interior pointer into an object ARC frees
-    /// on the same line, yielding an all-zero ASBD (`mFormatID == 0` →
-    /// `kExtAudioFileError_NonPCMClientFormat`, -66563). Holding one retained
-    /// instance keeps that pointer valid — the AudioLab experiment used a
-    /// `static let` for exactly this reason.
     private let processingFormat: AVAudioFormat
 
-    /// Stores the `ExtAudioFileRef` (an opaque pointer) as an atomic integer
-    /// so the real-time tap callback can read it without taking a lock.
-    /// The value is the bit-pattern of the pointer, or 0 when nil.
-    ///
-    /// Safety: the pointer is only invalidated (via `ExtAudioFileDispose`)
-    /// after the tap has been removed and the engine stopped, so no reader
-    /// can observe a dangling pointer.
+    /// Atomic file ref (bit-pattern of the opaque pointer, 0 = nil).
+    /// Lock-free so the real-time tap can read without blocking.
     private let atomicFileRef = Atomic<UInt>(0)
 
-    /// Atomic state flag -- avoids locking in async contexts.
+    /// Atomic capturing flag -- safe from async contexts.
     private let capturingFlag = Atomic<Bool>(false)
 
-    private let configQueue = DispatchQueue(label: "net.scosman.biscotti.mic.config")
-    private var configObserver: NSObjectProtocol?
-    private var reconfigureGeneration = 0
+    private let engineQueue = DispatchQueue(label: "net.scosman.biscotti.mic.engine")
     private var isTearingDown = false
+    private var engine: AVAudioEngine?
+    private var silenceNode: AVAudioSourceNode?
+    private var configObserver: NSObjectProtocol?
+    private var outputRateOverride: (deviceID: AudioObjectID, originalRate: Double)?
+    private var cachedConverter: AVAudioConverter?
+    private var cachedConverterSourceHash: Int = 0
 
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
@@ -54,229 +43,226 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         processingFormat = encoder.processingFormat
     }
 
+    // MARK: - CaptureEngine conformance
+
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
 
-        configQueue.sync {
-            isTearingDown = false
-        }
+        engineQueue.sync { isTearingDown = false }
 
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        logger.info(
-            "Mic start: input \(Int(inputFormat.sampleRate))Hz / \(inputFormat.channelCount)ch"
+        let file = try VPIOFileHelper.createExtAudioFile(
+            url: url, encoder: encoder, processingFormat: processingFormat
         )
-
-        let file = try createExtAudioFile(url: url)
         setExtFile(file)
-
-        do {
-            try installTap(inputFormat: inputFormat)
-            engine.prepare()
-            try engine.start()
-        } catch {
-            inputNode.removeTap(onBus: 0)
-            closeExtFile()
-            let detail = "engine start failed " +
-                "(input \(Int(inputFormat.sampleRate))Hz/\(inputFormat.channelCount)ch): " +
-                error.localizedDescription
-            logger.error("\(detail)")
-            throw CaptureError.micEngineFailed(detail)
-        }
-
-        configObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: nil
-        ) { [weak self] _ in
-            self?.handleConfigurationChange()
-        }
-
+        installConfigChangeObserver()
         capturingFlag.store(true, ordering: .releasing)
-    }
 
-    /// Reconnects the mic engine hardware without reopening the audio file.
-    ///
-    /// For the mic engine, this triggers the same file-preserving reconfigure
-    /// path that `AVAudioEngineConfigurationChange` uses internally: the tap
-    /// and engine are rebuilt but the ExtAudioFile stays open and continues
-    /// receiving writes.
-    func reconnect() async throws {
-        guard capturingFlag.load(ordering: .acquiring) else { return }
-        configQueue.sync {
-            guard !isTearingDown else { return }
-            reconfigure()
+        engineQueue.async { [weak self] in
+            self?.buildAndStartEngine(context: "initial start")
         }
     }
 
     func stop() async {
-        guard capturingFlag.exchange(false, ordering: .acquiringAndReleasing) else { return }
+        guard capturingFlag.exchange(false, ordering: .acquiringAndReleasing) else {
+            return
+        }
 
+        removeConfigChangeObserver()
+        engineQueue.sync { [self] in
+            isTearingDown = true
+            teardownEngine()
+            restoreOutputRate()
+            closeExtFile()
+        }
+    }
+
+    func reconnect() async throws {
+        guard capturingFlag.load(ordering: .acquiring) else { return }
+        engineQueue.sync { [self] in
+            guard !isTearingDown else { return }
+            teardownEngine()
+            buildAndStartEngine(context: "reconnect")
+        }
+    }
+
+    deinit {
+        removeConfigChangeObserver()
+        teardownEngine()
+        restoreOutputRate()
+        let bits = atomicFileRef.load(ordering: .acquiring)
+        if bits != 0, let ptr = OpaquePointer(bitPattern: bits) {
+            ExtAudioFileDispose(ptr)
+        }
+    }
+
+    // MARK: - Engine lifecycle (engineQueue)
+
+    private func buildAndStartEngine(context: String) {
+        guard capturingFlag.load(ordering: .acquiring) else { return }
+        do {
+            ensureOutputRateMatchesInput()
+
+            let newEngine = AVAudioEngine()
+            // Store before the fallible setup so the catch path's
+            // teardownEngine() can stop it / remove the tap / detach
+            // the silence node.
+            engine = newEngine
+            let input = newEngine.inputNode
+
+            try input.setVoiceProcessingEnabled(true)
+            input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+                enableAdvancedDucking: false, duckingLevel: .min
+            )
+
+            let tapFormat = input.outputFormat(forBus: 0)
+            attachSilentOutput(to: newEngine, inputRate: tapFormat.sampleRate)
+
+            input.installTap(
+                onBus: 0, bufferSize: 1024, format: tapFormat
+            ) { [weak self] buffer, _ in
+                self?.handleTap(buffer: buffer)
+            }
+
+            newEngine.prepare()
+            try newEngine.start()
+        } catch {
+            logger.error("VPIO engine setup failed (\(context)): \(error.localizedDescription)")
+            teardownEngine()
+            restoreOutputRate()
+            closeExtFile()
+            capturingFlag.store(false, ordering: .releasing)
+            // Dispatch off engineQueue to avoid deadlock if the handler
+            // calls stop() (which does engineQueue.sync).
+            let handler = onUnrecoverableError
+            DispatchQueue.global().async { handler?(error) }
+        }
+    }
+
+    private func ensureOutputRateMatchesInput() {
+        guard let inID = CoreAudioHelpers.defaultInputDeviceID(),
+              let inRate = CoreAudioHelpers.nominalSampleRate(for: inID),
+              let outID = CoreAudioHelpers.defaultOutputDeviceID(),
+              let outRate = CoreAudioHelpers.nominalSampleRate(for: outID)
+        else { return }
+        guard abs(inRate - outRate) > 1 else { return }
+        if outputRateOverride == nil {
+            outputRateOverride = (outID, outRate)
+        }
+        CoreAudioHelpers.setNominalSampleRate(inRate, for: outID)
+        for _ in 0 ..< 40 {
+            if let now = CoreAudioHelpers.nominalSampleRate(for: outID),
+               abs(now - inRate) < 1
+            { return }
+            usleep(25000)
+        }
+    }
+
+    private func restoreOutputRate() {
+        guard let override = outputRateOverride else { return }
+        CoreAudioHelpers.setNominalSampleRate(override.originalRate, for: override.deviceID)
+        outputRateOverride = nil
+    }
+
+    /// Connects a silent source node straight to `outputNode` (not through
+    /// `mainMixerNode`) with sample rate forced to the VPIO input rate.
+    private func attachSilentOutput(to engine: AVAudioEngine, inputRate: Double) {
+        let output = engine.outputNode
+        let hwChannels = max(1, output.outputFormat(forBus: 0).channelCount)
+        guard let format = AVAudioFormat(
+            standardFormatWithSampleRate: inputRate, channels: hwChannels
+        ) else { return }
+
+        let node = AVAudioSourceNode(format: format) { isSilence, _, _, bufList in
+            isSilence.pointee = ObjCBool(true)
+            let abl = UnsafeMutableAudioBufferListPointer(bufList)
+            for buf in abl {
+                if let data = buf.mData { memset(data, 0, Int(buf.mDataByteSize)) }
+            }
+            return noErr
+        }
+        engine.attach(node)
+        engine.connect(node, to: output, format: format)
+        silenceNode = node
+    }
+
+    private func teardownEngine() {
+        if let eng = engine {
+            if eng.isRunning { eng.stop() }
+            eng.inputNode.removeTap(onBus: 0)
+            if let node = silenceNode { eng.detach(node) }
+        }
+        silenceNode = nil
+        engine = nil
+        cachedConverter = nil
+        cachedConverterSourceHash = 0
+    }
+
+    // MARK: - Config-change observer
+
+    private func installConfigChangeObserver() {
+        // object: nil is intentional. buildAndStartEngine creates a fresh
+        // AVAudioEngine on every rebuild, so scoping to a specific instance
+        // would go stale after the first route-change rebuild. This is safe:
+        // LiveMicCaptureEngine is the only AVAudioEngine in the package (the
+        // system engine uses Core Audio taps, not AVAudioEngine).
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
+        ) { [weak self] _ in self?.handleConfigurationChange() }
+    }
+
+    private func removeConfigChangeObserver() {
         if let observer = configObserver {
             NotificationCenter.default.removeObserver(observer)
             configObserver = nil
         }
-
-        configQueue.sync {
-            isTearingDown = true
-            reconfigureGeneration += 1
-        }
-
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        closeExtFile()
     }
-
-    // MARK: - ExtAudioFile creation
-
-    private func createExtAudioFile(url: URL) throws -> ExtAudioFileRef {
-        // Create an ADTS AAC file — the encoder fills in packet details.
-        var outputASBD = encoder.outputASBD()
-        var fileRef: ExtAudioFileRef?
-        let createStatus = ExtAudioFileCreateWithURL(
-            url as CFURL,
-            encoder.fileType,
-            &outputASBD,
-            nil,
-            AudioFileFlags.eraseFile.rawValue,
-            &fileRef
-        )
-        guard createStatus == noErr, let file = fileRef else {
-            throw CaptureError.micEngineFailed(
-                "Failed to create ADTS AAC file (OSStatus \(createStatus))"
-            )
-        }
-
-        // Set client format to PCM so ExtAudioFile converts PCM → AAC on write.
-        var clientASBD = processingFormat.streamDescription.pointee
-        let clientStatus = ExtAudioFileSetProperty(
-            file,
-            kExtAudioFileProperty_ClientDataFormat,
-            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
-            &clientASBD
-        )
-        guard clientStatus == noErr else {
-            ExtAudioFileDispose(file)
-            throw CaptureError.micEngineFailed(
-                "Failed to set client format (OSStatus \(clientStatus))"
-            )
-        }
-
-        // Commit the target bit rate after the converter exists.
-        let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
-        if brStatus != noErr {
-            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
-        }
-
-        return file
-    }
-
-    // MARK: - Tap installation
-
-    private func installTap(inputFormat: AVAudioFormat) throws {
-        let targetFormat = processingFormat
-        let inputNode = engine.inputNode
-
-        let needsConversion =
-            inputFormat.sampleRate != targetFormat.sampleRate
-                || inputFormat.channelCount != targetFormat.channelCount
-
-        if needsConversion {
-            guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-                throw CaptureError.micEngineFailed(
-                    "Cannot create converter for input \(inputFormat)"
-                )
-            }
-
-            inputNode.installTap(
-                onBus: 0, bufferSize: 4096, format: inputFormat
-            ) { [weak self] buffer, _ in
-                guard let self, let file = currentExtFile() else { return }
-
-                let frameCapacity = AVAudioFrameCount(
-                    Double(buffer.frameLength) * targetFormat.sampleRate / inputFormat.sampleRate
-                )
-                guard let convertedBuffer = AVAudioPCMBuffer(
-                    pcmFormat: targetFormat, frameCapacity: frameCapacity
-                ) else { return }
-
-                var error: NSError?
-                nonisolated(unsafe) var hasProvidedData = false
-                let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-                    if hasProvidedData {
-                        outStatus.pointee = .noDataNow
-                        return nil
-                    }
-                    hasProvidedData = true
-                    outStatus.pointee = .haveData
-                    return buffer
-                }
-                converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
-
-                if error == nil, convertedBuffer.frameLength > 0 {
-                    Self.writeBuffer(convertedBuffer, to: file)
-                }
-            }
-        } else {
-            inputNode.installTap(
-                onBus: 0, bufferSize: 4096, format: inputFormat
-            ) { [weak self] buffer, _ in
-                guard let self, let file = currentExtFile() else { return }
-                Self.writeBuffer(buffer, to: file)
-            }
-        }
-    }
-
-    private static func writeBuffer(_ buffer: AVAudioPCMBuffer, to file: ExtAudioFileRef) {
-        let bufferList = buffer.mutableAudioBufferList
-        let status = ExtAudioFileWrite(file, buffer.frameLength, bufferList)
-        if status != noErr {
-            logger.error("ExtAudioFileWrite error: \(status)")
-        }
-    }
-
-    // MARK: - Route-change handling
 
     private func handleConfigurationChange() {
-        configQueue.async { [weak self] in
-            guard let self else { return }
-            guard !isTearingDown else { return }
-
-            reconfigureGeneration += 1
-            let generation = reconfigureGeneration
-
-            configQueue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                guard let self else { return }
-                guard !isTearingDown else { return }
-                guard generation == reconfigureGeneration else { return }
-                reconfigure()
-            }
+        engineQueue.async { [weak self] in
+            guard let self, !isTearingDown else { return }
+            teardownEngine()
+            buildAndStartEngine(context: "route change")
         }
     }
 
-    private func reconfigure() {
-        let inputNode = engine.inputNode
-        inputNode.removeTap(onBus: 0)
-        engine.stop()
+    // MARK: - Tap (real-time audio thread)
 
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            logger.info("Skipping reconfigure: input format not ready")
-            return
-        }
+    private func handleTap(buffer: AVAudioPCMBuffer) {
+        guard let file = currentExtFile() else { return }
+        guard let mono = VPIOBufferHelper.extractChannel0(buffer) else { return }
 
-        do {
-            try installTap(inputFormat: inputFormat)
-            engine.prepare()
-            try engine.start()
-        } catch {
-            logger.error("Reconfigure failed: \(error.localizedDescription)")
-            onUnrecoverableError?(error)
-            capturingFlag.store(false, ordering: .releasing)
+        let targetFormat = processingFormat
+        let bufferToWrite: AVAudioPCMBuffer
+        if mono.format.sampleRate == targetFormat.sampleRate {
+            bufferToWrite = mono
+        } else {
+            guard let converter = converterForSource(mono.format),
+                  let converted = VPIOBufferHelper.convert(
+                      mono, to: targetFormat, using: converter
+                  )
+            else { return }
+            bufferToWrite = converted
         }
+        VPIOBufferHelper.writeBuffer(bufferToWrite, to: file)
     }
 
-    // MARK: - Shared-state accessors (lock-free, safe for real-time thread)
+    private func converterForSource(_ sourceFormat: AVAudioFormat) -> AVAudioConverter? {
+        let sourceHash = sourceFormat.hash
+        if sourceHash == cachedConverterSourceHash, let converter = cachedConverter {
+            return converter
+        }
+        guard let converter = AVAudioConverter(
+            from: sourceFormat, to: processingFormat
+        ) else {
+            logger.error("Failed to build AVAudioConverter for mic resampling")
+            return nil
+        }
+        cachedConverter = converter
+        cachedConverterSourceHash = sourceHash
+        return converter
+    }
+
+    // MARK: - File handle (lock-free, safe for real-time thread)
 
     private func setExtFile(_ file: ExtAudioFileRef?) {
         let bits = file.map { UInt(bitPattern: $0) } ?? 0
@@ -295,18 +281,119 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         guard bits != 0 else { return nil }
         return OpaquePointer(bitPattern: bits)
     }
+}
 
-    deinit {
-        if let observer = configObserver {
-            NotificationCenter.default.removeObserver(observer)
+// MARK: - Buffer helpers (pure, testable)
+
+/// Pure audio-buffer operations used by the VPIO mic tap. Extracted from the
+/// engine class so they can be unit-tested without hardware.
+enum VPIOBufferHelper {
+    /// Extracts channel 0 of a multichannel non-interleaved float PCM buffer
+    /// into a mono buffer at the same sample rate. With VPIO, channel 0 is
+    /// the processed/beamformed mono; the rest are raw-array reference feeds.
+    static func extractChannel0(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let frames = Int(source.frameLength)
+        guard frames > 0, let srcData = source.floatChannelData else { return nil }
+        guard let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: source.format.sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let mono = AVAudioPCMBuffer(
+            pcmFormat: monoFormat,
+            frameCapacity: AVAudioFrameCount(frames)
+        ) else { return nil }
+        mono.frameLength = AVAudioFrameCount(frames)
+        guard let dst = mono.floatChannelData?[0] else { return nil }
+        dst.update(from: srcData[0], count: frames)
+        return mono
+    }
+
+    /// Resamples a PCM buffer to `targetFormat` via the supplied converter.
+    static func convert(
+        _ source: AVAudioPCMBuffer,
+        to targetFormat: AVAudioFormat,
+        using converter: AVAudioConverter
+    ) -> AVAudioPCMBuffer? {
+        let frameCapacity = AVAudioFrameCount(
+            Double(source.frameLength) * targetFormat.sampleRate / source.format.sampleRate
+        )
+        guard frameCapacity > 0,
+              let output = AVAudioPCMBuffer(
+                  pcmFormat: targetFormat, frameCapacity: frameCapacity
+              )
+        else { return nil }
+
+        var error: NSError?
+        nonisolated(unsafe) var hasProvidedData = false
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if hasProvidedData { outStatus.pointee = .noDataNow; return nil }
+            hasProvidedData = true
+            outStatus.pointee = .haveData
+            return source
         }
-        if capturingFlag.load(ordering: .acquiring) {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+        converter.convert(to: output, error: &error, withInputFrom: inputBlock)
+        if let error {
+            logger.error("AVAudioConverter error: \(error.localizedDescription)")
+            return nil
         }
-        let bits = atomicFileRef.load(ordering: .acquiring)
-        if bits != 0, let ptr = OpaquePointer(bitPattern: bits) {
-            ExtAudioFileDispose(ptr)
+        guard output.frameLength > 0 else { return nil }
+        return output
+    }
+
+    @discardableResult
+    static func writeBuffer(
+        _ buffer: AVAudioPCMBuffer, to file: ExtAudioFileRef
+    ) -> OSStatus {
+        let status = ExtAudioFileWrite(
+            file, buffer.frameLength, buffer.mutableAudioBufferList
+        )
+        if status != noErr {
+            logger.error("ExtAudioFileWrite error: \(status)")
         }
+        return status
+    }
+}
+
+// MARK: - File creation helper
+
+/// Encapsulates `ExtAudioFile` creation for the VPIO mic engine.
+private enum VPIOFileHelper {
+    static func createExtAudioFile(
+        url: URL,
+        encoder: EncoderSettings,
+        processingFormat: AVAudioFormat
+    ) throws -> ExtAudioFileRef {
+        var outputASBD = encoder.outputASBD()
+        var fileRef: ExtAudioFileRef?
+        let createStatus = ExtAudioFileCreateWithURL(
+            url as CFURL, encoder.fileType, &outputASBD, nil,
+            AudioFileFlags.eraseFile.rawValue, &fileRef
+        )
+        guard createStatus == noErr, let file = fileRef else {
+            throw CaptureError.micEngineFailed(
+                "Failed to create ADTS AAC file (OSStatus \(createStatus))"
+            )
+        }
+        var clientASBD = processingFormat.streamDescription.pointee
+        let clientStatus = ExtAudioFileSetProperty(
+            file, kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size), &clientASBD
+        )
+        guard clientStatus == noErr else {
+            ExtAudioFileDispose(file)
+            throw CaptureError.micEngineFailed(
+                "Failed to set client format (OSStatus \(clientStatus))"
+            )
+        }
+        let brStatus = EncoderSettings.applyBitRate(
+            to: file, bitRate: encoder.bitRate
+        )
+        if brStatus != noErr {
+            logger.warning(
+                "applyBitRate returned \(brStatus) — using encoder default"
+            )
+        }
+        return file
     }
 }

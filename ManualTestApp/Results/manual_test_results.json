@@ -24,32 +24,28 @@
     "stepID" : "ac_playback_system"
   },
   "ac_request_permissions" : {
-    "status" : "pass",
-    "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-06-07T18:30:09Z"
+    "status" : "not-run",
+    "stepID" : "ac_request_permissions"
   },
   "ac_route_change" : {
     "status" : "not-run",
     "stepID" : "ac_route_change"
   },
   "ac_start_recording" : {
-    "status" : "pass",
-    "stepID" : "ac_start_recording",
-    "timestamp" : "2026-06-08T09:29:00Z"
+    "status" : "not-run",
+    "stepID" : "ac_start_recording"
   },
   "ac_stop_recording" : {
-    "status" : "pass",
-    "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-06-08T09:29:07Z"
+    "status" : "not-run",
+    "stepID" : "ac_stop_recording"
   },
   "ac_timed_capture" : {
     "status" : "not-run",
     "stepID" : "ac_timed_capture"
   },
   "ac_two_dialogs" : {
-    "status" : "pass",
-    "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-06-07T18:30:10Z"
+    "status" : "not-run",
+    "stepID" : "ac_two_dialogs"
   },
   "tx_clear_cache" : {
     "status" : "pass",

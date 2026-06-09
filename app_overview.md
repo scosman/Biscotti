@@ -61,7 +61,9 @@ A lot of users will live in the trap version of the app.
 Icon:
 - icon only: no meetings starting in next 2 hours
 - icon + text for “next meeting”: “1:1 Sam - in 1h52m” (research truncation when we get to this part, we want it to truncate meeting title, not time)
-- recording: icon + red recording symbol
+- recording: icon + recording symbol
+  - Option 1: red recording dot
+  - Option 2: white/system-color dot, but changing opacity every few seconds like a blinking recording LED on old VCR
 
 Body:
 - Recording section: state full recording status

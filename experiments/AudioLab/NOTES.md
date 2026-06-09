@@ -109,6 +109,46 @@ phase 9 already accepted forgoing). Next hardware run tests whether input-only
 nominal sample rate to the input's (48 kHz) *and* re-enable the output driver —
 not the mixer-at-44.1 kHz path that just failed.
 
+#### Hardware run 2 (2026-06-08): input-only is loud but **choppy** — downlink needs a driven output
+Input-only **started cleanly** (no `-10875`) and the **level was fixed**:
+`VPIO source channel peaks: ch0=0.5363 …` (vs ~0.004 on the AVCaptureSession
+path) — VPIO's *uplink* processing (gain/beamform) works. **But** the log flooded
+with `failed to run downlink DSP (I/O fault)` + `audio time stamp does not have
+valid sample time`: with nothing rendering to the output, the duplex unit's
+**downlink** half had no valid timestamps and faulted every IO cycle, stuttering
+the shared clock → the mic arrived in irregular ~100 ms bursts (`frames=4800`) →
+**choppy audio with gaps** (and occasional clipping). So input-only doesn't
+"starve" to zero — it destabilises.
+
+**Fix (current):** drive the muted silent output **and** first raise the default
+**output** device's nominal rate to the input's (48 kHz) via
+`ensureOutputRateMatchesInput` so the two duplex scopes share one IO clock —
+addressing both the `-10875` (run 1) and the downlink fault (run 2) at once.
+`driveSilentOutput` back to **`true`**. The output device rate is **restored on
+stop** (`restoreOutputRate`).
+
+> **Side effect:** while recording, the system **output** device is forced to
+> 48 kHz (one brief audio glitch at start + one at stop as the HAL re-clocks);
+> restored on stop. Acceptable for validation; revisit for production.
+
+#### Hardware run 3 (2026-06-08): the device rate-match worked, but the *connection* format didn't
+The output device **did** move to 48 kHz (`raising output device 110 … → 48000Hz …
+output device confirmed at 48000Hz`), yet the silent driver still attached at
+**44.1 kHz** (`attached … driver (44100Hz 2ch …)`) → `-10875` again. Cause: the
+format was read from **`engine.mainMixerNode.outputFormat(forBus:0)`, which is a
+software-default 44.1 kHz that ignores the hardware device rate**; routing silence
+through the mixer pinned the VPIO output scope to 44.1 kHz while the input was
+48 kHz. **Fix:** bypass the mixer — connect the silence node **straight to
+`outputNode`** with its **rate forced to the VPIO input rate** (`tapFormat`
+sample rate), channels from the output HW. Run 4 to confirm init + smooth audio.
+
+**Still open (separate, pre-existing — *not* the mic):** the **system** track logs
+`Input data proc returned inconsistent … 8 bytes per packet` because the global
+tap delivered **6 ch** (`FIRST system audio buffer (512 frames, 6ch)`) while
+`SystemAudioCapture`'s ExtAudioFile client format is 2 ch. That's a
+`SystemAudioCapture` channel-count bug, independent of the VPIO mic work — address
+next.
+
 ### VPIO 9-channel gotcha (Scripta precedent)
 When VPIO is enabled the mic format **silently becomes 9 channels**. Extract
 **channel 0 manually** — do **not** use `AVAudioConverter` for the channel

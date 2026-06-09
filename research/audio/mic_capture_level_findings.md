@@ -59,18 +59,25 @@ The dominant factor is the raw-array gain itself.
 ## Remaining approaches — try in this order
 
 ### 1. VPIO path (preferred — gives the *processed* mono we actually want)
-**Status: implemented in AudioLab (`Sources/VPIOMicCapture.swift`); hardware run 1
-(2026-06-08) — VPIO now *initializes*, blocked on a fixable rate mismatch, input-only
-retry pending.** Run 1 result (this updates phase 9 finding #1, which had VPIO as a
-hard fault): `setVoiceProcessingEnabled(true)` **succeeded** on M-series / macOS 15
-(input format 48 kHz **9 ch** — the expected surprise); the `theDeviceBoardID` /
-`vpStrategyManager GetProperty` messages still print but are **non-fatal** now. The
-failure was **`-10875` (FormatNotSupported)** at `engine.start()`: VPIO is one **duplex**
-unit on a single IO clock, and the silent-output driver pulled the 44.1 kHz default
-**output** device into the unit alongside the 48 kHz mic **input** — it can't span both
-rates. Fix applied: run **input-only** (`driveSilentOutput=false`); fallback if the
-input starves is to match the output device's nominal rate to the input's (48 kHz)
-before re-driving an output. A/B-switchable against the AVCaptureSession path via
+**Status: implemented in AudioLab (`Sources/VPIOMicCapture.swift`); level fixed, fixing
+choppiness (hardware run 3 pending).** This updates phase 9 finding #1 (which had VPIO
+as a hard fault). Progression:
+- **Run 1:** `setVoiceProcessingEnabled(true)` **succeeded** on M-series / macOS 15
+  (input format 48 kHz **9 ch** — the expected surprise; the `theDeviceBoardID` /
+  `vpStrategyManager` messages still print but are **non-fatal**). Blocked by **`-10875`
+  (FormatNotSupported)** at `engine.start()`: VPIO is one **duplex** unit on a single IO
+  clock, and the silent-output driver pulled the 44.1 kHz default **output** into the
+  unit alongside the 48 kHz mic **input** — can't span both rates.
+- **Run 2 (input-only):** started cleanly and the **level is fixed** (ch0≈0.54 vs
+  ~0.004), but the **downlink** half faulted every cycle (`failed to run downlink DSP` /
+  `audio time stamp does not have valid sample time`) because nothing rendered to the
+  output → stuttered IO → **choppy mic with gaps**.
+- **Now:** drive the muted output **and** raise the output device's nominal rate to the
+  input's (48 kHz) so both duplex scopes share one clock — fixes `-10875` *and* the
+  downlink fault. Output rate restored on stop (brief glitch at start/stop). Run 3 to
+  confirm smooth, loud, non-clipped capture, incl. with a meeting app holding the mic.
+
+A/B-switchable against the AVCaptureSession path via
 `RecordingCoordinator.useVoiceProcessingMic` (default `true`); the
 AVCaptureSession path is **not** removed. The implementation follows every
 gotcha below — enable VP, disable other-audio ducking, query the post-VP input

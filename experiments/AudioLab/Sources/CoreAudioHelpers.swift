@@ -266,6 +266,24 @@ enum CoreAudioHelpers {
         return value != 0
     }
 
+    /// Sets a device's nominal sample rate (Hz). Used to raise the default
+    /// **output** device to the input's rate so the VPIO **duplex** unit (one
+    /// shared IO clock) can run a driven downlink without a `-10875`
+    /// input/output format mismatch. The HAL applies this **asynchronously** —
+    /// poll `nominalSampleRate(for:)` until it reflects the new value. Returns
+    /// the `OSStatus` of the set call.
+    static func setNominalSampleRate(_ rate: Double, for deviceID: AudioObjectID) -> OSStatus {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value = rate
+        return AudioObjectSetPropertyData(
+            deviceID, &address, 0, nil, UInt32(MemoryLayout<Float64>.size), &value
+        )
+    }
+
     /// The device's transport type. Useful to spot when the default input has
     /// been swapped to a voice-processing aggregate / virtual device.
     static func transportType(for deviceID: AudioObjectID) -> UInt32? {

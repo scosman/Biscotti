@@ -63,21 +63,24 @@ extension MicCapture: MicCapturing {}
 /// peak should rise to a normal speaking level (> ~0.05) and *stay* loud while a
 /// meeting app holds the mic.
 final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
-    /// Drive a muted silent output node so the VPIO duplex unit keeps cycling
-    /// its IO (the theory being some hardware starves the VP input otherwise).
+    /// Drive a muted silent output node so the VPIO **duplex** unit's downlink
+    /// (output) half runs with valid timestamps.
     ///
-    /// **Default `false` — hardware finding (2026-06-08):** doing this *broke*
-    /// init with `-10875` ("client-side input and output formats do not match").
-    /// VPIO is one duplex unit sharing a single IO clock, and on this Mac the
-    /// default **input** runs at 48 kHz while the default **output** runs at
-    /// 44.1 kHz; attaching an output node pulls the 44.1 kHz output scope into
-    /// the unit, and it can't span the two rates. Input-only sidesteps it (the
-    /// beamformed/normalised mono we want is produced on the *input* path; we
-    /// only forgo echo-cancellation, which needs an output reference we don't
-    /// have anyway). Re-enable ONLY together with a device-sample-rate match
-    /// (force the output device's nominal rate to the input's) and only if
-    /// input-only turns out to starve the input.
-    private static let driveSilentOutput = false
+    /// **Hardware findings (2026-06-08):**
+    /// - Run 1, output ON via a 44.1 kHz mixer while the mic input was 48 kHz →
+    ///   init failed with `-10875` ("client-side input and output formats do not
+    ///   match"): VPIO is one unit on a single IO clock and can't span two rates.
+    /// - Run 2, output OFF (input-only) → init OK and levels good, but the
+    ///   downlink faulted every cycle (`failed to run downlink DSP (I/O fault)` /
+    ///   `audio time stamp does not have valid sample time`) because nothing
+    ///   rendered to the output → the shared IO cadence stuttered → **choppy
+    ///   mic with gaps**.
+    ///
+    /// So we drive the output **and** first raise the default output device's
+    /// nominal rate to the input's (`ensureOutputRateMatchesInput`) so the two
+    /// duplex scopes share one rate — fixing both the `-10875` and the downlink
+    /// fault. The output device rate is restored on stop.
+    private static let driveSilentOutput = true
 
     private static let heartbeatInterval = 2
 
@@ -94,6 +97,12 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
     private var engine: AVAudioEngine?
     private var silenceNode: AVAudioSourceNode?
     private var configChangeObserver: NSObjectProtocol?
+
+    /// Set when we raise the default **output** device's sample rate to match the
+    /// input's (so the VPIO duplex unit can drive its downlink): the device and
+    /// its original rate, so `stop()` can restore it. nil ⇒ no override active.
+    /// Touched only on `engineQueue`.
+    private var outputRateOverride: (deviceID: AudioObjectID, originalRate: Double)?
 
     private var cachedConverter: AVAudioConverter?
     private var cachedConverterSourceHash: Int = 0
@@ -185,6 +194,7 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
             guard let self else { return }
             isTearingDown = true
             teardownEngine()
+            restoreOutputRate()
             closeExtFile()
             let snap = snapshotStats()
             Log.mic.event(
@@ -199,6 +209,7 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
         removeConfigChangeObserver()
         heartbeatTimer?.cancel()
         teardownEngine()
+        restoreOutputRate()
         if let file = extFile { ExtAudioFileDispose(file) }
     }
 
@@ -219,6 +230,14 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
         }
         Log.mic.event("=== VPIO engine build (\(context)) ===")
         do {
+            // VPIO is a duplex unit on one IO clock: before building, make the
+            // default output device share the input's rate so we can drive a
+            // valid downlink without a -10875 mismatch (and so the downlink
+            // stops faulting → no choppiness).
+            if Self.driveSilentOutput {
+                ensureOutputRateMatchesInput()
+            }
+
             let engine = AVAudioEngine()
             // Store before the fallible setup so the catch path's teardownEngine()
             // can stop it / remove the tap / detach the silence node.
@@ -239,7 +258,7 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
             Log.mic.event("VPIO enabled OK. input tap format: \(EncoderSettings.describe(tapFormat))")
 
             if Self.driveSilentOutput {
-                attachSilentOutput(to: engine)
+                attachSilentOutput(to: engine, inputRate: tapFormat.sampleRate)
             }
 
             input.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, when in
@@ -267,19 +286,83 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
                 )
             }
             teardownEngine()
+            restoreOutputRate()
             closeExtFile()
             setNotCapturing()
             onUnrecoverableError?(error)
         }
     }
 
-    /// Attaches a muted, silence-rendering source node to the main mixer so the
-    /// VPIO duplex unit keeps its IO cycle running (and thus services the input).
-    /// The mixer output is muted, so nothing is audible. Must run before
-    /// `engine.start()`.
-    private func attachSilentOutput(to engine: AVAudioEngine) {
-        let mixer = engine.mainMixerNode // lazily connects mixer → outputNode
-        let format = mixer.outputFormat(forBus: 0)
+    /// Raises the default **output** device's nominal sample rate to match the
+    /// default **input**'s, so the VPIO duplex unit's two scopes share one IO
+    /// clock. Records the original rate (once) for restoration on stop. The HAL
+    /// applies the change asynchronously, so we poll until it reflects (or time
+    /// out). Runs on `engineQueue`. No-op if the rates already match.
+    private func ensureOutputRateMatchesInput() {
+        guard let inID = CoreAudioHelpers.defaultInputDeviceID(),
+              let inRate = CoreAudioHelpers.nominalSampleRate(for: inID),
+              let outID = CoreAudioHelpers.defaultOutputDeviceID(),
+              let outRate = CoreAudioHelpers.nominalSampleRate(for: outID)
+        else {
+            Log.mic.warn("could not read input/output device rates — skipping rate match")
+            return
+        }
+        guard abs(inRate - outRate) > 1 else {
+            Log.mic.event("output rate \(Int(outRate))Hz already matches input \(Int(inRate))Hz — no change")
+            return
+        }
+        if outputRateOverride == nil {
+            outputRateOverride = (outID, outRate)
+        }
+        let status = CoreAudioHelpers.setNominalSampleRate(inRate, for: outID)
+        Log.mic.event(
+            "raising output device \(outID) rate \(Int(outRate))Hz → \(Int(inRate))Hz for VPIO duplex " +
+                "(status \(osStatusString(status)))"
+        )
+        for _ in 0 ..< 40 { // up to ~1s for the async HAL change to apply
+            if let now = CoreAudioHelpers.nominalSampleRate(for: outID), abs(now - inRate) < 1 {
+                Log.mic.event("output device confirmed at \(Int(now))Hz")
+                return
+            }
+            usleep(25_000)
+        }
+        Log.mic.warn("output device rate did not confirm \(Int(inRate))Hz within ~1s — proceeding anyway")
+    }
+
+    /// Restores the output device's original sample rate if we overrode it.
+    /// Idempotent; runs on `engineQueue` (and from `deinit`).
+    private func restoreOutputRate() {
+        guard let override = outputRateOverride else { return }
+        let status = CoreAudioHelpers.setNominalSampleRate(override.originalRate, for: override.deviceID)
+        Log.mic.event(
+            "restored output device \(override.deviceID) rate → \(Int(override.originalRate))Hz " +
+                "(status \(osStatusString(status)))"
+        )
+        outputRateOverride = nil
+    }
+
+    /// Drives a silence-rendering source node so the VPIO duplex unit's downlink
+    /// (output) half runs with valid timestamps.
+    ///
+    /// Connects **straight to the output node** (NOT through `mainMixerNode`,
+    /// whose output bus has a software-default 44.1 kHz format that ignores the
+    /// hardware device rate — routing through it pinned the VPIO output scope to
+    /// 44.1 kHz while the input was 48 kHz → `-10875`). Crucially the silence
+    /// format's **sample rate is forced to the VPIO input rate** (`inputRate`),
+    /// not read back from the output node (whose reported format lags the device
+    /// change). That guarantees the duplex unit's input and output client scopes
+    /// share one rate. Channels follow the output node's hardware to avoid a
+    /// channel-mismatch on connect. `isSilence` + zero-filled buffers ⇒ nothing
+    /// audible. Must run before `engine.start()`.
+    private func attachSilentOutput(to engine: AVAudioEngine, inputRate: Double) {
+        let output = engine.outputNode
+        let hwChannels = max(1, output.outputFormat(forBus: 0).channelCount)
+        guard let format = AVAudioFormat(
+            standardFormatWithSampleRate: inputRate, channels: hwChannels
+        ) else {
+            Log.mic.warn("could not build a \(Int(inputRate))Hz/\(hwChannels)ch silent-output format — skipping")
+            return
+        }
         let node = AVAudioSourceNode(format: format) { isSilence, _, _, audioBufferList in
             isSilence.pointee = ObjCBool(true)
             let abl = UnsafeMutableAudioBufferListPointer(audioBufferList)
@@ -289,11 +372,11 @@ final class VPIOMicCapture: MicCapturing, @unchecked Sendable {
             return noErr
         }
         engine.attach(node)
-        engine.connect(node, to: mixer, format: format)
-        mixer.outputVolume = 0
+        engine.connect(node, to: output, format: format)
         silenceNode = node
         Log.mic.event(
-            "attached muted silent-output driver (\(EncoderSettings.describe(format))) to keep VPIO duplex IO cycling"
+            "attached silent-output driver (\(EncoderSettings.describe(format))) → outputNode " +
+                "(rate forced to VPIO input \(Int(inputRate))Hz) to cycle the downlink"
         )
     }
 

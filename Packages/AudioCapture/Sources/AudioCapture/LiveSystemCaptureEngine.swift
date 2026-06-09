@@ -9,23 +9,14 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 
 /// Live system-audio capture via Core Audio global process tap.
 ///
-/// Creates a process tap + aggregate device referencing the default output
-/// device, installs an IOProc that copies buffers through a lock-free ring
-/// buffer to a writer thread, which writes ADTS AAC directly via
-/// `ExtAudioFile`.
+/// Creates a process tap + aggregate device, installs an IOProc that
+/// copies buffers through a lock-free ring buffer to a writer thread
+/// which writes ADTS AAC via `ExtAudioFile`. Thin hardware adapter --
+/// orchestration lives in `AudioRecorder`. Tested by Manual Test App.
 ///
-/// This is a thin hardware adapter -- all orchestration lives in
-/// `AudioRecorder`. Tested only by the Manual Test App.
-///
-/// **Thread-safety contract:** this class is `@unchecked Sendable` because
-/// its mutable state (`tapObjectID`, `aggregateDeviceID`, `ioProcID`,
-/// `audioFile`, `writerThread`, etc.) is only mutated in `start()`,
-/// `stop()`, `reconnect()`, and `teardown()`. All of these are called
-/// exclusively by `AudioRecorder` (an actor), which serializes access.
-/// The `capturingFlag` atomic provides a fast non-blocking read for the
-/// `start()` early-return guard and `deinit`. The writer thread
-/// communicates errors via `_lock`-protected `_writeError`, accessed only
-/// at teardown after the writer thread has joined.
+/// **Thread-safety:** `@unchecked Sendable` — mutable state serialized
+/// by the owning `AudioRecorder` actor. Writer-thread errors flow
+/// through `_lock`-protected `_writeError`, read after the writer joins.
 final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     private var tapObjectID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
@@ -38,9 +29,16 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     private let writerDone = DispatchSemaphore(value: 0)
     private var tapSampleRate: Double = 24000
 
-    /// Atomic state flag -- avoids os_unfair_lock in async contexts.
-    private let capturingFlag = Atomic<Bool>(false)
+    /// Writer-thread-only flags for deferred client format setup.
+    private var clientFormatConfigured = false
+    private var clientFormatFailed = false
 
+    #if DEBUG
+        nonisolated(unsafe) static var verboseDiagnostics = true
+        private let diagHeartbeat = SystemCaptureDiagnostics.Heartbeat()
+    #endif
+
+    private let capturingFlag = Atomic<Bool>(false)
     private var _lock = os_unfair_lock()
     private var _writeError: OSStatus?
 
@@ -62,6 +60,14 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
 
         try createTapAndAggregate()
+        #if DEBUG
+            if Self.verboseDiagnostics {
+                SystemCaptureDiagnostics.logSetupFormats(
+                    tapObjectID: tapObjectID,
+                    aggregateDeviceID: aggregateDeviceID
+                )
+            }
+        #endif
         try openAudioFile(url: url)
         startWriterThread()
         try startIOProc()
@@ -74,8 +80,8 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         teardown()
     }
 
-    /// Reconnects hardware without reopening the audio file (preserves audio).
-    /// Called by `AudioRecorder` on output-device route changes.
+    /// Reconnects hardware without reopening the audio file. Client format
+    /// (channel count) is locked to the first device for the file's life.
     func reconnect() async throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
         teardownHardware()
@@ -92,15 +98,10 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     // MARK: - Setup
 
     private func createTapAndAggregate() throws {
-        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
-              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
-        else {
-            throw CaptureError.tapCreationFailed(-1)
-        }
-
-        let tapUUID = UUID()
-        let tapDesc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        tapDesc.uuid = tapUUID
+        // Mono mixdown global tap — the tap itself mixes all system audio
+        // to a single channel, so the IOProc gets a clean mono feed
+        // regardless of the output device's speaker topology.
+        let tapDesc = CATapDescription(monoGlobalTapButExcludeProcesses: [])
         tapDesc.name = "biscotti-system-tap"
         tapDesc.muteBehavior = .unmuted
         tapDesc.isPrivate = true
@@ -112,23 +113,19 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         }
         tapObjectID = tapID
 
-        let aggregateUID = UUID().uuidString
+        // Get the tap's UID for attaching to the aggregate device.
+        let tapUID = try queryTapUID()
+
+        // Empty-sub-device aggregate (mirrors audiotee). The sub-device list
+        // is intentionally empty — we do NOT add the output device, which
+        // would cause the IOProc to deliver the raw multichannel speaker feed
+        // instead of the tap's clean mono mixdown.
         let aggConfig: [String: Any] = [
-            kAudioAggregateDeviceUIDKey as String: aggregateUID,
+            kAudioAggregateDeviceUIDKey as String: UUID().uuidString,
             kAudioAggregateDeviceNameKey as String: "Biscotti Aggregate",
-            kAudioAggregateDeviceMainSubDeviceKey as String: outputUID,
             kAudioAggregateDeviceIsPrivateKey as String: true,
             kAudioAggregateDeviceIsStackedKey as String: false,
-            kAudioAggregateDeviceTapAutoStartKey as String: true,
-            kAudioAggregateDeviceSubDeviceListKey as String: [
-                [kAudioSubDeviceUIDKey as String: outputUID]
-            ],
-            kAudioAggregateDeviceTapListKey as String: [
-                [
-                    kAudioSubTapUIDKey as String: tapUUID.uuidString,
-                    kAudioSubTapDriftCompensationKey as String: true
-                ]
-            ]
+            kAudioAggregateDeviceSubDeviceListKey as String: [] as CFArray
         ]
 
         var aggID: AudioObjectID = kAudioObjectUnknown
@@ -139,6 +136,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
             throw CaptureError.aggregateDeviceFailed(status)
         }
         aggregateDeviceID = aggID
+
+        // Attach the tap to the aggregate via kAudioAggregateDevicePropertyTapList.
+        try attachTapToAggregate(tapUID: tapUID)
     }
 
     // MARK: - Writer Thread
@@ -173,9 +173,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         let channelCount = Int(max(entry.channelCount, 1))
         let sampleCount = frameCount * channelCount
 
-        // Feed samples to permission checker for zero-detection, but only
-        // during the initial ~2 s window. After the window closes, skip the
-        // per-buffer copy entirely to avoid allocating on every callback.
+        // Feed samples to permission checker during initial ~2 s window.
         if permissionChecker.isWithinCheckWindow {
             entry.data.withMemoryRebound(to: Float.self, capacity: sampleCount) { samples in
                 let bufferPointer = UnsafeBufferPointer(start: samples, count: sampleCount)
@@ -185,6 +183,31 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         }
 
         guard let file = audioFile else { return }
+        guard !clientFormatFailed else { return }
+
+        // First buffer: set client format from actual delivered channel
+        // count (ground truth). ExtAudioFile handles N-ch → mono downmix.
+        if !clientFormatConfigured {
+            if configureClientFormat(
+                channelCount: UInt32(channelCount), file: file
+            ) {
+                clientFormatConfigured = true
+            } else {
+                clientFormatFailed = true
+                return
+            }
+        }
+
+        #if DEBUG
+            if Self.verboseDiagnostics {
+                diagHeartbeat.processBuffer(
+                    data: entry.data, frameCount: frameCount,
+                    channelCount: channelCount,
+                    dataByteSize: entry.dataByteSize,
+                    sampleRate: tapSampleRate
+                )
+            }
+        #endif
 
         let expectedBytes = UInt32(sampleCount) * UInt32(MemoryLayout<Float>.size)
         guard entry.dataByteSize >= expectedBytes else {
@@ -252,7 +275,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     // MARK: - Teardown
 
-    /// Tears down the hardware pipeline but keeps the audio file open.
     private func teardownHardware() {
         if let procID = ioProcID {
             AudioDeviceStop(aggregateDeviceID, procID)
@@ -277,7 +299,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         }
     }
 
-    /// Full teardown: hardware pipeline + audio file.
     private func teardown() {
         teardownHardware()
 
@@ -294,17 +315,55 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     }
 }
 
-// MARK: - Audio File Setup
+// MARK: - Tap / Aggregate Helpers + Audio File Setup
 
 extension LiveSystemCaptureEngine {
+    /// Queries the tap's UID string from kAudioTapPropertyUID.
+    private func queryTapUID() throws -> CFString {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size = UInt32(MemoryLayout<CFString>.size)
+        var uid: CFString = "" as CFString
+        let status = withUnsafeMutablePointer(to: &uid) { ptr in
+            AudioObjectGetPropertyData(tapObjectID, &address, 0, nil, &size, ptr)
+        }
+        guard status == noErr else {
+            throw CaptureError.tapCreationFailed(status)
+        }
+        return uid
+    }
+
+    /// Attaches a tap to the aggregate device via the TapList property.
+    private func attachTapToAggregate(tapUID: CFString) throws {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioAggregateDevicePropertyTapList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let tapArray = [tapUID] as CFArray
+        let size = UInt32(MemoryLayout<CFArray>.size)
+        let status = withUnsafePointer(to: tapArray) { ptr in
+            AudioObjectSetPropertyData(aggregateDeviceID, &address, 0, nil, size, ptr)
+        }
+        guard status == noErr else {
+            throw CaptureError.tapCreationFailed(status)
+        }
+    }
+
     private func openAudioFile(url: URL) throws {
         guard let tapFormat = queryTapFormat() else {
             throw CaptureError.tapCreationFailed(-2)
         }
 
         tapSampleRate = tapFormat.mSampleRate
+        clientFormatConfigured = false
+        clientFormatFailed = false
 
-        // Create an ADTS AAC file — the encoder fills in packet details.
+        // Create ADTS AAC file. Client format deferred to processEntry()
+        // where the actual channel count is known from IOProc data.
         var outputASBD = encoder.outputASBD()
         var fileRef: ExtAudioFileRef?
         let createStatus = ExtAudioFileCreateWithURL(
@@ -317,38 +376,6 @@ extension LiveSystemCaptureEngine {
         )
         guard createStatus == noErr, let file = fileRef else {
             throw CaptureError.tapCreationFailed(createStatus)
-        }
-
-        // Client format = the tap's native PCM format. ExtAudioFile converts
-        // PCM → AAC on each write. We use the tap's format (not encoder's
-        // processingFormat) because the system tap delivers at its own
-        // sample rate and channel count.
-        var clientASBD = AudioStreamBasicDescription(
-            mSampleRate: tapFormat.mSampleRate,
-            mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: tapFormat.mBytesPerPacket,
-            mFramesPerPacket: 1,
-            mBytesPerFrame: tapFormat.mBytesPerFrame,
-            mChannelsPerFrame: tapFormat.mChannelsPerFrame,
-            mBitsPerChannel: 32,
-            mReserved: 0
-        )
-        let clientStatus = ExtAudioFileSetProperty(
-            file,
-            kExtAudioFileProperty_ClientDataFormat,
-            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
-            &clientASBD
-        )
-        guard clientStatus == noErr else {
-            ExtAudioFileDispose(file)
-            throw CaptureError.tapCreationFailed(clientStatus)
-        }
-
-        // Commit the target bit rate after the converter exists.
-        let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
-        if brStatus != noErr {
-            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
         }
 
         audioFile = file
@@ -366,4 +393,263 @@ extension LiveSystemCaptureEngine {
         guard status == noErr else { return nil }
         return format
     }
+
+    /// Sets client format (interleaved float PCM) and encoder bit rate.
+    /// Returns `true` on success.
+    private func configureClientFormat(
+        channelCount: UInt32, file: ExtAudioFileRef
+    ) -> Bool {
+        let bytesPerFrame = UInt32(MemoryLayout<Float>.size) * channelCount
+        var clientASBD = AudioStreamBasicDescription(
+            mSampleRate: tapSampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: bytesPerFrame,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: bytesPerFrame,
+            mChannelsPerFrame: channelCount,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        let clientStatus = ExtAudioFileSetProperty(
+            file,
+            kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
+            &clientASBD
+        )
+        guard clientStatus == noErr else {
+            logger.error("Failed to set client format (\(channelCount) ch): \(clientStatus)")
+            recordWriteError(clientStatus)
+            return false
+        }
+
+        let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
+        if brStatus != noErr {
+            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
+        }
+        return true
+    }
 }
+
+// MARK: - DEBUG Diagnostics (compiled out of release)
+
+#if DEBUG
+
+    /// Format/structure logging and per-channel heartbeat for diagnosing
+    /// muffled system audio on multichannel devices.
+    enum SystemCaptureDiagnostics {
+        // MARK: - Format snapshot (called once at start)
+
+        static func logSetupFormats(
+            tapObjectID: AudioObjectID,
+            aggregateDeviceID: AudioObjectID
+        ) {
+            logTapFormat(tapObjectID: tapObjectID)
+            logAggregateInputFormat(deviceID: aggregateDeviceID)
+            logAggregateInputLayout(deviceID: aggregateDeviceID)
+            logDefaultOutputDevice()
+        }
+
+        private static func logTapFormat(tapObjectID: AudioObjectID) {
+            var format = AudioStreamBasicDescription()
+            var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioTapPropertyFormat,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            let status = AudioObjectGetPropertyData(
+                tapObjectID, &address, 0, nil, &size, &format
+            )
+            if status == noErr {
+                let flags = String(format: "0x%08X", format.mFormatFlags)
+                logger.info(
+                    "[diag] tap format: rate=\(format.mSampleRate) ch=\(format.mChannelsPerFrame) flags=\(flags)"
+                )
+            } else {
+                logger.warning("[diag] tap format query failed: \(status)")
+            }
+        }
+
+        private static func logAggregateInputFormat(deviceID: AudioObjectID) {
+            if let fmt = CoreAudioHelpers.streamFormat(
+                for: deviceID, scope: kAudioDevicePropertyScopeInput
+            ) {
+                let flags = String(format: "0x%08X", fmt.mFormatFlags)
+                logger.info(
+                    "[diag] aggregate input stream: rate=\(fmt.mSampleRate) ch=\(fmt.mChannelsPerFrame) flags=\(flags)"
+                )
+            } else {
+                logger.warning("[diag] aggregate input stream format query failed")
+            }
+        }
+
+        private static func logAggregateInputLayout(deviceID: AudioObjectID) {
+            guard let data = CoreAudioHelpers.channelLayoutData(
+                for: deviceID, scope: kAudioDevicePropertyScopeInput
+            ) else {
+                logger.info("[diag] aggregate input channel layout: not available")
+                return
+            }
+
+            data.withUnsafeBytes { rawBuf in
+                guard rawBuf.count >= MemoryLayout<AudioChannelLayout>.size else {
+                    logger.warning("[diag] channel layout data too small")
+                    return
+                }
+                let layout = rawBuf.load(as: AudioChannelLayout.self)
+                let tag = layout.mChannelLayoutTag
+                let tagHex = String(format: "0x%08X", tag)
+                let tagName = readableLayoutTag(tag)
+                logger.info(
+                    "[diag] aggregate input layout tag=\(tagHex) (\(tagName)) bitmap=\(layout.mChannelBitmap.rawValue)"
+                )
+
+                if tag == kAudioChannelLayoutTag_UseChannelDescriptions {
+                    logChannelDescriptions(rawBuf: rawBuf, count: Int(layout.mNumberChannelDescriptions))
+                }
+            }
+        }
+
+        private static func logChannelDescriptions(
+            rawBuf: UnsafeRawBufferPointer, count: Int
+        ) {
+            guard let descOffset = MemoryLayout<AudioChannelLayout>.offset(
+                of: \AudioChannelLayout.mChannelDescriptions
+            ) else { return }
+            let descStride = MemoryLayout<AudioChannelDescription>.stride
+            var labels: [String] = []
+            for idx in 0 ..< count {
+                let off = descOffset + idx * descStride
+                guard off + descStride <= rawBuf.count else { break }
+                let desc = rawBuf.load(
+                    fromByteOffset: off, as: AudioChannelDescription.self
+                )
+                labels.append("\(desc.mChannelLabel)")
+            }
+            let labelsStr = labels.joined(separator: ", ")
+            logger.info("[diag] channel labels: [\(labelsStr)]")
+        }
+
+        private static func logDefaultOutputDevice() {
+            guard let devID = CoreAudioHelpers.defaultOutputDeviceID() else {
+                logger.warning("[diag] no default output device")
+                return
+            }
+            let name = CoreAudioHelpers.deviceName(for: devID) ?? "unknown"
+            let rate = CoreAudioHelpers.nominalSampleRate(for: devID) ?? 0
+            let channels = CoreAudioHelpers.channelCount(
+                for: devID, scope: kAudioDevicePropertyScopeOutput
+            ) ?? 0
+            let transport = CoreAudioHelpers.transportType(for: devID) ?? 0
+            let transportHex = String(format: "0x%08X", transport)
+            logger.info(
+                "[diag] default output: \"\(name)\" rate=\(rate) ch=\(channels) transport=\(transportHex)"
+            )
+        }
+
+        private static func readableLayoutTag(_ tag: AudioChannelLayoutTag) -> String {
+            switch tag {
+            case kAudioChannelLayoutTag_Mono: "Mono"
+            case kAudioChannelLayoutTag_Stereo: "Stereo"
+            case kAudioChannelLayoutTag_StereoHeadphones: "StereoHeadphones"
+            case kAudioChannelLayoutTag_MPEG_5_1_A: "5.1(A)"
+            case kAudioChannelLayoutTag_MPEG_5_1_B: "5.1(B)"
+            case kAudioChannelLayoutTag_MPEG_7_1_A: "7.1(A)"
+            case kAudioChannelLayoutTag_UseChannelDescriptions: "UseChannelDescriptions"
+            case kAudioChannelLayoutTag_UseChannelBitmap: "UseChannelBitmap"
+            default: "tag(\(tag))"
+            }
+        }
+
+        // MARK: - Per-channel heartbeat accumulator
+
+        /// Accumulates per-channel peak and HF-proxy metrics over a ~2 s
+        /// window, then logs a single summary line. Writer-thread only.
+        final class Heartbeat {
+            private var channelPeaks: [Float] = []
+            private var channelHFSum: [Float] = []
+            private var channelPrevSample: [Float] = []
+            private var sampleCount: Int = 0
+            private var lastLogTime: UInt64 = 0
+            private var isFirstBuffer = true
+            private let heartbeatNanos: UInt64 = 2_000_000_000
+
+            func processBuffer(
+                data: UnsafeMutableRawPointer,
+                frameCount: Int,
+                channelCount: Int,
+                dataByteSize: UInt32,
+                sampleRate: Double
+            ) {
+                let totalSamples = frameCount * channelCount
+                guard totalSamples > 0 else { return }
+
+                if isFirstBuffer {
+                    let msg = "ch=\(channelCount) frames=\(frameCount) bytes=\(dataByteSize) rate=\(sampleRate)"
+                    logger.info("[diag] first buffer: \(msg)")
+                    isFirstBuffer = false
+                    lastLogTime = mach_absolute_time()
+                }
+
+                if channelPeaks.count != channelCount {
+                    resetAccumulators(channelCount: channelCount)
+                }
+
+                data.withMemoryRebound(to: Float.self, capacity: totalSamples) { samples in
+                    for frame in 0 ..< frameCount {
+                        let base = frame * channelCount
+                        for channel in 0 ..< channelCount {
+                            let val = samples[base + channel]
+                            let absVal = abs(val)
+                            if absVal > channelPeaks[channel] {
+                                channelPeaks[channel] = absVal
+                            }
+                            let diff = abs(val - channelPrevSample[channel])
+                            channelHFSum[channel] += diff
+                            channelPrevSample[channel] = val
+                        }
+                    }
+                }
+
+                sampleCount += frameCount
+
+                let now = mach_absolute_time()
+                if machToNanos(now &- lastLogTime) >= heartbeatNanos {
+                    emitHeartbeat(channelCount: channelCount)
+                    resetAccumulators(channelCount: channelCount)
+                    lastLogTime = now
+                }
+            }
+
+            private func emitHeartbeat(channelCount: Int) {
+                guard sampleCount > 0 else { return }
+                let count = Float(sampleCount)
+                var parts: [String] = []
+                for channel in 0 ..< channelCount {
+                    let peak = channelPeaks[channel]
+                    let hfProxy = channelHFSum[channel] / count
+                    let peakStr = String(format: "%.4f", peak)
+                    let hfStr = String(format: "%.4f", hfProxy)
+                    parts.append("ch\(channel) peak=\(peakStr) hf=\(hfStr)")
+                }
+                let summary = parts.joined(separator: " | ")
+                logger.info("[diag] system heartbeat: \(summary)")
+            }
+
+            private func resetAccumulators(channelCount: Int) {
+                channelPeaks = [Float](repeating: 0, count: channelCount)
+                channelHFSum = [Float](repeating: 0, count: channelCount)
+                channelPrevSample = [Float](repeating: 0, count: channelCount)
+                sampleCount = 0
+            }
+
+            private func machToNanos(_ ticks: UInt64) -> UInt64 {
+                var info = mach_timebase_info_data_t()
+                mach_timebase_info(&info)
+                return ticks * UInt64(info.numer) / UInt64(info.denom)
+            }
+        }
+    }
+
+#endif

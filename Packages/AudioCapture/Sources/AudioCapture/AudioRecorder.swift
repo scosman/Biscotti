@@ -96,8 +96,10 @@ public actor AudioRecorder {
     ///
     /// Checks mic permission before starting engines. Throws
     /// `CaptureError.micPermissionDenied` if the mic is denied or restricted.
-    /// If the system engine starts but the mic fails, the system engine is
-    /// stopped before re-throwing.
+    /// The mic engine starts first so its output-device reclock completes
+    /// before the system engine queries the device rate. If the system
+    /// engine fails after the mic started, the mic engine is stopped
+    /// before re-throwing.
     public func start(paths: CapturePaths) async throws {
         guard !_isRecording else { return }
 
@@ -115,20 +117,22 @@ public actor AudioRecorder {
             throw CaptureError.micPermissionDenied
         }
 
-        // Start system audio first (the longer-setup path).
-        do {
-            try await systemEngine.start(writingTo: paths.systemAAC)
-        } catch {
-            logger.error("System engine start failed: \(error.localizedDescription)")
-            throw error
-        }
-
-        // Start mic. On failure, tear down the system engine.
+        // Start mic first: VPIO reclocks the output device to the input
+        // sample rate. The system tap must query the device after this
+        // completes so its ExtAudioFile client format matches the final rate.
         do {
             try await micEngine.start(writingTo: paths.micAAC)
         } catch {
             logger.error("Mic engine start failed: \(error.localizedDescription)")
-            await systemEngine.stop()
+            throw error
+        }
+
+        // Start system audio. On failure, tear down the mic engine.
+        do {
+            try await systemEngine.start(writingTo: paths.systemAAC)
+        } catch {
+            logger.error("System engine start failed: \(error.localizedDescription)")
+            await micEngine.stop()
             throw error
         }
 

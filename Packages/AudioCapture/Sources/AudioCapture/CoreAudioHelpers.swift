@@ -1,11 +1,7 @@
 import CoreAudio
 import Foundation
 
-/// Low-level Core Audio property helpers.
-///
-/// These wrap `AudioObjectGetPropertyData` for common patterns (scalar,
-/// string, array). They are internal — the public API uses higher-level
-/// types built on top.
+/// Low-level Core Audio property helpers wrapping `AudioObjectGetPropertyData`.
 enum CoreAudioHelpers {
     // MARK: - Property Getters
 
@@ -175,13 +171,7 @@ enum CoreAudioHelpers {
         )
     }
 
-    /// Sets a device's nominal sample rate (Hz). Returns the `OSStatus`.
-    ///
-    /// Used to raise the default output device to the input's rate so the
-    /// VPIO duplex unit (one shared IO clock) can drive a valid downlink
-    /// without a `-10875` input/output format mismatch. The HAL applies
-    /// the change asynchronously -- poll `nominalSampleRate(for:)` until
-    /// it reflects the new value.
+    /// Sets a device's nominal sample rate. HAL applies asynchronously.
     @discardableResult
     static func setNominalSampleRate(_ rate: Double, for deviceID: AudioObjectID) -> OSStatus {
         var address = AudioObjectPropertyAddress(
@@ -197,15 +187,12 @@ enum CoreAudioHelpers {
 
     // MARK: - Process List Listener
 
-    /// Handle for a system-level process list listener, used for removal.
     struct ProcessListListener: @unchecked Sendable {
         let block: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
         let queue: DispatchQueue
     }
 
-    /// Registers a listener for `kAudioHardwarePropertyProcessObjectList` changes.
-    /// Returns a handle that must be passed to `removeProcessListListener` for cleanup,
-    /// or `nil` if registration failed.
+    /// Registers a process-list listener. Returns nil on failure.
     @discardableResult
     static func addProcessListListener(
         queue: DispatchQueue,
@@ -240,7 +227,6 @@ enum CoreAudioHelpers {
 
     // MARK: - Per-Process Property Listener
 
-    /// Handle for a per-process property listener, used for removal.
     struct ProcessPropertyListener: @unchecked Sendable {
         let objectID: AudioObjectID
         let propertySelector: AudioObjectPropertySelector
@@ -248,8 +234,7 @@ enum CoreAudioHelpers {
         let queue: DispatchQueue
     }
 
-    /// Registers a listener for a specific property on a single audio process object.
-    /// Returns `nil` if the process ID is invalid (registration fails).
+    /// Registers a per-process property listener. Returns nil on failure.
     static func addProcessPropertyListener(
         processID: AudioObjectID,
         property: AudioObjectPropertySelector,
@@ -307,5 +292,113 @@ enum CoreAudioHelpers {
         ) ?? 0
 
         return (isRunningInput != 0, isRunningOutput != 0)
+    }
+}
+
+// MARK: - Device Info Queries
+
+extension CoreAudioHelpers {
+    /// Human-readable device name (e.g. "MacBook Pro Speakers").
+    static func deviceName(for deviceID: AudioObjectID) -> String? {
+        getStringProperty(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+        )
+    }
+
+    /// Transport type for a device (e.g. built-in, USB, Bluetooth).
+    static func transportType(for deviceID: AudioObjectID) -> UInt32? {
+        getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: UInt32.self
+        )
+    }
+
+    /// Returns the stream format (ASBD) for a device on the given scope.
+    static func streamFormat(
+        for deviceID: AudioObjectID,
+        scope: AudioObjectPropertyScope
+    ) -> AudioStreamBasicDescription? {
+        getPropertyData(
+            objectID: deviceID,
+            address: AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamFormat,
+                mScope: scope,
+                mElement: kAudioObjectPropertyElementMain
+            ),
+            type: AudioStreamBasicDescription.self
+        )
+    }
+
+    /// Preferred channel layout for a device as raw bytes.
+    static func channelLayoutData(
+        for deviceID: AudioObjectID,
+        scope: AudioObjectPropertyScope
+    ) -> Data? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyPreferredChannelLayout,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(
+            deviceID, &address, 0, nil, &size
+        )
+        guard status == noErr, size > 0 else { return nil }
+
+        var data = Data(count: Int(size))
+        status = data.withUnsafeMutableBytes { rawBuf in
+            guard let ptr = rawBuf.baseAddress else { return OSStatus(-1) }
+            return AudioObjectGetPropertyData(
+                deviceID, &address, 0, nil, &size, ptr
+            )
+        }
+        guard status == noErr else { return nil }
+        return data
+    }
+
+    /// Number of channels on a device for the given scope.
+    static func channelCount(
+        for deviceID: AudioObjectID,
+        scope: AudioObjectPropertyScope
+    ) -> UInt32? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: scope,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(
+            deviceID, &address, 0, nil, &size
+        )
+        guard status == noErr, size > 0 else { return nil }
+
+        let buffer = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(size),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { buffer.deallocate() }
+
+        status = AudioObjectGetPropertyData(
+            deviceID, &address, 0, nil, &size, buffer
+        )
+        guard status == noErr else { return nil }
+
+        let abl = buffer.assumingMemoryBound(to: AudioBufferList.self)
+        let bufs = UnsafeMutableAudioBufferListPointer(abl)
+        var total: UInt32 = 0
+        for buf in bufs {
+            total += buf.mNumberChannels
+        }
+        return total
     }
 }

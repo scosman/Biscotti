@@ -10,13 +10,13 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Live microphone capture via **VoiceProcessingIO** (`AVAudioEngine`
 /// with `inputNode.setVoiceProcessingEnabled(true)`).
 ///
-/// VPIO is the only route to the loud, normalised, noise-suppressed
-/// processed mono (the plain input tap records the raw beamformer array,
-/// near-silent during meetings). See `experiments/AudioLab/NOTES.md`.
-///
-/// This is a thin hardware adapter -- all orchestration lives in
-/// `AudioRecorder`. Tested only by the Manual Test App.
+/// VPIO is the only route to loud, normalised, noise-suppressed mono.
+/// Thin hardware adapter -- orchestration lives in `AudioRecorder`.
 final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
+    #if DEBUG
+        nonisolated(unsafe) static var verboseDiagnostics = true
+    #endif
+
     private let encoder: EncoderSettings
     private let processingFormat: AVAudioFormat
 
@@ -48,8 +48,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
 
-        engineQueue.sync { isTearingDown = false }
-
         let file = try VPIOFileHelper.createExtAudioFile(
             url: url, encoder: encoder, processingFormat: processingFormat
         )
@@ -57,8 +55,32 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         installConfigChangeObserver()
         capturingFlag.store(true, ordering: .releasing)
 
-        engineQueue.async { [weak self] in
-            self?.buildAndStartEngine(context: "initial start")
+        // Run the initial engine build on engineQueue via a continuation so
+        // we don't block a cooperative thread. The build (including the ~1 s
+        // output-device reclock poll) completes before start() returns, so
+        // AudioRecorder can start the system engine against a stable rate.
+        // Route-change rebuilds remain fire-and-forget via handleConfigurationChange.
+        do {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                engineQueue.async { [self] in
+                    isTearingDown = false
+                    do {
+                        try buildAndStartEngineOrThrow()
+                        cont.resume()
+                    } catch {
+                        teardownEngine()
+                        restoreOutputRate()
+                        cont.resume(throwing: error)
+                    }
+                }
+            }
+        } catch {
+            capturingFlag.store(false, ordering: .releasing)
+            removeConfigChangeObserver()
+            closeExtFile()
+            throw CaptureError.micEngineFailed(
+                error.localizedDescription
+            )
         }
     }
 
@@ -68,20 +90,29 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         }
 
         removeConfigChangeObserver()
-        engineQueue.sync { [self] in
-            isTearingDown = true
-            teardownEngine()
-            restoreOutputRate()
-            closeExtFile()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            engineQueue.async { [self] in
+                isTearingDown = true
+                teardownEngine()
+                restoreOutputRate()
+                closeExtFile()
+                cont.resume()
+            }
         }
     }
 
     func reconnect() async throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
-        engineQueue.sync { [self] in
-            guard !isTearingDown else { return }
-            teardownEngine()
-            buildAndStartEngine(context: "reconnect")
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            engineQueue.async { [self] in
+                guard !isTearingDown else {
+                    cont.resume()
+                    return
+                }
+                teardownEngine()
+                buildAndStartEngine(context: "reconnect")
+                cont.resume()
+            }
         }
     }
 
@@ -97,34 +128,43 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     // MARK: - Engine lifecycle (engineQueue)
 
-    private func buildAndStartEngine(context: String) {
+    /// Throwing core of the engine build (initial start + route-change).
+    private func buildAndStartEngineOrThrow() throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
-        do {
-            ensureOutputRateMatchesInput()
 
-            let newEngine = AVAudioEngine()
-            // Store before the fallible setup so the catch path's
-            // teardownEngine() can stop it / remove the tap / detach
-            // the silence node.
-            engine = newEngine
-            let input = newEngine.inputNode
+        ensureOutputRateMatchesInput()
 
-            try input.setVoiceProcessingEnabled(true)
-            input.voiceProcessingOtherAudioDuckingConfiguration = .init(
-                enableAdvancedDucking: false, duckingLevel: .min
-            )
+        let newEngine = AVAudioEngine()
+        engine = newEngine // store early so teardownEngine() works on failure
+        let input = newEngine.inputNode
 
-            let tapFormat = input.outputFormat(forBus: 0)
-            attachSilentOutput(to: newEngine, inputRate: tapFormat.sampleRate)
+        try input.setVoiceProcessingEnabled(true)
+        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+            enableAdvancedDucking: false, duckingLevel: .min
+        )
 
-            input.installTap(
-                onBus: 0, bufferSize: 1024, format: tapFormat
-            ) { [weak self] buffer, _ in
-                self?.handleTap(buffer: buffer)
+        let tapFormat = input.outputFormat(forBus: 0)
+        #if DEBUG
+            if Self.verboseDiagnostics {
+                logger.info("[diag] VPIO input tap: rate=\(tapFormat.sampleRate) ch=\(tapFormat.channelCount)")
             }
+        #endif
+        attachSilentOutput(to: newEngine, inputRate: tapFormat.sampleRate)
 
-            newEngine.prepare()
-            try newEngine.start()
+        input.installTap(
+            onBus: 0, bufferSize: 1024, format: tapFormat
+        ) { [weak self] buffer, _ in
+            self?.handleTap(buffer: buffer)
+        }
+
+        newEngine.prepare()
+        try newEngine.start()
+    }
+
+    /// Non-throwing wrapper for route-change rebuilds.
+    private func buildAndStartEngine(context: String) {
+        do {
+            try buildAndStartEngineOrThrow()
         } catch {
             logger.error("VPIO engine setup failed (\(context)): \(error.localizedDescription)")
             teardownEngine()
@@ -152,9 +192,17 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         for _ in 0 ..< 40 {
             if let now = CoreAudioHelpers.nominalSampleRate(for: outID),
                abs(now - inRate) < 1
-            { return }
+            { break }
             usleep(25000)
         }
+        #if DEBUG
+            if Self.verboseDiagnostics {
+                let rateAfter = CoreAudioHelpers.nominalSampleRate(for: outID) ?? 0
+                let name = CoreAudioHelpers.deviceName(for: outID) ?? "unknown"
+                let msg = "output=\"\(name)\" id=\(outID) before=\(outRate) inputTarget=\(inRate) after=\(rateAfter)"
+                logger.info("[diag] rate match: \(msg)")
+            }
+        #endif
     }
 
     private func restoreOutputRate() {
@@ -192,6 +240,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
             if let node = silenceNode { eng.detach(node) }
         }
         silenceNode = nil
+        // TODO: [Internal] Thread running at User-initiated quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions
         engine = nil
         cachedConverter = nil
         cachedConverterSourceHash = 0
@@ -261,9 +310,11 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
         cachedConverterSourceHash = sourceHash
         return converter
     }
+}
 
-    // MARK: - File handle (lock-free, safe for real-time thread)
+// MARK: - File handle (lock-free, safe for real-time thread)
 
+extension LiveMicCaptureEngine {
     private func setExtFile(_ file: ExtAudioFileRef?) {
         let bits = file.map { UInt(bitPattern: $0) } ?? 0
         atomicFileRef.store(bits, ordering: .releasing)
@@ -352,48 +403,5 @@ enum VPIOBufferHelper {
             logger.error("ExtAudioFileWrite error: \(status)")
         }
         return status
-    }
-}
-
-// MARK: - File creation helper
-
-/// Encapsulates `ExtAudioFile` creation for the VPIO mic engine.
-private enum VPIOFileHelper {
-    static func createExtAudioFile(
-        url: URL,
-        encoder: EncoderSettings,
-        processingFormat: AVAudioFormat
-    ) throws -> ExtAudioFileRef {
-        var outputASBD = encoder.outputASBD()
-        var fileRef: ExtAudioFileRef?
-        let createStatus = ExtAudioFileCreateWithURL(
-            url as CFURL, encoder.fileType, &outputASBD, nil,
-            AudioFileFlags.eraseFile.rawValue, &fileRef
-        )
-        guard createStatus == noErr, let file = fileRef else {
-            throw CaptureError.micEngineFailed(
-                "Failed to create ADTS AAC file (OSStatus \(createStatus))"
-            )
-        }
-        var clientASBD = processingFormat.streamDescription.pointee
-        let clientStatus = ExtAudioFileSetProperty(
-            file, kExtAudioFileProperty_ClientDataFormat,
-            UInt32(MemoryLayout<AudioStreamBasicDescription>.size), &clientASBD
-        )
-        guard clientStatus == noErr else {
-            ExtAudioFileDispose(file)
-            throw CaptureError.micEngineFailed(
-                "Failed to set client format (OSStatus \(clientStatus))"
-            )
-        }
-        let brStatus = EncoderSettings.applyBitRate(
-            to: file, bitRate: encoder.bitRate
-        )
-        if brStatus != noErr {
-            logger.warning(
-                "applyBitRate returned \(brStatus) — using encoder default"
-            )
-        }
-        return file
     }
 }

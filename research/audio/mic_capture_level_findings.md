@@ -59,9 +59,9 @@ The dominant factor is the raw-array gain itself.
 ## Remaining approaches — try in this order
 
 ### 1. VPIO path (preferred — gives the *processed* mono we actually want)
-**Status: implemented in AudioLab (`Sources/VPIOMicCapture.swift`); level fixed, fixing
-choppiness (hardware run 3 pending).** This updates phase 9 finding #1 (which had VPIO
-as a hard fault). Progression:
+**Status: WORKING on hardware (AudioLab `Sources/VPIOMicCapture.swift`) — smooth, loud,
+processed mono.** This updates phase 9 finding #1 (which had VPIO as a hard fault).
+Progression:
 - **Run 1:** `setVoiceProcessingEnabled(true)` **succeeded** on M-series / macOS 15
   (input format 48 kHz **9 ch** — the expected surprise; the `theDeviceBoardID` /
   `vpStrategyManager` messages still print but are **non-fatal**). Blocked by **`-10875`
@@ -72,10 +72,14 @@ as a hard fault). Progression:
   ~0.004), but the **downlink** half faulted every cycle (`failed to run downlink DSP` /
   `audio time stamp does not have valid sample time`) because nothing rendered to the
   output → stuttered IO → **choppy mic with gaps**.
-- **Now:** drive the muted output **and** raise the output device's nominal rate to the
-  input's (48 kHz) so both duplex scopes share one clock — fixes `-10875` *and* the
-  downlink fault. Output rate restored on stop (brief glitch at start/stop). Run 3 to
-  confirm smooth, loud, non-clipped capture, incl. with a meeting app holding the mic.
+- **Run 3:** the device rate-match applied (output → 48 kHz) but the silent driver still
+  attached at 44.1 kHz → `-10875` again. Cause: the format was read from
+  `mainMixerNode.outputFormat`, a **software-default 44.1 kHz that ignores the HW rate**.
+- **Resolved (run 4, WORKING):** drive a silent source **straight to `outputNode`** with
+  its rate **forced to the VPIO input rate** (bypassing the mixer), plus raise the output
+  device's nominal rate to the input's (48 kHz) so both duplex scopes share one clock.
+  Result: VPIO initializes, no `-10875`, downlink faults gone, **smooth + loud processed
+  mono**. Output rate restored on stop (brief glitch at start/stop).
 
 A/B-switchable against the AVCaptureSession path via
 `RecordingCoordinator.useVoiceProcessingMic` (default `true`); the
@@ -93,6 +97,43 @@ against, so two-track alignment is preserved. Diagnostics mirror `MicCapture`
 (finding below) — the no-buffer watchdog firing ≈ the board-ID/DSP fault, in
 which case we fall back to approach #2. **Pass = output peak > ~0.05 and stays
 loud while a meeting app holds the mic.**
+
+#### VPIO inherits the system **Mic Mode** — incl. real system-audio isolation (hardware-observed, 2026-06-09)
+**Observed:** toggling the macOS **Mic Mode** (Control Center → Mic Mode) between
+**Standard**, **Voice Isolation**, and **Wide Spectrum** produces an **audibly
+different** VPIO mic recording — the three modes are clearly distinguishable in the
+captured file, and **Voice Isolation noticeably isolates the voice from background /
+system-audio bleed**. So the VPIO path delivers the system's voice-processing-**mode**-
+processed mono, and we get that isolation **for free**. The raw AVCaptureSession +
+software-makeup-gain path (approach #2) gets **none** of this — a concrete reason to
+prefer VPIO.
+
+**This corrects the earlier "no isolation / no AEC" read, which conflated two different
+mechanisms:**
+- **Reference-based AEC** (subtract a known *downlink reference* from the mic) **is**
+  impractical for a *passive* recorder, for causality reasons: we obtain the system
+  audio from the tap **after** it has already echoed into the mic, so it can't serve as
+  a real-time reference (a real-time AEC needs the reference *before* the echo; only an
+  app that **owns playback**, e.g. a VoIP client or a Krisp-style virtual device, has
+  that). This part of the earlier analysis stands.
+- **Voice Isolation is a *different*, reference-free mechanism** — on-device ML
+  voice/background separation that suppresses non-voice (incl. speaker bleed) **without**
+  any reference signal — so the causality argument does **not** apply to it. This is why
+  the user hears isolation despite reference-AEC being impractical. **Net: VPIO + Voice
+  Isolation does buy us meaningful system-audio isolation on the mic track.**
+
+**Implications / follow-ups:**
+- **Mic Mode is a system-wide, user-chosen setting** (Control Center), not per-app by
+  default. Apps can *read* the active mode (`AVCaptureDevice.activeMicrophoneMode` /
+  `.preferredMicrophoneMode`) and surface the picker
+  (`AVCaptureDevice.showSystemUserInterface(.microphoneModes)`), but the user picks it.
+  Because it **materially changes our output**, we likely want to detect the active mode
+  and/or recommend **Voice Isolation** in-app, and **record the active Mic Mode** in
+  validation runs.
+- Voice Isolation is not perfect cancellation, but combined with our **separate mic /
+  system tracks** it materially reduces bleed; deeper cancellation, if ever needed,
+  remains a **post-processing** step (cross-correlate the two tracks to find the delay,
+  then subtract) — not a real-time VPIO reference.
 
 Capture the mic as a **first-class VoiceProcessingIO client** via
 `AVAudioEngine`'s `inputNode.setVoiceProcessingEnabled(true)`. This is the only

@@ -3,6 +3,7 @@ import AVFoundation
 import CoreAudio
 import Foundation
 import os
+import QuartzCore
 import Synchronization
 
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "LiveSystemCapture")
@@ -17,7 +18,7 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// **Thread-safety:** `@unchecked Sendable` — mutable state serialized
 /// by the owning `AudioRecorder` actor. Writer-thread errors flow
 /// through `_lock`-protected `_writeError`, read after the writer joins.
-final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
+final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftlint:disable:this type_body_length
     private var tapObjectID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
@@ -32,6 +33,26 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// Writer-thread-only flags for deferred client format setup.
     private var clientFormatConfigured = false
     private var clientFormatFailed = false
+
+    // MARK: - Two-track alignment
+
+    /// Host-clock seconds of the mic's first delivered sample -- the
+    /// recording's t=0. The system track is padded with leading silence
+    /// so its first real frame lines up with the mic. Set via
+    /// `setMicAnchor(_:)` before `start()`.
+    private var micAnchorSeconds: Double = 0
+
+    /// `CACurrentMediaTime()` captured in `start()`. Wall-clock upper bound
+    /// on leading silence: the gap can't exceed how long the system capture
+    /// has actually been running. Guards a bogus anchor from writing hours
+    /// of silence.
+    private var systemStartWall: CFTimeInterval = 0
+
+    /// Writer-thread-only: whether leading silence has been written yet.
+    private var didWriteLeadingSilence = false
+
+    /// Absolute backstop on prepended silence (seconds).
+    private static let maxLeadingSilenceSeconds: Double = 3600
 
     #if DEBUG
         nonisolated(unsafe) static var verboseDiagnostics = true
@@ -56,8 +77,24 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         self.encoder = encoder
     }
 
+    /// Stores the mic's first-buffer host-clock anchor so the writer thread
+    /// can prepend leading silence on the system track's first buffer.
+    func setMicAnchor(_ seconds: Double) {
+        micAnchorSeconds = seconds
+    }
+
+    /// Non-nil if `ExtAudioFileWrite` failed during recording.
+    var writeError: OSStatus? {
+        os_unfair_lock_lock(&_lock)
+        defer { os_unfair_lock_unlock(&_lock) }
+        return _writeError
+    }
+
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
+
+        systemStartWall = CACurrentMediaTime()
+        didWriteLeadingSilence = false
 
         try createTapAndAggregate()
         #if DEBUG
@@ -80,11 +117,21 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         teardown()
     }
 
-    /// Reconnects hardware without reopening the audio file. Client format
-    /// (channel count) is locked to the first device for the file's life.
+    /// Reconnects hardware without reopening the audio file. Resets
+    /// client-format gating so a post-reconnect device delivering a
+    /// different channel count re-configures the ExtAudioFile client
+    /// format (the AAC output format is unchanged; only the PCM input
+    /// side adapts). Leading silence is NOT re-written: the alignment
+    /// was established on the first buffer of the session.
     func reconnect() async throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
         teardownHardware()
+
+        // Allow the first post-reconnect buffer to re-set the client
+        // format, accommodating a new device's channel count.
+        clientFormatConfigured = false
+        clientFormatFailed = false
+
         do {
             try createTapAndAggregate()
             startWriterThread()
@@ -168,6 +215,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         writerDone.signal()
     }
 
+    // swiftlint:disable:next function_body_length
     private func processEntry(_ entry: AudioRingBuffer.Entry) {
         let frameCount = Int(entry.frameCount)
         let channelCount = Int(max(entry.channelCount, 1))
@@ -196,6 +244,18 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
                 clientFormatFailed = true
                 return
             }
+        }
+
+        // Before the first real frame, prepend leading silence so the
+        // system track's first frame lines up with the mic's first frame
+        // (the recording's t=0). Runs once, on the writer thread.
+        if !didWriteLeadingSilence {
+            didWriteLeadingSilence = true
+            writeLeadingSilence(
+                channelCount: UInt32(channelCount),
+                firstFrameHostTime: entry.hostTime,
+                file: file
+            )
         }
 
         #if DEBUG
@@ -234,6 +294,54 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
         os_unfair_lock_unlock(&_lock)
     }
 
+    // MARK: - Leading silence (two-track alignment)
+
+    /// Writes `systemFirstFrame − micAnchor` worth of silent frames to the
+    /// front of the file so the system track aligns with the mic track.
+    /// `firstFrameHostTime` is the mach host time of the system tap's first
+    /// captured frame; the gap to `micAnchorSeconds` is the precise start
+    /// offset. Runs once on the writer thread (allocation is fine here).
+    private func writeLeadingSilence(
+        channelCount: UInt32,
+        firstFrameHostTime: UInt64,
+        file: ExtAudioFileRef
+    ) {
+        let hostNanos = AudioConvertHostTimeToNanos(firstFrameHostTime)
+        var framesRemaining = leadingSilenceFrameCount(
+            systemHostTimeNanos: hostNanos,
+            micAnchorSeconds: micAnchorSeconds,
+            systemStartWall: systemStartWall,
+            currentWall: CACurrentMediaTime(),
+            sampleRate: tapSampleRate,
+            maxLeadingSilenceSeconds: Self.maxLeadingSilenceSeconds
+        )
+        guard framesRemaining > 0 else { return }
+
+        logger.info("Aligning system track: prepending \(framesRemaining) frames of leading silence")
+
+        let channels = Int(max(channelCount, 1))
+        let chunkFrames = 8192
+        var silence = [Float](repeating: 0, count: chunkFrames * channels)
+        silence.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            while framesRemaining > 0 {
+                let count = min(chunkFrames, framesRemaining)
+                let buffer = AudioBuffer(
+                    mNumberChannels: channelCount,
+                    mDataByteSize: UInt32(count * channels * MemoryLayout<Float>.size),
+                    mData: base
+                )
+                var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
+                let status = ExtAudioFileWrite(file, UInt32(count), &bufferList)
+                if status != noErr {
+                    logger.error("Leading-silence write failed: \(status)")
+                    return
+                }
+                framesRemaining -= count
+            }
+        }
+    }
+
     // MARK: - IOProc
 
     private func startIOProc() throws {
@@ -244,7 +352,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
             &procID,
             aggregateDeviceID,
             nil
-        ) { _, inInputData, _, _, _ in
+        ) { _, inInputData, inInputTime, _, _ in
             let buffers = UnsafeMutableAudioBufferListPointer(
                 UnsafeMutablePointer(mutating: inInputData)
             )
@@ -259,7 +367,13 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable {
             )
             guard frameCount > 0 else { return }
 
-            _ = ring.enqueue(bufferList: inInputData, frameCount: frameCount)
+            // Pass the frame's host time so the writer can align the system
+            // track against the mic's first-frame anchor.
+            _ = ring.enqueue(
+                bufferList: inInputData,
+                frameCount: frameCount,
+                hostTime: inInputTime.pointee.mHostTime
+            )
         }
 
         guard status == noErr, let id = procID else {

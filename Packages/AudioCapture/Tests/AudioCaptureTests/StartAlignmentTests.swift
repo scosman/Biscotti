@@ -95,4 +95,35 @@ struct StartAlignmentTests {
             #expect(ctx.systemEngine.startCount == 1)
         }
     }
+
+    @Test("Mic anchor is forwarded to system engine")
+    func micAnchorForwardedToSystem() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        ctx.micEngine.setFirstBufferAnchor(42.5)
+
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        // The mic anchor should have been forwarded to the system engine.
+        #expect(ctx.systemEngine.micAnchor == 42.5)
+
+        ctx.deviceChangeProvider.finish()
+    }
+
+    @Test("System engine start is gated on mic first buffer (fake fires immediately)")
+    func systemStartGatedOnMicFirstBuffer() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        // The mic engine's onFirstBuffer should have been set and called.
+        // The system engine should have started after the mic anchor was
+        // available.
+        #expect(ctx.micEngine.startCount == 1)
+        #expect(ctx.systemEngine.startCount == 1)
+
+        ctx.deviceChangeProvider.finish()
+    }
 }

@@ -12,7 +12,7 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 ///
 /// VPIO is the only route to loud, normalised, noise-suppressed mono.
 /// Thin hardware adapter -- orchestration lives in `AudioRecorder`.
-final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
+final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftlint:disable:this type_body_length
     #if DEBUG
         nonisolated(unsafe) static var verboseDiagnostics = true
     #endif
@@ -27,7 +27,13 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// Atomic capturing flag -- safe from async contexts.
     private let capturingFlag = Atomic<Bool>(false)
 
-    private let engineQueue = DispatchQueue(label: "net.scosman.biscotti.mic.engine")
+    /// `.userInitiated` matches the QoS of the `AudioRecorder` actor tasks that
+    /// `await` start()/stop()/reconnect(): without an explicit QoS the queue runs
+    /// at Default, so a user-initiated task awaiting it is a priority inversion
+    /// (the runtime flags "User-initiated … waiting on a … Default QoS thread").
+    private let engineQueue = DispatchQueue(
+        label: "net.scosman.biscotti.mic.engine", qos: .userInitiated
+    )
     private var isTearingDown = false
     private var engine: AVAudioEngine?
     private var silenceNode: AVAudioSourceNode?
@@ -37,6 +43,28 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
     private var cachedConverterSourceHash: Int = 0
 
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
+
+    /// Callback fired exactly once when the first tap buffer is delivered.
+    /// Argument: host-clock anchor (seconds) — the recording's t=0.
+    /// Route-change rebuilds do NOT re-fire this.
+    ///
+    /// **Intentional unsynchronised access:** this `var` is written by
+    /// `setOnFirstBuffer` (from the `AudioRecorder` actor) and read on the
+    /// real-time audio thread in `notifyFirstBufferIfNeeded`. A lock is NOT
+    /// used because taking one on the audio thread risks priority inversion
+    /// and glitches. The race is benign: Apple-silicon pointer-sized loads
+    /// are atomic (no torn read), `didNotifyFirstBuffer` prevents double-fire,
+    /// and optional chaining handles the nil case. This mirrors AudioLab's
+    /// validated `VPIOMicCapture.onStarted` pattern. Do NOT "fix" with a lock.
+    private var onFirstBuffer: (@Sendable (Double) -> Void)?
+
+    func setOnFirstBuffer(_ callback: (@Sendable (Double) -> Void)?) {
+        onFirstBuffer = callback
+    }
+
+    /// Guards one-shot firing of `onFirstBuffer`. Once set, route-change
+    /// engine rebuilds do not reset it — t=0 is the very first buffer.
+    private let didNotifyFirstBuffer = Atomic<Bool>(false)
 
     init(encoder: EncoderSettings = .voice) {
         self.encoder = encoder
@@ -153,8 +181,8 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
         input.installTap(
             onBus: 0, bufferSize: 1024, format: tapFormat
-        ) { [weak self] buffer, _ in
-            self?.handleTap(buffer: buffer)
+        ) { [weak self] buffer, when in
+            self?.handleTap(buffer: buffer, when: when)
         }
 
         newEngine.prepare()
@@ -240,7 +268,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
             if let node = silenceNode { eng.detach(node) }
         }
         silenceNode = nil
-        // TODO: [Internal] Thread running at User-initiated quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions
         engine = nil
         cachedConverter = nil
         cachedConverterSourceHash = 0
@@ -276,7 +303,8 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     // MARK: - Tap (real-time audio thread)
 
-    private func handleTap(buffer: AVAudioPCMBuffer) {
+    private func handleTap(buffer: AVAudioPCMBuffer, when: AVAudioTime) {
+        notifyFirstBufferIfNeeded(when)
         guard let file = currentExtFile() else { return }
         guard let mono = VPIOBufferHelper.extractChannel0(buffer) else { return }
 
@@ -293,6 +321,21 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable {
             bufferToWrite = converted
         }
         VPIOBufferHelper.writeBuffer(bufferToWrite, to: file)
+    }
+
+    /// Fires `onFirstBuffer` exactly once with the host-clock seconds of the
+    /// first delivered buffer. Derives the anchor from `when.hostTime` via
+    /// `AudioConvertHostTimeToNanos` -- the same clock base the system engine
+    /// uses to pad the system track, so the two stay aligned.
+    private func notifyFirstBufferIfNeeded(_ when: AVAudioTime) {
+        guard !didNotifyFirstBuffer.exchange(true, ordering: .acquiringAndReleasing) else { return }
+        let anchor: Double = if when.isHostTimeValid {
+            Double(AudioConvertHostTimeToNanos(when.hostTime)) / 1_000_000_000
+        } else {
+            0
+        }
+        logger.info("First mic buffer delivered -- anchor=\(anchor)s")
+        onFirstBuffer?(anchor)
     }
 
     private func converterForSource(_ sourceFormat: AVAudioFormat) -> AVAudioConverter? {

@@ -24,6 +24,15 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     /// Lock-free so the real-time tap can read without blocking.
     private let atomicFileRef = Atomic<UInt>(0)
 
+    /// Serializes the tap's `ExtAudioFileWrite` against `closeExtFile()`'s
+    /// `ExtAudioFileDispose`. The tap takes it with `trylock` (never blocks on
+    /// the real-time thread); `closeExtFile` takes it with `lock` so dispose
+    /// waits for any in-flight write. Without this barrier, `engine.stop()` /
+    /// `removeTap` is not guaranteed to drain an in-flight render callback, so
+    /// dispose could free the AAC encoder while the audio thread is mid-write
+    /// — a heap use-after-free.
+    private var _fileLock = os_unfair_lock()
+
     /// Atomic capturing flag -- safe from async contexts.
     private let capturingFlag = Atomic<Bool>(false)
 
@@ -75,6 +84,13 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
+
+        // New session: re-arm the one-shot first-buffer anchor. A start() can
+        // legitimately run again after a *failed* start (the recorder stays
+        // retryable), so this must reset — otherwise the retry never re-fires
+        // the anchor and two-track alignment silently degrades. NOT reset on
+        // reconnect: t=0 is the first buffer of the session, not each rebuild.
+        didNotifyFirstBuffer.store(false, ordering: .releasing)
 
         let file = try VPIOFileHelper.createExtAudioFile(
             url: url, encoder: encoder, processingFormat: processingFormat
@@ -148,10 +164,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         removeConfigChangeObserver()
         teardownEngine()
         restoreOutputRate()
-        let bits = atomicFileRef.load(ordering: .acquiring)
-        if bits != 0, let ptr = OpaquePointer(bitPattern: bits) {
-            ExtAudioFileDispose(ptr)
-        }
+        closeExtFile()
     }
 
     // MARK: - Engine lifecycle (engineQueue)
@@ -305,7 +318,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
     private func handleTap(buffer: AVAudioPCMBuffer, when: AVAudioTime) {
         notifyFirstBufferIfNeeded(when)
-        guard let file = currentExtFile() else { return }
         guard let mono = VPIOBufferHelper.extractChannel0(buffer) else { return }
 
         let targetFormat = processingFormat
@@ -320,6 +332,15 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
             else { return }
             bufferToWrite = converted
         }
+
+        // Serialize the file write against closeExtFile()'s dispose. `trylock`
+        // (never block) on the real-time thread: if teardown holds the lock we
+        // simply drop this buffer — we're stopping anyway, and a write into a
+        // disposed AAC encoder would corrupt the heap. The file ref is loaded
+        // *inside* the lock so it can't be disposed between load and write.
+        guard os_unfair_lock_trylock(&_fileLock) else { return }
+        defer { os_unfair_lock_unlock(&_fileLock) }
+        guard let file = currentExtFile() else { return }
         VPIOBufferHelper.writeBuffer(bufferToWrite, to: file)
     }
 
@@ -364,6 +385,11 @@ extension LiveMicCaptureEngine {
     }
 
     private func closeExtFile() {
+        // Take the lock so any in-flight tap write completes before dispose
+        // (see `_fileLock`). Zero the ref inside the lock so a tap that has
+        // not yet taken the lock observes nil and skips its write.
+        os_unfair_lock_lock(&_fileLock)
+        defer { os_unfair_lock_unlock(&_fileLock) }
         let bits = atomicFileRef.exchange(0, ordering: .acquiringAndReleasing)
         if bits != 0, let ptr = OpaquePointer(bitPattern: bits) {
             ExtAudioFileDispose(ptr)

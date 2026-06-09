@@ -17,6 +17,14 @@ public enum CaptureError: Error, Sendable, Equatable {
 
     /// Mic permission was denied or restricted.
     case micPermissionDenied
+
+    /// `start()` was called on a recorder that has already completed a
+    /// recording. `AudioRecorder` is single-use: construct a fresh one for
+    /// each recording. Reusing an instance across recordings is unsupported —
+    /// the capture engines hoist per-session state and were validated
+    /// single-use, so reuse is rejected rather than left as a latent
+    /// real-time-thread teardown hazard.
+    case recorderConsumed
 }
 
 extension CaptureError: LocalizedError {
@@ -35,6 +43,8 @@ extension CaptureError: LocalizedError {
             "System audio appears blocked (all-zero buffers) — grant Screen & System Audio Recording in Settings."
         case .micPermissionDenied:
             "Microphone permission denied or restricted."
+        case .recorderConsumed:
+            "This recorder has already been used — create a new AudioRecorder for each recording."
         }
     }
 }

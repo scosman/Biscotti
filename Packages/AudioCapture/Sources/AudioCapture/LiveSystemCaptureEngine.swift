@@ -93,21 +93,38 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
 
+        // New session: restart the permission zero-detection window. A start()
+        // can legitimately run again after a *failed* start (the recorder stays
+        // retryable); without this the window stays closed and silent-system
+        // detection is disabled on the retry.
+        permissionChecker.reset()
+
         systemStartWall = CACurrentMediaTime()
         didWriteLeadingSilence = false
 
-        try createTapAndAggregate()
-        #if DEBUG
-            if Self.verboseDiagnostics {
-                SystemCaptureDiagnostics.logSetupFormats(
-                    tapObjectID: tapObjectID,
-                    aggregateDeviceID: aggregateDeviceID
-                )
-            }
-        #endif
-        try openAudioFile(url: url)
-        startWriterThread()
-        try startIOProc()
+        do {
+            try createTapAndAggregate()
+            #if DEBUG
+                if Self.verboseDiagnostics {
+                    SystemCaptureDiagnostics.logSetupFormats(
+                        tapObjectID: tapObjectID,
+                        aggregateDeviceID: aggregateDeviceID
+                    )
+                }
+            #endif
+            try openAudioFile(url: url)
+            startWriterThread()
+            try startIOProc()
+        } catch {
+            // Partial-start cleanup. `startWriterThread()` launches a thread and
+            // `openAudioFile()` opens the file *before* `startIOProc()`, so a
+            // throw here would otherwise leak a running writer thread holding the
+            // file open — which a later start() would compound into two writers
+            // appending the same file concurrently (heap corruption). `teardown()`
+            // is idempotent over partial state (each step guards on its handle).
+            teardown()
+            throw error
+        }
 
         capturingFlag.store(true, ordering: .releasing)
     }

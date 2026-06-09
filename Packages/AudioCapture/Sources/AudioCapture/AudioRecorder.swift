@@ -32,7 +32,25 @@ public actor AudioRecorder {
 
     private var paths: CapturePaths?
     private var _startTimestamp: Double = 0
-    private var _isRecording = false
+
+    /// Single-use lifecycle: `idle → recording → finished`. A recorder
+    /// records exactly once — after `stop()` it is `finished` and `start()`
+    /// throws `CaptureError.recorderConsumed`. Reuse across recordings is
+    /// unsupported (the capture engines were validated single-use and hoist
+    /// per-session state), so it is rejected here rather than left as a
+    /// latent real-time-thread teardown hazard. A *failed* start does not
+    /// consume the recorder: it stays `idle` and may be retried.
+    private enum Lifecycle {
+        case idle
+        case recording
+        case finished
+    }
+
+    private var lifecycle: Lifecycle = .idle
+    private var isRecording: Bool {
+        lifecycle == .recording
+    }
+
     private var stateTimer: Task<Void, Never>?
     private var routeChangeTask: Task<Void, Never>?
     private var stateContinuations: [UUID: AsyncStream<CaptureState>.Continuation] = [:]
@@ -120,7 +138,14 @@ public actor AudioRecorder {
     /// If the system engine fails after the mic started, the mic engine is
     /// stopped before re-throwing.
     public func start(paths: CapturePaths) async throws {
-        guard !_isRecording else { return }
+        switch lifecycle {
+        case .recording:
+            return // already recording — idempotent no-op
+        case .finished:
+            throw CaptureError.recorderConsumed // single-use: spent
+        case .idle:
+            break
+        }
 
         // Mic permission preflight.
         let micStatus = micPermissionChecker.authorizationStatus()
@@ -164,7 +189,7 @@ public actor AudioRecorder {
         let timestamp = CACurrentMediaTime()
         _startTimestamp = timestamp
         self.paths = paths
-        _isRecording = true
+        lifecycle = .recording
 
         logger.info("Capture started, timestamp=\(timestamp)")
         emitState()
@@ -244,9 +269,9 @@ public actor AudioRecorder {
     /// After stopping, checks the system engine for write errors and
     /// logs them. The error is also available via `lastSystemWriteError`.
     public func stop() async {
-        guard _isRecording else { return }
+        guard lifecycle == .recording else { return }
 
-        _isRecording = false
+        lifecycle = .finished
         routeChangeTask?.cancel()
         routeChangeTask = nil
         stateTimer?.cancel()
@@ -309,13 +334,13 @@ public actor AudioRecorder {
     // MARK: - Internal helpers
 
     private var currentState: CaptureState {
-        let elapsed: TimeInterval = if _isRecording, _startTimestamp > 0 {
+        let elapsed: TimeInterval = if isRecording, _startTimestamp > 0 {
             CACurrentMediaTime() - _startTimestamp
         } else {
             0
         }
         return CaptureState(
-            isRecording: _isRecording,
+            isRecording: isRecording,
             elapsed: elapsed,
             micLevel: 0, // RMS unwired per phase 9
             systemLevel: 0, // RMS unwired per phase 9
@@ -371,7 +396,7 @@ public actor AudioRecorder {
     /// via `AVAudioEngineConfigurationChange`, so no action is needed here.
     /// `isRecording` stays `true` throughout -- no audio loss.
     private func handleDeviceChange(_ event: DeviceChangeEvent) async {
-        guard _isRecording else { return }
+        guard isRecording else { return }
 
         switch event {
         case .outputChanged:

@@ -57,6 +57,10 @@ final class MicCapture: @unchecked Sendable {
         /// window. ~0 with frames climbing ⇒ we're capturing silence (e.g. a
         /// muted second client on a voice-processing-held device).
         var outputPeak: Float = 0
+        /// Per-source-channel peak |sample| over the current heartbeat window.
+        /// Reveals whether only one array channel carries the voice (so the
+        /// averaging downmix is attenuating the level by the channel count).
+        var channelPeaks: [Float] = []
     }
 
     private let statsLock = NSLock()
@@ -267,6 +271,19 @@ final class MicCapture: @unchecked Sendable {
             logChannelPeaks(pcmBuffer)
         }
 
+        // Track per-channel input levels every buffer so the heartbeat can show
+        // live levels during speech (the one-shot log above lands at t=0 silence).
+        let srcPeaks = MicCaptureFileHelper.channelPeaks(of: pcmBuffer)
+        mutateStats { stats in
+            if stats.channelPeaks.count == srcPeaks.count {
+                for index in srcPeaks.indices {
+                    stats.channelPeaks[index] = max(stats.channelPeaks[index], srcPeaks[index])
+                }
+            } else {
+                stats.channelPeaks = srcPeaks
+            }
+        }
+
         // Downmix to mono ourselves rather than letting AVAudioConverter do it:
         // the built-in mic's multichannel stream uses a *discrete* layout, which
         // AVAudioConverter maps to silence (no error) when reducing to mono. We
@@ -471,10 +488,11 @@ final class MicCapture: @unchecked Sendable {
     private func heartbeat() {
         heartbeatTick += 1
         let elapsed = heartbeatTick * Self.heartbeatInterval
-        // Snapshot and reset the peak window atomically.
+        // Snapshot and reset the peak windows atomically.
         let snap = mutateStats { stats -> Stats in
             let copy = stats
             stats.outputPeak = 0
+            stats.channelPeaks = []
             return copy
         }
         let delta = snap.buffersReceived - lastBuffersReceived
@@ -486,6 +504,13 @@ final class MicCapture: @unchecked Sendable {
                 "extractFail=\(snap.extractFailures) convertFail=\(snap.convertFailures) " +
                 "writeFail=\(snap.writeFailures) src=[\(snap.lastSourceFormat)]"
         )
+
+        let chDesc = snap.channelPeaks.isEmpty
+            ? "n/a"
+            : snap.channelPeaks.enumerated()
+            .map { "ch\($0.offset)=\(String(format: "%.4f", $0.element))" }
+            .joined(separator: " ")
+        Log.mic.event("heartbeat src channel peaks: \(chDesc)")
 
         let flowing = delta > 0
         if flowing {

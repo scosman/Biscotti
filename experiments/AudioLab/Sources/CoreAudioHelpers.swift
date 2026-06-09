@@ -280,6 +280,26 @@ enum CoreAudioHelpers {
         )
     }
 
+    /// The device's input-scope volume scalar (0…1), i.e. the System Settings
+    /// input slider. A voice-processing app's AGC can drag this low for *all*
+    /// clients (WebKit Bug 218012), so logging it tells us whether our quiet
+    /// capture is hardware-gain ducking vs. the raw array just being low. The
+    /// built-in mic usually carries volume on channel element 1, not main(0).
+    static func inputVolumeScalar(for deviceID: AudioObjectID) -> Float? {
+        for element: AudioObjectPropertyElement in [kAudioObjectPropertyElementMain, 1] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: element
+            )
+            guard AudioObjectHasProperty(deviceID, &address) else { continue }
+            if let value: Float32 = getPropertyData(objectID: deviceID, address: address, type: Float32.self) {
+                return value
+            }
+        }
+        return nil
+    }
+
     static func transportTypeString(_ type: UInt32) -> String {
         switch type {
         case kAudioDeviceTransportTypeBuiltIn: return "built-in"
@@ -312,7 +332,8 @@ enum CoreAudioHelpers {
             let rate = nominalSampleRate(for: deviceID).map { "\(Int($0))Hz" } ?? "?"
             let transport = transportType(for: deviceID).map(transportTypeString) ?? "?"
             let running = isDeviceRunningSomewhere(deviceID).map { $0 ? "running" : "idle" } ?? "?"
-            parts.append("default-input id=\(deviceID) \"\(name)\" uid=\(uid) \(rate) \(transport) \(running)")
+            let volume = inputVolumeScalar(for: deviceID).map { String(format: "vol=%.2f", $0) } ?? "vol=?"
+            parts.append("default-input id=\(deviceID) \"\(name)\" uid=\(uid) \(rate) \(transport) \(running) \(volume)")
         } else {
             parts.append("default-input <none>")
         }

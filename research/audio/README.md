@@ -4,6 +4,10 @@
 
 For capturing meeting audio on macOS 15+, we recommend a **dual-API approach**: Core Audio process taps (`CATapDescription` / `AudioHardwareCreateProcessTap`, introduced macOS 14.2, expanded 14.4) for system/app audio (other participants), and `AVAudioEngine` for microphone input (the user). These run as two independent streams recorded into separate files using the crash-safe **CAF container** with **AAC-LC at 64 kbps mono, 48 kHz**. After the meeting, the two files are post-processed (merged or kept separate depending on the STT pipeline's needs). A health-monitor detects the known zero-buffer failure mode and performs automatic teardown/rebuild of the tap. This combination avoids the Screen Recording permission (which ScreenCaptureKit requires) and is expected to keep CPU overhead very low on Apple Silicon (estimate to validate in E1).
 
+> **Follow-on findings:**
+> - [`phase9_validation_findings.md`](phase9_validation_findings.md) — what changed after real-hardware validation.
+> - [`mic_capture_level_findings.md`](mic_capture_level_findings.md) — **why the built-in mic records near-silent audio during meetings** (the raw beamformer array has tiny gain; it's meant for Apple's VPIO stream processing, not general taps) and the ranked plan to fix it (VPIO → software gain → Audio-Hijack-style taps).
+
 ## Key Questions & Findings
 
 ### 1. Best macOS 15 API to capture both mic and other-participants' audio

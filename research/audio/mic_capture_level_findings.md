@@ -59,6 +59,34 @@ The dominant factor is the raw-array gain itself.
 ## Remaining approaches — try in this order
 
 ### 1. VPIO path (preferred — gives the *processed* mono we actually want)
+**Status: implemented in AudioLab (`Sources/VPIOMicCapture.swift`); hardware run 1
+(2026-06-08) — VPIO now *initializes*, blocked on a fixable rate mismatch, input-only
+retry pending.** Run 1 result (this updates phase 9 finding #1, which had VPIO as a
+hard fault): `setVoiceProcessingEnabled(true)` **succeeded** on M-series / macOS 15
+(input format 48 kHz **9 ch** — the expected surprise); the `theDeviceBoardID` /
+`vpStrategyManager GetProperty` messages still print but are **non-fatal** now. The
+failure was **`-10875` (FormatNotSupported)** at `engine.start()`: VPIO is one **duplex**
+unit on a single IO clock, and the silent-output driver pulled the 44.1 kHz default
+**output** device into the unit alongside the 48 kHz mic **input** — it can't span both
+rates. Fix applied: run **input-only** (`driveSilentOutput=false`); fallback if the
+input starves is to match the output device's nominal rate to the input's (48 kHz)
+before re-driving an output. A/B-switchable against the AVCaptureSession path via
+`RecordingCoordinator.useVoiceProcessingMic` (default `true`); the
+AVCaptureSession path is **not** removed. The implementation follows every
+gotcha below — enable VP, disable other-audio ducking, query the post-VP input
+format, **extract channel 0 manually** (`MicCaptureFileHelper.extractChannel0`,
+never `AVAudioConverter` for the reduction), resample mono→mono to 24 kHz, write
+the same ADTS-AAC `_mic.aac`. It additionally drives a **muted silent output
+node** (VPIO is a duplex unit whose input may not service unless the output side
+cycles) and rebuilds the engine on `.AVAudioEngineConfigurationChange`. The
+`onStarted` t=0 anchor is the first tap buffer's `when.hostTime` via
+`AudioConvertHostTimeToNanos` — the same clock base `SystemAudioCapture` aligns
+against, so two-track alignment is preserved. Diagnostics mirror `MicCapture`
+(heartbeat + per-channel/output peaks + watchdogs); this run **is** the spike
+(finding below) — the no-buffer watchdog firing ≈ the board-ID/DSP fault, in
+which case we fall back to approach #2. **Pass = output peak > ~0.05 and stays
+loud while a meeting app holds the mic.**
+
 Capture the mic as a **first-class VoiceProcessingIO client** via
 `AVAudioEngine`'s `inputNode.setVoiceProcessingEnabled(true)`. This is the only
 route to the loud, beamformed, echo-cancelled **mono** signal (the "after"

@@ -8,6 +8,18 @@ import QuartzCore
 @Observable
 @MainActor
 final class RecordingCoordinator {
+    /// A/B switch for the microphone-capture path, flipped + rebuilt to compare
+    /// on hardware:
+    /// - `true`  → `VPIOMicCapture`: VoiceProcessingIO / `AVAudioEngine`, the
+    ///   only route to the processed, properly-levelled mono (but VPIO has
+    ///   faulted on this hardware before — watch the engine-build + heartbeat
+    ///   logs; it self-reports viability).
+    /// - `false` → `MicCapture`: the original `AVCaptureSession` path (records
+    ///   the raw beamformer array; near-silent during meetings).
+    ///
+    /// See `research/audio/mic_capture_level_findings.md`.
+    static let useVoiceProcessingMic = true
+
     private(set) var isRecording = false
     private(set) var startTime: Date?
     private(set) var startMediaTime: CFTimeInterval = 0
@@ -27,7 +39,7 @@ final class RecordingCoordinator {
     /// the main thread. Their internal audio callbacks run on dedicated audio/writer
     /// threads and use their own synchronization (ring buffer, os_unfair_lock).
     private var systemCapture: SystemAudioCapture?
-    private var micCapture: MicCapture?
+    private var micCapture: (any MicCapturing)?
 
     var elapsedTime: TimeInterval {
         guard let start = startTime, isRecording else { return 0 }
@@ -131,7 +143,19 @@ final class RecordingCoordinator {
         // on the mic's first sample makes "mic-first" deterministic — and the
         // first sample's host time gives us the recording's t=0 to align the
         // two tracks against (see startSystemCapture).
-        let mic = MicCapture(fileURL: paths.mic)
+        // if/else (not a ternary): the `?:` operator tries to unify its two
+        // branch types into one common type *before* applying the `any
+        // MicCapturing` annotation, and won't infer the protocol existential as
+        // the join of two unrelated classes → "ambiguous without a type
+        // annotation". Assigning in each branch checks against the declared type
+        // directly.
+        let mic: any MicCapturing
+        if Self.useVoiceProcessingMic {
+            mic = VPIOMicCapture(fileURL: paths.mic)
+        } else {
+            mic = MicCapture(fileURL: paths.mic)
+        }
+        Log.coordinator.event("mic path = \(Self.useVoiceProcessingMic ? "VPIO (AVAudioEngine)" : "AVCaptureSession")")
         mic.onUnrecoverableError = { [weak self] error in
             Log.coordinator.err("mic unrecoverable error: \(error.localizedDescription)")
             Task { @MainActor in

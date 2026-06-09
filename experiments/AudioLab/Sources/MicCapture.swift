@@ -576,7 +576,11 @@ final class MicCapture: @unchecked Sendable {
     }
 }
 
-private enum MicCaptureFileHelper {
+/// Shared ExtAudioFile + buffer helpers for both mic-capture paths
+/// (`MicCapture`, the AVCaptureSession path, and `VPIOMicCapture`, the
+/// VoiceProcessingIO path). Internal (not `private`) so `VPIOMicCapture` can
+/// reuse the file creation, conversion, peak and write routines unchanged.
+enum MicCaptureFileHelper {
     static func createExtAudioFile(url: URL, clientFormat: AVAudioFormat) throws -> ExtAudioFileRef {
         var outputASBD = EncoderSettings.outputASBD()
         var fileRef: ExtAudioFileRef?
@@ -709,6 +713,37 @@ private enum MicCaptureFileHelper {
             }
             dst[frame] = sum * scale
         }
+        return mono
+    }
+
+    /// Extracts **channel 0** of a (possibly multichannel, non-interleaved
+    /// float) PCM buffer into a mono buffer at the **same sample rate** — used
+    /// by the VPIO path.
+    ///
+    /// With VoiceProcessingIO the processed/beamformed/echo-cancelled mono lives
+    /// on **channel 0**; the remaining channels (VPIO silently presents ~9) are
+    /// raw-array / reference feeds. So unlike the AVCaptureSession path — which
+    /// *averages* the raw beamformer capsules (`downmixToMono`) — we take ch0
+    /// verbatim; averaging the reference channels back in would dilute the
+    /// processed signal with the very raw, quiet audio VPIO exists to replace.
+    /// Do **not** use `AVAudioConverter` for this reduction: it maps the discrete
+    /// multichannel layout to silence (no error), the same trap `downmixToMono`
+    /// documents.
+    static func extractChannel0(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let frames = Int(source.frameLength)
+        guard frames > 0, let srcData = source.floatChannelData else { return nil }
+
+        guard let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: source.format.sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let mono = AVAudioPCMBuffer(pcmFormat: monoFormat,
+                                       frameCapacity: AVAudioFrameCount(frames))
+        else { return nil }
+        mono.frameLength = AVAudioFrameCount(frames)
+        guard let dst = mono.floatChannelData?[0] else { return nil }
+        dst.update(from: srcData[0], count: frames)
         return mono
     }
 

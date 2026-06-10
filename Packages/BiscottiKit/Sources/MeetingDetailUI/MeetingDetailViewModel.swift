@@ -5,8 +5,9 @@ import TranscriptionService
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
-    /// Model download or transcription is in progress.
-    case processing(message: String)
+    /// Model download or transcription is in progress. `subtitle` carries
+    /// the engine's live status message (e.g. download progress) when available.
+    case processing(message: String, subtitle: String? = nil)
 
     /// A transcript is available for display.
     case transcript(MeetingDetailData)
@@ -45,7 +46,7 @@ public final class MeetingDetailViewModel {
 
         switch jobStatus {
         case let .downloadingModel(message):
-            return .processing(message: message)
+            return .processing(message: "Transcribing\u{2026}", subtitle: message)
 
         case .transcribing:
             return .processing(message: "Transcribing\u{2026}")
@@ -68,6 +69,12 @@ public final class MeetingDetailViewModel {
             // Load completed but no detail found (meeting deleted or not found).
             return .failed(message: "Meeting not found.", retriable: false)
         }
+    }
+
+    /// The current transcription job status for this meeting. Used by the view
+    /// to observe changes and trigger `onJobStatusChange(_:)`.
+    public var currentJobStatus: JobStatus? {
+        core.transcription.jobs[meetingID]
     }
 
     /// Whether the Re-transcribe action should be enabled.
@@ -111,6 +118,23 @@ public final class MeetingDetailViewModel {
             detail = nil
         }
         isLoading = false
+    }
+
+    /// Called when the transcription job status changes for this meeting.
+    /// Reloads the detail from the store when the job completes so the
+    /// transcript appears immediately without manual re-navigation.
+    /// Also reloads the sidebar summaries so the has-transcript indicator
+    /// updates.
+    public func onJobStatusChange(_ newStatus: JobStatus?) async {
+        if newStatus == .completed {
+            do {
+                detail = try await core.store.meetingDetail(id: meetingID)
+            } catch {
+                // Non-fatal: displayState will fall through to the existing
+                // detail (which may be stale but not worse than before).
+            }
+            await core.reloadSummaries()
+        }
     }
 
     /// Triggers a re-transcription of the meeting.

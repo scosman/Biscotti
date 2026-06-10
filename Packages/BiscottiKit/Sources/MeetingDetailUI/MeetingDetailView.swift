@@ -8,8 +8,8 @@ import TranscriptionService
 ///
 /// Drives off three states: processing (download/transcribe in progress),
 /// transcript (ready to display), and failed (with optional retry).
-/// Note: version picker is deferred to Project 7. Audio playback is
-/// deferred to Project 7.
+/// - TODO: version picker is deferred to Project 7. Audio playback is
+///   deferred to Project 7.
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
@@ -32,6 +32,9 @@ public struct MeetingDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task { await viewModel.load() }
+        .onChange(of: viewModel.currentJobStatus) { _, newStatus in
+            Task { await viewModel.onJobStatusChange(newStatus) }
+        }
     }
 
     // MARK: - Header
@@ -74,8 +77,8 @@ public struct MeetingDetailView: View {
     @ViewBuilder
     private var stateContent: some View {
         switch viewModel.displayState {
-        case let .processing(message):
-            processingView(message: message)
+        case let .processing(message, subtitle):
+            processingView(message: message, subtitle: subtitle)
 
         case let .transcript(detail):
             transcriptView(detail: detail)
@@ -85,10 +88,10 @@ public struct MeetingDetailView: View {
         }
     }
 
-    private func processingView(message: String) -> some View {
+    private func processingView(message: String, subtitle: String?) -> some View {
         VStack(spacing: Tokens.spacingMD) {
             Spacer(minLength: Tokens.spacingXL)
-            StatusRow(message)
+            StatusRow(message, subtitle: subtitle)
             Spacer(minLength: Tokens.spacingXL)
         }
         .frame(maxWidth: .infinity)

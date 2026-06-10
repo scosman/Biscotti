@@ -1,11 +1,11 @@
 /// The Transcription manual test script.
 ///
-/// Steps derived from `experiments/ArgMaxKit/VALIDATION.md`. Action/autoCheck
-/// closures are placeholder no-ops — the app target replaces them with real
-/// Transcription calls when it builds the runner.
+/// Reduced to model download/cache steps plus an AI-test tracker. Quality and
+/// crash-isolation checks are covered by `make test-ai` (the automated AI test
+/// set) and are no longer duplicated here.
 public extension TestScript {
-    /// Transcription test script — covers model download, transcription,
-    /// diarization output checks, hallucination guard, crash resilience, and custom vocab.
+    /// Transcription test script — covers model download and cache verification,
+    /// plus a tracker for the automated AI test outcome.
     static let transcription = TestScript(
         id: "transcription",
         title: "Transcription",
@@ -28,36 +28,11 @@ public extension TestScript {
                     + "were already cached, it finishes instantly with no status — that "
                     + "is expected; mark Pass."
             ),
-            .action(
-                id: "tx_transcribe",
-                label: "Transcribe a recorded audio clip",
-                run: { _ in /* wired by the app target */ }
-            ),
-            .autoCheck(
-                id: "tx_speakers",
-                label: "Diarized output contains >= 2 distinct speakers",
-                check: { CheckOutcome(passed: false, detail: "Not wired — run from the test app") }
-            ),
-            .autoCheck(
-                id: "tx_no_hallucination",
-                label: "No transcript segment extends past audio duration",
-                check: { CheckOutcome(passed: false, detail: "Not wired — run from the test app") }
-            ),
-            .instruction(
-                id: "tx_crash_setup",
-                text: "Start a transcription, then force-kill the app (Activity Monitor or kill -9) mid-run."
-            ),
             .humanQuestion(
-                id: "tx_crash_host_survives",
-                prompt: "After killing the process, did the host app survive without crashing?"
-            ),
-            .humanQuestion(
-                id: "tx_crash_retry",
-                prompt: "Retry the transcription — did it succeed on the second attempt?"
-            ),
-            .humanQuestion(
-                id: "tx_custom_vocab",
-                prompt: "Transcribe with custom-vocab bias — are the domain-specific terms present in output?"
+                id: "tx_ai_test_passed",
+                prompt: "Run `make test-ai` (downloads models; runs the automated "
+                    + "transcription / diarization / custom-vocab quality tests). "
+                    + "Did all AI tests pass?"
             )
         ]
     )

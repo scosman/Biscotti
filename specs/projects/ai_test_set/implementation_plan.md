@@ -17,7 +17,7 @@ Phased build order. Each phase is a coherent, reviewable unit. **One human-in-th
   The reference clips already live in `Tests/TranscriptionTests/Fixtures/` as `mic_fixture.wav` + `system_fixture.wav` (the 3-speaker clip) and `custom_vocab_test.aac` (vocab). Add `.aiModel` tag + `AITestGate` (env `BISCOTTI_RUN_AI_TESTS`) + the two gated AI tests (diarization/accuracy via chunk eval under production defaults; custom-vocab word match). Add `make test-ai`; document it in `CLAUDE.md`. *(arch §3, §4)*
   - **🧑 Checkpoint (AI test run):** user runs `make test-ai` → confirm both tests green (validates diarization under production defaults + vocab end-to-end on real models). If word-match needs adjustment, iterate per arch §7.
 
-- [ ] **Phase 3 — Manual Test App updates.**
+- [x] **Phase 3 — Manual Test App updates.**
   `ManualTestKit`: `AudioCaptureScript.swift` — reword (Google Meet, AirPods transfer, named kill process) + add steps (`ac_meet_close_midcapture`, `ac_meet_open_midcapture`, `ac_mega_setup`/`ac_mega_voice`/`ac_mega_timing`). `TranscriptionScript.swift` — reduce to download steps + `tx_ai_test_passed`; cut quality + crash steps. `WiredScripts.swift` — keep only the two download-step wirings; remove `currentCapturePaths`, result holders, transcribe/crash/autoCheck wiring. Remove the 3 `.aac` from `ManualTestApp/Resources/`. Regenerate `manual_test_results.json` (all current step IDs `not-run`; drop cut keys). Verify with `make build-app` (agent ✓ via hooks-mcp). *(arch §5)*
   - Hardware re-run of the scripts is the existing **Phase 4.5** (human, on Apple silicon) — out of this project's automated scope; `manual-tests-check` stays RED until then.
 

@@ -8,6 +8,18 @@ import QuartzCore
 @Observable
 @MainActor
 final class RecordingCoordinator {
+    /// A/B switch for the microphone-capture path, flipped + rebuilt to compare
+    /// on hardware:
+    /// - `true`  → `VPIOMicCapture`: VoiceProcessingIO / `AVAudioEngine`, the
+    ///   only route to the processed, properly-levelled mono (but VPIO has
+    ///   faulted on this hardware before — watch the engine-build + heartbeat
+    ///   logs; it self-reports viability).
+    /// - `false` → `MicCapture`: the original `AVCaptureSession` path (records
+    ///   the raw beamformer array; near-silent during meetings).
+    ///
+    /// See `research/audio/mic_capture_level_findings.md`.
+    static let useVoiceProcessingMic = true
+
     private(set) var isRecording = false
     private(set) var startTime: Date?
     private(set) var startMediaTime: CFTimeInterval = 0
@@ -27,7 +39,7 @@ final class RecordingCoordinator {
     /// the main thread. Their internal audio callbacks run on dedicated audio/writer
     /// threads and use their own synchronization (ring buffer, os_unfair_lock).
     private var systemCapture: SystemAudioCapture?
-    private var micCapture: MicCapture?
+    private var micCapture: (any MicCapturing)?
 
     var elapsedTime: TimeInterval {
         guard let start = startTime, isRecording else { return 0 }
@@ -50,7 +62,13 @@ final class RecordingCoordinator {
     func startRecording(captureMode: CaptureMode, targetProcessID: AudioObjectID?) {
         guard !isRecording else { return }
 
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        Log.coordinator.event(
+            "startRecording mode=\(captureMode.rawValue) target=\(targetProcessID.map { "\($0)" } ?? "nil") " +
+                "micAuth=\(authStatus.rawValue)"
+        )
+
+        switch authStatus {
         case .authorized:
             beginCapture(captureMode: captureMode, targetProcessID: targetProcessID)
 
@@ -115,33 +133,52 @@ final class RecordingCoordinator {
 
         micFileURL = paths.mic
         systemFileURL = paths.system
+        Log.coordinator.event("beginCapture mic=\(paths.mic.lastPathComponent) system=\(paths.system.lastPathComponent)")
 
-        let sysCapture = SystemAudioCapture(
-            fileURL: paths.system,
-            captureMode: captureMode,
-            targetProcessID: targetProcessID
-        )
-        systemCapture = sysCapture
-
-        let mic = MicCapture(fileURL: paths.mic)
+        // Start the mic FIRST, and only bring up the system tap once the mic has
+        // actually delivered its first sample buffer. The mic's AVCaptureSession
+        // start is asynchronous; creating the system tap's aggregate device
+        // before the mic's input IO is live can starve the mic's cold-start (both
+        // tracks then stay empty until some audio plays). Gating the system start
+        // on the mic's first sample makes "mic-first" deterministic — and the
+        // first sample's host time gives us the recording's t=0 to align the
+        // two tracks against (see startSystemCapture).
+        // if/else (not a ternary): the `?:` operator tries to unify its two
+        // branch types into one common type *before* applying the `any
+        // MicCapturing` annotation, and won't infer the protocol existential as
+        // the join of two unrelated classes → "ambiguous without a type
+        // annotation". Assigning in each branch checks against the declared type
+        // directly.
+        let mic: any MicCapturing
+        if Self.useVoiceProcessingMic {
+            mic = VPIOMicCapture(fileURL: paths.mic)
+        } else {
+            mic = MicCapture(fileURL: paths.mic)
+        }
+        Log.coordinator.event("mic path = \(Self.useVoiceProcessingMic ? "VPIO (AVAudioEngine)" : "AVCaptureSession")")
         mic.onUnrecoverableError = { [weak self] error in
+            Log.coordinator.err("mic unrecoverable error: \(error.localizedDescription)")
             Task { @MainActor in
                 self?.lastError = "Microphone (route change): \(error.localizedDescription)"
+            }
+        }
+        mic.onStarted = { [weak self] micAnchorSeconds in
+            Log.coordinator.event("mic onStarted (anchor=\(micAnchorSeconds)s) → bringing up system capture")
+            Task { @MainActor in
+                self?.startSystemCapture(
+                    micAnchorSeconds: micAnchorSeconds,
+                    captureMode: captureMode,
+                    targetProcessID: targetProcessID
+                )
             }
         }
         micCapture = mic
 
         do {
-            try sysCapture.start()
-        } catch {
-            lastError = "System audio: \(error.localizedDescription)"
-            return
-        }
-
-        do {
             try mic.start()
         } catch {
-            sysCapture.stop()
+            Log.coordinator.err("mic.start() threw: \(error.localizedDescription)")
+            micCapture = nil
             lastError = "Microphone: \(error.localizedDescription)"
             return
         }
@@ -151,8 +188,46 @@ final class RecordingCoordinator {
         isRecording = true
     }
 
+    /// Brings up system-audio capture once the mic is confirmed live (its first
+    /// sample arrived). System capture is fatal: if it fails to start we tear the
+    /// whole recording down. `micAnchorSeconds` (the mic's first-frame host time)
+    /// is forwarded so the system track is padded with leading silence to align
+    /// with the mic.
+    private func startSystemCapture(
+        micAnchorSeconds: Double,
+        captureMode: CaptureMode,
+        targetProcessID: AudioObjectID?
+    ) {
+        // Bail if the recording was stopped before the mic warmed up, or if
+        // system capture has already started (onStarted fires once, but guard).
+        guard isRecording, micCapture != nil, systemCapture == nil,
+              let systemURL = systemFileURL else { return }
+
+        let sysCapture = SystemAudioCapture(
+            fileURL: systemURL,
+            captureMode: captureMode,
+            targetProcessID: targetProcessID
+        )
+
+        do {
+            try sysCapture.start(micAnchorSeconds: micAnchorSeconds)
+            systemCapture = sysCapture
+            Log.coordinator.event("system capture started")
+        } catch {
+            Log.coordinator.err("system capture FAILED — tearing down recording: \(error.localizedDescription)")
+            micCapture?.stop()
+            micCapture = nil
+            lastError = "System audio: \(error.localizedDescription)"
+            isRecording = false
+        }
+    }
+
     func stopRecording() {
         guard isRecording else { return }
+
+        Log.coordinator.event(
+            "stopRecording — mic file=\(micFileSize) bytes, system file=\(systemFileSize) bytes"
+        )
 
         let sysCapture = systemCapture
         systemCapture?.stop()

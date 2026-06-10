@@ -69,4 +69,14 @@ enum EncoderSettings {
         standardFormatWithSampleRate: sampleRate,
         channels: channels
     )!
+
+    /// Compact, log-friendly description of an `AVAudioFormat` (rate, channels,
+    /// interleaving, sample-format flags) for diagnostics.
+    static func describe(_ format: AVAudioFormat) -> String {
+        let asbd = format.streamDescription.pointee
+        let layout = format.isInterleaved ? "interleaved" : "deinterleaved"
+        let flags = String(asbd.mFormatFlags, radix: 16)
+        return "\(Int(format.sampleRate))Hz \(format.channelCount)ch \(layout) " +
+            "flags=0x\(flags) bytesPerFrame=\(asbd.mBytesPerFrame)"
+    }
 }

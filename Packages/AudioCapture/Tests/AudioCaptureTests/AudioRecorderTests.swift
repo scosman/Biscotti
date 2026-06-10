@@ -37,6 +37,90 @@ struct AudioRecorderTests {
         #expect(ctx.systemEngine.stopCount == 0)
     }
 
+    // MARK: - Single-use lifecycle
+
+    @Test("AudioRecorder is single-use: start() after stop() throws recorderConsumed")
+    func singleUseStartAfterStopThrows() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start after stop to throw recorderConsumed")
+        } catch let error as CaptureError {
+            #expect(error == .recorderConsumed)
+        }
+
+        // The rejected start must not re-touch the engines.
+        #expect(ctx.systemEngine.startCount == 1)
+        #expect(ctx.micEngine.startCount == 1)
+    }
+
+    @Test("start() while already recording is an idempotent no-op")
+    func startWhileRecordingIsNoOp() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        // Second start while recording: no-op, engines not restarted, no throw.
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        #expect(ctx.systemEngine.startCount == 1)
+        #expect(ctx.micEngine.startCount == 1)
+
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+    }
+
+    @Test("A failed start does not consume the recorder; it can be retried")
+    func failedStartIsRetryable() async throws {
+        struct Boom: Error {}
+
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        // System engine fails the first start.
+        ctx.systemEngine.setStartError(Boom())
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start to throw when the system engine fails")
+        } catch {
+            // expected — any error
+        }
+
+        // Mic was started, then stopped as part of failed-start cleanup.
+        #expect(ctx.micEngine.startCount == 1)
+        #expect(ctx.micEngine.stopCount == 1)
+
+        // Not consumed: clear the error and retry successfully.
+        ctx.systemEngine.setStartError(nil)
+        try await ctx.recorder.start(paths: ctx.paths)
+        #expect(ctx.systemEngine.startCount == 2)
+
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+    }
+
+    @Test("requestPermissions does not consume the recorder")
+    func requestPermissionsDoesNotConsume() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        let probe = ctx.tempDir.appendingPathComponent("probe.aac")
+        _ = await ctx.recorder.requestPermissions(systemProbePath: probe)
+
+        // A real recording is still possible afterward (probe didn't consume it).
+        try await ctx.recorder.start(paths: ctx.paths)
+        #expect(ctx.micEngine.startCount == 1)
+
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+    }
+
     @Test("stateStream emits updates with isRecording true")
     func stateStreamEmitsUpdates() async throws {
         let ctx = try TestRecorderFactory.make()

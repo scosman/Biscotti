@@ -1,10 +1,11 @@
 import AVFoundation
 import CoreAudio
 import Foundation
+import QuartzCore
 import Synchronization
 import os
 
-private let logger = Logger(subsystem: "com.biscotti.experiments.audiolab", category: "SystemAudioCapture")
+private let logger = Log.system
 
 enum CaptureMode: String, CaseIterable, Identifiable, Sendable {
     case global = "Global (all system audio)"
@@ -36,6 +37,27 @@ final class SystemAudioCapture: @unchecked Sendable {
     private let targetProcessID: AudioObjectID?
     private var tapSampleRate: Double = EncoderSettings.sampleRate
 
+    /// Host-clock time (seconds, same base as `AudioConvertHostTimeToNanos`) of
+    /// the mic's first delivered sample — the recording's t=0. The system tap
+    /// starts slightly later and produces no frames until audio plays, so its
+    /// first frame's host time minus this anchor is the exact gap we prepend as
+    /// leading silence to align the two tracks. Set in `start()` before the
+    /// writer thread is spawned.
+    private var micAnchorSeconds: Double = 0
+    /// `CACurrentMediaTime()` captured when `start()` runs. Used as a clock-
+    /// agnostic upper bound on leading silence: the gap can't exceed the real
+    /// wall-time the capture has been running. Guards against a bogus mic anchor
+    /// (e.g. if the mic PTS clock ever differed from the tap host clock) writing
+    /// a wildly over-long silence.
+    private var systemStartWall: CFTimeInterval = 0
+    /// Writer-thread-only: whether leading silence has been written yet.
+    private var didWriteLeadingSilence = false
+    /// Writer-thread-only diagnostic counters.
+    private var writerEntriesProcessed = 0
+    private var writerFramesWritten = 0
+    /// Absolute backstop on prepended silence.
+    private static let maxLeadingSilenceSeconds: Double = 3600
+
     private var _lock = os_unfair_lock()
     private var _isCapturing = false
     private var _writeError: OSStatus?
@@ -64,7 +86,11 @@ final class SystemAudioCapture: @unchecked Sendable {
         self.targetProcessID = targetProcessID
     }
 
-    func start() throws {
+    /// - Parameter micAnchorSeconds: host-clock seconds of the mic's first
+    ///   delivered sample (the recording's t=0). The system track is padded with
+    ///   leading silence so its first real frame lines up with the mic. Pass 0
+    ///   to disable alignment padding.
+    func start(micAnchorSeconds: Double) throws {
         os_unfair_lock_lock(&_lock)
         guard !_isCapturing else {
             os_unfair_lock_unlock(&_lock)
@@ -72,14 +98,26 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
         os_unfair_lock_unlock(&_lock)
 
-        try createTapAndAggregate()
-        try openAudioFile()
-        startWriterThread()
-        try startIOProc()
+        self.micAnchorSeconds = micAnchorSeconds
+        systemStartWall = CACurrentMediaTime()
+
+        logger.event("start() mode=\(captureMode.rawValue) micAnchor=\(micAnchorSeconds)s")
+
+        do {
+            try createTapAndAggregate()
+            try openAudioFile()
+            startWriterThread()
+            try startIOProc()
+        } catch {
+            logger.err("start() FAILED: \(error.localizedDescription)")
+            teardownPartialState()
+            throw error
+        }
 
         os_unfair_lock_lock(&_lock)
         _isCapturing = true
         os_unfair_lock_unlock(&_lock)
+        logger.event("start() complete — capturing system audio")
     }
 
     func stop() {
@@ -91,21 +129,14 @@ final class SystemAudioCapture: @unchecked Sendable {
         _isCapturing = false
         os_unfair_lock_unlock(&_lock)
 
+        logger.event("stop() requested")
         teardown()
+        logger.event("stopped. totals: entries=\(writerEntriesProcessed) framesWritten=\(writerFramesWritten)")
     }
 
     // MARK: - Setup
 
     private func createTapAndAggregate() throws {
-        // Look up the default output device -- the aggregate device must
-        // reference it as a sub-device so Core Audio knows which hardware
-        // stream the tap should intercept.
-        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
-              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
-        else {
-            throw AudioLabError.couldNotQueryOutputDevice
-        }
-
         let tapUUID = UUID()
         let tapDesc: CATapDescription
         if captureMode == .perProcess, let processID = targetProcessID {
@@ -121,13 +152,21 @@ final class SystemAudioCapture: @unchecked Sendable {
         var tapID: AudioObjectID = kAudioObjectUnknown
         var status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
         guard status == noErr else {
+            logger.err("AudioHardwareCreateProcessTap failed: \(osStatusString(status))")
             throw AudioLabError.failedToCreateProcessTap(status)
         }
         tapObjectID = tapID
+        logger.event("created process tap id=\(tapID) mode=\(captureMode.rawValue)")
 
-        // The aggregate device gets its own UID, distinct from the tap UUID.
-        // It must list the output device as a sub-device and declare it as
-        // the main sub-device so the tap's audio is routed into the IOProc.
+        guard let outputDeviceID = CoreAudioHelpers.defaultOutputDeviceID(),
+              let outputUID = CoreAudioHelpers.deviceUID(for: outputDeviceID)
+        else {
+            logger.err("could not query default output device for aggregate")
+            throw AudioLabError.couldNotQueryOutputDevice
+        }
+        let outputName = CoreAudioHelpers.deviceName(for: outputDeviceID) ?? "?"
+        logger.event("aggregate main output: \"\(outputName)\" uid=\(outputUID)")
+
         let aggregateUID = UUID().uuidString
         let aggConfig: [String: Any] = [
             kAudioAggregateDeviceUIDKey as String: aggregateUID,
@@ -150,11 +189,13 @@ final class SystemAudioCapture: @unchecked Sendable {
         var aggID: AudioObjectID = kAudioObjectUnknown
         status = AudioHardwareCreateAggregateDevice(aggConfig as CFDictionary, &aggID)
         guard status == noErr else {
+            logger.err("AudioHardwareCreateAggregateDevice failed: \(osStatusString(status))")
             AudioHardwareDestroyProcessTap(tapObjectID)
             tapObjectID = kAudioObjectUnknown
             throw AudioLabError.failedToCreateAggregateDevice(status)
         }
         aggregateDeviceID = aggID
+        logger.event("created aggregate device id=\(aggID)")
     }
 
     private func openAudioFile() throws {
@@ -163,6 +204,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
 
         tapSampleRate = tapFormat.mSampleRate
+        logger.event("tap format: \(Int(tapFormat.mSampleRate))Hz \(tapFormat.mChannelsPerFrame)ch")
 
         var outputASBD = EncoderSettings.outputASBD()
         var fileRef: ExtAudioFileRef?
@@ -230,12 +272,38 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     private func writerLoop() {
+        let loopStart = CACurrentMediaTime()
+        var lastHeartbeat = loopStart
+        var warnedNoData = false
+
         while writerRunning.load(ordering: .acquiring) == 1 {
             var didWork = false
             while let entry = ringBuffer.dequeue() {
                 didWork = true
+                if writerEntriesProcessed == 0 {
+                    logger.event(
+                        "FIRST system audio buffer (\(entry.frameCount) frames, " +
+                            "\(entry.channelCount)ch). Tap is live."
+                    )
+                }
+                writerEntriesProcessed += 1
                 processEntry(entry)
             }
+
+            let now = CACurrentMediaTime()
+            if !warnedNoData, writerEntriesProcessed == 0, now - loopStart > 3 {
+                warnedNoData = true
+                logger.err("WATCHDOG: no system audio buffers 3s after start (aggregate \(aggregateDeviceID)).")
+            }
+            if now - lastHeartbeat >= 2 {
+                lastHeartbeat = now
+                let dropped = ringBuffer.droppedBuffers.load(ordering: .acquiring)
+                logger.event(
+                    "heartbeat entries=\(writerEntriesProcessed) framesWritten=\(writerFramesWritten) " +
+                        "dropped=\(dropped)"
+                )
+            }
+
             if !didWork {
                 // Brief yield to avoid busy-spinning when the ring buffer is empty.
                 // ~1ms is short enough to keep latency low but long enough to avoid
@@ -261,6 +329,14 @@ final class SystemAudioCapture: @unchecked Sendable {
     }
 
     private func processEntry(_ entry: AudioRingBuffer.Entry) {
+        // Before the first real frame, prepend leading silence so the system
+        // track's first frame lines up with the mic's first frame (recording
+        // t=0). Runs once, on the writer thread.
+        if !didWriteLeadingSilence {
+            didWriteLeadingSilence = true
+            writeLeadingSilence(channelCount: entry.channelCount, firstFrameHostTime: entry.hostTime)
+        }
+
         let frameCount = Int(entry.frameCount)
         let channelCount = Int(max(entry.channelCount, 1))
         let sampleCount = frameCount * channelCount
@@ -293,7 +369,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
         let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
         if writeStatus != noErr {
-            logger.error("ExtAudioFileWrite failed: \(writeStatus)")
+            logger.err("ExtAudioFileWrite failed: \(osStatusString(writeStatus))")
 
             // Record the first write error so it can be surfaced to the UI.
             os_unfair_lock_lock(&_lock)
@@ -301,6 +377,57 @@ final class SystemAudioCapture: @unchecked Sendable {
                 _writeError = writeStatus
             }
             os_unfair_lock_unlock(&_lock)
+        } else {
+            writerFramesWritten += frameCount
+        }
+    }
+
+    /// Writes `T_sys - micAnchor` worth of silent frames to the front of the
+    /// file so the system track aligns with the mic track. `firstFrameHostTime`
+    /// is the mach host time of the system tap's first captured frame; the gap
+    /// to `micAnchorSeconds` is the precise start offset between the two streams
+    /// (it covers both the deferred tap start and any idle-until-audio delay).
+    /// Runs on the writer thread (allocation is fine here).
+    private func writeLeadingSilence(channelCount: UInt32, firstFrameHostTime: UInt64) {
+        guard firstFrameHostTime != 0, micAnchorSeconds > 0, let file = audioFile else { return }
+
+        let sysSeconds = Double(AudioConvertHostTimeToNanos(firstFrameHostTime)) / 1_000_000_000
+        let gap = sysSeconds - micAnchorSeconds
+        guard gap > 0 else { return }
+
+        // Clock-agnostic upper bound: the gap can't exceed how long the capture
+        // has actually been running (plus slack for the mic->system start hop).
+        // This caps a bogus anchor without trusting the host-clock comparison.
+        let wallBound = max(0, CACurrentMediaTime() - systemStartWall) + 1.0
+        let cappedSeconds = min(gap, wallBound, Self.maxLeadingSilenceSeconds)
+        if cappedSeconds < gap {
+            logger.warning("Leading-silence gap \(Int(gap))s exceeds bound; clamping to \(Int(cappedSeconds))s")
+        }
+
+        var framesRemaining = Int((cappedSeconds * tapSampleRate).rounded())
+        guard framesRemaining > 0 else { return }
+        logger.info("Aligning system track: prepending \(framesRemaining) frames (~\(Int(cappedSeconds * 1000))ms) of leading silence")
+
+        let ch = Int(max(channelCount, 1))
+        let chunkFrames = 8192
+        var silence = [Float](repeating: 0, count: chunkFrames * ch)
+        silence.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            while framesRemaining > 0 {
+                let n = min(chunkFrames, framesRemaining)
+                let buffer = AudioBuffer(
+                    mNumberChannels: channelCount,
+                    mDataByteSize: UInt32(n * ch * MemoryLayout<Float>.size),
+                    mData: base
+                )
+                var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
+                let status = ExtAudioFileWrite(file, UInt32(n), &bufferList)
+                if status != noErr {
+                    logger.error("Leading-silence write failed: \(status)")
+                    return
+                }
+                framesRemaining -= n
+            }
         }
     }
 
@@ -314,7 +441,7 @@ final class SystemAudioCapture: @unchecked Sendable {
             &procID,
             aggregateDeviceID,
             nil
-        ) { inNow, inInputData, inInputTime, outOutputData, inOutputTime in
+        ) { _, inInputData, inInputTime, _, _ in
             let buffers = UnsafeMutableAudioBufferListPointer(
                 UnsafeMutablePointer(mutating: inInputData)
             )
@@ -330,22 +457,66 @@ final class SystemAudioCapture: @unchecked Sendable {
 
             // Lock-free enqueue into pre-allocated ring buffer slots.
             // No heap allocation, no locks. If ring is full or buffer exceeds
-            // slot size, the drop is counted atomically.
-            _ = ring.enqueue(bufferList: inInputData, frameCount: frameCount)
+            // slot size, the drop is counted atomically. The frame's host time
+            // travels with it so the writer can align the track start.
+            _ = ring.enqueue(
+                bufferList: inInputData,
+                frameCount: frameCount,
+                hostTime: inInputTime.pointee.mHostTime
+            )
         }
 
         guard status == noErr, let id = procID else {
+            logger.err("AudioDeviceCreateIOProcIDWithBlock failed: \(osStatusString(status))")
             throw AudioLabError.failedToCreateIOProc(status)
         }
         ioProcID = id
 
         let startStatus = AudioDeviceStart(aggregateDeviceID, id)
         guard startStatus == noErr else {
+            logger.err("AudioDeviceStart failed: \(osStatusString(startStatus))")
             throw AudioLabError.failedToStartDevice(startStatus)
         }
+        logger.event("IOProc started on aggregate \(aggregateDeviceID)")
     }
 
     // MARK: - Teardown
+
+    /// Cleans up any state created during a partial `start()` failure.
+    /// Safe to call at any point during setup -- only tears down resources
+    /// that were actually created. Unlike `teardown()`, this does not
+    /// unconditionally wait on the writer semaphore (which would deadlock
+    /// if the writer thread was never started).
+    private func teardownPartialState() {
+        if let procID = ioProcID {
+            AudioDeviceStop(aggregateDeviceID, procID)
+            AudioDeviceDestroyIOProcID(aggregateDeviceID, procID)
+            ioProcID = nil
+        }
+
+        // Only signal and join the writer thread if it was actually started.
+        // writerDone starts at 0, so waiting without a prior signal() deadlocks.
+        if writerThread != nil {
+            writerRunning.store(0, ordering: .releasing)
+            writerDone.wait()
+            writerThread = nil
+        }
+
+        if aggregateDeviceID != kAudioObjectUnknown {
+            AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
+            aggregateDeviceID = kAudioObjectUnknown
+        }
+
+        if tapObjectID != kAudioObjectUnknown {
+            AudioHardwareDestroyProcessTap(tapObjectID)
+            tapObjectID = kAudioObjectUnknown
+        }
+
+        if let file = audioFile {
+            ExtAudioFileDispose(file)
+            audioFile = nil
+        }
+    }
 
     private func teardown() {
         // Stop the IOProc first so no new buffers are enqueued
@@ -408,7 +579,7 @@ enum AudioLabError: LocalizedError {
     case failedToCreateIOProc(OSStatus)
     case failedToStartDevice(OSStatus)
     case failedToSetEncoderBitRate(OSStatus)
-    case micEngineStartFailed(Error)
+    case micSessionStartFailed(Error)
 
     var errorDescription: String? {
         switch self {
@@ -430,8 +601,8 @@ enum AudioLabError: LocalizedError {
             return "Failed to start device (OSStatus \(s))"
         case .failedToSetEncoderBitRate(let s):
             return "Failed to set encoder bit rate (OSStatus \(s))"
-        case .micEngineStartFailed(let error):
-            return "Mic engine start failed: \(error.localizedDescription)"
+        case .micSessionStartFailed(let error):
+            return "Mic capture session start failed: \(error.localizedDescription)"
         }
     }
 }

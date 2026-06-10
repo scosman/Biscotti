@@ -2,15 +2,22 @@ import AVFoundation
 import Foundation
 import os
 import QuartzCore
+import Synchronization
 
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "AudioRecorder")
 
 /// Two-stream audio recorder composing a system-audio engine and a mic engine.
 ///
-/// Both streams share a single `CACurrentMediaTime()` start reference for
-/// alignment. Each stream writes ADTS AAC directly during capture via
-/// `ExtAudioFile` — no post-recording encode step. Route-change events are
-/// handled by reconnecting the affected engine without tearing down the session.
+/// Track alignment: the mic engine fires once with its first-buffer
+/// host-clock anchor (the recording's t=0). The system engine starts only
+/// after this anchor is known and prepends leading silence equal to the gap
+/// between its own first frame and the mic anchor. Both clocks are the same
+/// mach host clock, so the gap is precise. A timeout (~3 s) prevents a
+/// hung mic from blocking start indefinitely.
+///
+/// Each stream writes ADTS AAC directly during capture via `ExtAudioFile` —
+/// no post-recording encode step. Route-change events are handled by
+/// reconnecting the affected engine without tearing down the session.
 public actor AudioRecorder {
     // MARK: - Dependencies (injected via seams)
 
@@ -25,10 +32,33 @@ public actor AudioRecorder {
 
     private var paths: CapturePaths?
     private var _startTimestamp: Double = 0
-    private var _isRecording = false
+
+    /// Single-use lifecycle: `idle → recording → finished`. A recorder
+    /// records exactly once — after `stop()` it is `finished` and `start()`
+    /// throws `CaptureError.recorderConsumed`. Reuse across recordings is
+    /// unsupported (the capture engines were validated single-use and hoist
+    /// per-session state), so it is rejected here rather than left as a
+    /// latent real-time-thread teardown hazard. A *failed* start does not
+    /// consume the recorder: it stays `idle` and may be retried.
+    private enum Lifecycle {
+        case idle
+        case recording
+        case finished
+    }
+
+    private var lifecycle: Lifecycle = .idle
+    private var isRecording: Bool {
+        lifecycle == .recording
+    }
+
     private var stateTimer: Task<Void, Never>?
     private var routeChangeTask: Task<Void, Never>?
     private var stateContinuations: [UUID: AsyncStream<CaptureState>.Continuation] = [:]
+
+    /// Timeout for waiting on the mic engine's first buffer before
+    /// proceeding to start the system engine (seconds). Prevents a
+    /// VPIO DSP fault from hanging start() indefinitely.
+    static let micFirstBufferTimeout: Duration = .seconds(3)
 
     // MARK: - Init
 
@@ -96,10 +126,26 @@ public actor AudioRecorder {
     ///
     /// Checks mic permission before starting engines. Throws
     /// `CaptureError.micPermissionDenied` if the mic is denied or restricted.
-    /// If the system engine starts but the mic fails, the system engine is
+    ///
+    /// The mic engine starts first so its output-device reclock completes
+    /// before the system engine queries the device rate. The system engine
+    /// is gated on the mic's first delivered buffer (with a timeout) so:
+    ///   1. The mic input IO is confirmed live before the system aggregate
+    ///      is created (avoids starving the mic cold-start).
+    ///   2. The mic's first-sample host-clock anchor is known, enabling
+    ///      precise two-track alignment via leading silence.
+    ///
+    /// If the system engine fails after the mic started, the mic engine is
     /// stopped before re-throwing.
     public func start(paths: CapturePaths) async throws {
-        guard !_isRecording else { return }
+        switch lifecycle {
+        case .recording:
+            return // already recording — idempotent no-op
+        case .finished:
+            throw CaptureError.recorderConsumed // single-use: spent
+        case .idle:
+            break
+        }
 
         // Mic permission preflight.
         let micStatus = micPermissionChecker.authorizationStatus()
@@ -115,20 +161,27 @@ public actor AudioRecorder {
             throw CaptureError.micPermissionDenied
         }
 
-        // Start system audio first (the longer-setup path).
+        _lastSystemWriteError = nil
+
+        // Start mic first: VPIO reclocks the output device to the input
+        // sample rate. The system tap must query the device after this
+        // completes so its ExtAudioFile client format matches the final rate.
+        //
+        // Wire the first-buffer callback BEFORE start so it's ready when
+        // the real-time tap delivers the first buffer (which can happen
+        // during or immediately after engine start). For fakes, the
+        // callback fires synchronously inside start().
+        let micAnchor = try await startMicAndWaitForAnchor(path: paths.micAAC)
+
+        // Forward the mic anchor to the system engine for alignment.
+        systemEngine.setMicAnchor(micAnchor)
+
+        // Start system audio. On failure, tear down the mic engine.
         do {
             try await systemEngine.start(writingTo: paths.systemAAC)
         } catch {
             logger.error("System engine start failed: \(error.localizedDescription)")
-            throw error
-        }
-
-        // Start mic. On failure, tear down the system engine.
-        do {
-            try await micEngine.start(writingTo: paths.micAAC)
-        } catch {
-            logger.error("Mic engine start failed: \(error.localizedDescription)")
-            await systemEngine.stop()
+            await micEngine.stop()
             throw error
         }
 
@@ -136,7 +189,7 @@ public actor AudioRecorder {
         let timestamp = CACurrentMediaTime()
         _startTimestamp = timestamp
         self.paths = paths
-        _isRecording = true
+        lifecycle = .recording
 
         logger.info("Capture started, timestamp=\(timestamp)")
         emitState()
@@ -144,11 +197,81 @@ public actor AudioRecorder {
         startRouteChangeListener()
     }
 
-    /// Stops capture. Idempotent — safe to call when not recording.
-    public func stop() async {
-        guard _isRecording else { return }
+    /// Starts the mic engine, then waits for its `onFirstBuffer` signal
+    /// with a bounded timeout. Returns the host-clock anchor (seconds),
+    /// or 0 if the timeout expires (alignment simply degrades to "both
+    /// start ~now"). On start failure, re-throws.
+    private func startMicAndWaitForAnchor(path: URL) async throws -> Double {
+        // Create a one-shot async stream: the callback yields the anchor,
+        // and we read it (with timeout) after start returns.
+        let stream = AsyncStream<Double>.makeStream()
 
-        _isRecording = false
+        micEngine.setOnFirstBuffer { anchor in
+            stream.continuation.yield(anchor)
+            stream.continuation.finish()
+        }
+
+        do {
+            try await micEngine.start(writingTo: path)
+        } catch {
+            micEngine.setOnFirstBuffer(nil)
+            stream.continuation.finish()
+            logger.error("Mic engine start failed: \(error.localizedDescription)")
+            throw error
+        }
+
+        // Wait for the first buffer or timeout. On real hardware the
+        // first buffer arrives from the real-time audio thread after
+        // start returns; for fakes it fires during start() and the
+        // stream already has a value.
+        let anchor = await waitForFirstValue(
+            from: stream.stream, timeout: Self.micFirstBufferTimeout
+        )
+
+        micEngine.setOnFirstBuffer(nil)
+        return anchor
+    }
+
+    /// Returns the first value from the stream, or 0 if the timeout
+    /// expires before any value arrives.
+    private func waitForFirstValue(
+        from stream: AsyncStream<Double>, timeout: Duration
+    ) async -> Double {
+        await withTaskGroup(of: Double?.self) { group in
+            group.addTask {
+                for await value in stream {
+                    return value
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return nil
+            }
+
+            // The first task to finish wins.
+            if let result = await group.next(), let anchor = result {
+                group.cancelAll()
+                return anchor
+            }
+
+            // Timeout fired first or stream finished empty.
+            group.cancelAll()
+            logger.warning(
+                "Mic first-buffer timeout (\(timeout)) -- proceeding without alignment anchor"
+            )
+            return 0
+        }
+    }
+
+    /// Stops capture. Idempotent — safe to call when not recording.
+    ///
+    /// After stopping, checks the system engine for write errors and
+    /// logs them. The error is also available via `lastSystemWriteError`.
+    public func stop() async {
+        guard lifecycle == .recording else { return }
+
+        lifecycle = .finished
         routeChangeTask?.cancel()
         routeChangeTask = nil
         stateTimer?.cancel()
@@ -157,10 +280,25 @@ public actor AudioRecorder {
         await systemEngine.stop()
         await micEngine.stop()
 
+        // Surface any write errors that occurred during recording.
+        if let writeErr = systemEngine.writeError {
+            logger.error("System audio write error during recording (OSStatus \(writeErr))")
+            _lastSystemWriteError = writeErr
+        }
+
         logger.info("Capture stopped")
         emitState()
         finishAllContinuations()
     }
+
+    /// Non-nil if the system engine's ExtAudioFile write failed during the
+    /// last recording session. Reset on the next `start()`.
+    public private(set) var lastSystemWriteError: OSStatus? {
+        get { _lastSystemWriteError }
+        set { _lastSystemWriteError = newValue }
+    }
+
+    private var _lastSystemWriteError: OSStatus?
 
     // MARK: - State stream
 
@@ -196,13 +334,13 @@ public actor AudioRecorder {
     // MARK: - Internal helpers
 
     private var currentState: CaptureState {
-        let elapsed: TimeInterval = if _isRecording, _startTimestamp > 0 {
+        let elapsed: TimeInterval = if isRecording, _startTimestamp > 0 {
             CACurrentMediaTime() - _startTimestamp
         } else {
             0
         }
         return CaptureState(
-            isRecording: _isRecording,
+            isRecording: isRecording,
             elapsed: elapsed,
             micLevel: 0, // RMS unwired per phase 9
             systemLevel: 0, // RMS unwired per phase 9
@@ -258,7 +396,7 @@ public actor AudioRecorder {
     /// via `AVAudioEngineConfigurationChange`, so no action is needed here.
     /// `isRecording` stays `true` throughout -- no audio loss.
     private func handleDeviceChange(_ event: DeviceChangeEvent) async {
-        guard _isRecording else { return }
+        guard isRecording else { return }
 
         switch event {
         case .outputChanged:

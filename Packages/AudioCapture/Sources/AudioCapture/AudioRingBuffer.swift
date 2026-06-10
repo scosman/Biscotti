@@ -17,6 +17,7 @@ final class AudioRingBuffer: @unchecked Sendable {
         var dataByteSize: UInt32
         var frameCount: UInt32
         var channelCount: UInt32
+        var hostTime: UInt64
         var occupied: Bool
     }
 
@@ -25,6 +26,10 @@ final class AudioRingBuffer: @unchecked Sendable {
         let dataByteSize: UInt32
         let frameCount: UInt32
         let channelCount: UInt32
+        /// Mach host time (`AudioTimeStamp.mHostTime`) of this buffer, as
+        /// reported by the IOProc. Used to align the system track against the
+        /// mic track's first-frame timestamp.
+        let hostTime: UInt64
     }
 
     private let capacity: Int
@@ -51,7 +56,7 @@ final class AudioRingBuffer: @unchecked Sendable {
         slotHeaders = .allocate(capacity: capacity)
         for idx in 0 ..< capacity {
             slotHeaders[idx] = SlotHeader(
-                dataByteSize: 0, frameCount: 0, channelCount: 0, occupied: false
+                dataByteSize: 0, frameCount: 0, channelCount: 0, hostTime: 0, occupied: false
             )
         }
         _head = Atomic<Int>(0)
@@ -67,7 +72,11 @@ final class AudioRingBuffer: @unchecked Sendable {
     /// Called from the RT thread. Copies the buffer into a pre-allocated slot.
     /// Returns false if the ring is full or the buffer exceeds the slot size;
     /// never allocates or locks.
-    func enqueue(bufferList: UnsafePointer<AudioBufferList>, frameCount: UInt32) -> Bool {
+    func enqueue(
+        bufferList: UnsafePointer<AudioBufferList>,
+        frameCount: UInt32,
+        hostTime: UInt64 = 0
+    ) -> Bool {
         let abl = bufferList.pointee
         guard let srcData = abl.mBuffers.mData else { return false }
         let byteSize = abl.mBuffers.mDataByteSize
@@ -93,6 +102,7 @@ final class AudioRingBuffer: @unchecked Sendable {
             dataByteSize: byteSize,
             frameCount: frameCount,
             channelCount: abl.mBuffers.mNumberChannels,
+            hostTime: hostTime,
             occupied: true
         )
 
@@ -123,7 +133,8 @@ final class AudioRingBuffer: @unchecked Sendable {
             data: slotPtr,
             dataByteSize: header.dataByteSize,
             frameCount: header.frameCount,
-            channelCount: header.channelCount
+            channelCount: header.channelCount,
+            hostTime: header.hostTime
         )
     }
 }

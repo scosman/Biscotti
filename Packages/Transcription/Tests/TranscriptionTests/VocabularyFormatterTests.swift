@@ -16,20 +16,26 @@ struct VocabularyFormatterTests {
 
     @Test("Single term formats correctly")
     func singleTerm() {
-        let result = VocabularyFormatter.formatPrompt(from: ["Acme Corp"])
-        #expect(result == "Transcript mentioning: Acme Corp.")
+        let result = VocabularyFormatter.formatPrompt(from: ["acme corp"])
+        #expect(result == "Transcript mentioning: acme corp.")
     }
 
     @Test("Multiple terms joined with commas")
     func multipleTerms() {
-        let result = VocabularyFormatter.formatPrompt(from: ["Biscotti", "Acme Corp", "Jordan"])
-        #expect(result == "Transcript mentioning: Biscotti, Acme Corp, Jordan.")
+        let result = VocabularyFormatter.formatPrompt(from: ["biscotti", "acme corp", "jordan"])
+        #expect(result == "Transcript mentioning: biscotti, acme corp, jordan.")
     }
 
     @Test("Whitespace is trimmed from terms")
     func whitespaceIsTrimmed() {
         let result = VocabularyFormatter.formatPrompt(from: ["  Biscotti  ", " Acme "])
-        #expect(result == "Transcript mentioning: Biscotti, Acme.")
+        #expect(result == "Transcript mentioning: biscotti, acme.")
+    }
+
+    @Test("Mixed-case terms are lowercased in output")
+    func mixedCaseTermsAreLowercased() {
+        let result = VocabularyFormatter.formatPrompt(from: ["NASA", "Kubernetes", "Acme Corp"])
+        #expect(result == "Transcript mentioning: nasa, kubernetes, acme corp.")
     }
 
     @Test("Very long vocabulary list is truncated to fit budget")
@@ -55,7 +61,7 @@ struct VocabularyFormatterTests {
     @Test("Empty strings are filtered out")
     func emptyStringsFiltered() {
         let result = VocabularyFormatter.formatPrompt(from: ["", "Biscotti", "", "App"])
-        #expect(result == "Transcript mentioning: Biscotti, App.")
+        #expect(result == "Transcript mentioning: biscotti, app.")
     }
 
     @Test("Budget limits are respected")

@@ -61,7 +61,9 @@ A lot of users will live in the trap version of the app.
 Icon:
 - icon only: no meetings starting in next 2 hours
 - icon + text for “next meeting”: “1:1 Sam - in 1h52m” (research truncation when we get to this part, we want it to truncate meeting title, not time)
-- recording: icon + red recording symbol
+- recording: icon + recording symbol
+  - Option 1: red recording dot
+  - Option 2: white/system-color dot, but changing opacity every few seconds like a blinking recording LED on old VCR
 
 Body:
 - Recording section: state full recording status
@@ -90,7 +92,7 @@ The app window does not need to be open for the app to work. We’re a tray-firs
 - Search: 
   - a search bar in top of app lets you search all of your meetings. 
   - As soon as you start typing it takes over main view areas with live filtering search results. A back button in top left of main area closes search.
-  - Searches all fields (title people, transcripts). Use simple swiftData search for now (something like splitting terms, LIKE to check presence, return count, sort by count). Will design details later. Not fancy FTS in V1 but could add later.
+  - Searches all fields (title people, transcripts). Use simple swiftData search for now (something like splitting terms, LIKE to check presence, return count, weight count title higher than transcript, sort by score). Searches across many fields (title, notes, transcript, participants). Will design details later. Not fancy FTS in V1 but could add later. Perf: we're talking probablly <1000 docs, so not concerned about indexing. Try a filter before we get fancy. We'll optimize if/when needed.
 
 ### Onboarding
 

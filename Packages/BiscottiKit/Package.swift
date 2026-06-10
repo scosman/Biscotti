@@ -22,6 +22,8 @@ let package = Package(
         .library(name: "Notifications", targets: ["Notifications"]),
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
         .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
+        .library(name: "HomeUI", targets: ["HomeUI"]),
+        .library(name: "SearchUI", targets: ["SearchUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -238,14 +240,69 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "HomeUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "HomeUITests",
+            dependencies: [
+                "HomeUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "SearchUI",
+            dependencies: [
+                "AppCore",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SearchUITests",
+            dependencies: [
+                "SearchUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
                 "Calendar",
                 "DesignSystem",
+                "HomeUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
                 "RecordingUI",
+                "SearchUI",
                 "SettingsUI"
             ],
             swiftSettings: warningsAsErrors
@@ -258,9 +315,11 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "HomeUI",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
+                "SearchUI",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")

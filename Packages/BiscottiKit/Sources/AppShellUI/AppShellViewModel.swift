@@ -1,9 +1,12 @@
 import AppCore
 import Calendar
+import DesignSystem
 import Foundation
+import HomeUI
 import MeetingDetailUI
 import MeetingListUI
 import RecordingUI
+import SearchUI
 import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
@@ -25,6 +28,12 @@ public final class AppShellViewModel {
     /// The recording-screen view model (created once, never replaced).
     public let recordingViewModel: RecordingViewModel
 
+    /// The home view model (created once, never replaced).
+    public let homeViewModel: HomeViewModel
+
+    /// The search view model (created once, never replaced).
+    public let searchViewModel: SearchViewModel
+
     /// The settings view model (created once, never replaced).
     public let settingsViewModel: SettingsViewModel
 
@@ -43,6 +52,8 @@ public final class AppShellViewModel {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
+        homeViewModel = HomeViewModel(core: core)
+        searchViewModel = SearchViewModel(core: core)
         settingsViewModel = SettingsViewModel(core: core)
     }
 
@@ -151,7 +162,9 @@ public final class AppShellViewModel {
     public func onSearchTextChange(_ text: String) {
         if !text.isEmpty {
             core.presentSearch()
+            searchViewModel.updateQuery(text)
         } else if core.route == .search {
+            searchViewModel.updateQuery("")
             core.dismissSearch()
         }
     }
@@ -159,6 +172,7 @@ public final class AppShellViewModel {
     /// Clears the search and restores the previous route.
     public func clearSearch() {
         searchText = ""
+        searchViewModel.updateQuery("")
         core.dismissSearch()
     }
 
@@ -170,21 +184,11 @@ public final class AppShellViewModel {
     // MARK: - Time formatting for upcoming events
 
     /// Formats a CalendarEvent's start time as relative text.
+    /// Delegates to `TimeFormatting.relativeTimeText` (shared helper).
     public static func timeText(
         for event: CalendarEvent,
         relativeTo now: Date = Date()
     ) -> String {
-        let interval = event.start.timeIntervalSince(now)
-        guard interval > 0 else { return "now" }
-        let minutes = Int(interval / 60)
-        if minutes < 60 {
-            return "in \(minutes)m"
-        }
-        let hours = minutes / 60
-        let remainingMinutes = minutes % 60
-        if remainingMinutes == 0 {
-            return "in \(hours)h"
-        }
-        return "in \(hours)h \(remainingMinutes)m"
+        TimeFormatting.relativeTimeText(event.start, relativeTo: now)
     }
 }

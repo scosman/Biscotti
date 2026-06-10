@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import Calendar
 import DataStore
+import DesignSystem
 import Foundation
 
 /// View model for the `MenuBarExtra` content and label views.
@@ -128,21 +129,11 @@ public final class MenuBarViewModel {
     }
 
     /// Formats a future date as relative text: "in 5m", "in 1h 12m".
+    /// Delegates to `TimeFormatting.relativeTimeText` (shared helper).
     public nonisolated static func relativeTimeText(
         _ date: Date, relativeTo now: Date = Date()
     ) -> String {
-        let interval = date.timeIntervalSince(now)
-        guard interval > 0 else { return "now" }
-        let minutes = Int(interval / 60)
-        if minutes < 60 {
-            return "in \(minutes)m"
-        }
-        let hours = minutes / 60
-        let remainingMinutes = minutes % 60
-        if remainingMinutes == 0 {
-            return "in \(hours)h"
-        }
-        return "in \(hours)h \(remainingMinutes)m"
+        TimeFormatting.relativeTimeText(date, relativeTo: now)
     }
 
     /// Whether a date is within 2 hours from now.

@@ -1,9 +1,11 @@
 import AppCore
 import Calendar
 import DesignSystem
+import HomeUI
 import MeetingDetailUI
 import MeetingListUI
 import RecordingUI
+import SearchUI
 import SettingsUI
 import SwiftUI
 
@@ -213,7 +215,7 @@ public struct AppShellView: View {
     private var detailContent: some View {
         switch viewModel.route {
         case .home:
-            emptyPlaceholder
+            HomeView(viewModel: viewModel.homeViewModel)
 
         case .recording:
             RecordingView(
@@ -233,8 +235,7 @@ public struct AppShellView: View {
             .id(key)
 
         case .search:
-            // TODO: Implement search results view in Phase 7
-            emptyPlaceholder
+            SearchView(viewModel: viewModel.searchViewModel)
 
         case .settings:
             SettingsView(viewModel: viewModel.settingsViewModel)

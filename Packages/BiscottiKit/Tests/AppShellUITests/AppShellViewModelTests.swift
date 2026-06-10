@@ -1,6 +1,7 @@
 import BiscottiTestSupport
 import Calendar
 import Foundation
+import SearchUI
 import Testing
 @testable import AppCore
 @testable import AppShellUI
@@ -412,5 +413,57 @@ struct AppShellUpcomingSearchTests {
         )
         let text = AppShellViewModel.timeText(for: event, relativeTo: now)
         #expect(text == "now")
+    }
+
+    @Test("search text updates searchViewModel query")
+    @MainActor
+    func searchTextUpdatesSearchVM() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.onSearchTextChange("meeting")
+
+        #expect(shellVM.searchViewModel.query == "meeting")
+        #expect(fix.core.route == .search)
+    }
+
+    @Test("clearSearch resets searchViewModel query")
+    @MainActor
+    func clearSearchResetsSearchVM() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.onSearchTextChange("hello")
+        #expect(shellVM.searchViewModel.query == "hello")
+
+        shellVM.clearSearch()
+        #expect(shellVM.searchViewModel.query == "")
+        #expect(shellVM.searchText == "")
+    }
+
+    @Test("homeViewModel is stable across accesses")
+    @MainActor
+    func homeVMStable() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        let home1 = shellVM.homeViewModel
+        let home2 = shellVM.homeViewModel
+        #expect(home1 === home2)
+    }
+
+    @Test("searchViewModel is stable across accesses")
+    @MainActor
+    func searchVMStable() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        let search1 = shellVM.searchViewModel
+        let search2 = shellVM.searchViewModel
+        #expect(search1 === search2)
     }
 }

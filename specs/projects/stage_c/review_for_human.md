@@ -88,3 +88,10 @@ Running log of decisions for the final **human review, feedback & bug-fixing** p
 - **Removed two superfluous `swiftlint:disable:next function_body_length` directives**: SwiftFormat shortened `onLaunch()` and `completeOnboarding()` enough that the disable comments became orphaned doc comment violations.
 - **`MenuBarViewModel` formatting helpers are `nonisolated static`**: `truncateTitle`, `relativeTimeText`, `isWithin2Hours`, and `formatElapsed` are pure functions that don't need MainActor isolation. Marked `nonisolated static` so tests can call them from nonisolated contexts without `@MainActor` annotation.
 - **`formatElapsed` inlined in MenuBarViewModel**: rather than importing RecordingUI (which would add a dependency), the elapsed-time formatting was duplicated as a `nonisolated static` method on `MenuBarViewModel`.
+
+### Phase 7 implementation decisions
+
+- **Consolidated `relativeTimeText` into `DesignSystem/TimeFormatting`**: three view models (HomeViewModel, AppShellViewModel, MenuBarViewModel) all needed the same relative-time formatting for upcoming events. Extracted the logic into a shared `TimeFormatting.relativeTimeText` helper in `DesignSystem`; each VM's `timeText`/`relativeTimeText` static method now delegates to it.
+- **`MeetingListUI` grouping verified, not modified**: Phase 3's `groupByEffectiveDate` and `MeetingListView` grouped display already satisfy the Phase 7 spec completely. No changes needed -- the existing tests cover grouping correctness.
+- **`SearchViewModel.debounceAndSearch` uses `Task.sleep` for debounce**: a simple cancelling-task pattern (cancel prior task on each keystroke, sleep 300ms, then search) rather than Combine's `debounce`. Keeps the module Combine-free and is straightforward to test by waiting past the debounce window.
+- **`AppShellViewModel` propagates search text to `SearchViewModel`**: `onSearchTextChange` and `clearSearch` both forward the query to `searchViewModel.updateQuery`, keeping the search VM's state in sync with the toolbar `.searchable` binding without the search VM needing to observe the shell VM.

@@ -103,6 +103,8 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 
 ### CI (three tiers)
 
+CI pins **Xcode 26.3** via `DEVELOPER_DIR` in `ci.yml` while targeting the **macOS 15 platform** (deployment target). The `macos-15` runner defaults to Xcode 16.4, whose SwiftData SDK lacks `Schema.Version: Sendable` and breaks Swift 6 strict concurrency.
+
 - **`package-tier`** (gating, required check): runs `make ci` (lint + test + build) on `macos-15`. This is the merge gate.
 - **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.
 - **`manual-tests-check`** (non-gating, `continue-on-error`): runs `make manual-tests-check` on `macos-15`. Expected RED until Phase 4.5 (when a human runs the manual tests on real hardware). Informational only — never blocks merge.

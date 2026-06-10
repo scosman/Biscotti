@@ -60,14 +60,18 @@ public final class Permissions {
 
     /// Returns a URL that opens the correct System Settings pane for the given permission.
     public func settingsURL(for kind: PermissionKind) -> URL {
-        switch kind {
+        let urlString = switch kind {
         case .microphone:
             // Opens Privacy & Security > Microphone
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
-
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
         case .systemAudio:
             // Opens Privacy & Security > Screen & System Audio Recording
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         }
+
+        guard let url = URL(string: urlString) else {
+            preconditionFailure("Invalid hardcoded settings URL: \(urlString)")
+        }
+        return url
     }
 }

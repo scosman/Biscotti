@@ -130,3 +130,11 @@ The `precommit_checks` run must be the **last thing before the commit** — if y
 
 - Updating product intent → `app_overview.md`. Updating the topology → `architecture.md`. Re-ordering/scoping work → `implementation_plan.md`. Correcting a technical finding → the relevant `research/<area>/README.md`.
 - **Manual test staleness rule:** when you touch `Packages/Transcription` or `Packages/AudioCapture`, mark that library's manual tests as `not-run` in `ManualTestApp/Results/manual_test_results.json`. Either hand-edit the file (set `"status": "not-run"` for each step with the matching prefix: `ac_*` for AudioCapture, `tx_*` for Transcription) or use `ResultsStore.markScriptNotRun(scriptID:allStepIDs:)` from `ManualTestKit`. This causes `make manual-tests-check` (and its CI gate) to fail until a human re-runs the affected tests on real hardware and commits the updated results.
+
+---
+
+## `// TODO` to track future work
+
+Use `TODO` comments to track work we expect to be cleaned up/completed in later phases. Don't just punt work that should be in this phase, but if it's genuinely better to implement later, mark it so we don't miss it.
+
+When code reviewing: allow legit TODOs (legit should be done later), and reject invalid (should be done in this phase).

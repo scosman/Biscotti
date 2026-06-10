@@ -26,6 +26,11 @@ disabled_rules:
   # (SwiftLint alphabetizes; SwiftFormat groups @testable at bottom). SwiftFormat
   # is the authoritative formatter, so this rule is disabled here.
   - sorted_imports
+  # `todo` is disabled so `// TODO:` / `// FIXME:` markers can be used to track
+  # deferred pre-ship work, per CLAUDE.md's "`// TODO` to track future work"
+  # convention. (With `strict: true`, an enabled `todo` rule would fail the lint
+  # gate on every such marker — forcing deferred work into untrackable prose.)
+  - todo
 
 # Opt into a stricter set (the author's "stricter ruleset" ask).
 # Note: unused_declaration and unused_import are omitted — they require

@@ -14,13 +14,13 @@ Single-file architecture (medium project). No `components/` docs.
 |---|---|
 | `Packages/Transcription` — library | **No public API changes.** Diarization tuning knob deferred; production unchanged. |
 | `Packages/Transcription` — CLI | **No CLI changes.** `--diarization-threshold` / `--diarization-sweep` deferred. |
-| `Packages/Transcription/Tests` | **All new test code lives here.** Comparison utilities + ground truth + evaluators (`internal` to the test target), the 3 `.aac` clips in `Fixtures/`, the env-gated `.aiModel` AI tests, and fast unit tests for the utilities. |
+| `Packages/Transcription/Tests` | **All new test code lives here.** Comparison utilities + ground truth + evaluators (`internal` to the test target), the reference clips in `Fixtures/` (2 `.wav` + 1 `.aac`), the env-gated `.aiModel` AI tests, and fast unit tests for the utilities. |
 | `Packages/BiscottiKit` — `ManualTestKit` | `AudioCaptureScript.swift`: reword + add steps. `TranscriptionScript.swift`: **reduce** to download steps + a `make test-ai` tracker (cut quality **and** crash steps). |
 | `ManualTestApp` | `WiredScripts.swift`: drop all transcription wiring except model download/cache; remove clip resolution + result holders. Remove the 3 `.aac` from `Resources/`. |
 | `Makefile` | New `test-ai` target (env-gated, non-gating, no CI). |
 | `CLAUDE.md` | Document `make test-ai`. |
 | `ManualTestApp/Results/manual_test_results.json` | Regenerate with every current step ID = `not-run`. |
-| Audio assets | **Move** `mic.aac`, `system.aac`, `custom_vocab_test.aac` from `ManualTestApp/Resources/` → `Tests/TranscriptionTests/Fixtures/` (single home; no dupe). |
+| Audio assets | Already in `Tests/TranscriptionTests/Fixtures/` as `mic_fixture.wav` + `system_fixture.wav` (WAV, 3-speaker clip) and `custom_vocab_test.aac` (vocab clip). No longer in `ManualTestApp/Resources/`. |
 
 Production targets (`App/`, `Biscotti`) are untouched — no new code, no API changes.
 
@@ -88,7 +88,7 @@ enum VocabGroundTruth { static func evaluate(_ r: TranscriptResult) -> VocabEval
 
 ### 2.3 Clip resolution
 
-Clips live in `Tests/TranscriptionTests/Fixtures/` (`Package.swift` already `.copy("Fixtures")`). Resolve via `Bundle.module.url(forResource: "mic", withExtension: "aac", subdirectory: "Fixtures")`, etc.
+Clips live in `Tests/TranscriptionTests/Fixtures/` (`Package.swift` already `.copy("Fixtures")`). Resolve via `Bundle.module.url(forResource: "mic_fixture", withExtension: "wav", subdirectory: "Fixtures")`, `Bundle.module.url(forResource: "system_fixture", withExtension: "wav", subdirectory: "Fixtures")`, and `Bundle.module.url(forResource: "custom_vocab_test", withExtension: "aac", subdirectory: "Fixtures")`.
 
 ---
 
@@ -107,8 +107,8 @@ AI tests: `@Test(.tags(.aiModel), .enabled(if: AITestGate.isEnabled))` in `@Suit
 ### 3.2 Diarization + accuracy (gated)
 
 ```swift
-let mic = Bundle.module.url(forResource: "mic", withExtension: "aac", subdirectory: "Fixtures")!
-let sys = Bundle.module.url(forResource: "system", withExtension: "aac", subdirectory: "Fixtures")!
+let mic = Bundle.module.url(forResource: "mic_fixture", withExtension: "wav", subdirectory: "Fixtures")!
+let sys = Bundle.module.url(forResource: "system_fixture", withExtension: "wav", subdirectory: "Fixtures")!
 let r = try await Transcriber(backend: .inProcess).processAudio(mic: mic, system: sys)
 let e = DiarizationGroundTruth.evaluate(r)
 #expect(e.passed, "\(e.detail)")

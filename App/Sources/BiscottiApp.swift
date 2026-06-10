@@ -9,8 +9,8 @@ import SwiftUI
 /// `WindowGroup`. Window-only (regular activation, dock icon); the
 /// `MenuBarExtra` is a later project.
 ///
-/// /// Note: License/attribution screen for argmax-oss-swift and model
-/// licenses must be added before ship (Project 9).
+/// - TODO: License/attribution screen for argmax-oss-swift and model
+///   licenses must be added before ship (Project 9).
 @main
 struct BiscottiApp: App {
     @State private var core: AppCore?

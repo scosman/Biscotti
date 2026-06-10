@@ -84,9 +84,9 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
 public extension DataStore {
     /// Returns summaries of recent meetings, newest first.
     ///
-    /// Note: `recentMeetings` sorts by `createdAt`, but the DTO `date` uses
-    /// `startDate ?? createdAt`. Once the Calendar project lands, sort by the
-    /// effective date so ordering matches the displayed value (see Project 5).
+    /// - TODO: `recentMeetings` sorts by `createdAt`, but the DTO `date` uses
+    ///   `startDate ?? createdAt`. Once the Calendar project lands, sort by the
+    ///   effective date so ordering matches the displayed value (see Project 5).
     func meetingSummaries(limit: Int) throws -> [MeetingSummary] {
         let meetings = try recentMeetings(limit: limit)
         return meetings.map { meeting in

@@ -222,10 +222,10 @@ public final class RecordingController {
 
     /// Generates an auto-title like "Recording -- Jun 9, 2:30 PM".
     ///
-    /// Note: the hardcoded `"MMM d, h:mm a"` format ignores the user's locale
-    /// (12h vs 24h, date-component ordering). Before ship, migrate to
-    /// `Date.FormatStyle` or `DateFormatter.dateFormat(fromTemplate:locale:)`
-    /// for locale-aware formatting. Deferred past MVP.
+    /// - TODO: the hardcoded `"MMM d, h:mm a"` format ignores the user's locale
+    ///   (12h vs 24h, date-component ordering). Before ship, migrate to
+    ///   `Date.FormatStyle` or `DateFormatter.dateFormat(fromTemplate:locale:)`
+    ///   for locale-aware formatting. Deferred past MVP.
     public static func autoTitle(date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, h:mm a"

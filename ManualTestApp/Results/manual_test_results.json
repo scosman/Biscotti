@@ -1,7 +1,8 @@
 {
   "ac_crash_safety_check" : {
-    "status" : "not-run",
-    "stepID" : "ac_crash_safety_check"
+    "status" : "pass",
+    "stepID" : "ac_crash_safety_check",
+    "timestamp" : "2026-06-10T21:33:39Z"
   },
   "ac_crash_safety_setup" : {
     "status" : "not-run",
@@ -19,24 +20,24 @@
     "timestamp" : "2026-06-10T03:50:34Z"
   },
   "ac_meet_open_midcapture" : {
-    "status" : "not-run",
-    "stepID" : "ac_meet_open_midcapture"
+    "status" : "pass",
+    "stepID" : "ac_meet_open_midcapture",
+    "timestamp" : "2026-06-10T21:28:37Z"
   },
   "ac_mega_setup" : {
     "status" : "not-run",
     "stepID" : "ac_mega_setup"
   },
   "ac_mega_timing" : {
-    "status" : "not-run",
-    "stepID" : "ac_mega_timing"
+    "status" : "pass",
+    "stepID" : "ac_mega_timing",
+    "timestamp" : "2026-06-10T21:32:56Z"
   },
   "ac_mega_voice" : {
-    "status" : "not-run",
-    "stepID" : "ac_mega_voice"
-  },
-  "ac_monitoring" : {
-    "status" : "not-run",
-    "stepID" : "ac_monitoring"
+    "note" : "some jitter as devices changed, but always stabilized. all modes work",
+    "status" : "pass",
+    "stepID" : "ac_mega_voice",
+    "timestamp" : "2026-06-10T21:32:53Z"
   },
   "ac_playback_mic" : {
     "status" : "pass",
@@ -61,12 +62,12 @@
   "ac_start_recording" : {
     "status" : "pass",
     "stepID" : "ac_start_recording",
-    "timestamp" : "2026-06-10T03:49:39Z"
+    "timestamp" : "2026-06-10T21:33:14Z"
   },
   "ac_stop_recording" : {
     "status" : "pass",
     "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-06-10T03:49:47Z"
+    "timestamp" : "2026-06-10T21:30:29Z"
   },
   "ac_timed_capture" : {
     "status" : "not-run",
@@ -78,19 +79,23 @@
     "timestamp" : "2026-06-10T03:49:37Z"
   },
   "tx_ai_test_passed" : {
-    "status" : "not-run",
-    "stepID" : "tx_ai_test_passed"
+    "status" : "pass",
+    "stepID" : "tx_ai_test_passed",
+    "timestamp" : "2026-06-10T21:27:45Z"
   },
   "tx_clear_cache" : {
-    "status" : "not-run",
-    "stepID" : "tx_clear_cache"
+    "status" : "pass",
+    "stepID" : "tx_clear_cache",
+    "timestamp" : "2026-06-10T21:23:54Z"
   },
   "tx_model_disk" : {
-    "status" : "not-run",
-    "stepID" : "tx_model_disk"
+    "status" : "pass",
+    "stepID" : "tx_model_disk",
+    "timestamp" : "2026-06-10T21:24:22Z"
   },
   "tx_model_download" : {
-    "status" : "not-run",
-    "stepID" : "tx_model_download"
+    "status" : "pass",
+    "stepID" : "tx_model_download",
+    "timestamp" : "2026-06-10T21:24:20Z"
   }
 }

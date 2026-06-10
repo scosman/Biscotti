@@ -19,9 +19,9 @@ struct ScriptShapeTests {
         #expect(script.id == "transcription")
     }
 
-    @Test("Audio Capture script has exactly 17 steps")
+    @Test("Audio Capture script has exactly 16 steps")
     func audioCaptureStepCount() {
-        #expect(TestScript.audioCapture.steps.count == 17)
+        #expect(TestScript.audioCapture.steps.count == 16)
     }
 
     @Test("Transcription script has exactly 4 steps")
@@ -48,8 +48,7 @@ struct ScriptShapeTests {
             "ac_mega_voice",
             "ac_mega_timing",
             "ac_crash_safety_setup",
-            "ac_crash_safety_check",
-            "ac_monitoring"
+            "ac_crash_safety_check"
         ]
         #expect(ids == expected)
     }

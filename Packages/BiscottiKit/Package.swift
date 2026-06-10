@@ -16,6 +16,7 @@ let package = Package(
         .library(name: "RecordingUI", targets: ["RecordingUI"]),
         .library(name: "MeetingDetailUI", targets: ["MeetingDetailUI"]),
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
+        .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -237,6 +238,15 @@ let package = Package(
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingCatalog",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingCatalogTests",
+            dependencies: ["MeetingCatalog"],
             swiftSettings: warningsAsErrors
         ),
         .target(

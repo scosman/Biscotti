@@ -26,7 +26,7 @@ struct AppCoreLaunchTests {
 
         #expect(fix.core.summaries.count == 1)
         #expect(fix.core.summaries.first?.title == "Previous Meeting")
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
     }
 
     @Test("onLaunch with orphaned recording reconciles and loads")
@@ -70,7 +70,7 @@ struct AppCoreLaunchTests {
         await fix.core.onLaunch()
 
         #expect(fix.core.summaries.isEmpty)
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
     }
 }
 
@@ -103,7 +103,7 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.recording.state.isRecording == false)
         #expect(fix.core.recording.lastError == .permissionDenied(.microphone))
     }
@@ -119,7 +119,7 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.recording.state.isRecording == false)
     }
 
@@ -184,7 +184,7 @@ struct AppCoreRecordingTests {
         let result = await fix.core.stopRecording()
 
         #expect(result == nil)
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
     }
 }
 
@@ -226,7 +226,7 @@ struct AppCoreNavigationTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
 
         await fix.core.startRecording()
         #expect(fix.core.route == .recording)
@@ -315,7 +315,7 @@ struct AppCoreFlowTests {
 
         // Launch
         await fix.core.onLaunch()
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.summaries.isEmpty)
 
         // Start recording
@@ -381,7 +381,7 @@ struct AppCoreFlowTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.summaries.isEmpty)
     }
 }

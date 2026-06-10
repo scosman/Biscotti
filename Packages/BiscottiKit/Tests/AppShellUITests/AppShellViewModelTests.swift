@@ -65,14 +65,14 @@ struct AppShellSidebarTests {
 
 @Suite("AppShellViewModel -- routing")
 struct AppShellRoutingTests {
-    @Test("route is .empty initially")
+    @Test("route is .home initially")
     @MainActor
-    func routeEmptyInitially() throws {
+    func routeHomeInitially() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.route == .empty)
+        #expect(viewModel.route == .home)
     }
 
     @Test("route is .recording after startRecording")
@@ -125,7 +125,7 @@ struct AppShellRoutingTests {
 
         let viewModel = AppShellViewModel(core: fix.core)
         viewModel.showRecording()
-        #expect(viewModel.route == .empty)
+        #expect(viewModel.route == .home)
     }
 
     @Test("appCore exposes the underlying core")

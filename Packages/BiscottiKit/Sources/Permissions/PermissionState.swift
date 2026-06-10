@@ -9,4 +9,6 @@ public enum PermissionState: Sendable, Equatable {
 public enum PermissionKind: Sendable {
     case microphone
     case systemAudio
+    case calendar
+    case notifications
 }

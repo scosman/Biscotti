@@ -16,7 +16,7 @@ public final class AppCore {
     // MARK: - Published state
 
     /// The current navigation destination.
-    public private(set) var route: Route = .empty
+    public private(set) var route: Route = .home
 
     /// The sidebar meeting list (newest first).
     public private(set) var summaries: [MeetingSummary] = []

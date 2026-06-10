@@ -17,11 +17,44 @@ import SwiftData
 
     public var launchAtLogin: Bool = false
 
+    /// Whether the user has completed the onboarding wizard.
+    public var onboardingComplete: Bool = false
+
+    /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
+    /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
+    /// `[String]` materialization issues in SPM modules.
+    private var enabledCalendarIDsData = Data()
+
+    /// The set of calendar identifiers the user has enabled. `nil` means all
+    /// calendars are enabled (the default).
+    @Transient public var enabledCalendarIDs: Set<String>? {
+        get {
+            guard !enabledCalendarIDsData.isEmpty else { return nil }
+            guard let array = try? JSONDecoder().decode([String].self, from: enabledCalendarIDsData) else {
+                return nil
+            }
+            return Set(array)
+        }
+        set {
+            if let newValue {
+                enabledCalendarIDsData = (try? JSONEncoder().encode(Array(newValue).sorted())) ?? Data()
+            } else {
+                enabledCalendarIDsData = Data()
+            }
+        }
+    }
+
     public init(
         customVocabulary: [String] = [],
-        launchAtLogin: Bool = false
+        launchAtLogin: Bool = false,
+        onboardingComplete: Bool = false,
+        enabledCalendarIDs: Set<String>? = nil
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
+        self.onboardingComplete = onboardingComplete
+        if let enabledCalendarIDs {
+            enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()
+        }
     }
 }

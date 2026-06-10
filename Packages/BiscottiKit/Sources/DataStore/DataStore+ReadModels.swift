@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // MARK: - Read-Model DTOs
 
@@ -29,6 +30,12 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let duration: TimeInterval?
     public let hasAudio: Bool
     public let preferredTranscript: TranscriptData?
+    /// Calendar context from the associated snapshot, if any.
+    public let calendar: CalendarContextData?
+    /// The meeting's user-editable notes.
+    public let notes: String
+    /// All transcript versions for this meeting.
+    public let versions: [TranscriptVersionData]
 
     public init(
         id: UUID,
@@ -36,7 +43,10 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         date: Date,
         duration: TimeInterval?,
         hasAudio: Bool,
-        preferredTranscript: TranscriptData?
+        preferredTranscript: TranscriptData?,
+        calendar: CalendarContextData? = nil,
+        notes: String = "",
+        versions: [TranscriptVersionData] = []
     ) {
         self.id = id
         self.title = title
@@ -44,6 +54,9 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.duration = duration
         self.hasAudio = hasAudio
         self.preferredTranscript = preferredTranscript
+        self.calendar = calendar
+        self.notes = notes
+        self.versions = versions
     }
 }
 
@@ -79,17 +92,149 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
     }
 }
 
+/// Sendable DTO for the application settings singleton.
+public struct AppSettingsData: Sendable, Equatable {
+    public var customVocabulary: [String]
+    public var launchAtLogin: Bool
+    public var onboardingComplete: Bool
+    /// `nil` = all calendars enabled (the default).
+    public var enabledCalendarIDs: Set<String>?
+
+    public init(
+        customVocabulary: [String] = [],
+        launchAtLogin: Bool = false,
+        onboardingComplete: Bool = false,
+        enabledCalendarIDs: Set<String>? = nil
+    ) {
+        self.customVocabulary = customVocabulary
+        self.launchAtLogin = launchAtLogin
+        self.onboardingComplete = onboardingComplete
+        self.enabledCalendarIDs = enabledCalendarIDs
+    }
+}
+
+/// Calendar context derived from a `CalendarSnapshot` for display in Meeting Detail.
+public struct CalendarContextData: Sendable, Equatable {
+    public let title: String?
+    public let conferencePlatform: String?
+    public let conferenceURL: URL?
+    public let calendarTitle: String?
+    public let calendarColorHex: String?
+    public let location: String?
+    public let isStale: Bool
+    public let organizer: PersonData?
+    public let attendees: [PersonData]
+
+    public init(
+        title: String? = nil,
+        conferencePlatform: String? = nil,
+        conferenceURL: URL? = nil,
+        calendarTitle: String? = nil,
+        calendarColorHex: String? = nil,
+        location: String? = nil,
+        isStale: Bool = false,
+        organizer: PersonData? = nil,
+        attendees: [PersonData] = []
+    ) {
+        self.title = title
+        self.conferencePlatform = conferencePlatform
+        self.conferenceURL = conferenceURL
+        self.calendarTitle = calendarTitle
+        self.calendarColorHex = calendarColorHex
+        self.location = location
+        self.isStale = isStale
+        self.organizer = organizer
+        self.attendees = attendees
+    }
+}
+
+/// A person DTO safe to hold on `@MainActor`.
+public struct PersonData: Sendable, Identifiable, Equatable {
+    public let id: UUID
+    public let name: String
+    public let email: String?
+    /// Whether this person is the current user. Not yet populated -- always
+    /// `false` until the Calendar module wires account-matching in a later phase.
+    public let isCurrentUser: Bool
+
+    public init(id: UUID, name: String, email: String? = nil, isCurrentUser: Bool = false) {
+        self.id = id
+        self.name = name
+        self.email = email
+        self.isCurrentUser = isCurrentUser
+    }
+}
+
+/// Metadata for a single transcript version (for the version picker).
+public struct TranscriptVersionData: Sendable, Identifiable, Equatable {
+    public let id: UUID
+    public let createdAt: Date
+    public let methodId: String
+    public let isPreferred: Bool
+
+    public init(id: UUID, createdAt: Date, methodId: String, isPreferred: Bool) {
+        self.id = id
+        self.createdAt = createdAt
+        self.methodId = methodId
+        self.isPreferred = isPreferred
+    }
+}
+
+/// Which field a search term matched in.
+public enum SearchField: Sendable, Equatable {
+    case title
+    case people
+    case transcript
+}
+
+/// Audio file reference result for a meeting.
+public struct AudioFileRefsResult: Sendable, Equatable {
+    public let mic: URL?
+    public let system: URL?
+    public let present: Bool
+
+    public init(mic: URL?, system: URL?, present: Bool) {
+        self.mic = mic
+        self.system = system
+        self.present = present
+    }
+}
+
+/// A weighted search result pointing to a meeting.
+public struct SearchHit: Sendable, Identifiable, Equatable {
+    public let id: UUID
+    public let title: String
+    public let date: Date
+    public let score: Int
+    public let matchedFields: [SearchField]
+
+    public init(id: UUID, title: String, date: Date, score: Int, matchedFields: [SearchField]) {
+        self.id = id
+        self.title = title
+        self.date = date
+        self.score = score
+        self.matchedFields = matchedFields
+    }
+}
+
 // MARK: - DataStore Query Methods
 
 public extension DataStore {
-    /// Returns summaries of recent meetings, newest first.
-    ///
-    /// - TODO: `recentMeetings` sorts by `createdAt`, but the DTO `date` uses
-    ///   `startDate ?? createdAt`. Once the Calendar project lands, sort by the
-    ///   effective date so ordering matches the displayed value (see Project 5).
+    /// Returns summaries of recent meetings, sorted by effective date
+    /// (`startDate ?? createdAt`) descending.
     func meetingSummaries(limit: Int) throws -> [MeetingSummary] {
-        let meetings = try recentMeetings(limit: limit)
-        return meetings.map { meeting in
+        // Fetch all meetings and sort by effective date in-memory.
+        // SwiftData predicates cannot express coalesce(startDate, createdAt).
+        // TODO: consider a denormalized effectiveDate column for DB-level sort
+        // once the meeting count grows beyond ~1000.
+        let descriptor = FetchDescriptor<Meeting>()
+        let all = try context.fetch(descriptor)
+        let sorted = all.sorted { lhs, rhs in
+            let dateL = lhs.startDate ?? lhs.createdAt
+            let dateR = rhs.startDate ?? rhs.createdAt
+            return dateL > dateR
+        }
+        return Array(sorted.prefix(limit)).map { meeting in
             MeetingSummary(
                 id: meeting.id,
                 title: meeting.title,
@@ -111,8 +256,6 @@ public extension DataStore {
             nil
         }
 
-        // Derive duration from the longest audio file's end time info if available.
-        // In the MVP, duration is derived from start/end dates or nil.
         let duration: TimeInterval? = if let start = meeting.startDate, let end = meeting.endDate {
             end.timeIntervalSince(start)
         } else {
@@ -121,13 +264,16 @@ public extension DataStore {
 
         let hasAudio = !meeting.audioFiles.isEmpty && meeting.audioFiles.contains(where: \.isPresent)
 
-        return MeetingDetailData(
+        return try MeetingDetailData(
             id: meeting.id,
             title: meeting.title,
             date: meeting.startDate ?? meeting.createdAt,
             duration: duration,
             hasAudio: hasAudio,
-            preferredTranscript: transcript
+            preferredTranscript: transcript,
+            calendar: calendarContext(meetingID: id),
+            notes: meeting.notes,
+            versions: transcriptVersions(meetingID: id)
         )
     }
 
@@ -141,6 +287,200 @@ public extension DataStore {
         guard let micRef, let systemRef else { return nil }
 
         return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
+    }
+
+    /// Returns audio file ref info for a meeting: individual URLs and an overall presence flag.
+    func audioFileRefs(meetingID: UUID) throws -> AudioFileRefsResult {
+        guard let meeting = try meeting(id: meetingID) else {
+            return AudioFileRefsResult(mic: nil, system: nil, present: false)
+        }
+        let micRef = meeting.audioFiles.first(where: { $0.role == .mic && $0.isPresent })
+        let systemRef = meeting.audioFiles.first(where: { $0.role == .system && $0.isPresent })
+        let micURL = micRef.map { URL(fileURLWithPath: $0.path) }
+        let systemURL = systemRef.map { URL(fileURLWithPath: $0.path) }
+        let present = micURL != nil || systemURL != nil
+        return AudioFileRefsResult(mic: micURL, system: systemURL, present: present)
+    }
+
+    // MARK: - Settings
+
+    /// Reads the application settings singleton. Creates it with defaults on first call.
+    func settings() throws -> AppSettingsData {
+        let descriptor = FetchDescriptor<AppSettings>()
+        if let existing = try context.fetch(descriptor).first {
+            return AppSettingsData(
+                customVocabulary: existing.customVocabulary,
+                launchAtLogin: existing.launchAtLogin,
+                onboardingComplete: existing.onboardingComplete,
+                enabledCalendarIDs: existing.enabledCalendarIDs
+            )
+        }
+        // Create the singleton with defaults
+        let fresh = AppSettings()
+        context.insert(fresh)
+        try save()
+        return AppSettingsData()
+    }
+
+    /// Reads the settings, applies a mutation, and persists the result.
+    func updateSettings(_ mutate: @Sendable (inout AppSettingsData) -> Void) throws {
+        let descriptor = FetchDescriptor<AppSettings>()
+        let model: AppSettings
+        if let existing = try context.fetch(descriptor).first {
+            model = existing
+        } else {
+            let fresh = AppSettings()
+            context.insert(fresh)
+            model = fresh
+        }
+
+        var dto = AppSettingsData(
+            customVocabulary: model.customVocabulary,
+            launchAtLogin: model.launchAtLogin,
+            onboardingComplete: model.onboardingComplete,
+            enabledCalendarIDs: model.enabledCalendarIDs
+        )
+        mutate(&dto)
+
+        model.customVocabulary = dto.customVocabulary
+        model.launchAtLogin = dto.launchAtLogin
+        model.onboardingComplete = dto.onboardingComplete
+        model.enabledCalendarIDs = dto.enabledCalendarIDs
+        try save()
+    }
+
+    // MARK: - Calendar context
+
+    /// Returns calendar context for a meeting from its snapshot, or nil if no snapshot exists.
+    func calendarContext(meetingID: UUID) throws -> CalendarContextData? {
+        guard let meeting = try meeting(id: meetingID),
+              let snapshot = meeting.calendarSnapshot
+        else { return nil }
+
+        let organizerData: PersonData? = meeting.organizer.map {
+            PersonData(id: $0.id, name: $0.name, email: $0.email)
+        }
+
+        let attendeeData = meeting.participants.map {
+            PersonData(id: $0.id, name: $0.name, email: $0.email)
+        }
+
+        return CalendarContextData(
+            title: snapshot.title.isEmpty ? nil : snapshot.title,
+            conferencePlatform: snapshot.conferencePlatform,
+            conferenceURL: snapshot.conferenceURL,
+            calendarTitle: snapshot.calendarTitle,
+            calendarColorHex: snapshot.calendarColorHex,
+            location: snapshot.location,
+            isStale: snapshot.isStale,
+            organizer: organizerData,
+            attendees: attendeeData
+        )
+    }
+
+    // MARK: - Transcript versions
+
+    /// Returns metadata for all transcript versions of a meeting, sorted by createdAt descending.
+    func transcriptVersions(meetingID: UUID) throws -> [TranscriptVersionData] {
+        guard let meeting = try meeting(id: meetingID) else { return [] }
+        let preferredID = meeting.preferredTranscriptID
+        return meeting.transcripts
+            .sorted { $0.createdAt > $1.createdAt }
+            .map { record in
+                TranscriptVersionData(
+                    id: record.id,
+                    createdAt: record.createdAt,
+                    methodId: record.transcriptionMethodId,
+                    isPreferred: record.id == preferredID
+                )
+            }
+    }
+
+    /// Returns the full transcript data for a specific transcript version.
+    func transcript(id transcriptID: UUID) throws -> TranscriptData? {
+        let descriptor = FetchDescriptor<TranscriptRecord>(
+            predicate: #Predicate { $0.id == transcriptID }
+        )
+        guard let record = try context.fetch(descriptor).first else { return nil }
+        return mapTranscript(record)
+    }
+
+    // MARK: - Notes
+
+    /// Updates the user-editable notes for a meeting.
+    func setNotes(_ text: String, for meetingID: UUID) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        meeting.notes = text
+        try save()
+    }
+
+    // MARK: - Search (with transcript text)
+
+    /// Weighted search across meeting titles, participant names, and transcript text.
+    /// Title matches score 3 per term, people matches score 2, transcript matches score 1.
+    /// Results sorted by score descending (ties broken by effective date descending).
+    func searchHits(_ query: String, limit: Int) throws -> [SearchHit] {
+        let terms = query.lowercased()
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        guard !terms.isEmpty else { return [] }
+
+        let descriptor = FetchDescriptor<Meeting>()
+        let all = try context.fetch(descriptor)
+
+        var hits: [SearchHit] = all.compactMap { scoreMeeting($0, terms: terms) }
+
+        hits.sort { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.date > rhs.date
+        }
+
+        return Array(hits.prefix(limit))
+    }
+
+    /// Scores a single meeting against the search terms. Returns nil if no match.
+    private func scoreMeeting(_ meeting: Meeting, terms: [String]) -> SearchHit? {
+        var score = 0
+        var fields: Set<SearchField> = []
+        let titleLower = meeting.title.lowercased()
+
+        for term in terms {
+            if titleLower.localizedStandardContains(term) {
+                score += 3
+                fields.insert(.title)
+            }
+            let participantMatch = meeting.participants.contains {
+                $0.name.lowercased().localizedStandardContains(term)
+            }
+            let organizerMatch = meeting.organizer.map {
+                $0.name.lowercased().localizedStandardContains(term)
+            } ?? false
+            // Score people once per term (organizer is often also a participant).
+            if participantMatch || organizerMatch {
+                score += 2
+                fields.insert(.people)
+            }
+            if let prefID = meeting.preferredTranscriptID,
+               let txRecord = meeting.transcripts.first(where: { $0.id == prefID }),
+               txRecord.segments.contains(where: { $0.text.lowercased().localizedStandardContains(term) })
+            {
+                score += 1
+                fields.insert(.transcript)
+            }
+        }
+
+        guard score > 0 else { return nil }
+        return SearchHit(
+            id: meeting.id,
+            title: meeting.title,
+            date: meeting.startDate ?? meeting.createdAt,
+            score: score,
+            matchedFields: Array(fields).sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+        )
     }
 
     // MARK: - Private Mappers
@@ -162,5 +502,13 @@ public extension DataStore {
             speakerCount: record.speakerCount,
             segments: segments
         )
+    }
+
+    private func fieldSortOrder(_ field: SearchField) -> Int {
+        switch field {
+        case .title: 0
+        case .people: 1
+        case .transcript: 2
+        }
     }
 }

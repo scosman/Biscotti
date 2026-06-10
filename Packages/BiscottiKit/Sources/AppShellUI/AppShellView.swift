@@ -89,7 +89,7 @@ public struct AppShellView: View {
     @ViewBuilder
     private var detailContent: some View {
         switch viewModel.route {
-        case .empty:
+        case .home:
             emptyPlaceholder
 
         case .recording:
@@ -102,6 +102,22 @@ public struct AppShellView: View {
                 viewModel: viewModel.meetingDetailViewModel(for: meetingID)
             )
             .id(meetingID)
+
+        case .event:
+            // TODO: Implement event detail view in Phase 3
+            emptyPlaceholder
+
+        case .search:
+            // TODO: Implement search results view in Phase 7
+            emptyPlaceholder
+
+        case .settings:
+            // TODO: Implement settings view in Phase 10 (calendar selection slice in Phase 3)
+            emptyPlaceholder
+
+        case .onboarding:
+            // TODO: Implement onboarding wizard in Phase 10
+            emptyPlaceholder
         }
     }
 

@@ -63,9 +63,9 @@ struct MeetingListViewModelTests {
         #expect(viewModel.selectedMeetingID == meetingID)
     }
 
-    @Test("selectedMeetingID is nil when route is .empty")
+    @Test("selectedMeetingID is nil when route is .home")
     @MainActor
-    func selectedMeetingIDNilWhenEmpty() throws {
+    func selectedMeetingIDNilWhenHome() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 

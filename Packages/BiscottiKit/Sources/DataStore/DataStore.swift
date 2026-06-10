@@ -45,9 +45,11 @@ public actor DataStore {
         }
 
         do {
+            // TODO: re-wire `migrationPlan: DataStoreMigrationPlan.self` once a
+            // breaking schema change requires V2. Currently V1-only; additive
+            // defaulted properties are handled automatically by SwiftData.
             container = try ModelContainer(
                 for: schema,
-                migrationPlan: DataStoreMigrationPlan.self,
                 configurations: [config]
             )
         } catch {

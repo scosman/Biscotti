@@ -11,6 +11,7 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     public final class Backing: @unchecked Sendable {
         public var ensureModelsCalled = false
         public var processAudioCalled = false
+        public var shutdownCalled = false
         public var lastMicURL: URL?
         public var lastSystemURL: URL?
         public var lastVocabulary: [String]?
@@ -81,6 +82,10 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
             throw error
         }
         return backing.cannedResult
+    }
+
+    public func shutdown() async {
+        backing.shutdownCalled = true
     }
 
     /// Deterministic UUIDs for test assertions.

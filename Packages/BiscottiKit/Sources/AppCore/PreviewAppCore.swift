@@ -87,5 +87,7 @@
                 processingDuration: 0
             )
         }
+
+        func shutdown() async {}
     }
 #endif

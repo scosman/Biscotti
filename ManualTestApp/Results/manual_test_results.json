@@ -78,23 +78,19 @@
     "timestamp" : "2026-06-10T03:49:37Z"
   },
   "tx_ai_test_passed" : {
-    "status" : "pass",
-    "stepID" : "tx_ai_test_passed",
-    "timestamp" : "2026-06-10T03:59:52Z"
+    "status" : "not-run",
+    "stepID" : "tx_ai_test_passed"
   },
   "tx_clear_cache" : {
-    "status" : "pass",
-    "stepID" : "tx_clear_cache",
-    "timestamp" : "2026-06-10T03:50:45Z"
+    "status" : "not-run",
+    "stepID" : "tx_clear_cache"
   },
   "tx_model_disk" : {
-    "status" : "pass",
-    "stepID" : "tx_model_disk",
-    "timestamp" : "2026-06-10T03:55:46Z"
+    "status" : "not-run",
+    "stepID" : "tx_model_disk"
   },
   "tx_model_download" : {
-    "status" : "pass",
-    "stepID" : "tx_model_download",
-    "timestamp" : "2026-06-10T03:52:22Z"
+    "status" : "not-run",
+    "stepID" : "tx_model_download"
   }
 }

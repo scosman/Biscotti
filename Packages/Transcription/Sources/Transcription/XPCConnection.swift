@@ -5,7 +5,7 @@ import Foundation
 /// The real implementation wraps `NSXPCConnection`; tests inject a mock that
 /// simulates normal replies, interruptions, and unavailability without a
 /// real XPC service process.
-protocol TranscriberXPCConnecting: Sendable {
+protocol TranscriberXPCConnecting: AnyObject, Sendable {
     /// Get a proxy object conforming to `TranscriberServiceProtocol`.
     /// Returns nil if the connection is unavailable.
     func remoteObjectProxy() -> (any TranscriberServiceProtocol)?

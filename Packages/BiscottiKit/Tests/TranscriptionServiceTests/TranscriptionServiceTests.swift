@@ -142,6 +142,20 @@ struct TranscriptionSuccessTests {
         #expect(allTranscripts.count == 2)
     }
 
+    @Test("Shutdown is called after successful transcription to release XPC worker")
+    @MainActor
+    func shutdownCalledAfterSuccess() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        // Shutdown is awaited deterministically at the end of runJob,
+        // so it has already completed by the time transcribe returns.
+        #expect(fix.fakeEngine.backing.shutdownCalled == true)
+    }
+
     @Test("EnsureModelsDownloaded is called before processAudio")
     @MainActor
     func ensureModelsCalledBeforeProcess() async throws {
@@ -290,6 +304,27 @@ struct TranscriptionErrorTests {
         } else {
             Issue.record("Expected failed status")
         }
+    }
+
+    @Test("Shutdown is called even after engine failure to release XPC worker")
+    @MainActor
+    func shutdownCalledAfterFailure() async throws {
+        let fix = try makeFixture(
+            processAudioError: TranscriptionError.transcriptionFailed("model error")
+        )
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        if case .failed = fix.service.jobs[meetingID] {
+            // expected
+        } else {
+            Issue.record("Expected failed status")
+        }
+
+        // Shutdown is awaited deterministically at the end of runJob,
+        // so it has already completed by the time transcribe returns.
+        #expect(fix.fakeEngine.backing.shutdownCalled == true)
     }
 
     @Test("NeedsDownload error is retriable")
@@ -454,4 +489,6 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         }
         return FakeTranscriber.defaultResult
     }
+
+    func shutdown() async {}
 }

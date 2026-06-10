@@ -78,8 +78,17 @@ public final class TranscriptionService {
         }
 
         inFlightMeetingID = meetingID
-        defer { inFlightMeetingID = nil }
+        await executeJob(meetingID: meetingID)
+        inFlightMeetingID = nil
+        // Release the XPC worker so its process (and multi-GB model memory)
+        // is freed promptly. The next transcription call will reconnect.
+        await engine.shutdown()
+    }
 
+    /// The inner work of a transcription job. Separated from `runJob` so
+    /// the caller can deterministically `await engine.shutdown()` after
+    /// completion on every exit path (success, failure, or cancellation).
+    private func executeJob(meetingID: UUID) async {
         jobs[meetingID] = .downloadingModel(message: "Preparing\u{2026}")
 
         guard let paths = await resolveAudioPaths(meetingID: meetingID) else { return }

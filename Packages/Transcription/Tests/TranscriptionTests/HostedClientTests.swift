@@ -153,6 +153,173 @@ struct HostedClientTests {
     }
 }
 
+@Suite("Transcriber - shutdown lifecycle")
+struct TranscriberShutdownTests {
+    @Test("shutdown invalidates XPC connection for hosted backend")
+    func shutdownInvalidatesConnection() async {
+        let stubEngine = StubTranscriptionEngine()
+        let mockConnection = MockXPCConnection()
+        let transcriber = Transcriber(
+            backend: .hosted(serviceName: "test.service"),
+            engine: stubEngine,
+            xpcConnection: mockConnection,
+            interruptedFlag: InterruptedFlag()
+        )
+
+        await transcriber.shutdown()
+
+        #expect(mockConnection.invalidateCalled == true)
+    }
+
+    @Test("shutdown is no-op for inProcess backend")
+    func shutdownNoOpForInProcess() async {
+        let stubEngine = StubTranscriptionEngine()
+        await stubEngine.setResult(makeFixtureResult())
+        let transcriber = Transcriber(
+            backend: .inProcess,
+            engine: stubEngine
+        )
+
+        // Should not crash or affect engine
+        await transcriber.shutdown()
+
+        // Engine still works after shutdown for inProcess
+        let result = try? await transcriber.processAudio(
+            mic: makeAudioURL(), system: makeAudioURL()
+        )
+        #expect(result != nil)
+    }
+
+    @Test("after shutdown, next call reconnects via factory")
+    func reconnectsAfterShutdown() async throws {
+        let stubEngine = StubTranscriptionEngine()
+        await stubEngine.setResult(makeFixtureResult())
+
+        let counter = CallCounter()
+        let initialConnection = MockXPCConnection()
+        let reconnectConnection = MockXPCConnection()
+        let mockService = MockTranscriberService()
+        mockService.processAudioResult = makeFixtureResult()
+        reconnectConnection.proxy = mockService
+
+        let transcriber = Transcriber(
+            backend: .hosted(serviceName: "test.service"),
+            engine: stubEngine,
+            xpcConnection: initialConnection,
+            interruptedFlag: InterruptedFlag(),
+            connectionFactory: { [counter] in
+                counter.increment()
+                return reconnectConnection
+            }
+        )
+
+        // First call should use the injected engine (no factory needed)
+        let result1 = try await transcriber.processAudio(
+            mic: makeAudioURL(), system: makeAudioURL()
+        )
+        #expect(result1.language == "en")
+        #expect(counter.value == 0) // Used injected engine
+
+        // Shutdown tears down the initial connection and engine
+        await transcriber.shutdown()
+        #expect(initialConnection.invalidateCalled == true)
+
+        // Next call should reconnect via factory
+        let result2 = try await transcriber.processAudio(
+            mic: makeAudioURL(), system: makeAudioURL()
+        )
+        #expect(result2.language == "en")
+        #expect(counter.value == 1) // Factory was called to reconnect
+        #expect(reconnectConnection.activateCalled == true)
+    }
+
+    @Test("isAvailable returns false after shutdown (no active connection)")
+    func isAvailableFalseAfterShutdown() async {
+        let stubEngine = StubTranscriptionEngine()
+        let mockConnection = MockXPCConnection()
+        mockConnection.proxy = MockTranscriberService()
+        let transcriber = Transcriber(
+            backend: .hosted(serviceName: "test.service"),
+            engine: stubEngine,
+            xpcConnection: mockConnection,
+            interruptedFlag: InterruptedFlag()
+        )
+
+        // Should be available before shutdown
+        let beforeShutdown = await transcriber.isAvailable()
+        #expect(beforeShutdown == true)
+
+        await transcriber.shutdown()
+
+        // Should not be available after shutdown (connection torn down)
+        let afterShutdown = await transcriber.isAvailable()
+        #expect(afterShutdown == false)
+    }
+
+    @Test("shutdown clears interruptedFlag so reconnect does not surface spurious workerInterrupted")
+    func shutdownClearsInterruptedFlag() async throws {
+        let flag = InterruptedFlag()
+        let mockService = MockTranscriberService()
+        mockService.processAudioResult = makeFixtureResult()
+        let mockConnection = MockXPCConnection()
+        mockConnection.proxy = mockService
+
+        let transcriber = Transcriber(
+            backend: .hosted(serviceName: "test.service"),
+            engine: nil,
+            xpcConnection: nil,
+            interruptedFlag: flag,
+            connectionFactory: {
+                mockConnection
+            }
+        )
+
+        // Simulate interruption on the old connection
+        flag.value = true
+
+        // Shutdown should clear the flag along with the connection
+        await transcriber.shutdown()
+        #expect(flag.value == false)
+
+        // The next call should succeed (no spurious workerInterrupted)
+        let result = try await transcriber.processAudio(
+            mic: makeAudioURL(), system: makeAudioURL()
+        )
+        #expect(result.language == "en")
+    }
+
+    @Test("ensureConnected creates connection lazily for hosted backend with no initial engine")
+    func lazyConnectionCreation() async throws {
+        let counter = CallCounter()
+        let mockConnection = MockXPCConnection()
+        let mockService = MockTranscriberService()
+        mockService.processAudioResult = makeFixtureResult()
+        mockConnection.proxy = mockService
+
+        let transcriber = Transcriber(
+            backend: .hosted(serviceName: "test.service"),
+            engine: nil,
+            xpcConnection: nil,
+            interruptedFlag: InterruptedFlag(),
+            connectionFactory: { [counter] in
+                counter.increment()
+                return mockConnection
+            }
+        )
+
+        // No connection yet
+        #expect(counter.value == 0)
+
+        // First call triggers connection creation
+        let result = try await transcriber.processAudio(
+            mic: makeAudioURL(), system: makeAudioURL()
+        )
+        #expect(result.language == "en")
+        #expect(counter.value == 1)
+        #expect(mockConnection.activateCalled == true)
+    }
+}
+
 @Suite("XPCEngineAdapter")
 struct XPCEngineAdapterTests {
     @Test("throws workerUnavailable when proxy is nil")

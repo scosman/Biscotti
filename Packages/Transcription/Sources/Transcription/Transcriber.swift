@@ -7,6 +7,14 @@ import Foundation
 /// For `.hosted`, owns the `NSXPCConnection`, sets the `interruptionHandler`,
 /// and maps worker crashes to `TranscriptionError.workerInterrupted` (retriable --
 /// the next call auto-relaunches the worker via launchd).
+///
+/// The XPC connection is **demand-driven**: created lazily on the first call
+/// and torn down by ``shutdown()`` after work completes. This ensures the
+/// heavyweight XPC worker process (which loads multi-GB ML models) is released
+/// promptly rather than lingering until the OS kills it for memory pressure.
+/// Callers should call ``shutdown()`` when they are done with a batch of work
+/// (e.g. after transcription completes). The next call will transparently
+/// re-establish the connection and re-launch the worker.
 public actor Transcriber {
     /// Which backend to use for transcription.
     public enum Backend: Sendable {
@@ -19,7 +27,10 @@ public actor Transcriber {
 
     private let backend: Backend
     private let method: TranscriptionMethod
-    private let engine: any TranscriptionEngine
+
+    /// The engine used for the `.inProcess` backend. For `.hosted`, the engine
+    /// is created on-demand alongside the XPC connection (see `ensureConnected`).
+    private var engine: (any TranscriptionEngine)?
 
     /// Current status, tracked here so statusStream can emit without
     /// crossing into the engine's actor isolation.
@@ -28,6 +39,10 @@ public actor Transcriber {
     // XPC-specific state (only used for .hosted)
     private var xpcConnection: (any TranscriberXPCConnecting)?
     private let interruptedFlag: InterruptedFlag?
+
+    /// Factory for creating XPC connections, used for demand-driven reconnection.
+    /// Nil for `.inProcess` backend.
+    private let connectionFactory: (@Sendable () -> any TranscriberXPCConnecting)?
 
     /// For statusStream
     private var statusContinuations: [UUID: AsyncStream<ModelStatus>.Continuation] = [:]
@@ -46,21 +61,17 @@ public actor Transcriber {
             engine = InProcessTranscriptionEngine(method: method)
             xpcConnection = nil
             interruptedFlag = nil
+            connectionFactory = nil
 
         case let .hosted(serviceName):
-            let connection = TranscriberXPCConnectionImpl(serviceName: serviceName)
-            xpcConnection = connection
+            // Connection is created on-demand; start disconnected.
+            xpcConnection = nil
+            engine = nil
             let flag = InterruptedFlag()
             interruptedFlag = flag
-            engine = XPCEngineAdapter(
-                proxyProvider: { [weak connection] in
-                    connection?.remoteObjectProxy()
-                }
-            )
-            connection.setInterruptionHandler {
-                flag.value = true
+            connectionFactory = {
+                TranscriberXPCConnectionImpl(serviceName: serviceName)
             }
-            connection.activate()
         }
     }
 
@@ -68,15 +79,17 @@ public actor Transcriber {
     init(
         backend: Backend,
         method: TranscriptionMethod = .current,
-        engine: any TranscriptionEngine,
+        engine: (any TranscriptionEngine)? = nil,
         xpcConnection: (any TranscriberXPCConnecting)? = nil,
-        interruptedFlag: InterruptedFlag? = nil
+        interruptedFlag: InterruptedFlag? = nil,
+        connectionFactory: (@Sendable () -> any TranscriberXPCConnecting)? = nil
     ) {
         self.backend = backend
         self.method = method
         self.engine = engine
         self.xpcConnection = xpcConnection
         self.interruptedFlag = interruptedFlag
+        self.connectionFactory = connectionFactory
     }
 
     // MARK: - Public API
@@ -90,6 +103,7 @@ public actor Transcriber {
         status: (@Sendable (String) -> Void)? = nil
     ) async throws {
         try checkInterrupted()
+        let activeEngine = ensureConnected()
         emitStatus(.downloading(progress: 0.0))
         // For the hosted backend, status arrives over the reverse XPC channel
         // rather than through the engine call, so route it via the connection.
@@ -98,7 +112,7 @@ public actor Transcriber {
         xpcConnection?.setStatusHandler(status)
         defer { xpcConnection?.setStatusHandler(nil) }
         do {
-            try await engine.ensureModelsDownloaded(
+            try await activeEngine.ensureModelsDownloaded(
                 status: status ?? { _ in }
             )
             emitStatus(.ready)
@@ -126,9 +140,10 @@ public actor Transcriber {
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         try checkInterrupted()
+        let activeEngine = ensureConnected()
         emitStatus(.running)
         do {
-            let result = try await engine.processAudio(
+            let result = try await activeEngine.processAudio(
                 micPath: mic.path,
                 systemPath: system.path,
                 customVocabulary: customVocabulary
@@ -159,7 +174,7 @@ public actor Transcriber {
 
     /// Explicitly unload all models from memory.
     public func unloadModels() async {
-        await engine.unloadModels()
+        await engine?.unloadModels()
         emitStatus(.needsDownload)
     }
 
@@ -172,6 +187,27 @@ public actor Transcriber {
     public func clearCache() async throws {
         await unloadModels()
         try ModelStorage.clearCache()
+    }
+
+    /// Tear down the XPC connection, allowing the worker process to exit
+    /// and release its memory (loaded ML models are multi-GB).
+    ///
+    /// For `.inProcess` this is a no-op. For `.hosted` this invalidates
+    /// the underlying `NSXPCConnection`, which causes `launchd` to terminate
+    /// the idle worker. The next ``ensureModelsDownloaded(status:)`` or
+    /// ``processAudio(mic:system:customVocabulary:)`` call will transparently
+    /// re-establish the connection.
+    ///
+    /// Callers should call this after a transcription batch completes so the
+    /// heavyweight worker does not linger.
+    public func shutdown() {
+        guard case .hosted = backend else { return }
+        xpcConnection?.invalidate()
+        xpcConnection = nil
+        engine = nil
+        // Clear the interrupted flag so a shutdown-then-reconnect cycle
+        // does not surface a spurious workerInterrupted from the old connection.
+        interruptedFlag?.value = false
     }
 
     /// An `AsyncStream` of model status updates.
@@ -209,7 +245,8 @@ public actor Transcriber {
     public func isAvailable() async -> Bool {
         switch backend {
         case .inProcess:
-            let engineStatus = await engine.status()
+            guard let activeEngine = engine else { return false }
+            let engineStatus = await activeEngine.status()
             return engineStatus == .ready
 
         case .hosted:
@@ -220,6 +257,43 @@ public actor Transcriber {
     }
 
     // MARK: - Private
+
+    /// Ensures an active XPC connection and engine exist for the `.hosted`
+    /// backend. For `.inProcess` simply returns the existing engine.
+    ///
+    /// Creates a new `NSXPCConnection` (via `connectionFactory`) if the
+    /// previous one was torn down by ``shutdown()``. This makes the
+    /// connection demand-driven: established before work, released after.
+    private func ensureConnected() -> any TranscriptionEngine {
+        if let existing = engine { return existing }
+
+        guard let factory = connectionFactory else {
+            // .inProcess backend — engine should always be set. If somehow
+            // nil, create a fresh one (defensive).
+            assertionFailure("InProcess engine was unexpectedly nil")
+            let fallback = InProcessTranscriptionEngine(method: method)
+            engine = fallback
+            return fallback
+        }
+
+        let connection = factory()
+        xpcConnection = connection
+
+        if let flag = interruptedFlag {
+            connection.setInterruptionHandler {
+                flag.value = true
+            }
+        }
+        connection.activate()
+
+        let adapter = XPCEngineAdapter(
+            proxyProvider: { [weak connection] in
+                connection?.remoteObjectProxy()
+            }
+        )
+        engine = adapter
+        return adapter
+    }
 
     private func checkInterrupted() throws {
         guard let flag = interruptedFlag else { return }

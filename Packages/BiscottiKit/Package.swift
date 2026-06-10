@@ -18,6 +18,7 @@ let package = Package(
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
         .library(name: "Calendar", targets: ["Calendar"]),
         .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
+        .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
@@ -310,6 +311,23 @@ let package = Package(
         .testTarget(
             name: "MeetingCatalogTests",
             dependencies: ["MeetingCatalog"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingDetection",
+            dependencies: [
+                "MeetingCatalog",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingDetectionTests",
+            dependencies: [
+                "MeetingDetection",
+                "MeetingCatalog",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .target(

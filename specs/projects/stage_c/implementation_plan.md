@@ -41,7 +41,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   correction; `SettingsUI` first slice (calendar include/exclude). *(functional §1; ui_design §1–5;
   components/ui_modules.md, app_core.md. Depends on Phase 2.)*
 
-- [ ] **Phase 4 — MeetingDetection module.** `MeetingDetector` + `ActivitySource` seam + per-app
+- [x] **Phase 4 — MeetingDetection module.** `MeetingDetector` + `ActivitySource` seam + per-app
   in-call state machine + helper→parent mapping + debounce + `events()` stream. Unit tests over
   synthetic activity. *(components/meeting_detection.md; Project 6 part 1. Depends on Phase 1.)*
 

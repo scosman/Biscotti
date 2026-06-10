@@ -68,23 +68,24 @@ struct FakeEventStoreProvider: EventStoreProviding {
 
 // MARK: - Test Helpers
 
-private let now = Date()
-private let oneHourAgo = Date().addingTimeInterval(-3600)
-private let halfHourAgo = Date().addingTimeInterval(-1800)
-private let twoMinAgo = Date().addingTimeInterval(-120)
-private let fiveMinFromNow = Date().addingTimeInterval(300)
-private let thirtyMinFromNow = Date().addingTimeInterval(1800)
-private let oneHourFromNow = Date().addingTimeInterval(3600)
-private let twoHoursFromNow = Date().addingTimeInterval(7200)
+/// Fixed reference instant so tests are deterministic regardless of wall clock.
+private let now = Date(timeIntervalSince1970: 1_700_000_000)
+private let oneHourAgo = now.addingTimeInterval(-3600)
+private let halfHourAgo = now.addingTimeInterval(-1800)
+private let twoMinAgo = now.addingTimeInterval(-120)
+private let fiveMinFromNow = now.addingTimeInterval(300)
+private let thirtyMinFromNow = now.addingTimeInterval(1800)
+private let oneHourFromNow = now.addingTimeInterval(3600)
+private let twoHoursFromNow = now.addingTimeInterval(7200)
 
 private func makeDTO(
     eventIdentifier: String = "evt-1",
     calendarItemIdentifier: String = "cal-item-1",
     calendarItemExternalIdentifier: String = "ext-1",
-    occurrenceDate: Date = Date(),
+    occurrenceDate: Date = now,
     title: String? = "Test Meeting",
-    startDate: Date = Date(),
-    endDate: Date = Date().addingTimeInterval(3600),
+    startDate: Date = now,
+    endDate: Date = now.addingTimeInterval(3600),
     isAllDay: Bool = false,
     location: String? = nil,
     url: URL? = nil,
@@ -132,8 +133,8 @@ private func makeStore() throws -> DataStore {
 }
 
 private let window24h = DateInterval(
-    start: Date(),
-    end: Date().addingTimeInterval(24 * 3600)
+    start: now,
+    end: now.addingTimeInterval(24 * 3600)
 )
 
 /// Creates a service, refreshes upcoming, and returns the service.
@@ -549,7 +550,7 @@ struct SnapshotCoreFieldTests {
     @Test("snapshot maps all core fields")
     @MainActor
     func snapshotMapsAllCoreFields() async throws {
-        let startDate = Date()
+        let startDate = now
         let endDate = startDate.addingTimeInterval(3600)
         let dto = try makeDTO(
             eventIdentifier: "evt-snap",
@@ -605,7 +606,7 @@ struct SnapshotCoreFieldTests {
     @Test("snapshot returns nil for deleted event")
     @MainActor
     func snapshotReturnsNilForDeletedEvent() async throws {
-        let startDate = Date()
+        let startDate = now
         let dto = makeDTO(
             eventIdentifier: "evt-del",
             calendarItemIdentifier: "ci-del",
@@ -683,7 +684,7 @@ struct SnapshotAttendeeTests {
 
     @MainActor
     private func buildAttendeeSnapshot() async throws -> CalendarSnapshotInput {
-        let startDate = Date()
+        let startDate = now
         let endDate = startDate.addingTimeInterval(3600)
         let dto = makeDTO(
             eventIdentifier: "evt-att",
@@ -714,7 +715,7 @@ struct SnapshotAttendeeTests {
     @Test("snapshot email from mailto parses correctly")
     @MainActor
     func snapshotEmailFromMailtoParsesCorrectly() async throws {
-        let startDate = Date()
+        let startDate = now
         let dto = makeDTO(
             eventIdentifier: "evt-mail",
             calendarItemIdentifier: "ci-mail",
@@ -751,7 +752,7 @@ struct SnapshotAttendeeTests {
     @Test("snapshot email nil for non-mailto URL")
     @MainActor
     func snapshotEmailNilForNonMailtoURL() async throws {
-        let startDate = Date()
+        let startDate = now
         let dto = makeDTO(
             eventIdentifier: "evt-x500",
             calendarItemIdentifier: "ci-x500",
@@ -813,7 +814,7 @@ struct EventForKeyTests {
     @Test("returns match from upcoming")
     @MainActor
     func eventForKeyReturnsMatchFromUpcoming() async throws {
-        let startDate = Date()
+        let startDate = now
         let dto1 = makeDTO(
             eventIdentifier: "e1",
             calendarItemIdentifier: "ci-1",
@@ -891,10 +892,16 @@ struct StalenessTests {
         service.startObserving()
         NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil)
 
-        try await Task.sleep(for: .milliseconds(200))
+        // Poll until the notification handler's Task marks the snapshot stale.
+        var isStale = false
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !isStale, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            let context = try await store.calendarContext(meetingID: meetingID)
+            isStale = context?.isStale == true
+        }
 
-        let context = try await store.calendarContext(meetingID: meetingID)
-        #expect(context?.isStale == true)
+        #expect(isStale == true)
     }
 
     @Test("refresh upcoming called on store changed")
@@ -921,7 +928,15 @@ struct StalenessTests {
 
         NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil)
 
-        try await Task.sleep(for: .milliseconds(200))
+        // Poll until the notification handler's Task runs, rather than
+        // relying on a fixed sleep (the handler enqueues a MainActor Task
+        // that needs cooperative scheduling to execute).
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while provider.eventsCallCount <= countBefore,
+              ContinuousClock.now < deadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         #expect(provider.eventsCallCount > countBefore)
     }

@@ -333,6 +333,18 @@ public final class AppCore {
         await reloadSummaries()
     }
 
+    // MARK: - Onboarding support
+
+    /// Triggers the system-audio permission prompt by exercising the
+    /// capture probe and infers the permission state. Used by the
+    /// onboarding wizard's system-audio step.
+    public func requestSystemAudioPermission() async {
+        // Use the recording controller's start flow to probe system audio.
+        // We create a temporary recorder, probe it, and read back the
+        // inferred state from permissions.
+        await recording.probeSystemAudioAndInferState()
+    }
+
     // MARK: - Association correction
 
     /// Corrects the calendar association for a meeting. Pass `nil` to

@@ -65,6 +65,28 @@ public final class TranscriptionService {
         await runJob(meetingID: meetingID)
     }
 
+    // MARK: - Model readiness (for onboarding)
+
+    /// Downloads/compiles models if needed, forwarding status messages.
+    /// Standalone entry point for the onboarding download step (no
+    /// transcription job involved).
+    public func ensureModelsReady(
+        status: @escaping @Sendable (String) -> Void
+    ) async throws {
+        try await engine.ensureModelsDownloaded(status: status)
+    }
+
+    /// Returns `true` when models are already downloaded and ready.
+    /// Attempts a dry-run download (no-op if cached) to determine readiness.
+    public func modelsReady() async -> Bool {
+        do {
+            try await engine.ensureModelsDownloaded(status: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private
 
     private func runJob(meetingID: UUID) async {

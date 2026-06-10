@@ -209,6 +209,28 @@ public final class RecordingController {
         }
     }
 
+    // MARK: - Onboarding support
+
+    /// Probes for system-audio permission and infers the state.
+    ///
+    /// Triggers the macOS system-audio prompt (if not already decided)
+    /// by exercising the capture engine briefly, then checks the
+    /// `probableSystemAudioDenied` heuristic to update `Permissions`.
+    public func probeSystemAudioAndInferState() async {
+        let probeRecorder = makeRecorder()
+        await probeSystemAudioPermission(recorder: probeRecorder)
+
+        // Brief delay for the system to settle the TCC state
+        try? await Task.sleep(for: .milliseconds(500))
+
+        let denied = await probeRecorder.probableSystemAudioDenied()
+        if denied {
+            permissions.noteSystemAudio(.denied)
+        } else {
+            permissions.noteSystemAudio(.authorized)
+        }
+    }
+
     // MARK: - Private types
 
     /// Captures the artefacts created by `setupMeetingStorage()`.

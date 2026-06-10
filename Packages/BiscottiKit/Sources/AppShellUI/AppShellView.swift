@@ -4,6 +4,7 @@ import DesignSystem
 import HomeUI
 import MeetingDetailUI
 import MeetingListUI
+import OnboardingUI
 import RecordingUI
 import SearchUI
 import SettingsUI
@@ -20,18 +21,27 @@ public struct AppShellView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detailContent
-        }
-        .searchable(
-            text: $viewModel.searchText,
-            placement: .toolbar,
-            prompt: "Search meetings\u{2026}"
-        )
-        .onChange(of: viewModel.searchText) { _, newValue in
-            viewModel.onSearchTextChange(newValue)
+        Group {
+            if viewModel.showOnboarding {
+                // Full-window takeover for onboarding (C5)
+                OnboardingView(
+                    viewModel: viewModel.onboardingViewModel
+                )
+            } else {
+                NavigationSplitView {
+                    sidebar
+                } detail: {
+                    detailContent
+                }
+                .searchable(
+                    text: $viewModel.searchText,
+                    placement: .toolbar,
+                    prompt: "Search meetings\u{2026}"
+                )
+                .onChange(of: viewModel.searchText) { _, newValue in
+                    viewModel.onSearchTextChange(newValue)
+                }
+            }
         }
         .task { await viewModel.onLaunch() }
     }
@@ -241,8 +251,8 @@ public struct AppShellView: View {
             SettingsView(viewModel: viewModel.settingsViewModel)
 
         case .onboarding:
-            // TODO: Implement onboarding wizard in Phase 10
-            emptyPlaceholder
+            // Handled by the full-window takeover above; should not reach here.
+            EmptyView()
         }
     }
 

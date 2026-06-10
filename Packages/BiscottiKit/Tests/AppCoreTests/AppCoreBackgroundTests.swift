@@ -1075,7 +1075,7 @@ struct AppCoreDedupTests {
 struct FakeSchedulerTests {
     @Test("advance resumes pending sleeps")
     @MainActor
-    func advanceResumesPendingSleeps() async {
+    func advanceResumesPendingSleeps() async throws {
         let sched = FakeScheduler()
         var completed = false
 
@@ -1084,21 +1084,20 @@ struct FakeSchedulerTests {
             completed = true
         }
 
-        await Task.yield()
-        #expect(sched.pendingCount == 1)
+        // Poll until the sleep is actually pending
+        try await pollUntil { sched.pendingCount == 1 }
         #expect(completed == false)
 
         sched.advance(by: .seconds(5))
-        await Task.yield()
+        try await pollUntil { completed }
 
-        #expect(completed == true)
         #expect(sched.pendingCount == 0)
         task.cancel()
     }
 
     @Test("cancelAll throws CancellationError")
     @MainActor
-    func cancelAllThrowsCancellation() async {
+    func cancelAllThrowsCancellation() async throws {
         let sched = FakeScheduler()
         var caughtCancellation = false
 
@@ -1110,20 +1109,21 @@ struct FakeSchedulerTests {
             }
         }
 
-        await Task.yield()
-        #expect(sched.pendingCount == 1)
+        // Poll until the sleep is actually pending before cancelling
+        try await pollUntil { sched.pendingCount == 1 }
 
         sched.cancelAll()
-        await Task.yield()
 
-        #expect(caughtCancellation == true)
+        // Poll until the catch block has executed
+        try await pollUntil { caughtCancellation }
+
         #expect(sched.pendingCount == 0)
         task.cancel()
     }
 
     @Test("partial advance leaves non-elapsed sleeps pending")
     @MainActor
-    func partialAdvanceLeavesRemaining() async {
+    func partialAdvanceLeavesRemaining() async throws {
         let sched = FakeScheduler()
         var shortCompleted = false
         var longCompleted = false
@@ -1137,13 +1137,12 @@ struct FakeSchedulerTests {
             longCompleted = true
         }
 
-        await Task.yield()
-        #expect(sched.pendingCount == 2)
+        // Poll until both sleeps are registered
+        try await pollUntil { sched.pendingCount == 2 }
 
         sched.advance(by: .seconds(5))
-        await Task.yield()
+        try await pollUntil { shortCompleted }
 
-        #expect(shortCompleted == true)
         #expect(longCompleted == false)
         #expect(sched.pendingCount == 1)
 

@@ -5,6 +5,7 @@ import Foundation
 import HomeUI
 import MeetingDetailUI
 import MeetingListUI
+import OnboardingUI
 import RecordingUI
 import SearchUI
 import SettingsUI
@@ -37,6 +38,9 @@ public final class AppShellViewModel {
     /// The settings view model (created once, never replaced).
     public let settingsViewModel: SettingsViewModel
 
+    /// The onboarding view model (created once, never replaced).
+    public let onboardingViewModel: OnboardingViewModel
+
     /// Cached meeting-detail view model, keyed by meeting ID.
     private var cachedDetailMeetingID: UUID?
     private var cachedDetailViewModel: MeetingDetailViewModel?
@@ -55,6 +59,7 @@ public final class AppShellViewModel {
         homeViewModel = HomeViewModel(core: core)
         searchViewModel = SearchViewModel(core: core)
         settingsViewModel = SettingsViewModel(core: core)
+        onboardingViewModel = OnboardingViewModel(core: core)
     }
 
     /// Returns a stable `MeetingDetailViewModel` for the given meeting ID.
@@ -91,6 +96,11 @@ public final class AppShellViewModel {
         cachedEventPreviewKey = eventKey
         cachedEventPreviewViewModel = viewModel
         return viewModel
+    }
+
+    /// Whether the onboarding wizard is active (full-window takeover).
+    public var showOnboarding: Bool {
+        core.route == .onboarding
     }
 
     // MARK: - Sidebar state

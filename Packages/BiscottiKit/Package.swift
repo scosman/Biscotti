@@ -24,6 +24,7 @@ let package = Package(
         .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
         .library(name: "HomeUI", targets: ["HomeUI"]),
         .library(name: "SearchUI", targets: ["SearchUI"]),
+        .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -301,6 +302,7 @@ let package = Package(
                 "HomeUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
+                "OnboardingUI",
                 "RecordingUI",
                 "SearchUI",
                 "SettingsUI"
@@ -392,6 +394,35 @@ let package = Package(
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "OnboardingUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem",
+                "Permissions",
+                "TranscriptionService"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "OnboardingUITests",
+            dependencies: [
+                "OnboardingUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",

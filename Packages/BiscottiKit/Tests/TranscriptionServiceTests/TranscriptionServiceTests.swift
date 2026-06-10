@@ -455,3 +455,65 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         return FakeTranscriber.defaultResult
     }
 }
+
+// MARK: - Model readiness tests (Phase 10)
+
+@Suite("TranscriptionService -- model readiness")
+struct TranscriptionModelReadinessTests {
+    @Test("ensureModelsReady delegates to engine")
+    @MainActor
+    func ensureModelsReadyDelegates() async throws {
+        let fix = try makeFixture()
+
+        try await fix.service.ensureModelsReady { _ in }
+
+        #expect(fix.fakeEngine.backing.ensureModelsCalled == true)
+    }
+
+    @Test("modelsReady returns true when engine succeeds")
+    @MainActor
+    func modelsReadyReturnsTrueAfterDownload() async throws {
+        let fix = try makeFixture()
+        let ready = await fix.service.modelsReady()
+        #expect(ready == true)
+    }
+
+    @Test("modelsReady returns false when engine throws")
+    @MainActor
+    func modelsReadyReturnsFalseOnError() async throws {
+        let fix = try makeFixture(
+            ensureModelsError: TranscriptionError.needsDownload
+        )
+        let ready = await fix.service.modelsReady()
+        #expect(ready == false)
+    }
+
+    @Test("ensureModelsReady forwards status messages")
+    @MainActor
+    func ensureModelsReadyForwardsStatus() async throws {
+        let fix = try makeFixture(
+            statusMessages: ["Downloading...", "Compiling..."]
+        )
+
+        let collector = StatusCollector()
+        try await fix.service.ensureModelsReady { message in
+            collector.append(message)
+        }
+
+        #expect(collector.messages == ["Downloading...", "Compiling..."])
+    }
+}
+
+/// Thread-safe collector for status callback messages.
+private final class StatusCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _messages: [String] = []
+
+    func append(_ message: String) {
+        lock.withLock { _messages.append(message) }
+    }
+
+    var messages: [String] {
+        lock.withLock { _messages }
+    }
+}

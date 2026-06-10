@@ -93,4 +93,69 @@ struct SettingsViewModelTests {
         #expect(groups[0].calendars[0].title == "Alpha")
         #expect(groups[0].calendars[1].title == "Zebra")
     }
+
+    // MARK: - Launch at login
+
+    @Test("toggle launch at login persists to settings")
+    func settingsToggleLaunchAtLogin() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { false }
+        )
+        await viewModel.load()
+
+        // Seam says not registered -> toggle shows false
+        #expect(viewModel.launchAtLogin == false)
+
+        // Toggle on
+        await viewModel.setLaunchAtLogin(true)
+        #expect(viewModel.launchAtLogin == true)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.launchAtLogin == true)
+
+        // Toggle off
+        await viewModel.setLaunchAtLogin(false)
+        #expect(viewModel.launchAtLogin == false)
+
+        let settings2 = try await fixture.store.settings()
+        #expect(settings2.launchAtLogin == false)
+    }
+
+    @Test("launch at login reflects system status on load")
+    func launchAtLoginReflectsSystemStatus() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        // System says enabled -> toggle should show true
+        let viewModel = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { true }
+        )
+        await viewModel.load()
+        #expect(viewModel.launchAtLogin == true)
+
+        // System says disabled -> toggle should show false
+        let viewModel2 = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { false }
+        )
+        await viewModel2.load()
+        #expect(viewModel2.launchAtLogin == false)
+    }
+
+    // MARK: - Vocabulary stub
+
+    @Test("vocabulary section is stubbed/deferred")
+    func settingsVocabSectionStubbed() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.vocabularyDeferred == true)
+    }
 }

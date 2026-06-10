@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import Foundation
 import Permissions
+import ServiceManagement
 
 /// A group of calendars from the same source for the settings UI.
 public struct CalendarGroup: Identifiable, Sendable, Equatable {
@@ -28,6 +29,16 @@ public struct CalendarGroup: Identifiable, Sendable, Equatable {
 public final class SettingsViewModel {
     private let core: AppCore
 
+    /// Seam for reading the system launch-at-login status. Defaults to
+    /// `SMAppService.mainApp.status == .enabled`. Injected in tests.
+    private let readLaunchAtLoginStatus: @MainActor () -> Bool
+
+    // MARK: - General
+
+    /// Launch at login toggle state. Reflects `SMAppService.mainApp.status`
+    /// as the source of truth, reconciled on `load()`.
+    public private(set) var launchAtLogin: Bool = true
+
     // MARK: - Calendar state
 
     /// All calendars grouped by source, for the include/exclude toggles.
@@ -35,6 +46,13 @@ public final class SettingsViewModel {
 
     /// The set of enabled calendar IDs. nil = all enabled.
     public private(set) var enabledCalendarIDs: Set<String>?
+
+    // MARK: - Custom Vocabulary (stubbed -- Phase 9 deferred)
+
+    /// TODO(Phase 9 deferred): wire to VocabularyService once SDK vocab support lands
+    /// Vocabulary editing is deferred until the SDK supports custom vocabulary.
+    /// This property exists for the UI to show a "Coming soon" placeholder.
+    public let vocabularyDeferred: Bool = true
 
     // MARK: - Permissions
 
@@ -57,9 +75,61 @@ public final class SettingsViewModel {
 
     // MARK: - Init
 
-    public init(core: AppCore) {
+    /// - Parameters:
+    ///   - core: The application core coordinator.
+    ///   - readLaunchAtLoginStatus: Closure returning the system's
+    ///     launch-at-login state. Defaults to `SMAppService.mainApp.status`.
+    ///     Override in tests for determinism.
+    public init(
+        core: AppCore,
+        readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil
+    ) {
         self.core = core
+        self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
+            #if canImport(ServiceManagement)
+                ServiceManagement.SMAppService.mainApp.status == .enabled
+            #else
+                false
+            #endif
+        }
     }
+
+    // MARK: - General actions
+
+    /// Toggles launch at login on/off. Persists to settings and updates
+    /// `SMAppService` registration.
+    public func setLaunchAtLogin(_ enabled: Bool) async {
+        launchAtLogin = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.launchAtLogin = enabled
+            }
+        } catch {
+            // Revert on failure
+            launchAtLogin = !enabled
+        }
+
+        // Update SMAppService (best-effort)
+        #if canImport(ServiceManagement)
+            updateLaunchAtLoginService(enabled)
+        #endif
+    }
+
+    #if canImport(ServiceManagement)
+        private func updateLaunchAtLoginService(_ enabled: Bool) {
+            let service = ServiceManagement.SMAppService.mainApp
+            do {
+                if enabled {
+                    try service.register()
+                } else {
+                    try service.unregister()
+                }
+            } catch {
+                // Non-fatal: service management may fail in
+                // sandboxed/debug environments.
+            }
+        }
+    #endif
 
     // MARK: - Calendar actions
 
@@ -132,7 +202,10 @@ public final class SettingsViewModel {
 
     // MARK: - Lifecycle
 
-    /// Load initial data (calendars and settings).
+    /// Load initial data (calendars, settings, and launch-at-login).
+    /// Launch-at-login reads `SMAppService.mainApp.status` as the source
+    /// of truth (the user can toggle it in System Settings > Login Items,
+    /// so the stored bool may drift).
     public func load() async {
         do {
             let settings = try await core.store.settings()
@@ -140,6 +213,9 @@ public final class SettingsViewModel {
         } catch {
             enabledCalendarIDs = nil
         }
+
+        // SMAppService is the source of truth for launch-at-login
+        launchAtLogin = readLaunchAtLoginStatus()
 
         let infos = await core.calendar.calendars()
         calendarGroups = Self.groupCalendars(infos)

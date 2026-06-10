@@ -17,8 +17,14 @@ public struct SettingsView: View {
     public var body: some View {
         ScrollView {
             Form {
+                // General
+                generalSection
+
                 // Calendars
                 calendarSection
+
+                // Custom Vocabulary (stubbed)
+                vocabularySection
 
                 // Permissions
                 permissionsSection
@@ -39,6 +45,41 @@ public struct SettingsView: View {
             alignment: .topLeading
         )
         .task { await viewModel.load() }
+    }
+
+    // MARK: - General section
+
+    private var generalSection: some View {
+        Section("General") {
+            Toggle(
+                "Launch at login",
+                isOn: launchAtLoginBinding
+            )
+        }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.launchAtLogin },
+            set: { newValue in
+                Task { await viewModel.setLaunchAtLogin(newValue) }
+            }
+        )
+    }
+
+    // MARK: - Vocabulary section (stubbed)
+
+    /// TODO(Phase 9 deferred): wire to VocabularyService once SDK vocab support lands
+    private var vocabularySection: some View {
+        Section("Custom Vocabulary") {
+            HStack {
+                Image(systemName: "text.badge.plus")
+                    .foregroundStyle(Tokens.secondaryText)
+                Text("Custom vocabulary editing coming soon.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+        }
     }
 
     // MARK: - Calendar section

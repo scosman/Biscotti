@@ -6,6 +6,23 @@ import Transcription
 @testable import AppCore
 @testable import SearchUI
 
+// MARK: - Helpers
+
+/// Polls a condition until true, up to `timeout` (default 2 s).
+/// Checks every 50 ms so tests pass fast on idle machines but survive
+/// parallel-load slowdowns that make a fixed `Task.sleep` flaky.
+private func pollUntil(
+    timeout: Duration = .seconds(2),
+    _ condition: @MainActor () -> Bool
+) async throws {
+    let iterations = Int(timeout.components.seconds * 20
+        + timeout.components.attoseconds / 50_000_000_000_000_000)
+    for _ in 0 ..< max(iterations, 1) {
+        if await condition() { return }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+}
+
 // MARK: - Search result tests
 
 @Suite("SearchViewModel -- results")
@@ -24,8 +41,11 @@ struct SearchViewModelResultTests {
         let viewModel = SearchViewModel(core: fix.core)
         viewModel.updateQuery("Sam")
 
-        // Wait for debounce to complete
-        try await Task.sleep(for: .milliseconds(500))
+        // Wait for debounce + search to settle
+        try await pollUntil {
+            viewModel.isSearching == false
+                && viewModel.results.count == 1
+        }
 
         #expect(viewModel.results.count == 1)
         #expect(viewModel.results.first?.title == "Meeting with Sam")
@@ -49,8 +69,11 @@ struct SearchViewModelResultTests {
         viewModel.updateQuery("Alp")
         viewModel.updateQuery("Alpha")
 
-        // Wait for final debounce
-        try await Task.sleep(for: .milliseconds(500))
+        // Wait for final debounce + search to settle
+        try await pollUntil {
+            viewModel.isSearching == false
+                && viewModel.results.count == 1
+        }
 
         // The query should be "Alpha" and results should match
         #expect(viewModel.query == "Alpha")
@@ -67,8 +90,10 @@ struct SearchViewModelResultTests {
         let viewModel = SearchViewModel(core: fix.core)
         viewModel.updateQuery("nonexistent")
 
-        // Wait for debounce
-        try await Task.sleep(for: .milliseconds(500))
+        // Wait for debounce + search to settle
+        try await pollUntil {
+            viewModel.isSearching == false && viewModel.showNoResults
+        }
 
         #expect(viewModel.showNoResults == true)
         #expect(viewModel.noResultsMessage == "No meetings match 'nonexistent'.")
@@ -87,7 +112,10 @@ struct SearchViewModelResultTests {
 
         // First populate results
         viewModel.updateQuery("Test")
-        try await Task.sleep(for: .milliseconds(500))
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
         #expect(!viewModel.results.isEmpty)
 
         // Clear with empty query
@@ -128,7 +156,10 @@ struct SearchViewModelResultTests {
 
         let viewModel = SearchViewModel(core: fix.core)
         viewModel.updateQuery("budget")
-        try await Task.sleep(for: .milliseconds(500))
+        try await pollUntil {
+            viewModel.isSearching == false
+                && viewModel.results.count == 2
+        }
 
         // Both meetings match "budget"
         #expect(viewModel.results.count == 2)

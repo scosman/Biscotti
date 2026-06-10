@@ -7,6 +7,23 @@ import Transcription
 @testable import AppCore
 @testable import MeetingDetailUI
 
+// MARK: - Helpers
+
+/// Polls a condition until true, up to `timeout` (default 2 s).
+/// Checks every 50 ms so tests pass fast on idle machines but survive
+/// parallel-load slowdowns that make a fixed `Task.sleep` flaky.
+private func pollUntil(
+    timeout: Duration = .seconds(2),
+    _ condition: @MainActor () -> Bool
+) async throws {
+    let iterations = Int(timeout.components.seconds * 20
+        + timeout.components.attoseconds / 50_000_000_000_000_000)
+    for _ in 0 ..< max(iterations, 1) {
+        if await condition() { return }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+}
+
 // MARK: - FakeAudioPlayer
 
 /// A fake audio player for testing playback state in the view model.
@@ -194,8 +211,8 @@ struct MeetingDetailAudioPlaybackTests {
         // Simulate player advancing 10s
         fakePlayer.advanceTime(by: 10)
 
-        // Wait for the ticker to fire (250ms interval + buffer)
-        try await Task.sleep(for: .milliseconds(350))
+        // Poll until the ticker syncs the player's time to the VM
+        try await pollUntil { viewModel.playbackCurrentTime == 10 }
 
         // The stored currentTime should now reflect the player
         #expect(viewModel.playbackCurrentTime == 10)
@@ -207,7 +224,14 @@ struct MeetingDetailAudioPlaybackTests {
 
         // Simulate more time (should NOT be picked up)
         fakePlayer.currentTime = 20
-        try await Task.sleep(for: .milliseconds(350))
+
+        // Brief settle -- ticker is cancelled, so value must stay at 10.
+        // Use pollUntil with an inverted condition: if it ever becomes 20
+        // we have a bug. We poll a few cycles to give a cancelled ticker
+        // a chance to fire erroneously, then assert the value is still 10.
+        try await pollUntil(timeout: .milliseconds(300)) {
+            viewModel.playbackCurrentTime == 20
+        }
 
         // currentTime should remain at the paused value (synced on pause)
         #expect(viewModel.playbackCurrentTime == 10)
@@ -501,10 +525,16 @@ struct MeetingDetailNotesTests {
         )?.notes
         #expect(notesBeforeDebounce == "")
 
-        // Wait for debounce to fire (1s + buffer)
-        try await Task.sleep(for: .milliseconds(1200))
+        // Poll until the debounce fires and persists the notes
+        for _ in 0 ..< 40 { // 40 * 50ms = 2s timeout
+            let notes = try await fix.store.meetingDetail(
+                id: meetingID
+            )?.notes
+            if notes == "Updated notes" { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
 
-        // Now it should be persisted
+        // Confirm persisted
         let notesAfterDebounce = try await fix.store.meetingDetail(
             id: meetingID
         )?.notes

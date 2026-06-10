@@ -22,15 +22,17 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     private var speakerKit: SpeakerKit?
 
     /// Estimated bytes required for model download (STT + diarization).
-    /// Full-precision turbo ~3.1 GB + SpeakerKit ~33 MB; quantized ~1.3 GB + 33 MB.
+    /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
     /// We use a conservative estimate based on the model name.
     private var estimatedDownloadBytes: Int64 {
         if resolvedSettings.sttModel.contains("1307MB") {
             1_400_000_000 // ~1.3 GB + headroom
-        } else if resolvedSettings.sttModel.contains("954MB") {
-            1_050_000_000
         } else if resolvedSettings.sttModel.contains("1049MB") {
             1_150_000_000
+        } else if resolvedSettings.sttModel.contains("954MB") {
+            1_050_000_000
+        } else if resolvedSettings.sttModel.contains("626MB") {
+            750_000_000 // ~626 MB + headroom + SpeakerKit ~33 MB
         } else {
             3_300_000_000 // full-precision ~3.1 GB + headroom
         }

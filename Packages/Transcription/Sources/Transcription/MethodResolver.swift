@@ -3,8 +3,8 @@ import Foundation
 /// Internal settings resolved from a ``TranscriptionMethod``.
 ///
 /// The method resolver maps an opaque method identity to concrete engine
-/// parameters. RAM-aware quantization and sequential loading are internal
-/// details — callers never see these settings.
+/// parameters. Sequential loading is an internal detail — callers never
+/// see these settings.
 struct ResolvedMethodSettings: Equatable {
     let sttModel: String
     let sttModelRepo: String
@@ -21,10 +21,8 @@ enum DiarizationStrategyInternal: String, Equatable {
 
 /// Resolves a ``TranscriptionMethod`` into concrete engine settings.
 enum MethodResolver {
-    /// The default STT model (full-precision, ~3.1 GB).
-    static let defaultModel = "openai_whisper-large-v3_turbo"
-    /// The quantized STT model for low-RAM Macs (~1.3 GB).
-    static let quantizedModel = "openai_whisper-large-v3_turbo_1307MB"
+    /// The V1 STT model (Sept 2024 large-v3, quantized ~626 MB).
+    static let sttModel = "openai_whisper-large-v3-v20240930_626MB"
     /// The default model repository.
     static let defaultRepo = "argmaxinc/whisperkit-coreml"
 
@@ -54,7 +52,7 @@ enum MethodResolver {
         let isLowRAM = physicalMemory <= eightGB
 
         return ResolvedMethodSettings(
-            sttModel: isLowRAM ? quantizedModel : defaultModel,
+            sttModel: sttModel,
             sttModelRepo: defaultRepo,
             enableWordTimestamps: true,
             diarizationStrategy: .subsegment,

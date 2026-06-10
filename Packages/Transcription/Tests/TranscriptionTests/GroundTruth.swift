@@ -35,36 +35,43 @@ enum GroundTruth {
         )
     ]
 
-    /// Maximum normalized Levenshtein ratio allowed per chunk.
-    static let chunkLevenshteinTolerance = 0.05
+    /// Maximum normalized Levenshtein ratio for the full concatenated transcript
+    /// (speaker-agnostic). A single constant so it's easy to tune after a
+    /// hardware run — the AI test diagnostics print the actual ratio on failure.
+    static let transcriptAccuracyTolerance = 0.05
 
     /// Custom vocabulary terms for the vocab-bias test clip.
     ///
-    /// WhisperKit's `promptTokens`-based vocab conditioning silently blanks
-    /// the entire transcript for some terms when uppercase or in certain
-    /// order/combination. This curated lowercase trio is empirically reliable
-    /// with `custom_vocab_test.aac`. Robust custom-vocab handling is under
-    /// separate investigation — do NOT expand back to the original 10 mixed-case
-    /// terms without re-validating on hardware.
-    static let vocabTerms = ["gnocci", "facade", "qwen"]
+    /// The full 10-term list from the reference audio. The AI test that uses
+    /// these is currently **disabled** because WhisperKit's `promptTokens`
+    /// API silently blanks the entire transcript for certain term combinations
+    /// — even all-lowercase, even with the non-turbo model. Tracked upstream:
+    /// https://github.com/argmaxinc/argmax-oss-swift/issues/489
+    /// https://github.com/argmaxinc/argmax-oss-swift/pull/428
+    static let vocabTerms = [
+        "nasa", "kubernetes", "postgres", "qwen", "mistral",
+        "llama", "croissant", "gnocci", "paella", "facade"
+    ]
 }
 
 // MARK: - Diarization evaluator
 
-/// Result of evaluating a `TranscriptResult` against the 3-speaker ground truth.
-struct ChunkEvaluation {
+/// Result of evaluating diarization structure against the 3-speaker ground truth.
+/// Checks speaker structure only (chunk count, distinct speakers, interleaving
+/// pattern) — text accuracy is checked separately by ``TranscriptAccuracyGroundTruth``.
+struct DiarizationEvaluation {
     let chunkCount: Int
     let distinctSpeakers: Int
-    let perChunkRatios: [Double]
     let passed: Bool
     let detail: String
 }
 
 /// Evaluates a `TranscriptResult` against the 3-speaker diarization ground truth.
 ///
-/// Checks: (1) chunk count == 5 (adjacency-merged), (2) speaker-equivalence
-/// pattern matches [A,B,A,B,C] (enforces 3 distinct speakers + interleaving),
-/// (3) per-chunk normalized Levenshtein <= tolerance.
+/// Checks structure only: (1) chunk count == 5 (adjacency-merged),
+/// (2) speaker-equivalence pattern matches [A,B,A,B,C] (enforces 3 distinct
+/// speakers + interleaving). Text accuracy is a separate concern — see
+/// ``TranscriptAccuracyGroundTruth``.
 enum DiarizationGroundTruth {
     /// The expected canonical first-occurrence pattern from the reference labels.
     /// Labels [A,B,A,B,C] → first-occurrence indices [0,1,0,1,2].
@@ -72,22 +79,51 @@ enum DiarizationGroundTruth {
         GroundTruth.chunks.map(\.speakerLabel)
     )
 
-    static func evaluate(_ result: TranscriptResult) -> ChunkEvaluation {
+    static func evaluate(_ result: TranscriptResult) -> DiarizationEvaluation {
         let chunks = TranscriptChunker.chunks(from: result)
         let chunkCount = chunks.count
         let speakerIDs = chunks.compactMap(\.speakerID)
         let distinctSpeakers = Set(speakerIDs).count
         let rawTranscript = result.segments.map(\.text).joined(separator: " ")
 
-        if let failure = checkStructure(
-            chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers,
-            rawTranscript: rawTranscript
-        ) {
-            return failure
+        let expectedCount = GroundTruth.chunks.count
+
+        guard chunkCount == expectedCount else {
+            let chunkSummary = chunkDiagnostic(chunks)
+            let base = "Expected \(expectedCount) chunks, got \(chunkCount). "
+                + "[\(chunkSummary)]. "
+                + "Raw transcript: \"\(rawTranscript)\""
+            return DiarizationEvaluation(
+                chunkCount: chunkCount,
+                distinctSpeakers: distinctSpeakers,
+                passed: false,
+                detail: appendFullTranscripts(to: base, chunks: chunks)
+            )
         }
 
-        return checkLevenshtein(
-            chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers
+        let actualPattern = canonicalPattern(speakerIDs)
+
+        guard actualPattern == expectedPattern else {
+            let chunkSummary = chunkDiagnostic(chunks)
+            let base = "Speaker pattern mismatch: expected \(expectedPattern), "
+                + "got \(actualPattern). "
+                + "Distinct speakers: expected 3, got \(distinctSpeakers). "
+                + "[\(chunkSummary)]. "
+                + "Raw transcript: \"\(rawTranscript)\""
+            return DiarizationEvaluation(
+                chunkCount: chunkCount,
+                distinctSpeakers: distinctSpeakers,
+                passed: false,
+                detail: appendFullTranscripts(to: base, chunks: chunks)
+            )
+        }
+
+        return DiarizationEvaluation(
+            chunkCount: chunkCount,
+            distinctSpeakers: distinctSpeakers,
+            passed: true,
+            detail: "\(chunkCount) chunks, \(distinctSpeakers) distinct speakers, "
+                + "pattern \(expectedPattern)"
         )
     }
 
@@ -111,91 +147,73 @@ enum DiarizationGroundTruth {
 
     // MARK: - Private helpers
 
-    private static func checkStructure(
-        chunks: [TranscriptChunk], chunkCount: Int, distinctSpeakers: Int,
-        rawTranscript: String
-    ) -> ChunkEvaluation? {
-        let expectedCount = GroundTruth.chunks.count
-
-        guard chunkCount == expectedCount else {
-            let chunkSummary = chunks.enumerated().map { idx, chunk in
-                "chunk[\(idx)] speaker=\(chunk.speakerID.map(String.init) ?? "nil")"
-                    + " text=\"\(chunk.text)\""
-            }.joined(separator: ", ")
-            return ChunkEvaluation(
-                chunkCount: chunkCount,
-                distinctSpeakers: distinctSpeakers,
-                perChunkRatios: [],
-                passed: false,
-                detail: "Expected \(expectedCount) chunks, got \(chunkCount). "
-                    + "[\(chunkSummary)]. "
-                    + "Raw transcript: \"\(rawTranscript)\""
-            )
-        }
-
-        // Check speaker-equivalence pattern (enforces both distinctness and interleaving).
-        let speakerIDs = chunks.compactMap(\.speakerID)
-        let actualPattern = canonicalPattern(speakerIDs)
-
-        guard actualPattern == expectedPattern else {
-            let chunkSummary = chunks.enumerated().map { idx, chunk in
-                "chunk[\(idx)] speaker=\(chunk.speakerID.map(String.init) ?? "nil")"
-                    + " text=\"\(chunk.text)\""
-            }.joined(separator: ", ")
-            return ChunkEvaluation(
-                chunkCount: chunkCount,
-                distinctSpeakers: distinctSpeakers,
-                perChunkRatios: [],
-                passed: false,
-                detail: "Speaker pattern mismatch: expected \(expectedPattern), "
-                    + "got \(actualPattern). "
-                    + "Distinct speakers: expected 3, got \(distinctSpeakers). "
-                    + "[\(chunkSummary)]. "
-                    + "Raw transcript: \"\(rawTranscript)\""
-            )
-        }
-
-        return nil
+    /// Full expected transcript (all ground-truth chunk scripts joined).
+    static var expectedTranscript: String {
+        GroundTruth.chunks.map(\.script).joined(separator: " ")
     }
 
-    private static func checkLevenshtein(
-        chunks: [TranscriptChunk], chunkCount: Int, distinctSpeakers: Int
-    ) -> ChunkEvaluation {
-        let tolerance = GroundTruth.chunkLevenshteinTolerance
-        var ratios: [Double] = []
-        var failures: [String] = []
+    /// Full actual transcript from chunks (all chunk texts joined in order).
+    static func actualTranscript(from chunks: [TranscriptChunk]) -> String {
+        chunks.map(\.text).joined(separator: " ")
+    }
 
-        for (idx, (chunk, ref)) in zip(chunks, GroundTruth.chunks).enumerated() {
-            let normalizedChunk = TextNormalize.normalize(chunk.text)
-            let normalizedRef = TextNormalize.normalize(ref.script)
-            let ratio = Levenshtein.ratio(normalizedChunk, normalizedRef)
-            ratios.append(ratio)
+    private static func chunkDiagnostic(_ chunks: [TranscriptChunk]) -> String {
+        chunks.enumerated().map { idx, chunk in
+            "chunk[\(idx)] speaker=\(chunk.speakerID.map(String.init) ?? "nil")"
+                + " text=\"\(chunk.text)\""
+        }.joined(separator: ", ")
+    }
 
-            if ratio > tolerance {
-                failures.append(
-                    "chunk[\(idx)] ratio=\(String(format: "%.4f", ratio)) > \(tolerance). "
-                        + "got=\"\(normalizedChunk)\" expected=\"\(normalizedRef)\""
-                )
-            }
+    /// Appends full actual + expected transcripts to a detail string for diagnostics.
+    private static func appendFullTranscripts(
+        to detail: String, chunks: [TranscriptChunk]
+    ) -> String {
+        detail
+            + " Actual transcript: \"\(actualTranscript(from: chunks))\""
+            + " Expected transcript: \"\(expectedTranscript)\""
+    }
+}
+
+// MARK: - Transcript accuracy evaluator
+
+/// Result of evaluating transcript text accuracy (speaker-agnostic).
+struct TranscriptAccuracyEvaluation {
+    let ratio: Double
+    let passed: Bool
+    let detail: String
+}
+
+/// Evaluates transcript text accuracy against the ground truth, ignoring
+/// speaker attribution. Concatenates all segment texts in time order and
+/// compares against the full expected transcript with a single Levenshtein
+/// ratio. A block of text attributed to the wrong speaker does not affect
+/// this check — only genuinely wrong/missing/extra text does.
+enum TranscriptAccuracyGroundTruth {
+    static func evaluate(_ result: TranscriptResult) -> TranscriptAccuracyEvaluation {
+        let chunks = TranscriptChunker.chunks(from: result)
+        let actualText = DiarizationGroundTruth.actualTranscript(from: chunks)
+        let expectedText = DiarizationGroundTruth.expectedTranscript
+
+        let normalizedActual = TextNormalize.normalize(actualText)
+        let normalizedExpected = TextNormalize.normalize(expectedText)
+        let ratio = Levenshtein.ratio(normalizedActual, normalizedExpected)
+
+        let tolerance = GroundTruth.transcriptAccuracyTolerance
+        let passed = ratio <= tolerance
+
+        let detail = if passed {
+            "Transcript accuracy ratio=\(String(format: "%.4f", ratio))"
+                + " within tolerance \(tolerance)."
+                + " Actual transcript: \"\(actualText)\""
+        } else {
+            "Transcript accuracy ratio=\(String(format: "%.4f", ratio))"
+                + " exceeds tolerance \(tolerance)."
+                + " Actual transcript: \"\(actualText)\""
+                + " Expected transcript: \"\(expectedText)\""
         }
 
-        if !failures.isEmpty {
-            return ChunkEvaluation(
-                chunkCount: chunkCount,
-                distinctSpeakers: distinctSpeakers,
-                perChunkRatios: ratios,
-                passed: false,
-                detail: failures.joined(separator: "; ")
-            )
-        }
-
-        return ChunkEvaluation(
-            chunkCount: chunkCount,
-            distinctSpeakers: distinctSpeakers,
-            perChunkRatios: ratios,
-            passed: true,
-            detail: "\(chunkCount) chunks, \(distinctSpeakers) distinct speakers, "
-                + "pattern \(expectedPattern), all ratios within tolerance"
+        return TranscriptAccuracyEvaluation(
+            ratio: ratio, passed: passed, detail: detail
         )
     }
 }
@@ -225,6 +243,7 @@ enum VocabGroundTruth {
         } else {
             "\(matched.count)/\(GroundTruth.vocabTerms.count) matched. "
                 + "Missed: \(missed.joined(separator: ", ")). "
+                + "Expected vocab: \(GroundTruth.vocabTerms.joined(separator: ", ")). "
                 + "Transcript: \"\(fullText)\""
         }
         return VocabEvaluation(

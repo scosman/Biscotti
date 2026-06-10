@@ -74,10 +74,11 @@ enum GroundTruth {
         .init(speakerLabel: "C", script: "And what would you like me to say? Anything at all. I would like more food please."),
     ]   // Pattern [A,B,A,B,C] — 5 chunks, 3 distinct speakers
     static let chunkLevenshteinTolerance = 0.05
-    // WhisperKit's promptTokens-based vocab conditioning silently blanks the
-    // transcript for some terms when uppercase or in certain order/combination.
-    // This curated lowercase trio is empirically reliable.
-    static let vocabTerms = ["gnocci", "facade", "qwen"]
+    // Full 10-term list. Custom-vocab AI test is disabled pending upstream
+    // SDK fix (promptTokens blanks transcript for certain combinations).
+    // https://github.com/argmaxinc/argmax-oss-swift/issues/489
+    static let vocabTerms = ["nasa", "kubernetes", "postgres", "qwen", "mistral",
+                              "llama", "croissant", "gnocci", "paella", "facade"]
 }
 
 struct ChunkEvaluation { let chunkCount, distinctSpeakers: Int; let perChunkRatios: [Double]
@@ -117,13 +118,14 @@ let e = DiarizationGroundTruth.evaluate(r)
 #expect(r.segments.allSatisfy { $0.endTime <= (try audioDuration(mic)) + 0.001 })  // no hallucination
 ```
 
-### 3.3 Custom-vocab word match (gated)
+### 3.3 Custom-vocab word match (gated, currently disabled)
 
 ```swift
+// .disabled("WhisperKit promptTokens blanks transcript — blocked on SDK fix")
 let clip = Bundle.module.url(forResource: "custom_vocab_test", withExtension: "aac", subdirectory: "Fixtures")!
 let r = try await Transcriber(backend: .inProcess).processAudio(
     mic: clip, system: clip, customVocabulary: GroundTruth.vocabTerms)   // single-track → both streams
-#expect(VocabGroundTruth.evaluate(r).passed, "\(VocabGroundTruth.evaluate(r).detail)")  // 3/3
+#expect(VocabGroundTruth.evaluate(r).passed, "\(VocabGroundTruth.evaluate(r).detail)")  // 10/10
 ```
 
 ### 3.4 Failure / environment behavior
@@ -223,7 +225,7 @@ Cut: `tx_transcribe`, `tx_speakers`, `tx_no_hallucination`, `tx_custom_vocab`, `
 ## 7. Risks & fallbacks
 
 1. **Diarization under defaults may not reproduce exactly 3 speakers.** Mitigated by the re-recorded clip (longer, more distinct turns). If it regresses, revisit `numberOfSpeakers` (deferred) as the more direct lever.
-2. **Word-match vocab list reduced to 3/3.** WhisperKit's `promptTokens`-based vocab conditioning silently blanks the transcript for some terms (uppercase, certain combinations). The test uses a curated lowercase trio (`gnocci`, `facade`, `qwen`) that is empirically reliable. Robust custom-vocab handling is under separate investigation.
+2. **Custom-vocab AI test disabled.** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations — affects both turbo and non-turbo models. The test uses the full 10-term list but is `.disabled` pending an upstream SDK fix: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
 3. **Coverage dropped:** the XPC crash-isolation manual test (`tx_crash_*`) is removed and **not** replaced by `make test-ai` (which is in-process). Accepted per scope decision (it would re-couple transcription to a live capture); easy to restore later if desired.
 
 ---

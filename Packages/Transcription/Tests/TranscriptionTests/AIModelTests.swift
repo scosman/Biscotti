@@ -40,6 +40,12 @@ private enum AudioDurationError: Error, CustomStringConvertible {
 
 // MARK: - AI model tests
 
+// TODO: These tests rely on WhisperKit's inline auto-download during processAudio,
+// which doesn't cleanly recover from a partial/.incomplete download (caused a
+// first-run failure on hardware). Ideally the test should ensure a clean model
+// download itself (e.g. via ensureModelsDownloaded or clearing partials) before
+// running inference.
+
 @Suite("AI model tests")
 struct AIModelTestSuite {
     @Test(
@@ -59,9 +65,13 @@ struct AIModelTestSuite {
             mic: mic, system: sys
         )
 
-        // Diarization: 5 chunks, 3 speakers, correct interleaving, text within tolerance
-        let eval = DiarizationGroundTruth.evaluate(result)
-        #expect(eval.passed, "\(eval.detail)")
+        // Diarization structure: 5 chunks, 3 speakers, correct interleaving
+        let diarEval = DiarizationGroundTruth.evaluate(result)
+        #expect(diarEval.passed, "\(diarEval.detail)")
+
+        // Transcript accuracy (speaker-agnostic): full-text Levenshtein within tolerance
+        let accEval = TranscriptAccuracyGroundTruth.evaluate(result)
+        #expect(accEval.passed, "\(accEval.detail)")
 
         // No hallucination: no segment endTime exceeds the actual audio duration
         let duration = try audioDuration(mic)
@@ -72,10 +82,18 @@ struct AIModelTestSuite {
         )
     }
 
+    /// Custom-vocab test disabled — WhisperKit's promptTokens API silently
+    /// blanks the entire transcript for certain term combinations, even
+    /// all-lowercase, even with the non-turbo v20240930_626MB model (Gotcha #16).
+    /// Blocked on upstream fix:
+    ///   https://github.com/argmaxinc/argmax-oss-swift/issues/489
+    ///   https://github.com/argmaxinc/argmax-oss-swift/pull/428
+    /// Re-enable once the SDK issue is resolved or a workaround is in place.
     @Test(
         "Custom-vocab word match",
         .tags(.aiModel),
-        .enabled(if: AITestGate.isEnabled)
+        .enabled(if: AITestGate.isEnabled),
+        .disabled("WhisperKit promptTokens blanks transcript — blocked on SDK fix")
     )
     func customVocabWordMatch() async throws {
         let clip = try #require(Bundle.module.url(

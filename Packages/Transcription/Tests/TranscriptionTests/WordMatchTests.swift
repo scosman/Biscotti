@@ -62,11 +62,11 @@ struct WordMatchTests {
 
     @Test("full vocab terms test")
     func fullVocabTerms() {
-        let transcript = "NASA Kubernetes Postgres Qwen Mistral Llama Croissant gnocci Paella Facade"
+        let transcript = "gnocci facade qwen"
         let result = WordMatch.evaluate(
             transcript: transcript, expected: GroundTruth.vocabTerms
         )
-        #expect(result.matched.count == 10)
+        #expect(result.matched.count == 3)
         #expect(result.missed.isEmpty)
     }
 }

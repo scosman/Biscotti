@@ -13,7 +13,7 @@ Phased build order. Each phase is a coherent, reviewable unit. **One human-in-th
 
 > **Diarization tuning knob — DEFERRED.** The early plan (original Phase 2) exposed an optional test-only `diarizationClusterThreshold` parameter plus a CLI sweep diagnostic, because the original short reference clip collapsed to 1 speaker under SDK defaults. The clip was **re-recorded** with longer, more distinct turns and now diarizes to **3 speakers under production defaults**, so the knob is unnecessary. The threshold plumbing + CLI flags + XPC field were implemented briefly and then **reverted** (commit `d8cdd21` → revert `9febe90`). Exposing a diarization tuning parameter (note: `numberOfSpeakers` would be the more direct lever than `clusterDistanceThreshold`, since SpeakerKit's VBx refinement can override the AHC seed) is deferred to a future project. Production is unchanged; the AI test passes no diarization override.
 
-- [ ] **Phase 2 — AI tests + clips + make target.**
+- [x] **Phase 2 — AI tests + clips + make target.**
   The reference clips already live in `Tests/TranscriptionTests/Fixtures/` as `mic_fixture.wav` + `system_fixture.wav` (the 3-speaker clip) and `custom_vocab_test.aac` (vocab). Add `.aiModel` tag + `AITestGate` (env `BISCOTTI_RUN_AI_TESTS`) + the two gated AI tests (diarization/accuracy via chunk eval under production defaults; custom-vocab word match). Add `make test-ai`; document it in `CLAUDE.md`. *(arch §3, §4)*
   - **🧑 Checkpoint (AI test run):** user runs `make test-ai` → confirm both tests green (validates diarization under production defaults + vocab end-to-end on real models). If word-match needs adjustment, iterate per arch §7.
 

@@ -43,3 +43,10 @@ Running log of decisions for the final **human review, feedback & bug-fixing** p
 - **MeetingCatalog target is L0 (no dependencies)**: it compiles stand-alone watchlist data and regex patterns. No target depends on it yet in Phase 1; Calendar and MeetingDetection will consume it in later phases.
 - **`searchHits` refactored for lint compliance**: extracted per-meeting scoring into a private `scoreMeeting(_:terms:)` helper to stay within the 50-line function body limit.
 - **Conference-link detection placed in MeetingCatalog, not Calendar**: per the spec, both Calendar and MeetingDetection need conference detection. Placing it in MeetingCatalog (an L0 module) avoids a circular dependency and follows the spec's "config-provider seam" intent from C1.
+
+### Phase 2 implementation decisions
+
+- **`EKEventDTO` is public**: made the DTO public (not module-internal) so that tests can construct scripted DTOs for the `EventStoreProviding` fake. The seam protocol requires returning `[EKEventDTO]`, so test targets must be able to create them.
+- **`CalendarService.loadEnabledCalendarIDs` is async**: the spec shows it loading from settings at init, but `DataStore` is an actor, so reading settings requires an `await`. Instead of a semaphore bridge (which causes Swift 6 sendability errors), the load happens in `refreshUpcoming` before each fetch. The enabled-IDs cache is `nil` (all calendars) until the first refresh.
+- **ObservationBox for deinit cleanup**: Swift 6 makes `deinit` nonisolated, so `CalendarService` cannot access `@MainActor`-isolated stored properties in deinit. Used a plain class wrapper (`ObservationBox`) to hold the NotificationCenter observer token so deinit can clean it up.
+- **`markSnapshotStale` and `recentMeetingsWithSnapshots` added to DataStore**: the spec mentions staleness checking but didn't specify DataStore methods for it. Added two methods to `DataStore+Phase3_2.swift` plus a `SnapshotStalenessEntry` DTO for the query result.

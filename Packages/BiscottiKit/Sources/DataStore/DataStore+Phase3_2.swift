@@ -193,6 +193,40 @@ public extension DataStore {
         try save()
     }
 
+    /// Marks a meeting's calendar snapshot as stale (source event deleted/not found).
+    func markSnapshotStale(meetingID: UUID) throws {
+        guard let meeting = try meeting(id: meetingID),
+              let snapshot = meeting.calendarSnapshot
+        else { return }
+        snapshot.isStale = true
+        try save()
+    }
+
+    /// Returns metadata for recent meetings that have non-stale calendar snapshots.
+    /// Used by CalendarService to re-validate snapshots on `.EKEventStoreChanged`.
+    ///
+    /// - Note: TODO: add a date-filtered FetchDescriptor once meeting count exceeds ~1000;
+    ///   full-table fetch is acceptable at V1 scale.
+    func recentMeetingsWithSnapshots(
+        since date: Date
+    ) throws -> [SnapshotStalenessEntry] {
+        let descriptor = FetchDescriptor<Meeting>()
+        let all = try context.fetch(descriptor)
+        return all.compactMap { meeting -> SnapshotStalenessEntry? in
+            guard let snapshot = meeting.calendarSnapshot,
+                  !snapshot.isStale,
+                  let eventIdentifier = snapshot.eventIdentifier,
+                  let occurrenceStart = snapshot.occurrenceStartDate,
+                  (meeting.startDate ?? meeting.createdAt) >= date
+            else { return nil }
+            return SnapshotStalenessEntry(
+                meetingID: meeting.id,
+                eventIdentifier: eventIdentifier,
+                occurrenceStart: occurrenceStart
+            )
+        }
+    }
+
     /// Removes the calendar snapshot from a meeting.
     func clearSnapshot(for meetingID: UUID) throws {
         guard let meeting = try meeting(id: meetingID) else {

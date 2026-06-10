@@ -28,7 +28,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   productionized from EventKitLab, cached); `Permissions` calendar+notifications seams/state; `Route`
   extension. *(arch §4, §7, §9; unblocks everything.)*
 
-- [ ] **Phase 2 — Calendar module.** `CalendarService` + `EventStoreProviding` seam + `EKEventDTO`
+- [x] **Phase 2 — Calendar module.** `CalendarService` + `EventStoreProviding` seam + `EKEventDTO`
   mapping, auth/status mapping, enabled-calendar filtering, meeting-like filter, conference detection
   (via catalog), composite key, snapshot mapping (`CalendarSnapshotInput`→`CalendarSnapshot`+`Person`),
   `bestMatch(at:)`, `startObserving`/staleness. Full unit tests. *(components/calendar.md; Project 5

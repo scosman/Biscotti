@@ -217,6 +217,19 @@ public struct SearchHit: Sendable, Identifiable, Equatable {
     }
 }
 
+/// Metadata for a meeting with a non-stale snapshot, used for staleness checks.
+public struct SnapshotStalenessEntry: Sendable, Equatable {
+    public let meetingID: UUID
+    public let eventIdentifier: String
+    public let occurrenceStart: Date
+
+    public init(meetingID: UUID, eventIdentifier: String, occurrenceStart: Date) {
+        self.meetingID = meetingID
+        self.eventIdentifier = eventIdentifier
+        self.occurrenceStart = occurrenceStart
+    }
+}
+
 // MARK: - DataStore Query Methods
 
 public extension DataStore {

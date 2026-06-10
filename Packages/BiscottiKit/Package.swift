@@ -7,6 +7,8 @@ let package = Package(
     products: [
         .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
         .library(name: "DataStore", targets: ["DataStore"]),
+        .library(name: "DesignSystem", targets: ["DesignSystem"]),
+        .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -32,6 +34,19 @@ let package = Package(
         .testTarget(
             name: "DataStoreTests",
             dependencies: ["DataStore", .product(name: "Transcription", package: "Transcription")],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "DesignSystem",
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Permissions",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "PermissionsTests",
+            dependencies: ["Permissions"],
             swiftSettings: warningsAsErrors
         ),
         .target(

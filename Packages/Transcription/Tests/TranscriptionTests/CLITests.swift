@@ -123,6 +123,49 @@ struct CLIArgumentParsingTests {
             _ = try TranscribeCLI.parse([])
         }
     }
+
+    @Test("Parses --diarization-threshold")
+    func argumentParsingDiarizationThreshold() throws {
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/mic.wav",
+            "--system", "/system.wav",
+            "--diarization-threshold", "0.35"
+        ])
+        #expect(cli.diarizationThreshold == 0.35)
+    }
+
+    @Test("Parses --diarization-sweep")
+    func argumentParsingDiarizationSweep() throws {
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/mic.wav",
+            "--system", "/system.wav",
+            "--diarization-sweep", "0.30,0.40,0.50"
+        ])
+        #expect(cli.diarizationSweep == "0.30,0.40,0.50")
+    }
+
+    @Test("--diarization-threshold and --diarization-sweep default to nil")
+    func argumentParsingDiarizationDefaults() throws {
+        let cli = try TranscribeCLI.parse([
+            "--mic", "/mic.wav",
+            "--system", "/system.wav"
+        ])
+        #expect(cli.diarizationThreshold == nil)
+        #expect(cli.diarizationSweep == nil)
+    }
+
+    @Test("--diarization-threshold and --diarization-sweep are mutually exclusive")
+    func thresholdAndSweepMutuallyExclusive() {
+        // parse() calls validate() internally; both flags together should fail
+        #expect(throws: (any Error).self) {
+            _ = try TranscribeCLI.parse([
+                "--mic", "/mic.wav",
+                "--system", "/system.wav",
+                "--diarization-threshold", "0.35",
+                "--diarization-sweep", "0.30,0.40"
+            ])
+        }
+    }
 }
 
 // MARK: - Vocab parsing tests
@@ -151,5 +194,40 @@ struct VocabParsingTests {
     func emptyString() {
         let terms = parseVocab("")
         #expect(terms.isEmpty)
+    }
+}
+
+// MARK: - Sweep threshold parsing tests
+
+@Suite("Diarization sweep threshold parsing")
+struct SweepThresholdParsingTests {
+    @Test("Parses comma-separated float values")
+    func parsesFloatCSV() {
+        let thresholds = parseSweepThresholds("0.30,0.35,0.40,0.45,0.50")
+        #expect(thresholds == [0.30, 0.35, 0.40, 0.45, 0.50])
+    }
+
+    @Test("Trims whitespace around values")
+    func trimsWhitespace() {
+        let thresholds = parseSweepThresholds("  0.3 , 0.4 , 0.5  ")
+        #expect(thresholds == [0.3, 0.4, 0.5])
+    }
+
+    @Test("Drops non-numeric entries")
+    func dropsNonNumeric() {
+        let thresholds = parseSweepThresholds("0.3,abc,0.5")
+        #expect(thresholds == [0.3, 0.5])
+    }
+
+    @Test("Returns empty for empty string")
+    func emptyInput() {
+        let thresholds = parseSweepThresholds("")
+        #expect(thresholds.isEmpty)
+    }
+
+    @Test("Parses single value")
+    func singleValue() {
+        let thresholds = parseSweepThresholds("0.42")
+        #expect(thresholds == [0.42])
     }
 }

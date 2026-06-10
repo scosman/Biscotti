@@ -10,10 +10,17 @@ public struct XPCProcessRequest: Codable {
     public let micPath: String
     public let systemPath: String
     public let customVocabulary: [String]
+    public let diarizationClusterThreshold: Float?
 
-    public init(micPath: String, systemPath: String, customVocabulary: [String]) {
+    public init(
+        micPath: String,
+        systemPath: String,
+        customVocabulary: [String],
+        diarizationClusterThreshold: Float? = nil
+    ) {
         self.micPath = micPath
         self.systemPath = systemPath
         self.customVocabulary = customVocabulary
+        self.diarizationClusterThreshold = diarizationClusterThreshold
     }
 }

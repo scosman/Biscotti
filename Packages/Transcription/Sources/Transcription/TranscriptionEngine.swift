@@ -29,7 +29,8 @@ public protocol TranscriptionEngine: Sendable {
     func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        diarizationClusterThreshold: Float?
     ) async throws -> TranscriptResult
 
     /// Explicitly unload all models from memory. The engine remains usable;

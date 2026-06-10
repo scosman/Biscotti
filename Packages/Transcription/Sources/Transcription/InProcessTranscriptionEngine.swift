@@ -68,7 +68,8 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     public func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        diarizationClusterThreshold: Float? = nil
     ) async throws -> TranscriptResult {
         let startTime = CFAbsoluteTimeGetCurrent()
 
@@ -84,7 +85,10 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
         if resolvedSettings.sequentialLoading { await unloadWhisperKit() }
 
-        let diarization = try await runDiarization(audioArray: mergeResult.samples)
+        let diarization = try await runDiarization(
+            audioArray: mergeResult.samples,
+            clusterThreshold: diarizationClusterThreshold
+        )
 
         if resolvedSettings.sequentialLoading { await unloadSpeakerKit() }
 
@@ -152,14 +156,19 @@ private extension InProcessTranscriptionEngine {
         }
     }
 
-    func runDiarization(audioArray: [Float]) async throws -> DiarizationResult {
+    func runDiarization(
+        audioArray: [Float], clusterThreshold: Float? = nil
+    ) async throws -> DiarizationResult {
         do {
             try await ensureSpeakerKitLoaded()
 
             guard let speaker = speakerKit else {
                 throw TranscriptionError.modelLoadFailed("SpeakerKit is nil after loading")
             }
-            return try await speaker.diarize(audioArray: audioArray)
+            let options = clusterThreshold.map {
+                PyannoteDiarizationOptions(clusterDistanceThreshold: $0)
+            }
+            return try await speaker.diarize(audioArray: audioArray, options: options)
         } catch let error as TranscriptionError {
             await statusMachine.transition(to: .error(error))
             throw error

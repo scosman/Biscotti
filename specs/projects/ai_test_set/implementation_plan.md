@@ -11,7 +11,7 @@ Phased build order. Each phase is a coherent, reviewable unit. **Two human-in-th
 - [x] **Phase 1 — Comparison support + unit tests (pure, gating-testable).**
   In `Tests/TranscriptionTests` (test-target `internal`): add `TextNormalize`, `Levenshtein`, `TranscriptChunker`, `WordMatch`, and ground truth + evaluators (`GroundTruth` with placeholder threshold, `DiarizationGroundTruth.evaluate`, `VocabGroundTruth.evaluate`). Full fast unit tests on synthetic `TranscriptResult`s — runs in `make test`. No model work, no public API on `Transcription`. *(arch §2, §3.5)*
 
-- [ ] **Phase 2 — Diarization threshold knob + CLI diagnostic.**
+- [x] **Phase 2 — Diarization threshold knob + CLI diagnostic.**
   Plumb optional `diarizationClusterThreshold: Float?` through `Transcriber.processAudio` → `TranscriptionEngine` → `InProcessTranscriptionEngine.runDiarization` → `XPCProcessRequest` + XPC service (completeness) → stub. Add `transcribe-cli --diarization-threshold` and `--diarization-sweep` (sweep prints SDK `speakerCount` + inline distinct-speaker count — no chunker dependency). Unit tests: XPC request Codable round-trip, CLI parsing. Default `nil` ⇒ production unchanged. *(arch §1)*
   - **🧑 Checkpoint (diagnostic run):** user runs `transcribe-cli --diarization-sweep "0.30,0.35,0.40,0.45,0.50"` on the 3-speaker clip → read the value giving `speakers=3 distinct=3` → set `GroundTruth.tunedDiarizationClusterThreshold`.
 

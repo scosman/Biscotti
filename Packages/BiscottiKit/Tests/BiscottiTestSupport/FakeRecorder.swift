@@ -7,16 +7,16 @@ import Recording
 /// Uses a reference-type backing store so mutations are visible through
 /// protocol existentials. The backing store is `@unchecked Sendable` --
 /// all access is confined to `@MainActor` test functions in practice.
-struct FakeRecorder: RecorderControlling, @unchecked Sendable {
-    final class Backing: @unchecked Sendable {
-        var startCalled = false
-        var stopCalled = false
-        var requestPermissionsCalled = false
-        var startError: (any Error)?
-        var probableDenied: Bool
-        var stateValues: [CaptureState]
+public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
+    public final class Backing: @unchecked Sendable {
+        public var startCalled = false
+        public var stopCalled = false
+        public var requestPermissionsCalled = false
+        public var startError: (any Error)?
+        public var probableDenied: Bool
+        public var stateValues: [CaptureState]
 
-        init(
+        public init(
             startError: (any Error)? = nil,
             probableDenied: Bool = false,
             stateValues: [CaptureState] = []
@@ -27,9 +27,9 @@ struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         }
     }
 
-    let backing: Backing
+    public let backing: Backing
 
-    init(
+    public init(
         startError: (any Error)? = nil,
         probableDenied: Bool = false,
         stateValues: [CaptureState] = []
@@ -41,23 +41,23 @@ struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         )
     }
 
-    func requestPermissions(systemProbePath _: URL) async -> Bool {
+    public func requestPermissions(systemProbePath _: URL) async -> Bool {
         backing.requestPermissionsCalled = true
         return true
     }
 
-    func start(paths _: CapturePaths) async throws {
+    public func start(paths _: CapturePaths) async throws {
         backing.startCalled = true
         if let error = backing.startError {
             throw error
         }
     }
 
-    func stop() async {
+    public func stop() async {
         backing.stopCalled = true
     }
 
-    func stateStream() -> AsyncStream<CaptureState> {
+    public func stateStream() -> AsyncStream<CaptureState> {
         let values = backing.stateValues
         return AsyncStream { continuation in
             for value in values {
@@ -67,7 +67,7 @@ struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         }
     }
 
-    func probableSystemAudioDenied() async -> Bool {
+    public func probableSystemAudioDenied() async -> Bool {
         backing.probableDenied
     }
 }

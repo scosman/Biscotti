@@ -1,3 +1,4 @@
+import BiscottiTestSupport
 import DataStore
 import Foundation
 import Testing
@@ -8,7 +9,7 @@ import TranscriptionService
 
 /// Bundles all test dependencies for TranscriptionService tests.
 @MainActor
-struct TestFixture {
+struct TranscriptionTestFixture {
     let service: TranscriptionService
     let store: DataStore
     let fakeEngine: FakeTranscriber
@@ -45,7 +46,7 @@ private func makeFixture(
     ensureModelsError: (any Error)? = nil,
     processAudioError: (any Error)? = nil,
     statusMessages: [String] = []
-) throws -> TestFixture {
+) throws -> TranscriptionTestFixture {
     let store = try DataStore(storage: .inMemory)
     let fakeEngine = FakeTranscriber(
         cannedResult: cannedResult,
@@ -54,7 +55,7 @@ private func makeFixture(
         statusMessages: statusMessages
     )
     let service = TranscriptionService(store: store, engine: fakeEngine)
-    return TestFixture(service: service, store: store, fakeEngine: fakeEngine)
+    return TranscriptionTestFixture(service: service, store: store, fakeEngine: fakeEngine)
 }
 
 // MARK: - Success path tests

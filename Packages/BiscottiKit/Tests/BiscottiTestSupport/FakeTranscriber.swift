@@ -7,27 +7,27 @@ import TranscriptionService
 /// Uses a reference-type backing store so mutations are visible through
 /// protocol existentials. The backing store is `@unchecked Sendable` --
 /// all access is confined to `@MainActor` test functions in practice.
-struct FakeTranscriber: Transcribing, @unchecked Sendable {
-    final class Backing: @unchecked Sendable {
-        var ensureModelsCalled = false
-        var processAudioCalled = false
-        var lastMicURL: URL?
-        var lastSystemURL: URL?
-        var lastVocabulary: [String]?
+public struct FakeTranscriber: Transcribing, @unchecked Sendable {
+    public final class Backing: @unchecked Sendable {
+        public var ensureModelsCalled = false
+        public var processAudioCalled = false
+        public var lastMicURL: URL?
+        public var lastSystemURL: URL?
+        public var lastVocabulary: [String]?
 
         /// Error to throw from `ensureModelsDownloaded`, if any.
-        var ensureModelsError: (any Error)?
+        public var ensureModelsError: (any Error)?
 
         /// Error to throw from `processAudio`, if any.
-        var processAudioError: (any Error)?
+        public var processAudioError: (any Error)?
 
         /// The canned result to return from `processAudio`.
-        var cannedResult: TranscriptResult
+        public var cannedResult: TranscriptResult
 
         /// Status messages to emit during `ensureModelsDownloaded`.
-        var statusMessages: [String]
+        public var statusMessages: [String]
 
-        init(
+        public init(
             cannedResult: TranscriptResult,
             ensureModelsError: (any Error)? = nil,
             processAudioError: (any Error)? = nil,
@@ -40,9 +40,9 @@ struct FakeTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
-    let backing: Backing
+    public let backing: Backing
 
-    init(
+    public init(
         cannedResult: TranscriptResult? = nil,
         ensureModelsError: (any Error)? = nil,
         processAudioError: (any Error)? = nil,
@@ -56,7 +56,7 @@ struct FakeTranscriber: Transcribing, @unchecked Sendable {
         )
     }
 
-    func ensureModelsDownloaded(
+    public func ensureModelsDownloaded(
         status: (@Sendable (String) -> Void)?
     ) async throws {
         backing.ensureModelsCalled = true
@@ -68,7 +68,7 @@ struct FakeTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
-    func processAudio(
+    public func processAudio(
         mic: URL,
         system: URL,
         customVocabulary: [String]
@@ -92,7 +92,7 @@ struct FakeTranscriber: Transcribing, @unchecked Sendable {
         ?? UUID()
 
     /// A minimal valid `TranscriptResult` for tests.
-    static let defaultResult = TranscriptResult(
+    public static let defaultResult = TranscriptResult(
         id: resultID,
         createdAt: Date(timeIntervalSince1970: 1_700_000_000),
         transcriptionMethodId: "v1",

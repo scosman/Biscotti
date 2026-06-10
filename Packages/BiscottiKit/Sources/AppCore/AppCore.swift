@@ -125,6 +125,15 @@ public final class AppCore {
         route = .meeting(meetingID)
     }
 
+    /// Routes the detail pane to the recording screen.
+    ///
+    /// Used when the user taps the sidebar recording indicator to return
+    /// to the recording view after navigating to a past meeting.
+    public func navigateToRecording() {
+        guard recording.state.isRecording else { return }
+        route = .recording
+    }
+
     // MARK: - Data refresh
 
     /// Reloads the sidebar summaries from the store.

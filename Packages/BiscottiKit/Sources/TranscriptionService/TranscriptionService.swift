@@ -16,7 +16,10 @@ public final class TranscriptionService {
 
     /// Per-meeting job status. The UI observes this to show download/transcribe
     /// progress, completion, or failure on the Meeting Detail screen.
-    public private(set) var jobs: [UUID: JobStatus] = [:]
+    ///
+    /// `package` setter so view-model tests can inject specific statuses
+    /// without running the full transcription pipeline.
+    public package(set) var jobs: [UUID: JobStatus] = [:]
 
     // MARK: - Dependencies
 

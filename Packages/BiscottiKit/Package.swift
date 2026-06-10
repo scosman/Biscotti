@@ -12,6 +12,10 @@ let package = Package(
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
         .library(name: "AppCore", targets: ["AppCore"]),
+        .library(name: "MeetingListUI", targets: ["MeetingListUI"]),
+        .library(name: "RecordingUI", targets: ["RecordingUI"]),
+        .library(name: "MeetingDetailUI", targets: ["MeetingDetailUI"]),
+        .library(name: "AppShellUI", targets: ["AppShellUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -66,6 +70,7 @@ let package = Package(
             name: "RecordingTests",
             dependencies: [
                 "Recording",
+                "BiscottiTestSupport",
                 "DataStore",
                 "Permissions",
                 .product(name: "AudioCapture", package: "AudioCapture")
@@ -84,6 +89,7 @@ let package = Package(
             name: "TranscriptionServiceTests",
             dependencies: [
                 "TranscriptionService",
+                "BiscottiTestSupport",
                 "DataStore",
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -101,10 +107,129 @@ let package = Package(
             ],
             swiftSettings: warningsAsErrors
         ),
+        // BiscottiTestSupport is a plain .target (not .testTarget) because SPM does not allow
+        // a .testTarget to be listed as a dependency of another .testTarget. Multiple test
+        // targets share these fakes, so it must be a regular target. It is intentionally
+        // excluded from `products` so it never ships.
+        .target(
+            name: "BiscottiTestSupport",
+            dependencies: [
+                "AppCore",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            path: "Tests/BiscottiTestSupport",
+            swiftSettings: warningsAsErrors
+        ),
         .testTarget(
             name: "AppCoreTests",
             dependencies: [
                 "AppCore",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingListUI",
+            dependencies: [
+                "AppCore",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingListUITests",
+            dependencies: [
+                "MeetingListUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "RecordingUI",
+            dependencies: [
+                "AppCore",
+                "DesignSystem",
+                "Permissions",
+                "Recording"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "RecordingUITests",
+            dependencies: [
+                "RecordingUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingDetailUI",
+            dependencies: [
+                "AppCore",
+                "DataStore",
+                "DesignSystem",
+                "TranscriptionService"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingDetailUITests",
+            dependencies: [
+                "MeetingDetailUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "AppShellUI",
+            dependencies: [
+                "AppCore",
+                "DesignSystem",
+                "MeetingListUI",
+                "RecordingUI",
+                "MeetingDetailUI"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AppShellUITests",
+            dependencies: [
+                "AppShellUI",
+                "AppCore",
+                "BiscottiTestSupport",
                 "DataStore",
                 "Permissions",
                 "Recording",

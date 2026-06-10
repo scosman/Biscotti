@@ -34,7 +34,7 @@ in-memory stores. All hardware/human validation is the single final phase. Each 
   `stopRecording` (stop → reload → route → auto-enqueue transcribe), `select`. `AppCore.live` factory.
   Headless flow tests (start→stop→transcribe, orphan recovery, routing) with all fakes. *(arch §8)*
 
-- [ ] **Phase 5 — UI modules.** `MeetingListUI`, `RecordingUI`, `MeetingDetailUI`, `AppShellUI`
+- [x] **Phase 5 — UI modules.** `MeetingListUI`, `RecordingUI`, `MeetingDetailUI`, `AppShellUI`
   (view models + SwiftUI views, previews). View-model unit tests: list rendering/selection,
   recording-state rendering, the three Meeting Detail states (downloading/transcribing · transcript ·
   failed+Retry), shell routing. *(arch §9, ui_design.md)*

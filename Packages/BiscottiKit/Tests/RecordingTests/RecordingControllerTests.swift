@@ -1,46 +1,16 @@
 import AudioCapture
+import BiscottiTestSupport
 import DataStore
 import Foundation
 import Permissions
 import Recording
 import Testing
 
-// MARK: - FakeMicAuthorizer (local to these tests)
-
-struct FakeMicAuthorizer: MicAuthorizing, @unchecked Sendable {
-    final class Backing: @unchecked Sendable {
-        var status: PermissionState
-        var requestResult: Bool
-        var requestCalled = false
-
-        init(status: PermissionState, requestResult: Bool) {
-            self.status = status
-            self.requestResult = requestResult
-        }
-    }
-
-    let backing: Backing
-
-    @MainActor
-    init(status: PermissionState = .notDetermined, requestResult: Bool = true) {
-        backing = Backing(status: status, requestResult: requestResult)
-    }
-
-    func status() -> PermissionState {
-        backing.status
-    }
-
-    func request() async -> Bool {
-        backing.requestCalled = true
-        return backing.requestResult
-    }
-}
-
 // MARK: - Test fixture
 
-/// Bundles all test dependencies into a single value to avoid large-tuple lint violations.
+/// Bundles recording-specific test dependencies.
 @MainActor
-struct TestFixture {
+struct RecordingTestFixture {
     let controller: RecordingController
     let store: DataStore
     let fakeRecorder: FakeRecorder
@@ -60,7 +30,7 @@ private func makeFixture(
     probableDenied: Bool = false,
     stateValues: [CaptureState] = [],
     denialCheckDelay: Duration = .seconds(2)
-) throws -> TestFixture {
+) throws -> RecordingTestFixture {
     let store = try DataStore(storage: .inMemory)
     let micAuth = FakeMicAuthorizer(status: micStatus, requestResult: micRequestResult)
     let permissions = Permissions(mic: micAuth)
@@ -83,7 +53,7 @@ private func makeFixture(
         denialCheckDelay: denialCheckDelay
     )
 
-    return TestFixture(
+    return RecordingTestFixture(
         controller: controller,
         store: store,
         fakeRecorder: fakeRecorder,

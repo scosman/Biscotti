@@ -28,26 +28,6 @@ struct TranscribeCLI: AsyncParsableCommand {
     @Flag(name: .long, help: "Output TranscriptResult as JSON to stdout.")
     var json: Bool = false
 
-    @Option(
-        name: .long,
-        help: "Override cluster-distance threshold for diarization (default: SDK default)."
-    )
-    var diarizationThreshold: Float?
-
-    @Option(
-        name: .long,
-        help: "Diagnostic: comma-separated thresholds to sweep. Prints speaker counts per threshold to stderr."
-    )
-    var diarizationSweep: String?
-
-    func validate() throws {
-        if diarizationThreshold != nil, diarizationSweep != nil {
-            throw ValidationError(
-                "--diarization-threshold and --diarization-sweep are mutually exclusive"
-            )
-        }
-    }
-
     func run() async throws {
         let writer = StandardOutputWriter()
 
@@ -67,22 +47,13 @@ struct TranscribeCLI: AsyncParsableCommand {
             writer.writeStderr(status)
         }
 
+        writer.writeStderr("Processing audio...")
         let micURL = URL(fileURLWithPath: (mic as NSString).expandingTildeInPath)
         let systemURL = URL(fileURLWithPath: (system as NSString).expandingTildeInPath)
-
-        if let sweepCSV = diarizationSweep {
-            try await runSweep(
-                sweepCSV: sweepCSV, transcriber: transcriber,
-                mic: micURL, system: systemURL, vocabTerms: vocabTerms
-            )
-            return
-        }
-
-        writer.writeStderr("Processing audio...")
         let result = try await transcriber.processAudio(
-            mic: micURL, system: systemURL,
-            customVocabulary: vocabTerms,
-            diarizationClusterThreshold: diarizationThreshold
+            mic: micURL,
+            system: systemURL,
+            customVocabulary: vocabTerms
         )
 
         writer.writeStderr("Done. Elapsed: \(String(format: "%.1f", result.processingDuration))s")
@@ -93,34 +64,6 @@ struct TranscribeCLI: AsyncParsableCommand {
         } else {
             let text = formatResultText(result)
             writer.writeStdout(text)
-        }
-    }
-
-    /// Sweep mode: run the pipeline for each threshold and print speaker counts to stderr.
-    private func runSweep(
-        sweepCSV: String, transcriber: Transcriber,
-        mic: URL, system: URL, vocabTerms: [String]
-    ) async throws {
-        let writer = StandardOutputWriter()
-        let thresholds = parseSweepThresholds(sweepCSV)
-        guard !thresholds.isEmpty else {
-            writer.writeStderr("Error: --diarization-sweep requires comma-separated float values")
-            throw ExitCode.failure
-        }
-        writer.writeStderr("Sweeping \(thresholds.count) threshold(s)...")
-        for threshold in thresholds {
-            let result = try await transcriber.processAudio(
-                mic: mic, system: system,
-                customVocabulary: vocabTerms,
-                diarizationClusterThreshold: threshold
-            )
-            let distinctSpeakers = Set(result.segments.compactMap(\.speakerID)).count
-            writer.writeStderr(
-                String(
-                    format: "%.2f: speakers=%d distinct=%d",
-                    threshold, result.speakerCount, distinctSpeakers
-                )
-            )
         }
     }
 
@@ -159,11 +102,4 @@ struct TranscribeCLI: AsyncParsableCommand {
 func parseVocab(_ raw: String?) -> [String] {
     guard let raw, !raw.isEmpty else { return [] }
     return raw.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-}
-
-/// Parse the `--diarization-sweep` CSV value into an array of Float thresholds.
-/// Non-numeric entries are silently dropped.
-func parseSweepThresholds(_ csv: String) -> [Float] {
-    csv.split(separator: ",")
-        .compactMap { Float(String($0).trimmingCharacters(in: .whitespaces)) }
 }

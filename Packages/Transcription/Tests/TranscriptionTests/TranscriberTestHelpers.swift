@@ -25,8 +25,7 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     func processAudio(
         micPath _: String,
         systemPath _: String,
-        customVocabulary _: [String],
-        diarizationClusterThreshold _: Float? = nil
+        customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         processAudioCallCount += 1
         if let error = processAudioError { throw error }

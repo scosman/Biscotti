@@ -119,15 +119,11 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms for biasing.
-    ///   - diarizationClusterThreshold: Optional cluster-distance threshold
-    ///     override for diarization. `nil` (default) uses the SDK default.
-    ///     Only used by tests and the CLI diagnostic.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = [],
-        diarizationClusterThreshold: Float? = nil
+        customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         try checkInterrupted()
         emitStatus(.running)
@@ -135,8 +131,7 @@ public actor Transcriber {
             let result = try await engine.processAudio(
                 micPath: mic.path,
                 systemPath: system.path,
-                customVocabulary: customVocabulary,
-                diarizationClusterThreshold: diarizationClusterThreshold
+                customVocabulary: customVocabulary
             )
             emitStatus(.ready)
             return result
@@ -153,20 +148,13 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms.
-    ///   - diarizationClusterThreshold: Optional cluster-distance threshold
-    ///     override for diarization. `nil` (default) uses the SDK default.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = [],
-        diarizationClusterThreshold: Float? = nil
+        customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
-        try await processAudio(
-            mic: mic, system: system,
-            customVocabulary: customVocabulary,
-            diarizationClusterThreshold: diarizationClusterThreshold
-        )
+        try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)
     }
 
     /// Explicitly unload all models from memory.

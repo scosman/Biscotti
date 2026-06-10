@@ -9,7 +9,7 @@ status: complete
 Three coupled deliverables:
 
 1. **AI test set** — a new category of automated tests that are real (CLI-runnable, not manual) but heavy (download GB of models, slow), isolated so they do **not** run on every `make test`, with their own `make test-ai` target. No CI wiring.
-2. **Diarization made tunable + a correctness test** — the pipeline reports **1 speaker** for a known **3-speaker** reference clip when run with SDK defaults. Rather than change production, we expose an **optional, test-only diarization-threshold knob**; the AI test passes a tuned threshold and asserts the pipeline then separates the 3 speakers and transcribes each accurately. **Production stays on SDK defaults.**
+2. **Diarization correctness test** — the re-recorded reference clip diarizes to **3 distinct speakers under production defaults** (SDK defaults, no override). The AI test asserts speaker separation + transcript accuracy with **no** diarization override. A test-only tuning knob is **deferred** (the original short clip collapsed to 1 speaker, but the re-recorded clip with longer, more distinct turns no longer needs one). **Production stays on SDK defaults, unchanged.**
 3. **Manual Test App updates** — the transcription tab's quality checks are **cut** (the `make test-ai` AI test covers them better and they'd be duplicative); it keeps the model-download steps + a "did `make test-ai` pass?" tracker. The audio-capture tab gains the expanded scenario cases.
 
 Two reference clips back the **AI tests** (test target only): the 3-speaker clip (`mic.aac`/`system.aac` — diarization + transcript accuracy) and `custom_vocab_test.aac` (deliberately-hard terms — custom-vocabulary word match).
@@ -20,18 +20,33 @@ Two reference clips back the **AI tests** (test target only): the 3-speaker clip
 
 The audio at `ManualTestApp/Resources/mic.aac` + `system.aac` is **3 distinct human speakers**. We ran the pipeline and confirmed the transcript. This is the canonical ground truth used by both the AI test and the manual-test transcription tab.
 
-### 1.1 Ground-truth transcript — three speaker chunks
+### 1.1 Ground-truth transcript — nine segments, five chunks, three speakers
 
-The transcript, grouped into **speaker chunks** (maximal runs of the same speaker, in time order):
+The raw time-ordered segments from the reference clip:
 
-| Chunk | Speaker | Approx. window | Script (text) |
+| Seg | Time window | Speaker | Text |
 |---|---|---|---|
-| 1 | A | 0.8–2.5 s | "Hello, this is a test of the system." |
-| 2 | B | 4.5–8.0 s | "Hello, I am person number two. I am saying something back." |
-| 3 | C | 9.7–13.0 s | "Hi, I'm person number three and you two are banana heads." |
+| 1 | 0.0–2.0 s | 0 | "This is a thing we actually need to do that's important." |
+| 2 | 2.5–6.8 s | 0 | "I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice." |
+| 3 | 8.2–8.5 s | 1 | "Banana," |
+| 4 | 8.9–9.2 s | 1 | "banana." |
+| 5 | 10.5–11.2 s | 0 | "Say something for real James." |
+| 6 | 12.7–14.3 s | 1 | "Okay, fine my banana head." |
+| 7 | 17.0–18.5 s | 2 | "And what would you like me to say?" |
+| 8 | 19.5–20.4 s | 2 | "Anything at all." |
+| 9 | 21.3–22.7 s | 2 | "I would like more food please." |
 
-- Chunk 2 spans two original utterances by the **same** speaker (B), concatenated.
-- **Expected:** exactly **3 chunks**, **3 distinct speakers** (A, B, C all different), in this order.
+The speaker sequence is `0,0,1,1,0,1,2,2,2`. Merging adjacent same-speaker segments (the `TranscriptChunker` adjacency-merge logic) yields **5 chunks** across **3 distinct speakers**, with the interleaved equivalence pattern **[A, B, A, B, C]**:
+
+| Chunk | Speaker label | Script (merged text) |
+|---|---|---|
+| 1 | A | "This is a thing we actually need to do that's important. I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice." |
+| 2 | B | "Banana, banana." |
+| 3 | A | "Say something for real James." |
+| 4 | B | "Okay, fine my banana head." |
+| 5 | C | "And what would you like me to say? Anything at all. I would like more food please." |
+
+- **Expected:** exactly **5 chunks**, **3 distinct speakers**, with the canonical first-occurrence speaker pattern `[0,1,0,1,2]` (i.e. the interleaving structure `[A,B,A,B,C]`).
 
 ### 1.2 Where it lives
 
@@ -48,11 +63,11 @@ The shared utility provides:
 
 The chunk-based correctness check (used by both the AI test and the manual tab):
 
-1. **Chunk count == 3.**
-2. **All 3 chunk speaker IDs are distinct** (so the structure is A/B/C, not e.g. A/B/A).
-3. **Per-chunk Levenshtein** — chunk *i*'s normalized text vs. ground-truth chunk *i*'s script, each `<= 0.05`, matched in order. On failure, report which chunk and the actual ratio + both strings.
+1. **Chunk count == 5** (after adjacency merge).
+2. **Speaker-equivalence pattern matches `[A,B,A,B,C]`** — compute a canonical first-occurrence index sequence from the actual chunks' speaker IDs (e.g. IDs `[7,3,7,3,9]` → `[0,1,0,1,2]`) and from the reference labels, and require them equal. This single check enforces chunk count, 3 distinct speakers, and the correct interleaving structure.
+3. **Per-chunk Levenshtein** — chunk *i*'s normalized text vs. ground-truth chunk *i*'s script, each `<= 0.05`, matched in order. On failure, report which chunk, the actual ratio, and both strings.
 
-If (1) fails, (3) cannot align and the check fails at (1) with the observed chunk count/speakers reported.
+If (1) fails, (3) cannot align and the check fails at (1) with the observed chunk count/speakers reported. On pattern mismatch, report the observed vs. expected canonical pattern and the observed distinct-speaker count.
 
 ### 1.4 Second reference clip — custom vocabulary
 
@@ -99,14 +114,14 @@ Both run the **in-process** pipeline (`Transcriber(backend: .inProcess)`), carry
 
 #### 2.4.1 Diarization + transcript accuracy (3-speaker clip)
 
-`processAudio(mic:system:)` on the 3-speaker clip, **passing the tuned diarization threshold** (the test-only knob, §3), then assert against the shared ground truth (§1.3):
+`processAudio(mic:system:)` on the 3-speaker clip with **production defaults** (no diarization override), then assert against the shared ground truth (§1.3):
 
-1. **Chunk count == 3** (hard).
-2. **3 distinct chunk speakers** (hard).
-3. **Per-chunk Levenshtein ≤ 0.05** for each of the 3 chunks (hard).
+1. **Chunk count == 5** (hard; after adjacency merge).
+2. **Speaker-equivalence pattern == `[0,1,0,1,2]`** (hard; enforces 3 distinct speakers + interleaving).
+3. **Per-chunk Levenshtein ≤ 0.05** for each of the 5 chunks (hard).
 4. **No hallucination** — no segment's `endTime` exceeds the actual audio duration (retained; validates the `TranscriptSanitizer` clamp).
 
-> The threshold the test passes is determined empirically (§3.4) and is a **test constant** — production does not pass it.
+> The re-recorded clip diarizes to 3 distinct speakers under production defaults, so the AI test passes **no** diarization override. Exposing a diarization tuning knob is deferred (§3); the test runs the production default path.
 
 #### 2.4.2 Custom-vocabulary word match (`custom_vocab_test.aac`)
 
@@ -128,43 +143,31 @@ Each test = one model load → one `processAudio` call → assertions read its `
 
 The coding agent **cannot run `make test-ai` itself** — it compiles Swift and downloads models, neither of which works in the agent's sandbox, and there is no `hooks-mcp` tool for it. Therefore:
 
-- Each iteration that depends on running the heavy pipeline requires a **human run** of `make test-ai` (or the diagnostic CLI) — e.g. the user runs it via the `!` prefix — and reports results back.
-- To minimize round-trips, the implementation provides a **diagnostic affordance** (§3.4) so a single human run reveals the threshold that yields the correct chunking, rather than many guess-and-check cycles.
+- Each iteration that depends on running the heavy pipeline requires a **human run** of `make test-ai` — e.g. the user runs it via the `!` prefix — and reports results back. No CLI diagnostic is needed this round (the re-recorded clip diarizes correctly under defaults).
 
 ---
 
-## 3. Part 2 — Diarization: make it tunable (production unchanged)
+## 3. Diarization: production unchanged (tuning knob deferred)
 
 ### 3.1 The behavior
 
-`InProcessTranscriptionEngine.runDiarization` calls `speakerKit.diarize(audioArray:)` with **no options** (SDK defaults `numberOfSpeakers = nil`, `clusterDistanceThreshold = 0.6`). On short audio with brief utterances, the SDK's internal `minActiveRatio` (0.2) filter discards most embeddings and hierarchical clustering merges everything below the 0.6 cut → **1 cluster**. STT itself is accurate; the merged mic+system mono is fine.
+`InProcessTranscriptionEngine.runDiarization` calls `speakerKit.diarize(audioArray:)` with **no options** (SDK defaults `numberOfSpeakers = nil`, `clusterDistanceThreshold = 0.6`). The original short clip with very brief utterances collapsed to 1 speaker under these defaults (the SDK's `minActiveRatio` filter discarded most embeddings). The **re-recorded clip** with longer, more distinct turns diarizes correctly to 3 speakers under production defaults — the collapse is no longer observed.
 
-### 3.2 Decision: do not change production
+### 3.2 Decision: production unchanged, no knob this round
 
-Production keeps SDK defaults (single global threshold of 0.6, auto-detect). Lowering the threshold globally risks **over-splitting** one speaker into many on real meetings, and we have only one reference clip — not enough to justify a production change. Instead we make the threshold **tunable per call** and use that only in tests.
+Production keeps SDK defaults. The re-recorded clip diarizes to 3 distinct speakers without any override, so a tuning knob is unnecessary this round. No `clusterDistanceThreshold` or `numberOfSpeakers` parameter is added.
 
-### 3.3 The optional, test-only knob
+### 3.3 DEFERRED — diarization tuning parameter
 
-Add an **optional diarization-threshold parameter** (e.g. `clusterDistanceThreshold: Float? = nil`, or a tiny `DiarizationTuning` value) threaded through:
+The early plan exposed an optional `clusterDistanceThreshold: Float?` parameter threaded through the public API, engine protocol, XPC request, and CLI. This was implemented briefly (commit `d8cdd21`) and **reverted** (`9febe90`) once the re-recorded clip proved it unnecessary.
 
-- `Transcriber.processAudio(...)` (public API) — default `nil`.
-- `TranscriptionEngine.processAudio(...)` and `InProcessTranscriptionEngine` → mapped to `PyannoteDiarizationOptions(clusterDistanceThreshold:)` when non-nil; when nil, call `diarize` exactly as today (defaults).
-- The **XPC path** (`XPCProcessRequest` + the `BiscottiTranscriber` service) — for protocol completeness; no consumer passes a non-nil value today (the Manual Test App no longer transcribes).
-- The CLI (`--diarization-threshold <Float>`), for the diagnostic run.
+If diarization tuning is ever needed (e.g. for very short clips with brief utterances that under-cluster), `numberOfSpeakers` would be the **more direct lever** than `clusterDistanceThreshold`: SpeakerKit's VBx refinement step can override the AHC seed clustering, making the distance threshold unreliable for controlling speaker count on short clips. Exposing either parameter is deferred to a future project.
 
-**Default `nil` everywhere ⇒ production behavior is byte-for-byte unchanged.** Only the AI test + CLI diagnostic pass a value.
+### 3.4 Acceptance
 
-`numberOfSpeakers` is **not** exposed (deferred). The knob is the cluster-distance threshold only.
-
-### 3.4 Diagnostic affordance (to cut human round-trips)
-
-The CLI gains `--diarization-threshold <Float>` (and may print the resulting chunking/speaker count). Optionally a tiny sweep mode prints `chunk count` for a set of candidate thresholds on the reference clip. The user runs it once; we read off the threshold that yields exactly 3 distinct chunks matching the ground truth, and bake that value in as the **test constant**. This is a developer/diagnostic affordance, not a production API.
-
-### 3.5 Acceptance
-
-- With `--diarization-threshold` / the test constant applied, the AI test §2.4 assertions 1–3 pass on the reference clip.
-- With **no** threshold passed (production path), behavior is unchanged from today (no regression to existing unit tests; `TranscriptSanitizer` behavior preserved).
-- Documented: production still under-clusters very short clips by default; the knob + test exist to validate diarization correctness and to enable future tuning. This is an accepted, documented limitation, not a silent gap.
+- With **production defaults** (no diarization override), the AI test §2.4.1 assertions 1–4 pass on the re-recorded reference clip: 5 chunks, 3 distinct speakers, correct interleaving pattern, per-chunk LD within tolerance.
+- No diarization tuning parameter exists in the public API, engine protocol, CLI, or XPC request.
+- Documented: very short clips with brief utterances may still under-cluster under SDK defaults; a future project can expose `numberOfSpeakers` if needed. The re-recorded reference clip (with longer, more distinct turns) does not exhibit this issue.
 
 ---
 
@@ -223,7 +226,7 @@ New step IDs (`ac_meet_close_midcapture`, `ac_meet_open_midcapture`, `ac_mega_ex
 - LLM/intelligence AI tests (Project 10) — the AI-test *category* is built to host them later, but none are added now.
 - AudioCapture automated/AI tests — the AI test set targets Transcription only this round.
 - **In-app transcription quality + XPC crash-isolation manual tests** — removed (the AI test covers quality; crash isolation is dropped, not replaced).
-- **Changing production diarization defaults** — explicitly out; the knob is test-only.
+- **A test-only diarization tuning knob** — deferred (the re-recorded clip diarizes correctly under production defaults; no knob needed).
 - Exposing `numberOfSpeakers` / centroid embeddings / cross-file speaker ID (Projects 11) — deferred.
 - A larger reference-audio corpus beyond the two clips — recommended later.
 - **Any CI wiring for the AI tests** — developer-run via `make test-ai` only.
@@ -235,11 +238,11 @@ New step IDs (`ac_meet_close_midcapture`, `ac_meet_open_midcapture`, `ac_mega_ex
 
 Resolved (this round):
 
-1. Diarization threshold is an **optional, test-only** parameter; **production stays on SDK defaults**. `numberOfSpeakers` deferred.
+1. **Production stays on SDK defaults; no test-only diarization tuning knob this round (deferred).** `numberOfSpeakers` / `clusterDistanceThreshold` exposure deferred to a future project.
 2. **`make test-ai` only — no CI.**
-3. Levenshtein tolerance **0.05**, applied **per speaker chunk**. Diarization correctness = **chunk count == 3 + 3 distinct speakers + per-chunk LD** (no separate partition check).
+3. Levenshtein tolerance **0.05**, applied **per speaker chunk**. Diarization correctness = **chunk count == 5 + speaker-equivalence pattern [A,B,A,B,C] (enforces 3 distinct speakers + interleaving) + per-chunk LD ≤ 0.05**.
 4. Custom-vocab uses `custom_vocab_test.aac` (provided) with an **automated word-match** AI test (§2.4.2) — per the word-split / exact-match recipe; not a manual step.
 5. **Reset all manual results to `not-run`.**
 6. The manual app's **transcription quality + XPC crash steps are cut**; the transcription tab = model-download steps + a `make test-ai` tracker. Clips + evaluators live only in the test target (no shared module, no dupe clips, no XPC threshold passed).
 
-**Required input — satisfied.** All reference clips are provided (`mic.aac`, `system.aac`, `custom_vocab_test.aac`) and will be relocated to `Tests/TranscriptionTests/Fixtures/` (their single home). The only value still to be determined empirically is the **tuned diarization threshold**, via the §3.4 diagnostic run during implementation (one human CLI run).
+**Required input — satisfied.** All reference clips are provided (`mic.aac`, `system.aac`, `custom_vocab_test.aac`) and will be relocated to `Tests/TranscriptionTests/Fixtures/` (their single home). No empirical threshold needs determining — the re-recorded clip diarizes to 3 speakers under production defaults. The `make test-ai` run validates diarization under defaults.

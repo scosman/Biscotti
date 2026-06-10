@@ -6,15 +6,15 @@ status: complete
 
 Single-file architecture (medium project). No `components/` docs.
 
-> **Scope note (revised):** the Manual Test App's *transcription* checks (quality **and** XPC crash-isolation) are **cut** — quality is covered better by the `make test-ai` AI test, and keeping the crash test would re-couple transcription to a live capture (unwanted). Consequence: the comparison utilities + ground truth live **only in the test target** (no public API on `Transcription`, no shared module), the reference clips live **only in the test fixtures** (no dupe), and the threshold knob does **not** need the XPC path. The manual transcription tab keeps only the model-download steps + a "did `make test-ai` pass?" tracker.
+> **Scope note (revised):** the Manual Test App's *transcription* checks (quality **and** XPC crash-isolation) are **cut** — quality is covered better by the `make test-ai` AI test, and keeping the crash test would re-couple transcription to a live capture (unwanted). Consequence: the comparison utilities + ground truth live **only in the test target** (no public API on `Transcription`, no shared module), the reference clips live **only in the test fixtures** (no dupe). The diarization tuning knob is **deferred** — there are no public API or CLI changes to the `Transcription` library (production unchanged, diarization runs under SDK defaults). The manual transcription tab keeps only the model-download steps + a "did `make test-ai` pass?" tracker.
 
 ## 0. Change map
 
 | Area | Change |
 |---|---|
-| `Packages/Transcription` — library | Add optional `diarizationClusterThreshold: Float?`, plumbed public API → engine protocol → in-process engine (+ XPC request for protocol completeness). Default `nil` = production unchanged. **No other public API changes.** |
-| `Packages/Transcription` — CLI | Add `--diarization-threshold <Float>` and `--diarization-sweep <csv>` diagnostic. |
-| `Packages/Transcription/Tests` | **All new test code lives here.** Comparison utilities + ground truth + evaluators (`internal` to the test target), the 3 `.aac` clips in `Fixtures/`, the env-gated `.aiModel` AI tests, and fast unit tests for the utilities + CLI + request round-trip. |
+| `Packages/Transcription` — library | **No public API changes.** Diarization tuning knob deferred; production unchanged. |
+| `Packages/Transcription` — CLI | **No CLI changes.** `--diarization-threshold` / `--diarization-sweep` deferred. |
+| `Packages/Transcription/Tests` | **All new test code lives here.** Comparison utilities + ground truth + evaluators (`internal` to the test target), the 3 `.aac` clips in `Fixtures/`, the env-gated `.aiModel` AI tests, and fast unit tests for the utilities. |
 | `Packages/BiscottiKit` — `ManualTestKit` | `AudioCaptureScript.swift`: reword + add steps. `TranscriptionScript.swift`: **reduce** to download steps + a `make test-ai` tracker (cut quality **and** crash steps). |
 | `ManualTestApp` | `WiredScripts.swift`: drop all transcription wiring except model download/cache; remove clip resolution + result holders. Remove the 3 `.aac` from `Resources/`. |
 | `Makefile` | New `test-ai` target (env-gated, non-gating, no CI). |
@@ -22,63 +22,17 @@ Single-file architecture (medium project). No `components/` docs.
 | `ManualTestApp/Results/manual_test_results.json` | Regenerate with every current step ID = `not-run`. |
 | Audio assets | **Move** `mic.aac`, `system.aac`, `custom_vocab_test.aac` from `ManualTestApp/Resources/` → `Tests/TranscriptionTests/Fixtures/` (single home; no dupe). |
 
-Production targets (`App/`, `Biscotti`) are untouched and link no new code beyond the (defaulted) threshold parameter.
+Production targets (`App/`, `Biscotti`) are untouched — no new code, no API changes.
 
 ---
 
-## 1. Diarization threshold plumbing
+## 1. Diarization — production unchanged (tuning deferred)
 
-### 1.1 Public API (`Transcriber`)
+`runDiarization` is called with no options, exactly as today — SDK defaults (`numberOfSpeakers = nil`, `clusterDistanceThreshold = 0.6`). The re-recorded reference clip diarizes to 3 distinct speakers under these defaults.
 
-```swift
-public func processAudio(
-    mic: URL,
-    system: URL,
-    customVocabulary: [String] = [],
-    diarizationClusterThreshold: Float? = nil   // NEW; nil ⇒ SDK default
-) async throws -> TranscriptResult
-```
+The planned threshold plumbing (optional `diarizationClusterThreshold: Float?` through `Transcriber` → `TranscriptionEngine` → `InProcessTranscriptionEngine` → `XPCProcessRequest`) and CLI diagnostics (`--diarization-threshold`, `--diarization-sweep`) were implemented briefly and **reverted**. No public API, engine protocol, XPC request, or CLI changes exist.
 
-`reTranscribe(...)` unchanged. A defaulted trailing parameter is source-compatible.
-
-### 1.2 Engine seam (`TranscriptionEngine`)
-
-```swift
-func processAudio(
-    micPath: String, systemPath: String,
-    customVocabulary: [String],
-    diarizationClusterThreshold: Float?          // NEW
-) async throws -> TranscriptResult
-```
-
-All conformers update: `InProcessTranscriptionEngine`, the XPC adapter, the test stub. Compiler-enforced.
-
-### 1.3 In-process engine (the only consumer that uses the value)
-
-```swift
-func runDiarization(audioArray: [Float], clusterThreshold: Float?) async throws -> DiarizationResult {
-    let options = clusterThreshold.map { PyannoteDiarizationOptions(clusterDistanceThreshold: $0) }
-    return try await speaker.diarize(audioArray: audioArray, options: options)
-}
-```
-
-- `clusterThreshold == nil` ⇒ `options == nil` ⇒ `diarize(audioArray:)` called exactly as today (byte-for-byte production behavior). `numberOfSpeakers` not set (deferred).
-
-### 1.4 XPC path (completeness only)
-
-The XPC adapter must satisfy the protocol, so `XPCProcessRequest` gains `let diarizationClusterThreshold: Float?` (Codable; transparent over the JSON `@objc` boundary) and the service forwards it. **No current consumer exercises this** (the ManualTestApp no longer transcribes; the AI test + CLI use `.inProcess`). Kept for an honest, complete protocol implementation and covered by a round-trip unit test.
-
-### 1.5 CLI diagnostics (`transcribe-cli`)
-
-```
---diarization-threshold <Float>     Override cluster-distance threshold (default: SDK default).
---diarization-sweep <csv>           Diagnostic: per threshold, run the pipeline and print
-                                    "<threshold>: speakers=<count> distinct=<n>". Skips normal output.
-```
-
-- `--diarization-threshold` forwards to `processAudio(diarizationClusterThreshold:)`.
-- `--diarization-sweep "0.30,0.35,0.40,0.45,0.50"`: calls `processAudio` per threshold (models stay warm in-process) and prints, to **stderr**, the SDK `speakerCount` and the distinct-speaker count computed inline from `result.segments` (`Set(segments.compactMap{$0.speakerID}).count`) — **no dependency on the test-target chunker**. One human run reveals the value yielding 3 speakers. The chosen value is written into the test's `GroundTruth.tunedDiarizationClusterThreshold`.
-- Diagnostics → stderr (keeps stdout clean per research gotcha #15).
+**Deferred future work:** if diarization tuning is ever needed, `numberOfSpeakers` is the more direct lever than `clusterDistanceThreshold` — SpeakerKit's VBx refinement step can override the AHC seed clustering, making the distance threshold unreliable for controlling speaker count on short clips.
 
 ---
 
@@ -113,18 +67,19 @@ struct ReferenceChunk: Equatable { let speakerLabel: String; let script: String 
 
 enum GroundTruth {
     static let chunks: [ReferenceChunk] = [
-        .init(speakerLabel: "A", script: "Hello, this is a test of the system."),
-        .init(speakerLabel: "B", script: "Hello, I am person number two. I am saying something back."),
-        .init(speakerLabel: "C", script: "Hi, I'm person number three and you two are banana heads."),
-    ]
+        .init(speakerLabel: "A", script: "This is a thing we actually need to do that's important. I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice."),
+        .init(speakerLabel: "B", script: "Banana, banana."),
+        .init(speakerLabel: "A", script: "Say something for real James."),
+        .init(speakerLabel: "B", script: "Okay, fine my banana head."),
+        .init(speakerLabel: "C", script: "And what would you like me to say? Anything at all. I would like more food please."),
+    ]   // Pattern [A,B,A,B,C] — 5 chunks, 3 distinct speakers
     static let chunkLevenshteinTolerance = 0.05
     static let vocabTerms = ["NASA","Kubernetes","Postgres","Qwen","Mistral","Llama",
                              "Croissant","gnocci","Paella","Facade"]
-    static let tunedDiarizationClusterThreshold: Float = 0.40   // PLACEHOLDER — finalize from §1.5 sweep
 }
 
 struct ChunkEvaluation { let chunkCount, distinctSpeakers: Int; let perChunkRatios: [Double]
-                         let passed: Bool; let detail: String }   // passed = count==3 && distinct==3 && all ratio<=tol
+                         let passed: Bool; let detail: String }   // passed = count==5 && pattern==[0,1,0,1,2] && all ratio<=tol
 enum DiarizationGroundTruth { static func evaluate(_ r: TranscriptResult) -> ChunkEvaluation }
 
 struct VocabEvaluation { let matched, missed: [String]; let passed: Bool; let detail: String } // passed = missed.isEmpty
@@ -154,8 +109,7 @@ AI tests: `@Test(.tags(.aiModel), .enabled(if: AITestGate.isEnabled))` in `@Suit
 ```swift
 let mic = Bundle.module.url(forResource: "mic", withExtension: "aac", subdirectory: "Fixtures")!
 let sys = Bundle.module.url(forResource: "system", withExtension: "aac", subdirectory: "Fixtures")!
-let r = try await Transcriber(backend: .inProcess).processAudio(
-    mic: mic, system: sys, diarizationClusterThreshold: GroundTruth.tunedDiarizationClusterThreshold)
+let r = try await Transcriber(backend: .inProcess).processAudio(mic: mic, system: sys)
 let e = DiarizationGroundTruth.evaluate(r)
 #expect(e.passed, "\(e.detail)")
 #expect(r.segments.allSatisfy { $0.endTime <= (try audioDuration(mic)) + 0.001 })  // no hallucination
@@ -173,16 +127,14 @@ let r = try await Transcriber(backend: .inProcess).processAudio(
 ### 3.4 Failure / environment behavior
 
 - Offline / models missing ⇒ pipeline throws `TranscriptionError.downloadFailed` ⇒ test fails with it surfaced (no hang/silent pass).
-- chunk count ≠ 3 ⇒ `detail` reports observed count + per-chunk speaker IDs; ratios omitted.
+- chunk count ≠ 5 ⇒ `detail` reports observed count + per-chunk speaker IDs; ratios omitted.
 - `speakerID == nil` segments form their own chunk ⇒ count/distinctness fails loudly.
 
 ### 3.5 Fast (non-AI) unit tests — gating tier
 
 In the same target, no gate, no models:
 - `Levenshtein`, `TextNormalize`, `TranscriptChunker` (same-speaker merge, A/B/A → 3 chunks/2 distinct, nil speaker), `WordMatch` (all/none/partial, punctuation, case).
-- `DiarizationGroundTruth.evaluate` / `VocabGroundTruth.evaluate` on synthetic `TranscriptResult`s (pass + each failure mode).
-- CLI parse (`--diarization-threshold`, `--diarization-sweep` csv→[Float]).
-- `XPCProcessRequest` Codable round-trip with/without `diarizationClusterThreshold`.
+- `DiarizationGroundTruth.evaluate` / `VocabGroundTruth.evaluate` on synthetic `TranscriptResult`s (pass + each failure mode: wrong chunk count, wrong speaker pattern, high Levenshtein).
 
 The gated tests then only validate real model output.
 
@@ -259,7 +211,7 @@ Cut: `tx_transcribe`, `tx_speakers`, `tx_no_hallucination`, `tx_custom_vocab`, `
 
 ## 6. Error handling & logging
 
-- Threshold: `nil` is the only production value; non-nil only from tests/CLI. Out-of-range values pass straight to the SDK; no extra clamping.
+- Diarization runs under SDK defaults (no override).
 - AI tests surface real errors via `#expect`/throw with `detail`.
 - Manual download checks keep the existing `CheckOutcome`/error pattern.
 - CLI diagnostics → stderr.
@@ -268,10 +220,9 @@ Cut: `tx_transcribe`, `tx_speakers`, `tx_no_hallucination`, `tx_custom_vocab`, `
 
 ## 7. Risks & fallbacks
 
-1. **Tuned threshold may not yield a clean 3.** Mitigated by the sweep (pick `speakers=3 distinct=3`). If no single threshold works on this clip, surface for a decision (e.g. `numberOfSpeakers` hint) rather than hardcoding silently — the test asserts the end state.
+1. **Diarization under defaults may not reproduce exactly 3 speakers.** Mitigated by the re-recorded clip (longer, more distinct turns). If it regresses, revisit `numberOfSpeakers` (deferred) as the more direct lever.
 2. **Word-match too strict (10/10).** If a term stays stubborn even with vocab, relax `VocabGroundTruth` to a documented `N/10` naming the term — not silently.
-3. **Protocol param ripple.** `diarizationClusterThreshold` touches every `TranscriptionEngine` conformer + the XPC request; all in-package, compiler-enforced.
-4. **Coverage dropped:** the XPC crash-isolation manual test (`tx_crash_*`) is removed and **not** replaced by `make test-ai` (which is in-process). Accepted per scope decision (it would re-couple transcription to a live capture); easy to restore later if desired.
+3. **Coverage dropped:** the XPC crash-isolation manual test (`tx_crash_*`) is removed and **not** replaced by `make test-ai` (which is in-process). Accepted per scope decision (it would re-couple transcription to a live capture); easy to restore later if desired.
 
 ---
 
@@ -280,7 +231,6 @@ Cut: `tx_transcribe`, `tx_speakers`, `tx_no_hallucination`, `tx_custom_vocab`, `
 | Layer | Tests | Tier |
 |---|---|---|
 | Utilities + evaluators (test-target `internal`) | fast unit tests, synthetic data | gating (`make test`) |
-| CLI flags + `XPCProcessRequest` round-trip | unit tests | gating |
 | Real pipeline: 3-speaker chunking + accuracy | AI test, env-gated | `make test-ai` |
 | Real pipeline: custom-vocab word match | AI test, env-gated | `make test-ai` |
 | Manual hardware (capture scenarios, model download UX, AI-test tracker) | ManualTestApp scripts | human (Phase 4.5) |

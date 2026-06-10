@@ -11,19 +11,27 @@ struct ReferenceChunk: Equatable {
 
 /// Canonical ground truth for the AI test set reference clips.
 ///
-/// The three speaker chunks and vocabulary terms are derived from confirmed
-/// transcriptions of the reference audio (see functional spec section 1).
+/// The five speaker chunks (3 distinct speakers, interleaved) and vocabulary
+/// terms are derived from confirmed transcriptions of the reference audio
+/// (see functional spec section 1). Adjacent same-speaker segments are merged
+/// by `TranscriptChunker`, yielding the pattern [A, B, A, B, C].
 enum GroundTruth {
-    /// The 3-speaker reference transcript, chunked by speaker.
+    /// The 3-speaker reference transcript, chunked by speaker (adjacency-merged).
+    /// Pattern: [A, B, A, B, C] — 5 chunks, 3 distinct speakers.
     static let chunks: [ReferenceChunk] = [
-        .init(speakerLabel: "A", script: "Hello, this is a test of the system."),
         .init(
-            speakerLabel: "B",
-            script: "Hello, I am person number two. I am saying something back."
+            speakerLabel: "A",
+            script: "This is a thing we actually need to do that's important."
+                + " I'm going to talk for a second and then I'm going to hand it over to James"
+                + " who's going to say something regular and not in a weird voice."
         ),
+        .init(speakerLabel: "B", script: "Banana, banana."),
+        .init(speakerLabel: "A", script: "Say something for real James."),
+        .init(speakerLabel: "B", script: "Okay, fine my banana head."),
         .init(
             speakerLabel: "C",
-            script: "Hi, I'm person number three and you two are banana heads."
+            script: "And what would you like me to say? Anything at all."
+                + " I would like more food please."
         )
     ]
 
@@ -35,11 +43,6 @@ enum GroundTruth {
         "NASA", "Kubernetes", "Postgres", "Qwen", "Mistral",
         "Llama", "Croissant", "gnocci", "Paella", "Facade"
     ]
-
-    /// Diarization cluster-distance threshold that separates the 3 speakers
-    /// in the reference clip. **Placeholder** -- finalized via the diagnostic
-    /// sweep in Phase 2.
-    static let tunedDiarizationClusterThreshold: Float = 0.40
 }
 
 // MARK: - Diarization evaluator
@@ -55,20 +58,49 @@ struct ChunkEvaluation {
 
 /// Evaluates a `TranscriptResult` against the 3-speaker diarization ground truth.
 ///
-/// Checks: (1) chunk count == 3, (2) 3 distinct speaker IDs, (3) per-chunk
-/// normalized Levenshtein <= tolerance.
+/// Checks: (1) chunk count == 5 (adjacency-merged), (2) speaker-equivalence
+/// pattern matches [A,B,A,B,C] (enforces 3 distinct speakers + interleaving),
+/// (3) per-chunk normalized Levenshtein <= tolerance.
 enum DiarizationGroundTruth {
+    /// The expected canonical first-occurrence pattern from the reference labels.
+    /// Labels [A,B,A,B,C] → first-occurrence indices [0,1,0,1,2].
+    static let expectedPattern: [Int] = canonicalPattern(
+        GroundTruth.chunks.map(\.speakerLabel)
+    )
+
     static func evaluate(_ result: TranscriptResult) -> ChunkEvaluation {
         let chunks = TranscriptChunker.chunks(from: result)
         let chunkCount = chunks.count
         let speakerIDs = chunks.compactMap(\.speakerID)
         let distinctSpeakers = Set(speakerIDs).count
 
-        if let failure = checkStructure(chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers) {
+        if let failure = checkStructure(
+            chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers
+        ) {
             return failure
         }
 
-        return checkLevenshtein(chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers)
+        return checkLevenshtein(
+            chunks: chunks, chunkCount: chunkCount, distinctSpeakers: distinctSpeakers
+        )
+    }
+
+    // MARK: - Internal helpers (visible to tests)
+
+    /// Compute a canonical first-occurrence index sequence from a list of labels.
+    /// E.g. ["A","B","A","B","C"] → [0,1,0,1,2]; [7,3,7,3,9] → [0,1,0,1,2].
+    static func canonicalPattern<T: Hashable>(_ ids: [T]) -> [Int] {
+        var mapping: [T: Int] = [:]
+        var nextIndex = 0
+        return ids.map { id in
+            if let existing = mapping[id] {
+                return existing
+            }
+            let index = nextIndex
+            mapping[id] = index
+            nextIndex += 1
+            return index
+        }
     }
 
     // MARK: - Private helpers
@@ -76,7 +108,9 @@ enum DiarizationGroundTruth {
     private static func checkStructure(
         chunks: [TranscriptChunk], chunkCount: Int, distinctSpeakers: Int
     ) -> ChunkEvaluation? {
-        guard chunkCount == 3 else {
+        let expectedCount = GroundTruth.chunks.count
+
+        guard chunkCount == expectedCount else {
             let chunkSummary = chunks.enumerated().map { idx, chunk in
                 "chunk[\(idx)] speaker=\(chunk.speakerID.map(String.init) ?? "nil")"
             }.joined(separator: ", ")
@@ -85,18 +119,23 @@ enum DiarizationGroundTruth {
                 distinctSpeakers: distinctSpeakers,
                 perChunkRatios: [],
                 passed: false,
-                detail: "Expected 3 chunks, got \(chunkCount). [\(chunkSummary)]"
+                detail: "Expected \(expectedCount) chunks, got \(chunkCount). [\(chunkSummary)]"
             )
         }
 
-        guard distinctSpeakers == 3 else {
-            let ids = chunks.map { $0.speakerID.map(String.init) ?? "nil" }.joined(separator: ", ")
+        // Check speaker-equivalence pattern (enforces both distinctness and interleaving).
+        let speakerIDs = chunks.compactMap(\.speakerID)
+        let actualPattern = canonicalPattern(speakerIDs)
+
+        guard actualPattern == expectedPattern else {
             return ChunkEvaluation(
                 chunkCount: chunkCount,
                 distinctSpeakers: distinctSpeakers,
                 perChunkRatios: [],
                 passed: false,
-                detail: "Expected 3 distinct speakers, got \(distinctSpeakers). IDs: [\(ids)]"
+                detail: "Speaker pattern mismatch: expected \(expectedPattern), "
+                    + "got \(actualPattern). "
+                    + "Distinct speakers: expected 3, got \(distinctSpeakers)."
             )
         }
 
@@ -139,7 +178,8 @@ enum DiarizationGroundTruth {
             distinctSpeakers: distinctSpeakers,
             perChunkRatios: ratios,
             passed: true,
-            detail: "3 chunks, 3 distinct speakers, all ratios within tolerance"
+            detail: "\(chunkCount) chunks, \(distinctSpeakers) distinct speakers, "
+                + "pattern \(expectedPattern), all ratios within tolerance"
         )
     }
 }

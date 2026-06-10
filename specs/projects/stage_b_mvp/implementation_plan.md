@@ -29,7 +29,7 @@ in-memory stores. All hardware/human validation is the single final phase. Each 
   `addTranscript` + `setPreferredTranscript` → per-meeting `JobStatus`; typed error/retry mapping;
   single in-flight job. Fake engine (canned `TranscriptResult` + retriable throw) in tests. *(arch §6)*
 
-- [ ] **Phase 4 — `AppCore` coordinator.** Wire Recording + TranscriptionService + Permissions +
+- [x] **Phase 4 — `AppCore` coordinator.** Wire Recording + TranscriptionService + Permissions +
   `DataStore` + `route` + `summaries`; `onLaunch` (recover + reload), `startRecording`,
   `stopRecording` (stop → reload → route → auto-enqueue transcribe), `select`. `AppCore.live` factory.
   Headless flow tests (start→stop→transcribe, orphan recovery, routing) with all fakes. *(arch §8)*

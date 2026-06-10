@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
+        .library(name: "AppCore", targets: ["AppCore"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -84,6 +85,31 @@ let package = Package(
             dependencies: [
                 "TranscriptionService",
                 "DataStore",
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "AppCore",
+            dependencies: [
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AppCoreTests",
+            dependencies: [
+                "AppCore",
+                "DataStore",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors

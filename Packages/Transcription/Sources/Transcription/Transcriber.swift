@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// The client the app holds for transcription. Supports two backends:
 /// `.inProcess` (runs the engine in this process) and `.hosted` (talks
@@ -16,6 +17,11 @@ import Foundation
 /// (e.g. after transcription completes). The next call will transparently
 /// re-establish the connection and re-launch the worker.
 public actor Transcriber {
+    private static let log = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "Transcriber"
+    )
+
     /// Which backend to use for transcription.
     public enum Backend: Sendable {
         /// Connect to the named XPC service (app/test-app context).
@@ -102,6 +108,7 @@ public actor Transcriber {
     public func ensureModelsDownloaded(
         status: (@Sendable (String) -> Void)? = nil
     ) async throws {
+        Self.log.info("client: ensureModelsDownloaded called")
         try checkInterrupted()
         let activeEngine = ensureConnected()
         emitStatus(.downloading(progress: 0.0))
@@ -139,6 +146,7 @@ public actor Transcriber {
         system: URL,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
+        Self.log.info("client: processAudio called")
         try checkInterrupted()
         let activeEngine = ensureConnected()
         emitStatus(.running)
@@ -202,7 +210,9 @@ public actor Transcriber {
     /// heavyweight worker does not linger.
     public func shutdown() {
         guard case .hosted = backend else { return }
+        Self.log.info("client: shutting down — invalidating XPC connection")
         xpcConnection?.invalidate()
+        Self.log.info("client: invalidate() returned — connection torn down")
         xpcConnection = nil
         engine = nil
         // Clear the interrupted flag so a shutdown-then-reconnect cycle
@@ -276,13 +286,19 @@ public actor Transcriber {
             return fallback
         }
 
+        Self.log.info("client: creating XPC connection (previous was shut down or nil)")
+
         let connection = factory()
         xpcConnection = connection
 
         if let flag = interruptedFlag {
             connection.setInterruptionHandler {
+                Self.log.info("client: XPC connection interrupted (worker crash/jetsam)")
                 flag.value = true
             }
+        }
+        connection.setInvalidationHandler {
+            Self.log.info("client: XPC connection invalidation handler fired")
         }
         connection.activate()
 

@@ -443,6 +443,127 @@ struct TranscriptionConcurrencyTests {
     }
 }
 
+// MARK: - Shutdown re-entrancy regression tests
+
+@Suite("TranscriptionService -- shutdown re-entrancy guard")
+struct TranscriptionShutdownReentrancyTests {
+    @Test(
+        """
+        Re-entrant transcribe() during shutdown is blocked by inFlightMeetingID \
+        guard (regression: second XPC worker)
+        """
+    )
+    @MainActor
+    func reentrantTranscribeDuringShutdownBlocked() async throws {
+        // Create a fake engine whose shutdown() yields the MainActor
+        // (simulating the actor hop to Transcriber.shutdown()) and then
+        // tries to call transcribe() on the same service. With the fix
+        // (inFlightMeetingID cleared AFTER shutdown), the re-entrant call
+        // is rejected by the guard, so ensureModelsDownloaded is called
+        // exactly once (the original job) rather than twice.
+        let store = try DataStore(storage: .inMemory)
+        let reentrantEngine = ReentrantShutdownFakeTranscriber()
+        let service = TranscriptionService(store: store, engine: reentrantEngine)
+
+        // Wire the service reference into the engine so shutdown() can
+        // attempt a re-entrant transcribe().
+        reentrantEngine.backing.service = service
+
+        let meetingID = try await store.createMeeting(title: "Test Meeting")
+        let mic = AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 1024, isPresent: true)
+        let sys = AudioFileRef(role: .system, path: "/tmp/test/system.aac", byteSize: 2048, isPresent: true)
+        try await store.attachAudio([mic, sys], to: meetingID)
+
+        reentrantEngine.backing.meetingID = meetingID
+
+        await service.transcribe(meetingID: meetingID)
+
+        // ensureModelsDownloaded was called exactly once (the original job).
+        // If the re-entrant transcribe() leaked through, it would be 2 --
+        // meaning a second XPC connection would be spawned.
+        #expect(reentrantEngine.backing.ensureModelsCallCount == 1)
+
+        // shutdown was called exactly once (the original job's teardown).
+        #expect(reentrantEngine.backing.shutdownCallCount == 1)
+
+        // The re-entrant transcribe() was rejected by the in-flight guard,
+        // so the final job status is the "already in progress" failure
+        // (the guard's rejection overwrites the original .completed).
+        // The critical invariant is that no second engine call was made.
+        if case let .failed(message, retriable) = service.jobs[meetingID] {
+            #expect(message.contains("already in progress"))
+            #expect(retriable == true)
+        } else {
+            // .completed is also acceptable if the re-entrant call was
+            // rejected before it could overwrite the status.
+            #expect(service.jobs[meetingID] == .completed)
+        }
+    }
+
+    @Test("Engine is callable again after runJob fully completes (no permanent lockout)")
+    @MainActor
+    func engineCallableAfterRunJobCompletes() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // First transcription
+        await fix.service.transcribe(meetingID: meetingID)
+        #expect(fix.service.jobs[meetingID] == .completed)
+        #expect(fix.fakeEngine.backing.ensureModelsCallCount == 1)
+
+        // Reset for second run
+        fix.fakeEngine.backing.ensureModelsCalled = false
+        fix.fakeEngine.backing.processAudioCalled = false
+        fix.fakeEngine.backing.shutdownCalled = false
+
+        // Second transcription should succeed (guard is cleared)
+        await fix.service.reTranscribe(meetingID: meetingID)
+        #expect(fix.service.jobs[meetingID] == .completed)
+        #expect(fix.fakeEngine.backing.ensureModelsCallCount == 2)
+        #expect(fix.fakeEngine.backing.shutdownCallCount == 2)
+    }
+}
+
+// MARK: - ReentrantShutdownFakeTranscriber
+
+/// A fake engine that attempts to call `transcribe()` during `shutdown()`,
+/// simulating the MainActor re-entrancy window that caused the second-worker bug.
+private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendable {
+    final class Backing: @unchecked Sendable {
+        var ensureModelsCallCount = 0
+        var shutdownCallCount = 0
+        var service: TranscriptionService?
+        var meetingID: UUID?
+    }
+
+    let backing = Backing()
+
+    func ensureModelsDownloaded(
+        status _: (@Sendable (String) -> Void)?
+    ) async throws {
+        backing.ensureModelsCallCount += 1
+    }
+
+    func processAudio(
+        mic _: URL,
+        system _: URL,
+        customVocabulary _: [String]
+    ) async throws -> TranscriptResult {
+        FakeTranscriber.defaultResult
+    }
+
+    func shutdown() async {
+        backing.shutdownCallCount += 1
+        // Simulate the MainActor yield during actor hop by yielding, then
+        // attempting a re-entrant transcribe().
+        await Task.yield()
+        if let service = backing.service, let meetingID = backing.meetingID {
+            // This should be rejected by the inFlightMeetingID guard
+            await service.transcribe(meetingID: meetingID)
+        }
+    }
+}
+
 // MARK: - BlockingFakeTranscriber
 
 /// A fake transcriber that blocks on `processAudio` until unblocked.

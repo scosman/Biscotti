@@ -19,7 +19,7 @@ These decisions are settled and must not be re-derived. This section exists so t
 | Decision | Research finding | Spec/code obligation |
 |---|---|---|
 | **Transcription method (blended id)** | V1 offers **no transcription options** — one fixed method | A single opaque, extensible **`transcriptionMethodId`** (`"v1"`) bakes in every output-affecting parameter (STT model + quantization, diarization model, diarization strategy, word-timestamps). The engine owns the id→settings mapping; **no model/strategy/config input param**. The result **returns** the id; the data model stores it. Adding `"v2"` later is additive. |
-| **STT model (inside `v1`)** | `openai_whisper-large-v3_turbo` (full-precision, ~3.1 GB, 2.41% WER); quantized `_1307MB` (~1.3 GB, 2.6% WER) on ≤8 GB Macs | Part of method `v1`; RAM-aware quantization is an **internal** detail of running `v1` (not a caller option) |
+| **STT model (inside `v1`)** | `openai_whisper-large-v3-v20240930_626MB` (quantized Sept 2024 large-v3, ~626 MB). Single model regardless of RAM. | Part of method `v1`; not a caller option |
 | **Diarization model + strategy (inside `v1`)** | Pyannote v4 community-1 via SpeakerKit (~33 MB, CC-BY-4.0); `.subsegment` merge strategy | Part of method `v1`; not separately selectable in V1 |
 | **XPC crash isolation** | XPC service for crash + memory isolation; in-process actor fallback | `Transcriber` has `.hosted` / `.inProcess` backends |
 | **Custom vocabulary** | `promptTokens` workaround (~224-token budget); Pro swap via `[String]` API | `VocabularyFormatter` formats + truncates; caller passes `[String]` (the one per-meeting input, separate from the method) |
@@ -63,7 +63,7 @@ public struct TranscriptionMethod: Sendable, Equatable {
     public let id: String                       // "v1"
     public static let v1 = TranscriptionMethod(id: "v1")
     public static let current = v1              // the default the engine uses
-    // The id→concrete-settings mapping (Whisper large-v3-turbo + RAM-aware quantization,
+    // The id→concrete-settings mapping (Whisper large-v3-v20240930_626MB,
     // Pyannote v4 community-1, .subsegment, word-timestamps on) is an INTERNAL detail.
 }
 ```

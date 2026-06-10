@@ -104,6 +104,7 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **In scope:** `OnboardingUI` (full wizard: permissions w/ denial-fix guidance, calendar selection, model download w/ progress + disk check, optional demo); `SettingsUI` (custom-vocab editing, launch-on-startup, consolidated calendar selection); `Vocabulary` module (app-wide list + per-meeting merge); `TranscriptionService` additions (consume the merged vocab).
 - **Depends on:** Projects 4, 5, 1 (model status/download).
 - **Risk:** **medium.**
+- **Blocker (custom vocab only):** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations. This affects both turbo and non-turbo models. Product-side custom-vocab work should not start until the SDK issue is resolved. Tracked upstream: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428). The AI test for custom vocab is disabled pending this fix.
 
 > End of Project 8 = **feature-complete V1**: onboarding → detect/record → diarized transcript (with custom vocab) → home/library/search, all on-device.
 

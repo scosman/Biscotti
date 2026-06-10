@@ -74,6 +74,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
 - **Bundle ID is locked:** `net.scosman.biscotti`. Do not change it (TCC grants persist against it). Signing/notarization are deferred to Project 9.
+- **Custom vocabulary is blocked on an upstream SDK bug.** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations (both turbo and non-turbo models). The AI test for custom vocab is disabled. Do not start product-side custom-vocab work (Project 8's `Vocabulary` module) until the SDK issue is resolved. Tracked: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
 
 ---
 

@@ -16,7 +16,7 @@ struct ArgMaxCLI: AsyncParsableCommand {
             transcribes the audio file, runs speaker diarization, and outputs
             the merged transcript with speaker labels.
 
-            Models are downloaded automatically on first run (~3 GB for STT,
+            Models are downloaded automatically on first run (~626 MB for STT,
             ~33 MB for diarization). First-run CoreML compilation may take
             15-90 seconds.
             """
@@ -25,8 +25,8 @@ struct ArgMaxCLI: AsyncParsableCommand {
     @Argument(help: "Path to an audio file (WAV, CAF, M4A, MP3, etc.)")
     var audioFile: String
 
-    @Option(name: .long, help: "WhisperKit model variant (default: large-v3_turbo)")
-    var model: String = "large-v3_turbo"
+    @Option(name: .long, help: "WhisperKit model variant (default: openai_whisper-large-v3-v20240930_626MB)")
+    var model: String = "openai_whisper-large-v3-v20240930_626MB"
 
     @Option(name: .long, help: "Comma-separated custom vocabulary terms")
     var vocab: String?

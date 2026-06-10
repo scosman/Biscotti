@@ -24,7 +24,7 @@ in-memory stores. All hardware/human validation is the single final phase. Each 
   meeting id) / `recoverOrphans` (marker scan reconciliation) / system-audio denial inference. Fake
   recorder + in-memory store + temp storage root in tests. *(arch §5, §7)*
 
-- [ ] **Phase 3 — `TranscriptionService` module.** `TranscriptionService` over a `Transcribing` seam +
+- [x] **Phase 3 — `TranscriptionService` module.** `TranscriptionService` over a `Transcribing` seam +
   `DataStore`: `transcribe`/`reTranscribe` → ensure models (message status) → `processAudio` →
   `addTranscript` + `setPreferredTranscript` → per-meeting `JobStatus`; typed error/retry mapping;
   single in-flight job. Fake engine (canned `TranscriptResult` + retriable throw) in tests. *(arch §6)*

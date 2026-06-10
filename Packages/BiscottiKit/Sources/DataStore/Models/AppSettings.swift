@@ -15,7 +15,7 @@ import SwiftData
         set { customVocabularyData = (try? JSONEncoder().encode(newValue)) ?? Data() }
     }
 
-    public var launchAtLogin: Bool
+    public var launchAtLogin: Bool = false
 
     public init(
         customVocabulary: [String] = [],

@@ -7,9 +7,7 @@ import SwiftData
 /// Participants + organizer are `Person` relationships on `Meeting` (dedup + voiceprints),
 /// NOT frozen here.
 @Model public final class CalendarSnapshot: @unchecked Sendable {
-    #Unique<CalendarSnapshot>([\.id])
-
-    public var id: UUID
+    public var id = UUID()
 
     // MARK: Link keys (recurring-event-robust re-sync)
 
@@ -22,14 +20,14 @@ import SwiftData
     /// Disambiguates a recurring instance.
     public var occurrenceStartDate: Date?
     /// Human fallback re-link key (title+start+organizer).
-    public var compositeKey: String
+    public var compositeKey: String = ""
 
     // MARK: Core event fields (copied at pairing time)
 
-    public var title: String
+    public var title: String = ""
     public var startDate: Date?
     public var endDate: Date?
-    public var isAllDay: Bool
+    public var isAllDay: Bool = false
     /// Plain-text location (may hold a join URL).
     public var location: String?
     /// Event URL (sometimes the join link).
@@ -37,7 +35,7 @@ import SwiftData
     /// `TimeZone.identifier` string.
     public var timeZone: String?
     /// The EVENT's description (distinct from `Meeting.notes`).
-    public var eventNotes: String
+    public var eventNotes: String = ""
     /// `EKEventStatus` as a string (e.g. "canceled").
     public var status: String?
     /// `EKEventAvailability` as a string.
@@ -57,9 +55,9 @@ import SwiftData
     // MARK: Metadata
 
     /// When this snapshot was captured.
-    public var snapshotDate: Date
+    public var snapshotDate = Date()
     /// Source event deleted / not found on last sync.
-    public var isStale: Bool
+    public var isStale: Bool = false
 
     public init(
         id: UUID = UUID(),

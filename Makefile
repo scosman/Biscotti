@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
 LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
-.PHONY: help bootstrap generate build test lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
+.PHONY: help bootstrap generate build test test-ai lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -28,6 +28,9 @@ test: ## GATING: run package tests
 	    | grep -E 'recorded an issue|with [0-9]+ issue|Test run with [0-9]|Executed [0-9]+ test|: error:|error generated|no such module|cannot find|Build complete!' ; \
 	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
 	done
+
+test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
+	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
 
 lint: ## Check formatting + lint (non-mutating)
 	swiftformat $(LINT_PATHS) --lint --quiet --cache ignore

@@ -89,6 +89,7 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make generate` | Generate `App/Biscotti.xcodeproj` from `App/project.yml` (XcodeGen) | — |
 | `make build` | `swift build` all SPM packages | — |
 | `make test` | `swift test` across packages | Yes |
+| `make test-ai` | Heavy AI/model tests (downloads GBs, runs inference). Developer-run only; agent can't run it — a human runs it via `!`. Not in `test`/`ci`/`precommit-checks`. | Non-gating |
 | `make lint` | `swiftformat --lint` + `swiftlint --strict` (non-mutating) | Yes |
 | `make format` | Auto-format (SwiftFormat then SwiftLint `--fix`) | — |
 | `make precommit-checks` | The pre-commit checks: `format` + `lint` + `test` (hook & `hooks-mcp` both call this) | Yes |

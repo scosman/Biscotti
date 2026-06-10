@@ -21,7 +21,9 @@ public enum VocabularyFormatter {
     /// - Parameter terms: Domain-specific words/phrases to boost recognition of.
     /// - Returns: A prompt string, or nil if no terms were provided.
     public static func formatPrompt(from terms: [String]) -> String? {
-        let cleaned = terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        // Lowercase defensively: WhisperKit's promptTokens can silently blank
+        // the entire transcript for uppercase terms (research/argmax/README.md Gotcha #16).
+        let cleaned = terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
 
         guard !cleaned.isEmpty else { return nil }

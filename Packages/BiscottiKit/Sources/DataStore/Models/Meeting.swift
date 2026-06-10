@@ -5,15 +5,13 @@ import SwiftData
 
 /// A recorded (or upcoming) meeting — the central aggregate in the data model.
 @Model public final class Meeting: @unchecked Sendable {
-    #Unique<Meeting>([\.id])
-
-    public var id: UUID
-    public var title: String
+    public var id = UUID()
+    public var title: String = ""
     public var startDate: Date?
     public var endDate: Date?
-    public var createdAt: Date
+    public var createdAt = Date()
     /// The user's own notes (distinct from calendar event notes).
-    public var notes: String
+    public var notes: String = ""
     /// Which transcript version is "current" (set via `setPreferredTranscript`).
     public var preferredTranscriptID: UUID?
 

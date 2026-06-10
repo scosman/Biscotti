@@ -5,16 +5,14 @@ import SwiftData
 
 /// Word-level detail within a segment. `index` gives stable ordering.
 @Model public final class TranscriptWordRecord: @unchecked Sendable {
-    #Unique<TranscriptWordRecord>([\.id])
-
-    public var id: UUID
+    public var id = UUID()
     /// Stable ordering within the segment.
-    public var index: Int
-    public var word: String
-    public var startTime: TimeInterval
-    public var endTime: TimeInterval
+    public var index: Int = 0
+    public var word: String = ""
+    public var startTime: TimeInterval = 0
+    public var endTime: TimeInterval = 0
     /// The reliable per-word confidence from Whisper (0.0-1.0).
-    public var probability: Float
+    public var probability: Float = 0
     /// Speaker cluster ID from diarization, if available.
     public var speakerID: Int?
 

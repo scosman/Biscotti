@@ -6,19 +6,17 @@ import SwiftData
 /// A modeled SwiftData entity for a transcript segment -- queryable and relational,
 /// not a JSON blob. `index` gives stable ordering (SwiftData relationships are unordered).
 @Model public final class TranscriptSegmentRecord: @unchecked Sendable {
-    #Unique<TranscriptSegmentRecord>([\.id])
-
-    public var id: UUID
+    public var id = UUID()
     /// Stable ordering within the transcript.
-    public var index: Int
+    public var index: Int = 0
     /// Diarization cluster id (nil = no match).
     public var speakerID: Int?
     /// Human-readable label, e.g. "Speaker 0", "Unknown".
-    public var speakerLabel: String
-    public var startTime: TimeInterval
-    public var endTime: TimeInterval
-    public var text: String
-    public var noSpeechProbability: Float
+    public var speakerLabel: String = ""
+    public var startTime: TimeInterval = 0
+    public var endTime: TimeInterval = 0
+    public var text: String = ""
+    public var noSpeechProbability: Float = 0
 
     @Relationship(deleteRule: .cascade)
     public var words: [TranscriptWordRecord] = []

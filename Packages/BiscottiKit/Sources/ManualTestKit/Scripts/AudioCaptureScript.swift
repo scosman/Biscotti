@@ -5,8 +5,9 @@
 /// AudioCapture calls when it builds the runner.
 public extension TestScript {
     /// Audio Capture test script — covers permissions, dual-stream recording,
-    /// file validation, playback quality, route-change resilience, crash safety,
-    /// and meeting-detection monitoring.
+    /// file validation, playback quality, route-change resilience, meeting
+    /// open/close mid-capture, mega experiment, crash safety, and meeting-detection
+    /// monitoring.
     static let audioCapture = TestScript(
         id: "audio_capture",
         title: "Audio Capture",
@@ -23,7 +24,8 @@ public extension TestScript {
             .instruction(
                 id: "ac_timed_capture",
                 text: "Press 'Run' on Start Recording, speak into the mic and play system audio "
-                    + "(e.g. a video) for 15+ seconds, then press 'Run' on Stop Recording."
+                    + "(e.g. start a Google Meet instant meeting at meet.google.com → New meeting "
+                    + "→ Start an instant meeting) for 15+ seconds, then press 'Run' on Stop Recording."
             ),
             .action(
                 id: "ac_start_recording",
@@ -50,11 +52,45 @@ public extension TestScript {
             ),
             .humanQuestion(
                 id: "ac_route_change",
-                prompt: "Disconnect/reconnect AirPods mid-recording — did capture survive without crash or silence?"
+                prompt: "Mid-recording, connect AirPods, speak, then disconnect and keep speaking. "
+                    + "In playback you should hear the mic source change (built-in → AirPods → built-in); "
+                    + "capture survives the transitions without crash or silence."
+            ),
+            .humanQuestion(
+                id: "ac_meet_close_midcapture",
+                prompt: "Start capture with a Google Meet instant meeting already running; speak; "
+                    + "after a few seconds close Meet and keep speaking. Verify (mic playback) your "
+                    + "voice was captured both before and after Meet closed."
+            ),
+            .humanQuestion(
+                id: "ac_meet_open_midcapture",
+                prompt: "Start capture with no meeting running; speak; after a few seconds start "
+                    + "a Google Meet instant meeting and keep speaking. Verify your voice was captured "
+                    + "both before and after Meet started."
+            ),
+            .instruction(
+                id: "ac_mega_setup",
+                text: "Run the mega experiment sequence: (1) start capture; (2) start a Google Meet "
+                    + "instant meeting; (3) open Music and play a track, saying \"starting music now\" "
+                    + "exactly as it begins; (4) insert AirPods; (5) remove AirPods; (6) stop the Meet; "
+                    + "(7) stop capture."
+            ),
+            .humanQuestion(
+                id: "ac_mega_voice",
+                prompt: "In the mic playback, is your voice clear and continuous across all mode "
+                    + "changes (built-in → AirPods → built-in, Meet on/off)?"
+            ),
+            .humanQuestion(
+                id: "ac_mega_timing",
+                prompt: "In the system playback, does the music begin exactly when you said "
+                    + "\"starting music now\" — i.e. system audio is time-aligned to the mic "
+                    + "with no offset?"
             ),
             .instruction(
                 id: "ac_crash_safety_setup",
-                text: "Start a new recording, then force-kill the app (Activity Monitor or kill -9) mid-record."
+                text: "Start a new recording, then force-kill the ManualTestApp process: "
+                    + "in Activity Monitor, select ManualTestApp and Force Quit; or run "
+                    + "`kill -9 $(pgrep -x ManualTestApp)`."
             ),
             .humanQuestion(
                 id: "ac_crash_safety_check",
@@ -62,7 +98,8 @@ public extension TestScript {
             ),
             .humanQuestion(
                 id: "ac_monitoring",
-                prompt: "With a meeting app running (Zoom/Meet/Teams), does monitoring list the active app?"
+                prompt: "Start a Google Meet instant meeting. Does monitoring list the browser/Meet "
+                    + "as an active audio source?"
             )
         ]
     )

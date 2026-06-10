@@ -50,7 +50,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   Permissions). Unit tests over the seam. *(components/notifications.md; Project 6 part 2. Depends on
   Phase 1.)*
 
-- [ ] **Phase 6 — Background coordination + menu bar (completes Project 6).** `AppCore` background
+- [x] **Phase 6 — Background coordination + menu bar (completes Project 6).** `AppCore` background
   slice: `AppScheduler` clock seam, calendar-start timers + reschedule, detection consumption + de-dup,
   auto-stop countdown, notification-action dispatch, `RunState`, onboarding gate. `MenuBarUI`
   (icon/body states). App target: `MenuBarExtra`, `SMAppService` launch-at-login (default on),
@@ -58,7 +58,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   `NSCalendarsFullAccessUsageDescription`. *(functional §2; ui_design §7–8; components/app_core.md,
   ui_modules.md. Depends on Phases 2, 4, 5.)*
 
-- [ ] **Phase 7 — Home, Library & Search.** `HomeUI` (welcome + Start + upcoming preview + empty
+- [x] **Phase 7 — Home, Library & Search.** `HomeUI` (welcome + Start + upcoming preview + empty
   states); `SearchUI` (live takeover, ranked hits, back-restore, debounce); `MeetingListUI` rich
   grouping (Today/Yesterday/This Week/Earlier — grouping delivered early in Phase 3);
   `AppShellUI` full sidebar + toolbar search + routing.
@@ -75,7 +75,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   effective vocab in `runEngine`, `ensureModelsReady`/`modelsReady`. Update all callers
   (`AppCore.live`, previews, tests). Unit tests. *(functional §4.4; arch §10. Depends on Phase 1.)*
 
-- [ ] **Phase 10 — Onboarding & Settings (completes Project 8 = feature-complete V1).** `OnboardingUI`
+- [x] **Phase 10 — Onboarding & Settings (completes Project 8 = feature-complete V1).** `OnboardingUI`
   wizard (Welcome → Microphone → System Audio → Calendar+selection → Notifications → Model download
   (skippable, disk check + progress) → Done; everything-up-front, skippable — C3/C8); `SettingsUI`
   full (custom vocab, launch-at-login, consolidated calendar, permissions overview); onboarding gate +

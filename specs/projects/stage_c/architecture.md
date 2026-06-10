@@ -38,7 +38,7 @@ targets, plus the existing targets Stage C extends:
 |---|---|---|---|---|
 | `Calendar` | **new** | L1 | `DataStore` | EventKit |
 | `MeetingDetection` | **new** | L1 | `AudioCapture`(pkg) | — |
-| `Notifications` | **new** | L1 | `DataStore` | UserNotifications |
+| `Notifications` | **new** | L1 | — | UserNotifications |
 | `Vocabulary` | **new** | L1 | `DataStore` | — |
 | `HomeUI` | **new** | L3a | `AppCore`, `DataStore`, `Calendar`, `DesignSystem` | SwiftUI |
 | `SearchUI` | **new** | L3a | `AppCore`, `DataStore`, `DesignSystem` | SwiftUI |

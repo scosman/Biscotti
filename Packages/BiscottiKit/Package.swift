@@ -19,6 +19,7 @@ let package = Package(
         .library(name: "Calendar", targets: ["Calendar"]),
         .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
         .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
+        .library(name: "Notifications", targets: ["Notifications"]),
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
@@ -328,6 +329,15 @@ let package = Package(
                 "MeetingCatalog",
                 .product(name: "AudioCapture", package: "AudioCapture")
             ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Notifications",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "NotificationsTests",
+            dependencies: ["Notifications"],
             swiftSettings: warningsAsErrors
         ),
         .target(

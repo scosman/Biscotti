@@ -45,7 +45,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   in-call state machine + helper→parent mapping + debounce + `events()` stream. Unit tests over
   synthetic activity. *(components/meeting_detection.md; Project 6 part 1. Depends on Phase 1.)*
 
-- [ ] **Phase 5 — Notifications module.** `NotificationService` + `NotificationCenterProviding` seam +
+- [x] **Phase 5 — Notifications module.** `NotificationService` + `NotificationCenterProviding` seam +
   categories/actions per kind + content + countdown lifecycle + `actions()` stream + auth (relayed to
   Permissions). Unit tests over the seam. *(components/notifications.md; Project 6 part 2. Depends on
   Phase 1.)*

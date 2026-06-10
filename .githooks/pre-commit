@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "› pre-commit: format"
-make format
-# Re-stage anything formatting changed, so the commit includes the tidied result.
+# These checks compile Swift (swiftformat / swiftlint / swift test), which CANNOT
+# run inside the Claude Code agent sandbox: the toolchain's build-service writes
+# hit an unfixable macOS seatbelt denial (EPERM on output-file-map.json, even in
+# writable dirs — not redirectable by any env var/flag). Detect the agent and
+# fail fast with instructions instead of dumping confusing "Operation not
+# permitted" output. See CLAUDE.md → "Pre-commit & the Claude Code agent".
+if [ -n "${CLAUDECODE:-}" ]; then
+  cat >&2 <<'MSG'
+✗ pre-commit cannot run inside the Claude Code agent — sandboxed Swift builds
+  fail with unfixable seatbelt denials. Do NOT just retry the commit.
+
+  Instead:
+    1. Run the SAME checks out-of-sandbox via hooks-mcp:
+         mcp__hooks-mcp__precommit_checks   (wraps `make precommit-checks`)
+    2. ONLY if it passes green, and with NO code changes since that run,
+       commit bypassing this hook:
+         git commit --no-verify ...
+  See CLAUDE.md → "Pre-commit & the Claude Code agent".
+MSG
+  exit 1
+fi
+
+make precommit-checks
+# Re-stage anything formatting tidied, so the commit includes the tidied result.
 git add -u
-
-echo "› pre-commit: lint"
-make lint
-
-echo "› pre-commit: test (swift test — packages only, never xcodebuild)"
-make test
 
 echo "✓ pre-commit passed"

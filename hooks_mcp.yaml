@@ -10,13 +10,19 @@ actions:
     description: "Generate the Xcode project from project.yml"
     command: "make generate"
 
+  # build/test/precommit_checks compile against the argmax-oss-swift dependency
+  # (WhisperKit/SpeakerKit), whose build/error output is extremely verbose — an
+  # unbounded MCP response can overflow an agent's context window. Bound the
+  # response with `tail` (generous, to preserve trailing error detail) while
+  # `set -o pipefail` keeps make's exit code so failures still surface as errors.
+  # Humans and CI invoke `make` directly and are unaffected.
   - name: "build"
     description: "Build all SPM packages"
-    command: "make build"
+    command: "bash -c 'set -o pipefail; make build 2>&1 | tail -n 400'"
 
   - name: "test"
     description: "Gating: run the package test suite (swift test)"
-    command: "make test"
+    command: "bash -c 'set -o pipefail; make test 2>&1 | tail -n 400'"
 
   - name: "lint"
     description: "Check formatting + lint (non-mutating)"
@@ -25,6 +31,10 @@ actions:
   - name: "format"
     description: "Auto-format and autofix lint"
     command: "make format"
+
+  - name: "precommit_checks"
+    description: "Run the pre-commit checks (format + lint + test). Required before a --no-verify commit from inside the Claude Code agent; see CLAUDE.md."
+    command: "bash -c 'set -o pipefail; make precommit-checks 2>&1 | tail -n 400'"
 
   # build_app/test_app wrap xcodebuild, which is very verbose. The Makefile uses
   # `xcodebuild -quiet` (warnings/errors + final status only); here we additionally
@@ -37,3 +47,7 @@ actions:
   - name: "test_app"
     description: "Non-gating: run the app test scheme"
     command: "bash -c 'set -o pipefail; make test-app 2>&1 | tail -n 30'"
+
+  - name: "manual_tests_check"
+    description: "Check that all manual test step IDs have been run (expected RED until Phase 4.5)"
+    command: "bash -c 'set -o pipefail; make manual-tests-check 2>&1 | tail -n 50'"

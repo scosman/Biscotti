@@ -4,13 +4,18 @@ included:
   - App
 excluded:
   - .build
-  - Packages/BiscottiKit/.build
+  - "**/.build"
   - App/Biscotti.xcodeproj
   - "**/DerivedData"
 
 # SwiftFormat owns formatting — disable SwiftLint's overlapping formatting rules
 # so the two tools never disagree.
 disabled_rules:
+  # No file-length limit — splitting a file just to satisfy a line count is noise.
+  - file_length
+  # No line-length limit — SwiftFormat doesn't wrap (no --maxwidth), so this rule
+  # just forces tedious manual wrapping of long log/diagnostic lines. Not worth it.
+  - line_length
   - trailing_comma
   - opening_brace
   - colon

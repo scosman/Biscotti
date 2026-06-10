@@ -5,7 +5,12 @@ let package = Package(
     name: "BiscottiKit",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "BiscottiKit", targets: ["BiscottiKit"])
+        .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
+        .library(name: "DataStore", targets: ["DataStore"]),
+        .library(name: "ManualTestKit", targets: ["ManualTestKit"])
+    ],
+    dependencies: [
+        .package(name: "Transcription", path: "../Transcription")
     ],
     targets: [
         .target(
@@ -15,6 +20,32 @@ let package = Package(
         .testTarget(
             name: "BiscottiKitTests",
             dependencies: ["BiscottiKit"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "DataStore",
+            dependencies: [
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "DataStoreTests",
+            dependencies: ["DataStore", .product(name: "Transcription", package: "Transcription")],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ManualTestKit",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ManualTestKitTests",
+            dependencies: ["ManualTestKit"],
+            swiftSettings: warningsAsErrors
+        ),
+        .executableTarget(
+            name: "manual-tests-check",
+            dependencies: ["ManualTestKit"],
             swiftSettings: warningsAsErrors
         )
     ],

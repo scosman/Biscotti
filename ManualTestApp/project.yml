@@ -1,0 +1,91 @@
+name: ManualTestApp
+options:
+  bundleIdPrefix: net.scosman.biscotti
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    CLANG_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    OTHER_SWIFT_FLAGS: "$(inherited) -warnings-as-errors"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"          # ad-hoc; real cert is Project 9
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  BiscottiKit:
+    path: ../Packages/BiscottiKit
+  Transcription:
+    path: ../Packages/Transcription
+  AudioCapture:
+    path: ../Packages/AudioCapture
+
+targets:
+  ManualTestApp:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - Sources
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.manualtest
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGN_ENTITLEMENTS: ManualTestApp.entitlements
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: BiscottiKit
+        product: ManualTestKit
+      - package: Transcription
+        product: Transcription
+      - package: AudioCapture
+        product: AudioCapture
+      - target: BiscottiTranscriber
+        embed: true
+
+  BiscottiTranscriber:
+    type: xpc-service
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: ../XPCServices/BiscottiTranscriber
+        excludes:
+          - "*.plist"
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiTranscriber
+        INFOPLIST_FILE: ../XPCServices/BiscottiTranscriber/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiTranscriber/BiscottiTranscriber.entitlements
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: Transcription
+        product: Transcription
+
+schemes:
+  ManualTestApp:
+    build:
+      targets:
+        ManualTestApp: all
+    run:
+      config: Debug
+      # Expose SRCROOT to the launched app so ResultsStore writes to the
+      # checked-in ManualTestApp/Results/manual_test_results.json (see
+      # ScriptTabView.resultsFileURL). SRCROOT is a build-time setting and is
+      # NOT in the runtime env unless passed through here; Xcode expands the
+      # $(SRCROOT) reference at launch.
+      environmentVariables:
+        - variable: SRCROOT
+          value: $(SRCROOT)
+          isEnabled: true
+    test:
+      config: Debug

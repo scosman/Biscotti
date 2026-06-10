@@ -1,10 +1,10 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-PACKAGES := Packages/BiscottiKit
-LINT_PATHS := $(wildcard Packages App)
+PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
+LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
-.PHONY: help bootstrap generate build test lint format build-app test-app hooks ci clean
+.PHONY: help bootstrap generate build test test-ai lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -14,25 +14,42 @@ bootstrap: ## Install dev tools via Homebrew
 	@command -v brew >/dev/null || { echo "Install Homebrew first: https://brew.sh"; exit 1; }
 	brew bundle --file=Brewfile
 
-generate: ## Generate the Xcode project from project.yml
+generate: ## Generate Xcode projects from project.yml files
 	cd App && xcodegen generate
+	cd ManualTestApp && xcodegen generate
 
 build: ## Build all SPM packages
-	swift build --package-path $(PACKAGES)
+	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
 
 test: ## GATING: run package tests
-	swift test --package-path $(PACKAGES)
+	@for pkg in $(PACKAGES); do \
+	  echo "==> Testing $$pkg"; \
+	  swift test --package-path $$pkg 2>&1 \
+	    | grep -E 'recorded an issue|with [0-9]+ issue|Test run with [0-9]|Executed [0-9]+ test|: error:|error generated|no such module|cannot find|Build complete!' ; \
+	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
+	done
+
+test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
+	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
 
 lint: ## Check formatting + lint (non-mutating)
-	swiftformat $(LINT_PATHS) --lint --cache ignore
-	swiftlint lint --strict --no-cache $(LINT_PATHS)
+	swiftformat $(LINT_PATHS) --lint --quiet --cache ignore
+	swiftlint lint --strict --quiet --no-cache $(LINT_PATHS)
 
 format: ## Auto-format then autofix lint
-	swiftformat $(LINT_PATHS) --cache ignore
-	swiftlint lint --fix --no-cache $(LINT_PATHS)
+	swiftformat $(LINT_PATHS) --quiet --cache ignore
+	swiftlint lint --fix --quiet --no-cache $(LINT_PATHS)
 
-build-app: generate ## NON-GATING: build the app via xcodebuild (ad-hoc)
+precommit-checks: ## The pre-commit checks (format + lint + test); the hook and hooks-mcp both call this
+	$(MAKE) format
+	$(MAKE) lint
+	$(MAKE) test
+
+build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
+	  -destination 'platform=macOS,arch=arm64' \
+	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
+	cd ManualTestApp && xcodebuild -quiet -project ManualTestApp.xcodeproj -scheme ManualTestApp \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
 
@@ -47,6 +64,11 @@ hooks: ## Enable the opt-in pre-commit hook
 
 ci: lint test build ## What the gating CI job runs
 
-clean: ## Remove build artifacts + generated project
-	rm -rf .build $(PACKAGES)/.build App/Biscotti.xcodeproj
+manual-tests-check: ## Check that all manual test step IDs have been run (expected RED until Phase 4.5)
+	swift run --package-path Packages/BiscottiKit manual-tests-check ManualTestApp/Results/manual_test_results.json
+
+clean: ## Remove build artifacts + generated projects
+	rm -rf .build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj
+	@for pkg in $(PACKAGES); do rm -rf $$pkg/.build; done
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Biscotti-*
+	rm -rf ~/Library/Developer/Xcode/DerivedData/ManualTestApp-*

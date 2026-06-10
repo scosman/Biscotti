@@ -4,6 +4,10 @@
 
 For capturing meeting audio on macOS 15+, we recommend a **dual-API approach**: Core Audio process taps (`CATapDescription` / `AudioHardwareCreateProcessTap`, introduced macOS 14.2, expanded 14.4) for system/app audio (other participants), and `AVAudioEngine` for microphone input (the user). These run as two independent streams recorded into separate files using the crash-safe **CAF container** with **AAC-LC at 64 kbps mono, 48 kHz**. After the meeting, the two files are post-processed (merged or kept separate depending on the STT pipeline's needs). A health-monitor detects the known zero-buffer failure mode and performs automatic teardown/rebuild of the tap. This combination avoids the Screen Recording permission (which ScreenCaptureKit requires) and is expected to keep CPU overhead very low on Apple Silicon (estimate to validate in E1).
 
+> **Follow-on findings:**
+> - [`phase9_validation_findings.md`](phase9_validation_findings.md) — what changed after real-hardware validation.
+> - [`mic_capture_level_findings.md`](mic_capture_level_findings.md) — **why the built-in mic records near-silent audio during meetings** (the raw beamformer array has tiny gain; it's meant for Apple's VPIO stream processing, not general taps) and the ranked plan to fix it (VPIO → software gain → Audio-Hijack-style taps).
+
 ## Key Questions & Findings
 
 ### 1. Best macOS 15 API to capture both mic and other-participants' audio
@@ -162,7 +166,7 @@ let encoderSettings: [String: Any] = [
 
 ### 5. Crash-safe streaming to disk
 
-> **⚠️ Corrected by Phase 9 validation (Test 5).** CAF crash-safety holds **only for uncompressed PCM**, *not* for AAC-LC. Recording AAC-LC into CAF and crashing leaves an **undecodable** file ("Missing packet table") because AAC's variable-size packets need the `pakt` chunk, which `AVAudioFile` writes only on close. **Corrected approach: record PCM into CAF during capture, encode to AAC `.m4a` on stop.** See [finding #5 in the validation findings](./phase9_validation_findings.md). The mechanism below is right; only the *codec recorded during capture* changes (PCM, not AAC).
+> **⚠️ SUPERSEDED by Phase 9 validation (Test 5) — see [finding #5 RESOLVED](./phase9_validation_findings.md).** The CAF-based approach below is **wrong**. CAF crash-safety holds only for uncompressed PCM, not AAC-LC (AAC needs a `pakt` chunk written only on close → a crash yields an undecodable file). A PCM-scratch-then-encode idea was the first fix, but the **RESOLVED** decision is better: **record ADTS AAC directly** (`ExtAudioFile` + `kAudioFileAAC_ADTSType`, AAC-LC mono 24 kHz 64 kbps, `.aac` files). ADTS frames are self-syncing, so a crash-truncated file decodes up to the last complete frame with **no finalization** — crash-safe *and* compressed *and* native in one writer. **No CAF, no PCM scratch, no encode-on-stop.** Disregard the CAF/M4A mechanism in the body below; follow finding #5 RESOLVED.
 
 **Finding: Record into CAF (Core Audio Format) files, which are crash-safe by design. Convert to M4A post-recording for long-term storage.**
 

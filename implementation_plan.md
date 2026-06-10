@@ -18,6 +18,8 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 
 ## Stage A — Foundations (no runnable app yet)
 
+> **Delivery status (Stage A build).** Projects 0–3 and the Stage-A Manual Test App are **built and autonomously green** (`lint` + `test` + `build_app`), delivered via the `stage_a_foundations` spec project: **Project 1 — Transcription** (`Packages/Transcription`, incl. the shared `XPCServices/BiscottiTranscriber.xpc` glue), **Project 2 — Audio Capture** (`Packages/AudioCapture`, ADTS-AAC capture + per-process monitoring), **Project 3 — Data Store** (`DataStore` module in `BiscottiKit`), plus **`ManualTestKit` + `ManualTestApp`** (the hardware test harness) and the `manual-tests-check` CI gate. **Hardware/human sign-off is still pending:** the Manual Test App's *Phase 4.5* — running every scripted test on real Apple-silicon hardware — has not been done yet, so the `manual-tests-check` gate is intentionally RED until those results are recorded. The library-level **AI test set** for Transcription (Project 5 below) and transcript-text **search** (Project 7) remain as their own future projects.
+
 ### Project 0 — Scaffolding & Tooling
 - **Archetype:** foundation (infrastructure).
 - **Delivers:** the repo skeleton that everything else is built in — buildable empty `BiscottiKit` package + thin `App` Xcode project that launches, with green CI.
@@ -47,6 +49,18 @@ Component homes and boundaries are defined in [`architecture.md`](architecture.m
 - **Risk:** **medium.**
 
 > **Projects 1–3 are mutually independent** (each only needs Scaffolding) and can run in parallel. Recommended risk-priority if serialized: **Transcription first** (biggest residual unknown), then Audio Capture, then Data Store.
+
+### Project 4 - Manual Test App
+
+See specs/project/manual_test_app
+
+### Project 5 - AI test set
+
+Create a new test set for "AI tests". These can be run via CLI just fine, but require downloading gigabytes of models, and long expensive processing (audio transcibe, speaker ID, LLM tests). We want to isolate these (not required every small commit), but still automated tests, not relying on manual.
+
+ - Create the test set/tag, excluded by default when running `make test`
+ - Add new make command to run these.
+ - Add them for Project 1, which should be testable this way. You'll need a reference audio file with ground truth transcription (ask user for this). Should be slightly flexbile in tests: speaker count correct, levechtien distance of full transcript small but not exact.
 
 ---
 

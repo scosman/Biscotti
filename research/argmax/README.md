@@ -53,15 +53,17 @@ Both WhisperKit and SpeakerKit download models automatically from HuggingFace on
 - Background downloads are supported: `modelStore.downloadModelInBackground()` persists progress across foreground-to-background transitions and survives app kills on iOS.
 
 **Where models are stored on disk:**
-Default HuggingFace Hub cache: `~/.cache/huggingface/hub/` on macOS, structured as:
-```
-~/.cache/huggingface/hub/
-├── models--argmaxinc--whisperkit-coreml/
-│   └── snapshots/<revision>/openai_whisper-large-v3_turbo/
-└── models--argmaxinc--speakerkit-coreml/
-    └── snapshots/<revision>/...
-```
-The `WhisperKitConfig.modelFolder` property lets you override the storage location. The `HF_HUB_CACHE` environment variable also works.
+
+> **Corrected after implementation (Project: Transcription).** The actual default for `argmax-oss-swift` v1.0.0 is **not** `~/.cache/huggingface/hub/`. The vendored Hub client (`ArgmaxCore.HubApi`) defaults `downloadBase` to **`~/Documents/huggingface`**, and resolves a repo to `downloadBase/models/<repo-id>` (no `snapshots/<revision>` indirection):
+> ```
+> ~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3_turbo/…
+> ~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/…
+> ```
+> Dropping a multi-GB cache into `~/Documents` is wrong for app-support data, so **Biscotti overrides `downloadBase` to `~/Library/Application Support/Biscotti`** (see `Packages/Transcription/Sources/Transcription/ModelStorage.swift`). Models then live at `~/Library/Application Support/Biscotti/models/argmaxinc/{whisperkit,speakerkit}-coreml/…`. The override is passed to `WhisperKitConfig(downloadBase:)`, `WhisperKit.download(downloadBase:)`, and `PyannoteConfig(downloadBase:)` at every construction site.
+
+The `WhisperKitConfig.modelFolder` property pins an exact folder (bypassing the Hub layout); `downloadBase` (above) is the right knob for relocating the whole cache. The `HF_HUB_CACHE` environment variable is **not** honored by this vendored client.
+
+**Download progress is unusable — report a status message instead.** The Hub client's `Progress` (the value passed to `WhisperKit`'s `progressCallback`) is **file-count weighted**: `snapshot(...)` builds `Progress(totalUnitCount: filenames.count)` and gives every file `pendingUnitCount: 1` *regardless of size*, downloading them sequentially. For the whisper repo (several small files + one multi-GB weight file) the bar jumps to ~85% as the small files finish, then crawls through the last ~15% during the bulk of the actual download. The true byte counts exist one layer down (`Downloader` gets `totalBytesWritten/totalBytesExpectedToWrite` and streams to an `.incomplete` file) but are **not** surfaced in a byte-weighted aggregate, and the `(Progress, Double?)` overload's `Double` is throughput/speed, not a byte fraction. Rather than hack around it (disk polling, or our own HEAD-request size weighting), **Biscotti shows no percentage** — `ensureModelsDownloaded(status:)` reports a per-stage status string ("Downloading speech-to-text model", "Downloading speaker ID model") and the UI shows a spinner + that message. Downloads use the plain `WhisperKit(config)` / `SpeakerKit(config)` initializers (silent, but correct).
 
 **On-disk sizes:**
 
@@ -222,7 +224,20 @@ This biases the decoder toward recognizing listed terms. It is not as reliable a
 - It is a soft bias, not a guarantee -- the model may still mishear uncommon words.
 - No word-level boosting or scoring; it is all-or-nothing on the prompt context.
 
-**Recommendation:** Use the `promptTokens` approach in the free SDK. Build the API to accept a `[String]` vocabulary list, format it into a natural-language prompt, tokenize it, and pass it as `promptTokens`. This lets us swap to Pro's custom vocabulary later with no API change for callers.
+**⚠️ Silent total-failure mode (hardware-validated, Project A.5 — Apple silicon, macOS 15):**
+The `promptTokens` workaround is not just a *soft* bias that can mishear a term — for certain prompts it makes WhisperKit return an **entirely empty transcript** (zero segments), with **no error**. The whole transcript is lost, not just the vocab terms. Observed triggers (free SDK v1.0.0, `large-v3_turbo`):
+- **Uppercase terms** (e.g. `NASA`, `Kubernetes`) blank the output; the same list lowercased often transcribes fine.
+- **Term order / combination** matters even when all-lowercase. Reproducer on the same 10 words: `gnocci,facade,llama,nasa,kubernetes,postgres,qwen,mistral,croissant,paella` transcribes correctly, but reordered to `nasa,kubernetes,postgres,qwen,mistral,llama,croissant,gnocci,paella,facade` returns empty. Likewise `--vocab "gnocci,facade,rtetr"` fails while `--vocab "gnocci,facade,sdfsdfsdersxvsa"` works — some token sequences derail decoding entirely.
+
+Likely mechanism (unconfirmed, under investigation): the prompt is prepended as decoder context, and certain token sequences push the decoder to predict end-of-text immediately or trip a no-speech/log-prob fallback, yielding zero segments. This is a Whisper `initial_prompt` failure mode, not specific to Biscotti.
+
+**Mitigations (do these before relying on free-SDK vocab in production):**
+- **Normalize terms to lowercase** before building the prompt.
+- **Guard against empty output:** if a vocab-conditioned pass returns zero segments, **re-run without the prompt** (or fall back to no-vocab) rather than silently returning nothing — and surface/log it instead of failing silently.
+- **Cap/curate** the term set; treat the prompt as best-effort.
+- The Pro custom-vocabulary API (a separate vocabulary-matching pass, not prompt conditioning) avoids this failure mode entirely — a point in its favor if vocab is important.
+
+**Recommendation:** Use the `promptTokens` approach in the free SDK. Build the API to accept a `[String]` vocabulary list, format it into a natural-language prompt, tokenize it, and pass it as `promptTokens` — **but lowercase the terms and guard against the empty-output failure above.** This lets us swap to Pro's custom vocabulary later with no API change for callers. See Gotcha #16 and `specs/projects/ai_test_set/` (the `make test-ai` custom-vocab test uses a curated lowercase trio `gnocci/facade/qwen`). Production `VocabularyFormatter` now lowercases all terms (mitigation a); the empty-output re-run guard (mitigation b) remains deferred.
 
 **Sources:**
 - [OpenAI Whisper prompt vs prefix discussion](https://github.com/openai/whisper/discussions/117)
@@ -576,6 +591,8 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 15. **CLI/tooling: keep machine-readable output on stdout, diagnostics on stderr (found & fixed in Phase 11 V3).** The ArgMaxKit CLI originally printed its banner and progress lines to stdout ahead of the `--json` payload, making redirected output unparseable. Fixed by routing all diagnostics/errors to stderr. A reminder for any production tooling or export path: machine-readable output must not be interleaved with human-readable status text.
 
+16. **Custom-vocab `promptTokens` can silently blank the ENTIRE transcript (found 2026-06, Project A.5, Apple silicon / macOS 15).** Setting `DecodingOptions.promptTokens` for vocabulary biasing can make WhisperKit (free SDK v1.0.0, `large-v3_turbo`) return **zero segments with no error** — a total, silent failure, not a soft mis-bias. Triggers observed: **uppercase terms** (e.g. `NASA`) and certain **term orderings/combinations** even when all-lowercase. Reproducer: the 10-word list `gnocci,facade,llama,nasa,kubernetes,postgres,qwen,mistral,croissant,paella` transcribes fine, but the *same words* reordered to `nasa,kubernetes,postgres,qwen,mistral,llama,croissant,gnocci,paella,facade` returns empty; `gnocci,facade,rtetr` fails while `gnocci,facade,sdfsdfsdersxvsa` works. Likely the prompt context pushing the decoder to an immediate end-of-text / no-speech fallback (Whisper `initial_prompt` failure mode; not Biscotti-specific). **Production must: (a) lowercase vocab terms; (b) detect empty output from a vocab-conditioned pass and re-run without the prompt instead of silently returning nothing; (c) treat the prompt as best-effort and cap/curate terms.** The Pro custom-vocabulary API (separate matching pass, not prompt conditioning) avoids this. Detail + mitigations in §4 ("Custom Vocabulary Support"); surfaced by the Project A.5 `make test-ai` custom-vocab test, which uses a curated lowercase trio. Production `VocabularyFormatter` now lowercases all terms (mitigation a, addressing the uppercase trigger); the empty-output re-run guard (mitigation b, addressing the order/combination trigger) remains deferred.
+
 ---
 
 ## Open Questions for the Team
@@ -593,7 +610,7 @@ We have been building Biscotti, a macOS meeting recorder that uses the free `arg
 
 2. **Centroid embedding access and stability:** We could not find `speakerCentroidEmbeddings` as public API on `DiarizationResult` in v1.0.0 (see section 6 erratum). Is there a supported way to access per-speaker centroid embeddings for cross-file matching? If so: how stable are they across different audio conditions (different microphones, noise levels, recording quality)? Is cosine distance the right metric, and what threshold would you suggest for "same speaker" matching?
 
-3. **promptTokens for vocabulary:** Are there best practices for formatting the `promptTokens` to maximize recognition of specific terms (company names, people's names)? Any gotchas with the token limit?
+3. **promptTokens for vocabulary:** Are there best practices for formatting the `promptTokens` to maximize recognition of specific terms (company names, people's names)? Any gotchas with the token limit? **Critically:** we see `promptTokens` *silently blank the entire transcript* (zero segments, no error) for certain inputs — uppercase terms, and certain term orders/combinations even when lowercase (see Gotcha #16 for reproducers). Is there a required normalization (lowercase? a token-validation/"lookup" step?), a documented constraint, or a more robust vocab-biasing path on the free SDK? At minimum, should this surface an error rather than empty output?
 
 4. **XPC compatibility (critical):** Has WhisperKit / SpeakerKit been tested inside an XPC service? Any known issues with CoreML inference (especially ANE scheduling, model cache paths) from a helper process? We plan to run non-sandboxed for now but want to confirm this is a viable isolation strategy before building on it.
 

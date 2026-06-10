@@ -2,7 +2,7 @@
 
 Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
 
-**Current stage:** scaffolding is complete (Project 0). The `Packages/BiscottiKit` package, `App/` target (XcodeGen), `Makefile` command surface, `hooks-mcp` agent integration, CI, and lint/format tooling are all in place. The next step is building the foundation libraries per the roadmap (`implementation_plan.md`).
+**Current stage:** Scaffolding (Project 0) and the **Stage A foundations** are built. Beyond the scaffolding (`BiscottiKit`, `App/`, `Makefile`, `hooks-mcp`, CI, lint/format), the repo now has the `Transcription` and `AudioCapture` packages, the `DataStore` + `ManualTestKit` modules in `BiscottiKit`, the `ManualTestApp` (XcodeGen) that hosts the shared `XPCServices/BiscottiTranscriber.xpc`, and a manual-test CI gate — all green on `lint`/`test`/`build_app`. **The one remaining Stage A step is the human Phase 4.5:** running `ManualTestApp` on real Apple-silicon hardware to fill in the pass/fail results (the non-gating `manual-tests-check` job is RED by design until then). The next *product* step after 4.5 is the MVP (Record → Transcribe). See the roadmap (`implementation_plan.md`).
 
 > This file is a map. Read the specific docs below before acting; don't rely on this summary alone for decisions.
 
@@ -89,32 +89,44 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make generate` | Generate `App/Biscotti.xcodeproj` from `App/project.yml` (XcodeGen) | — |
 | `make build` | `swift build` all SPM packages | — |
 | `make test` | `swift test` across packages | Yes |
+| `make test-ai` | Heavy AI/model tests (downloads GBs, runs inference). Developer-run only; agent can't run it — a human runs it via `!`. Not in `test`/`ci`/`precommit-checks`. | Non-gating |
 | `make lint` | `swiftformat --lint` + `swiftlint --strict` (non-mutating) | Yes |
 | `make format` | Auto-format (SwiftFormat then SwiftLint `--fix`) | — |
+| `make precommit-checks` | The pre-commit checks: `format` + `lint` + `test` (hook & `hooks-mcp` both call this) | Yes |
 | `make build-app` | `make generate` + `xcodebuild` the app (ad-hoc signed) | Non-gating |
 | `make test-app` | App/UI test scheme (empty for now) | Non-gating |
 | `make hooks` | Opt-in: point git at `.githooks/pre-commit` | — |
 | `make ci` | What the gating CI job runs: `lint` + `test` + `build` | — |
+| `make manual-tests-check` | Check all manual-test steps have been run (expected RED until Phase 4.5) | Non-gating |
 | `make clean` | Remove `.build/`, `DerivedData/`, generated `.xcodeproj` | — |
 
-### CI (two tiers)
+### CI (three tiers)
 
 - **`package-tier`** (gating, required check): runs `make ci` (lint + test + build) on `macos-15`. This is the merge gate.
 - **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.
+- **`manual-tests-check`** (non-gating, `continue-on-error`): runs `make manual-tests-check` on `macos-15`. Expected RED until Phase 4.5 (when a human runs the manual tests on real hardware). Informational only — never blocks merge.
 
 ### Agent command surface (hooks-mcp)
 
-Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).
+Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__precommit_checks`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`, `mcp__hooks-mcp__manual_tests_check`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).
 
 **XcodeBuildMCP** is also registered in `.mcp.json` for interactive xcodebuild/run/launch/log operations that a `make` target cannot model.
 
-### Pre-commit hook (opt-in)
+### Pre-commit & the Claude Code agent
 
-Run `make hooks` once to enable. The hook runs `make format` (+ re-stages), `make lint`, and `make test` before each commit. It blocks on the first failure. Package tests only — never `xcodebuild`.
+Run `make hooks` once to enable the opt-in hook. It runs `make precommit-checks` (format + re-stage, lint, test) before each commit and blocks on the first failure. Package tests only — never `xcodebuild`.
+
+**Agents cannot run the hook.** Its checks compile Swift, which **fails inside the Claude Code agent sandbox** — an unfixable macOS seatbelt denial (the Swift build-service write of `output-file-map.json` gets `EPERM` even in writable dirs; not redirectable by any env var/flag, same root cause as the `swift build`/`swift test`/`xcodebuild` note in *Conventions & gotchas*). When the hook detects the agent (`CLAUDECODE` is set) it **fails immediately with instructions** instead of emitting confusing "Operation not permitted" noise.
+
+**Agent commit protocol — the only sanctioned use of `--no-verify`:**
+1. Run the checks out-of-sandbox: **`mcp__hooks-mcp__precommit_checks`** (wraps `make precommit-checks`).
+2. **Only if it passes green**, and with **no code changes since that run**, commit bypassing the hook: `git commit --no-verify …`.
+
+The `precommit_checks` run must be the **last thing before the commit** — if you touch any code after it, re-run it first. Humans and CI are unaffected and commit normally.
 
 ---
 
 ## When you change things
 
 - Updating product intent → `app_overview.md`. Updating the topology → `architecture.md`. Re-ordering/scoping work → `implementation_plan.md`. Correcting a technical finding → the relevant `research/<area>/README.md`.
-- *(Once the manual-test harness exists: mark impacted manual tests as "unrun" when touching the libraries they cover — this section will be updated with specifics then.)*
+- **Manual test staleness rule:** when you touch `Packages/Transcription` or `Packages/AudioCapture`, mark that library's manual tests as `not-run` in `ManualTestApp/Results/manual_test_results.json`. Either hand-edit the file (set `"status": "not-run"` for each step with the matching prefix: `ac_*` for AudioCapture, `tx_*` for Transcription) or use `ResultsStore.markScriptNotRun(scriptID:allStepIDs:)` from `ManualTestKit`. This causes `make manual-tests-check` (and its CI gate) to fail until a human re-runs the affected tests on real hardware and commits the updated results.

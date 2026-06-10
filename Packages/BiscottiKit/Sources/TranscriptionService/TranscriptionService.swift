@@ -78,8 +78,26 @@ public final class TranscriptionService {
         }
 
         inFlightMeetingID = meetingID
-        defer { inFlightMeetingID = nil }
+        await executeJob(meetingID: meetingID)
+        // Release the XPC worker so its process (and multi-GB model memory)
+        // is freed promptly. The next transcription call will reconnect.
+        //
+        // IMPORTANT: shutdown BEFORE clearing inFlightMeetingID. The
+        // `await engine.shutdown()` crosses to the Transcriber actor,
+        // yielding the MainActor. If inFlightMeetingID were already nil,
+        // a re-entrant `transcribe()` call during that yield (e.g. from
+        // a SwiftUI observation callback or a fire-and-forget Task) would
+        // pass the guard, call ensureConnected(), and spawn a second XPC
+        // worker that nothing ever tears down. Keeping the guard held
+        // through shutdown prevents this.
+        await engine.shutdown()
+        inFlightMeetingID = nil
+    }
 
+    /// The inner work of a transcription job. Separated from `runJob` so
+    /// the caller can deterministically `await engine.shutdown()` after
+    /// completion on every exit path (success, failure, or cancellation).
+    private func executeJob(meetingID: UUID) async {
         jobs[meetingID] = .downloadingModel(message: "Preparing\u{2026}")
 
         guard let paths = await resolveAudioPaths(meetingID: meetingID) else { return }

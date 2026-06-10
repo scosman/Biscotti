@@ -1,5 +1,11 @@
 import Foundation
+import os.log
 import Transcription
+
+private let hostLog = Logger(
+    subsystem: "net.scosman.biscotti",
+    category: "TranscriberXPCHost"
+)
 
 // MARK: - Sendable box
 
@@ -99,6 +105,34 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
     }
 }
 
+// MARK: - Active connection tracking
+
+/// Thread-safe counter of active XPC connections. When the count drops to
+/// zero the process exits, releasing multi-GB model memory immediately
+/// instead of waiting for `NSXPCListener.service()`'s idle-exit heuristic
+/// (which never fires while CoreML/Metal run-loop sources are alive).
+private final class ConnectionCounter: @unchecked Sendable {
+    private var count = 0
+    private let lock = NSLock()
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    /// Decrements the counter and returns `true` when it reaches zero.
+    func decrementAndCheckZero() -> Bool {
+        lock.lock()
+        count -= 1
+        let isZero = count == 0
+        lock.unlock()
+        return isZero
+    }
+}
+
+private let connectionCounter = ConnectionCounter()
+
 // MARK: - Listener delegate
 
 final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
@@ -106,6 +140,9 @@ final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
         _: NSXPCListener,
         shouldAcceptNewConnection connection: NSXPCConnection
     ) -> Bool {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        connectionCounter.increment()
+        hostLog.info("Accepted new XPC connection pid=\(pid)")
         connection.exportedInterface = NSXPCInterface(
             with: TranscriberServiceProtocol.self
         )
@@ -115,6 +152,32 @@ final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
             with: TranscriberStatusReporting.self
         )
         connection.exportedObject = TranscriberService(connection: connection)
+
+        // Interruption fires on worker crash/jetsam. Log only — do NOT
+        // decrement here. NSXPCConnection guarantees the invalidation
+        // handler fires eventually (including after interruption), so
+        // decrementing only in invalidationHandler avoids double-count.
+        connection.interruptionHandler = {
+            hostLog.info("Service-side connection interrupted pid=\(pid)")
+        }
+
+        // Invalidation fires exactly once per connection, whether the
+        // client called invalidate(), the connection was interrupted,
+        // or the process is shutting down. Decrement here and exit
+        // when no connections remain.
+        connection.invalidationHandler = {
+            hostLog.info("Service-side connection invalidated pid=\(pid)")
+            if connectionCounter.decrementAndCheckZero() {
+                hostLog.info("XPC host exiting pid=\(pid) (no active connections)")
+                // _exit(0) skips atexit/global destructors — CoreML/Metal/WhisperKit
+                // teardown can block or deadlock, defeating the exit guarantee.
+                // Race safety: the client-side inFlightMeetingID guard prevents
+                // concurrent re-trigger; a lost in-flight connection surfaces as
+                // a retriable workerInterrupted/workerUnavailable (launchd relaunches).
+                _exit(0)
+            }
+        }
+
         connection.resume()
         return true
     }
@@ -122,7 +185,13 @@ final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 // MARK: - Entry point
 
+hostLog.info(
+    "XPC host process started pid=\(ProcessInfo.processInfo.processIdentifier)"
+)
+
 let delegate = ServiceDelegate()
 let listener = NSXPCListener.service()
 listener.delegate = delegate
 listener.resume()
+
+hostLog.info("Listener resumed pid=\(ProcessInfo.processInfo.processIdentifier)")

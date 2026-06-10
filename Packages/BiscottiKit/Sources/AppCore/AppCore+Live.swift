@@ -3,6 +3,8 @@ import Calendar
 import DataStore
 import Foundation
 import MeetingCatalog
+import MeetingDetection
+import Notifications
 import Permissions
 import Recording
 import Transcription
@@ -44,13 +46,17 @@ public extension AppCore {
 
         let catalog = BundledMeetingCatalog()
         let calendar = CalendarService(store: store, catalog: catalog)
+        let detector = MeetingDetector(catalog: catalog)
+        let notifications = NotificationService()
 
         return AppCore(
             store: store,
             permissions: permissions,
             recording: recording,
             transcription: transcription,
-            calendar: calendar
+            calendar: calendar,
+            detector: detector,
+            notifications: notifications
         )
     }
 }

@@ -21,6 +21,7 @@ let package = Package(
         .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
         .library(name: "Notifications", targets: ["Notifications"]),
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
+        .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -109,6 +110,8 @@ let package = Package(
                 "TranscriptionService",
                 "Calendar",
                 "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -125,6 +128,8 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -142,6 +147,8 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -297,6 +304,35 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MenuBarUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MenuBarUITests",
+            dependencies: [
+                "MenuBarUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",

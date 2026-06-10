@@ -4,10 +4,13 @@
     import DataStore
     import Foundation
     import MeetingCatalog
+    import MeetingDetection
+    import Notifications
     import Permissions
     import Recording
     import Transcription
     import TranscriptionService
+    import UserNotifications
 
     /// Lightweight factory for building an `AppCore` suitable for SwiftUI previews.
     ///
@@ -41,12 +44,23 @@
                 provider: PreviewEventStore()
             )
 
+            let detector = MeetingDetector(
+                catalog: catalog,
+                source: PreviewActivitySource()
+            )
+
+            let notifications = NotificationService(
+                provider: PreviewNotificationCenter()
+            )
+
             return AppCore(
                 store: store,
                 permissions: permissions,
                 recording: recording,
                 transcription: transcription,
-                calendar: calendar
+                calendar: calendar,
+                detector: detector,
+                notifications: notifications
             )
         }
     }
@@ -120,5 +134,31 @@
         func refreshEvent(eventIdentifier _: String, occurrenceStart _: Date) -> EKEventDTO? {
             nil
         }
+    }
+
+    /// No-op ActivitySource for previews.
+    private struct PreviewActivitySource: ActivitySource {
+        func activityStream() -> AsyncStream<[AudioProcess]> {
+            AsyncStream { $0.finish() }
+        }
+    }
+
+    /// No-op NotificationCenter for previews.
+    private struct PreviewNotificationCenter: NotificationCenterProviding {
+        func requestAuthorization() async throws -> Bool {
+            true
+        }
+
+        func authorizationStatus() async -> UNAuthorizationStatus {
+            .authorized
+        }
+
+        func add(_: UNNotificationRequest) async throws {}
+
+        func removePendingRequests(withIdentifiers _: [String]) {}
+
+        func removeDeliveredNotifications(withIdentifiers _: [String]) {}
+
+        func setCategories(_: Set<UNNotificationCategory>) {}
     }
 #endif

@@ -16,8 +16,16 @@ import SwiftData
     /// Opaque method id, e.g. "v1" -- bakes in STT model, diarization model + strategy,
     /// all default settings. The Transcription library owns the mapping id -> settings.
     public var transcriptionMethodId: String
+    /// JSON-encoded backing store for `vocabularyUsed`. SwiftData cannot materialize
+    /// generic `Array<String>` from on-disk stores in SPM modules; `Data` works reliably.
+    private var vocabularyUsedData = Data()
+
     /// Effective custom vocabulary at transcript time.
-    public var vocabularyUsed: [String]
+    @Transient public var vocabularyUsed: [String] {
+        get { (try? JSONDecoder().decode([String].self, from: vocabularyUsedData)) ?? [] }
+        set { vocabularyUsedData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
+
     /// The calendar event the recording was mapped to at transcription time.
     public var mappedEventIdentifier: String?
 
@@ -41,7 +49,7 @@ import SwiftData
         self.id = id
         self.createdAt = createdAt
         self.transcriptionMethodId = transcriptionMethodId
-        self.vocabularyUsed = vocabularyUsed
+        vocabularyUsedData = (try? JSONEncoder().encode(vocabularyUsed)) ?? Data()
         self.mappedEventIdentifier = mappedEventIdentifier
         self.language = language
         self.speakerCount = speakerCount

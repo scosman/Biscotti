@@ -296,6 +296,17 @@ public extension DataStore {
     func fetchAllPersons() throws -> [Person] {
         try context.fetch(FetchDescriptor<Person>())
     }
+
+    /// Fetches all `AppSettings` rows in the store (for verification in tests).
+    func fetchAllSettings() throws -> [AppSettings] {
+        try context.fetch(FetchDescriptor<AppSettings>())
+    }
+
+    /// Inserts an `AppSettings` instance into the store.
+    func insertSettings(_ settings: AppSettings) throws {
+        context.insert(settings)
+        try save()
+    }
 }
 
 // MARK: - Search

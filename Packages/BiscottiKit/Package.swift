@@ -9,10 +9,12 @@ let package = Package(
         .library(name: "DataStore", targets: ["DataStore"]),
         .library(name: "DesignSystem", targets: ["DesignSystem"]),
         .library(name: "Permissions", targets: ["Permissions"]),
+        .library(name: "Recording", targets: ["Recording"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
-        .package(name: "Transcription", path: "../Transcription")
+        .package(name: "Transcription", path: "../Transcription"),
+        .package(name: "AudioCapture", path: "../AudioCapture")
     ],
     targets: [
         .target(
@@ -47,6 +49,25 @@ let package = Package(
         .testTarget(
             name: "PermissionsTests",
             dependencies: ["Permissions"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Recording",
+            dependencies: [
+                "DataStore",
+                "Permissions",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "RecordingTests",
+            dependencies: [
+                "Recording",
+                "DataStore",
+                "Permissions",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .target(

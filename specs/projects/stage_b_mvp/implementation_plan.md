@@ -18,7 +18,7 @@ in-memory stores. All hardware/human validation is the single final phase. Each 
   `SegmentData`, `meetingSummaries`, `meetingDetail`, `audioPaths`). Wire Package.swift. Unit tests
   for Permissions state machine and the DTO mappers. *(arch §3, §4, §9 DesignSystem)*
 
-- [ ] **Phase 2 — `Recording` module.** `RecordingController` over a `RecorderControlling` seam +
+- [x] **Phase 2 — `Recording` module.** `RecordingController` over a `RecorderControlling` seam +
   `DataStore` + `Permissions`: start (create meeting → link mic/system `AudioFileRef`s → `.recording`
   marker → start engine → pump elapsed) / stop (stop → clear marker → `markAudioPresence` → return
   meeting id) / `recoverOrphans` (marker scan reconciliation) / system-audio denial inference. Fake

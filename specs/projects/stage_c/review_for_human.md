@@ -50,3 +50,13 @@ Running log of decisions for the final **human review, feedback & bug-fixing** p
 - **`CalendarService.loadEnabledCalendarIDs` is async**: the spec shows it loading from settings at init, but `DataStore` is an actor, so reading settings requires an `await`. Instead of a semaphore bridge (which causes Swift 6 sendability errors), the load happens in `refreshUpcoming` before each fetch. The enabled-IDs cache is `nil` (all calendars) until the first refresh.
 - **ObservationBox for deinit cleanup**: Swift 6 makes `deinit` nonisolated, so `CalendarService` cannot access `@MainActor`-isolated stored properties in deinit. Used a plain class wrapper (`ObservationBox`) to hold the NotificationCenter observer token so deinit can clean it up.
 - **`markSnapshotStale` and `recentMeetingsWithSnapshots` added to DataStore**: the spec mentions staleness checking but didn't specify DataStore methods for it. Added two methods to `DataStore+Phase3_2.swift` plus a `SnapshotStalenessEntry` DTO for the query result.
+
+### Phase 3 implementation decisions
+
+- **Extracted `persistSnapshot` helper in AppCore**: the snapshot-building and participant-persistence logic was duplicated between `associateEvent` and `correctAssociation`. Extracted into a private `persistSnapshot(_:for:)` method to satisfy swiftlint body-length limits and DRY the code.
+- **Onboarding gate in `onLaunch`**: when `onboardingComplete` is false, `onLaunch` routes to `.onboarding` and returns early without starting calendar observation. Pre-existing tests that called `onLaunch` expecting `.home` were updated to mark onboarding complete first.
+- **`Color(hex:)` made public**: the hex-color initializer in DesignSystem needed to be public for SettingsUI (which imports DesignSystem) to use it for calendar color dots.
+- **SettingsUI depends on AppKit**: both `SettingsView` and `SettingsViewModel` use `NSWorkspace.shared.open(url)` for deep-linking to System Settings privacy panes; requires `import AppKit`.
+- **`CalendarContextBlock` uses value-type inputs only**: no view model; all data flows in via init parameters. This keeps the component reusable across MeetingDetail and EventPreview without coupling to a specific VM.
+- **`MeetingGroup` grouping is a pure static function**: `MeetingListViewModel.groupByEffectiveDate` takes `[MeetingSummary]` and returns `[MeetingGroup]` with no service dependencies, enabling direct unit testing without fixtures.
+- **`makeCoreFixture` swiftlint disable**: the factory function grew to 55 lines with the calendar service wiring; added a targeted `swiftlint:disable:next function_body_length` rather than splitting the function, since it's a test fixture factory where all setup is logically related.

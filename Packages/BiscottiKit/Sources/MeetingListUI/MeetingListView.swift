@@ -3,10 +3,11 @@ import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The sidebar's scrollable list of past meetings.
+/// The sidebar's scrollable list of past meetings, grouped by effective date.
 ///
-/// Each row shows the meeting title and a relative date. Selecting a row
-/// routes the detail pane to that meeting via `MeetingListViewModel`.
+/// Groups: Today / Yesterday / This Week / Earlier. Each row shows the
+/// meeting title and a relative date. Selecting a row routes the detail
+/// pane to that meeting via `MeetingListViewModel`.
 public struct MeetingListView: View {
     @Bindable private var viewModel: MeetingListViewModel
 
@@ -16,27 +17,37 @@ public struct MeetingListView: View {
 
     public var body: some View {
         Group {
-            if viewModel.meetings.isEmpty {
+            if viewModel.groupedMeetings.isEmpty {
                 Text("No recordings yet")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
                     .padding(.vertical, Tokens.spacingSM)
             } else {
-                ForEach(viewModel.meetings) { meeting in
-                    Button {
-                        viewModel.select(meeting.id)
-                    } label: {
-                        meetingRow(meeting)
+                ForEach(viewModel.groupedMeetings) { group in
+                    Section {
+                        ForEach(group.meetings) { meeting in
+                            Button {
+                                viewModel.select(meeting.id)
+                            } label: {
+                                meetingRow(meeting)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, Tokens.spacingXS)
+                            .padding(.horizontal, Tokens.spacingSM)
+                            .background(
+                                viewModel.selectedMeetingID == meeting.id
+                                    ? Color.accentColor.opacity(0.15)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 4)
+                            )
+                        }
+                    } header: {
+                        Text(group.title)
+                            .font(Tokens.sectionHeaderFont)
+                            .foregroundStyle(Tokens.secondaryText)
+                            .padding(.horizontal, Tokens.spacingSM)
+                            .padding(.top, Tokens.spacingSM)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.vertical, Tokens.spacingXS)
-                    .padding(.horizontal, Tokens.spacingSM)
-                    .background(
-                        viewModel.selectedMeetingID == meeting.id
-                            ? Color.accentColor.opacity(0.15)
-                            : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 4)
-                    )
                 }
             }
         }
@@ -63,9 +74,6 @@ public struct MeetingListView: View {
 }
 
 #Preview("Meeting List - With Meetings") {
-    // The preview helper uses an in-memory store that starts empty.
-    // SwiftUI previews primarily verify layout; use the app or tests
-    // to exercise populated lists.
     MeetingListView(viewModel: .preview())
         .frame(width: 200)
 }

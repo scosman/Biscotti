@@ -1,4 +1,5 @@
 import AppCore
+import Calendar
 import DataStore
 import Foundation
 import TranscriptionService
@@ -21,6 +22,9 @@ public enum MeetingDetailState: Sendable, Equatable {
 /// Loads the meeting's detail data from `DataStore`, observes
 /// `TranscriptionService.jobs[meetingID]` for live status, and
 /// surfaces one of three states: processing, transcript, or failed.
+///
+/// Stage C additions: calendar context display, association correction,
+/// and the upcoming event picker.
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
@@ -32,6 +36,15 @@ public final class MeetingDetailViewModel {
     /// The loading flag for the initial data fetch.
     public private(set) var isLoading: Bool = true
 
+    /// Calendar context loaded from the store's snapshot.
+    public private(set) var calendarContext: CalendarContextData?
+
+    /// Whether to show the event picker sheet for association correction.
+    public var showEventPicker: Bool = false
+
+    /// Whether to show a re-transcribe prompt after association correction.
+    public private(set) var showReTranscribeAfterCorrection: Bool = false
+
     public init(core: AppCore, meetingID: UUID) {
         self.core = core
         self.meetingID = meetingID
@@ -39,14 +52,15 @@ public final class MeetingDetailViewModel {
 
     // MARK: - Derived state
 
-    /// The current display state, combining the transcription job status
-    /// and the persisted meeting detail.
+    /// The current display state.
     public var displayState: MeetingDetailState {
         let jobStatus = core.transcription.jobs[meetingID]
 
         switch jobStatus {
         case let .downloadingModel(message):
-            return .processing(message: "Transcribing\u{2026}", subtitle: message)
+            return .processing(
+                message: "Transcribing\u{2026}", subtitle: message
+            )
 
         case .transcribing:
             return .processing(message: "Transcribing\u{2026}")
@@ -61,24 +75,19 @@ public final class MeetingDetailViewModel {
             if isLoading {
                 return .processing(message: "Loading\u{2026}")
             }
-            // No transcript yet and no active job -- show the detail as-is
-            // (e.g. a meeting that was recorded but never transcribed).
             if let detail {
                 return .transcript(detail)
             }
-            // Load completed but no detail found (meeting deleted or not found).
             return .failed(message: "Meeting not found.", retriable: false)
         }
     }
 
-    /// The current transcription job status for this meeting. Used by the view
-    /// to observe changes and trigger `onJobStatusChange(_:)`.
+    /// The current transcription job status for this meeting.
     public var currentJobStatus: JobStatus? {
         core.transcription.jobs[meetingID]
     }
 
     /// Whether the Re-transcribe action should be enabled.
-    /// Available when the meeting has audio and no job is actively running.
     public var canReTranscribe: Bool {
         guard let detail, detail.hasAudio else { return false }
         let jobStatus = core.transcription.jobs[meetingID]
@@ -107,6 +116,21 @@ public final class MeetingDetailViewModel {
         return Self.formatDuration(duration)
     }
 
+    /// Whether the meeting has calendar context.
+    public var hasCalendarContext: Bool {
+        calendarContext != nil
+    }
+
+    /// Whether to show the quiet "Link a calendar event..." prompt.
+    public var showLinkEventPrompt: Bool {
+        !hasCalendarContext
+    }
+
+    /// The upcoming events available for association correction.
+    public var availableEvents: [CalendarEvent] {
+        core.upcoming
+    }
+
     // MARK: - Actions
 
     /// Loads the meeting detail from the store.
@@ -114,24 +138,21 @@ public final class MeetingDetailViewModel {
         isLoading = true
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
+            calendarContext = detail?.calendar
         } catch {
             detail = nil
+            calendarContext = nil
         }
         isLoading = false
     }
 
     /// Called when the transcription job status changes for this meeting.
-    /// Reloads the detail from the store when the job completes so the
-    /// transcript appears immediately without manual re-navigation.
-    /// Also reloads the sidebar summaries so the has-transcript indicator
-    /// updates.
     public func onJobStatusChange(_ newStatus: JobStatus?) async {
         if newStatus == .completed {
             do {
                 detail = try await core.store.meetingDetail(id: meetingID)
             } catch {
-                // Non-fatal: displayState will fall through to the existing
-                // detail (which may be stale but not worse than before).
+                // Non-fatal.
             }
             await core.reloadSummaries()
         }
@@ -147,6 +168,34 @@ public final class MeetingDetailViewModel {
     public func retry() async {
         await core.transcription.transcribe(meetingID: meetingID)
         await load()
+    }
+
+    /// Opens the event picker for association correction.
+    public func presentAssociationCorrection() {
+        showEventPicker = true
+    }
+
+    /// Corrects the association to a new event (or removes it if nil).
+    public func correctAssociation(eventKey: String?) async {
+        await core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+        await load()
+        showEventPicker = false
+        if eventKey != nil {
+            showReTranscribeAfterCorrection = true
+        }
+    }
+
+    /// Removes the calendar association.
+    public func removeAssociation() async {
+        await correctAssociation(eventKey: nil)
+        showReTranscribeAfterCorrection = false
+    }
+
+    /// Dismisses the re-transcribe prompt.
+    public func dismissReTranscribePrompt() {
+        showReTranscribeAfterCorrection = false
     }
 
     // MARK: - Formatting

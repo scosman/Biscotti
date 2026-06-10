@@ -1,4 +1,5 @@
 import BiscottiTestSupport
+import Calendar
 import Foundation
 import Testing
 @testable import AppCore
@@ -128,17 +129,28 @@ struct AppShellRoutingTests {
         #expect(viewModel.route == .home)
     }
 
-    @Test("appCore exposes the underlying core")
+    @Test("eventPreviewViewModel returns stable instance for same key")
     @MainActor
-    func appCoreAccessible() throws {
+    func eventPreviewVMStableForSameKey() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
-        // Verify it's the same instance by checking route identity
-        let meetingID = UUID()
-        fix.core.select(meetingID)
-        #expect(viewModel.appCore.route == .meeting(meetingID))
+        let epVM1 = viewModel.eventPreviewViewModel(for: "key-1")
+        let epVM2 = viewModel.eventPreviewViewModel(for: "key-1")
+        #expect(epVM1 === epVM2)
+    }
+
+    @Test("eventPreviewViewModel returns new instance for different key")
+    @MainActor
+    func eventPreviewVMNewForDifferentKey() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = AppShellViewModel(core: fix.core)
+        let epVM1 = viewModel.eventPreviewViewModel(for: "key-1")
+        let epVM2 = viewModel.eventPreviewViewModel(for: "key-2")
+        #expect(epVM1 !== epVM2)
     }
 }
 
@@ -190,5 +202,215 @@ struct AppShellChildVMTests {
         let detailVM1 = viewModel.meetingDetailViewModel(for: id1)
         let detailVM2 = viewModel.meetingDetailViewModel(for: id2)
         #expect(detailVM1 !== detailVM2)
+    }
+
+    @Test("settingsViewModel is stable")
+    @MainActor
+    func settingsVMStable() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = AppShellViewModel(core: fix.core)
+        let settings1 = viewModel.settingsViewModel
+        let settings2 = viewModel.settingsViewModel
+        #expect(settings1 === settings2)
+    }
+}
+
+// MARK: - Upcoming and search tests
+
+@Suite("AppShellViewModel -- upcoming and search")
+struct AppShellUpcomingSearchTests {
+    @Test("upcomingEvents reflects core upcoming")
+    @MainActor
+    func upcomingEventsReflectsCore() async throws {
+        let now = Date()
+        let dto = EKEventDTO(
+            eventIdentifier: "ev-shell",
+            calendarItemIdentifier: "ci-shell",
+            calendarItemExternalIdentifier: "ext-shell",
+            occurrenceDate: now,
+            title: "Shell Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: "https://zoom.us/j/789",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 3,
+            attendees: [],
+            organizer: nil
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            testName: "AppShellUITests"
+        )
+        defer { fix.cleanup() }
+
+        // Mark onboarding complete so onLaunch primes calendar
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.upcomingEvents.count == 1)
+        #expect(shellVM.upcomingEvents.first?.title == "Shell Event")
+    }
+
+    @Test("hasCalendarAccess reflects auth status")
+    @MainActor
+    func hasCalendarAccessReflectsAuth() throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            testName: "AppShellUITests"
+        )
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.hasCalendarAccess == true)
+    }
+
+    @Test("hasCalendarAccess false when not determined")
+    @MainActor
+    func hasCalendarAccessFalseWhenNotDetermined() throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .notDetermined,
+            testName: "AppShellUITests"
+        )
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.hasCalendarAccess == false)
+    }
+
+    @Test("search text triggers presentSearch and dismissSearch")
+    @MainActor
+    func searchTextTriggersPresentSearch() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+
+        // Non-empty text triggers search
+        shellVM.onSearchTextChange("meeting")
+        #expect(fix.core.route == .search)
+
+        // Empty text dismisses search
+        shellVM.onSearchTextChange("")
+        #expect(fix.core.route != .search)
+    }
+
+    @Test("clearSearch resets text and route")
+    @MainActor
+    func clearSearchResetsTextAndRoute() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+
+        shellVM.searchText = "hello"
+        shellVM.onSearchTextChange("hello")
+        #expect(fix.core.route == .search)
+
+        shellVM.clearSearch()
+        #expect(shellVM.searchText == "")
+        #expect(fix.core.route != .search)
+    }
+
+    @Test("showHome routes to home")
+    @MainActor
+    func showHomeRoutesToHome() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        fix.core.showSettings() // change route first
+        shellVM.showHome()
+        #expect(shellVM.route == .home)
+    }
+
+    @Test("showSettings routes to settings")
+    @MainActor
+    func showSettingsRoutesToSettings() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.showSettings()
+        #expect(shellVM.route == .settings)
+    }
+
+    @Test("selectEvent routes to event preview")
+    @MainActor
+    func selectEventRoutes() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.selectEvent("event-key-123")
+        #expect(shellVM.route == .event("event-key-123"))
+    }
+
+    @Test("timeText formats future events correctly")
+    @MainActor
+    func timeTextFormats() {
+        let now = Date()
+        let event = CalendarEvent(
+            id: "e",
+            title: "T",
+            start: now.addingTimeInterval(1800), // 30 min
+            end: now.addingTimeInterval(5400),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text = AppShellViewModel.timeText(for: event, relativeTo: now)
+        #expect(text == "in 30m")
+
+        let event2 = CalendarEvent(
+            id: "e2",
+            title: "T2",
+            start: now.addingTimeInterval(5400), // 90 min
+            end: now.addingTimeInterval(9000),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text2 = AppShellViewModel.timeText(for: event2, relativeTo: now)
+        #expect(text2 == "in 1h 30m")
+    }
+
+    @Test("timeText returns 'now' for past events")
+    @MainActor
+    func timeTextPast() {
+        let now = Date()
+        let event = CalendarEvent(
+            id: "e",
+            title: "T",
+            start: now.addingTimeInterval(-600), // started 10 min ago
+            end: now.addingTimeInterval(1800),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text = AppShellViewModel.timeText(for: event, relativeTo: now)
+        #expect(text == "now")
     }
 }

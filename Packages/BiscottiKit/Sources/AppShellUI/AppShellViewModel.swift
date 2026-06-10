@@ -1,18 +1,18 @@
 import AppCore
+import Calendar
 import Foundation
 import MeetingDetailUI
 import MeetingListUI
 import RecordingUI
+import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
 ///
-/// Owns the sidebar state (Record button, recording indicator) and routes
-/// the detail pane based on `AppCore.route`.
+/// Owns the sidebar state (Record button, recording indicator, upcoming,
+/// settings) and routes the detail pane based on `AppCore.route`.
 ///
-/// Child view models (`meetingListViewModel`, `recordingViewModel`,
-/// `meetingDetailViewModel(for:)`) are created once and cached so they
-/// survive SwiftUI re-evaluations. This prevents `@State` resets in
-/// child views (e.g. the recording dot-blink animation).
+/// Child view models are created once and cached so they survive SwiftUI
+/// re-evaluations.
 @MainActor @Observable
 public final class AppShellViewModel {
     private let core: AppCore
@@ -25,32 +25,61 @@ public final class AppShellViewModel {
     /// The recording-screen view model (created once, never replaced).
     public let recordingViewModel: RecordingViewModel
 
+    /// The settings view model (created once, never replaced).
+    public let settingsViewModel: SettingsViewModel
+
     /// Cached meeting-detail view model, keyed by meeting ID.
-    /// Replaced only when the selected meeting changes.
     private var cachedDetailMeetingID: UUID?
     private var cachedDetailViewModel: MeetingDetailViewModel?
+
+    /// Cached event-preview view model, keyed by event composite key.
+    private var cachedEventPreviewKey: String?
+    private var cachedEventPreviewViewModel: EventPreviewViewModel?
+
+    /// The toolbar search text.
+    public var searchText: String = ""
 
     public init(core: AppCore) {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
+        settingsViewModel = SettingsViewModel(core: core)
     }
 
     /// Returns a stable `MeetingDetailViewModel` for the given meeting ID.
     /// Re-creates only when the ID changes.
-    public func meetingDetailViewModel(for meetingID: UUID) -> MeetingDetailViewModel {
-        if let cached = cachedDetailViewModel, cachedDetailMeetingID == meetingID {
+    public func meetingDetailViewModel(
+        for meetingID: UUID
+    ) -> MeetingDetailViewModel {
+        if let cached = cachedDetailViewModel,
+           cachedDetailMeetingID == meetingID
+        {
             return cached
         }
-        let viewModel = MeetingDetailViewModel(core: core, meetingID: meetingID)
+        let viewModel = MeetingDetailViewModel(
+            core: core, meetingID: meetingID
+        )
         cachedDetailMeetingID = meetingID
         cachedDetailViewModel = viewModel
         return viewModel
     }
 
-    /// The underlying AppCore for child view models to consume.
-    public var appCore: AppCore {
-        core
+    /// Returns a stable `EventPreviewViewModel` for the given event key.
+    /// Re-creates only when the key changes.
+    public func eventPreviewViewModel(
+        for eventKey: String
+    ) -> EventPreviewViewModel {
+        if let cached = cachedEventPreviewViewModel,
+           cachedEventPreviewKey == eventKey
+        {
+            return cached
+        }
+        let viewModel = EventPreviewViewModel(
+            core: core, eventKey: eventKey
+        )
+        cachedEventPreviewKey = eventKey
+        cachedEventPreviewViewModel = viewModel
+        return viewModel
     }
 
     // MARK: - Sidebar state
@@ -74,6 +103,16 @@ public final class AppShellViewModel {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    /// Upcoming meeting-like calendar events for the sidebar.
+    public var upcomingEvents: [CalendarEvent] {
+        core.upcoming
+    }
+
+    /// Whether the calendar has been authorized (shows/hides upcoming section).
+    public var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
+    }
+
     // MARK: - Detail routing
 
     /// The current route determining which detail view to show.
@@ -93,8 +132,59 @@ public final class AppShellViewModel {
         core.navigateToRecording()
     }
 
+    /// Routes to Home.
+    public func showHome() {
+        core.showHome()
+    }
+
+    /// Routes to Settings.
+    public func showSettings() {
+        core.showSettings()
+    }
+
+    /// Routes to an upcoming event preview.
+    public func selectEvent(_ key: String) {
+        core.selectEvent(key)
+    }
+
+    /// Called when the toolbar search text changes.
+    public func onSearchTextChange(_ text: String) {
+        if !text.isEmpty {
+            core.presentSearch()
+        } else if core.route == .search {
+            core.dismissSearch()
+        }
+    }
+
+    /// Clears the search and restores the previous route.
+    public func clearSearch() {
+        searchText = ""
+        core.dismissSearch()
+    }
+
     /// Called on app launch to run recovery and load data.
     public func onLaunch() async {
         await core.onLaunch()
+    }
+
+    // MARK: - Time formatting for upcoming events
+
+    /// Formats a CalendarEvent's start time as relative text.
+    public static func timeText(
+        for event: CalendarEvent,
+        relativeTo now: Date = Date()
+    ) -> String {
+        let interval = event.start.timeIntervalSince(now)
+        guard interval > 0 else { return "now" }
+        let minutes = Int(interval / 60)
+        if minutes < 60 {
+            return "in \(minutes)m"
+        }
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        if remainingMinutes == 0 {
+            return "in \(hours)h"
+        }
+        return "in \(hours)h \(remainingMinutes)m"
     }
 }

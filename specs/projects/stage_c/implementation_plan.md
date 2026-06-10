@@ -34,7 +34,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   `bestMatch(at:)`, `startObserving`/staleness. Full unit tests. *(components/calendar.md; Project 5
   core. Depends on Phase 1.)*
 
-- [ ] **Phase 3 — Calendar UX + association (completes Project 5).** `AppCore` grows:
+- [x] **Phase 3 — Calendar UX + association (completes Project 5).** `AppCore` grows:
   `calendar` service, `upcoming` mirror, `startRecording(eventKey:)` auto-association (C4),
   `selectEvent`, calendar permission relay. `MeetingListUI`/`AppShellUI` sidebar **Upcoming** list;
   `.event(key)` read-only preview with Record; `MeetingDetailUI` calendar-context block + association
@@ -60,7 +60,8 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
 
 - [ ] **Phase 7 — Home, Library & Search.** `HomeUI` (welcome + Start + upcoming preview + empty
   states); `SearchUI` (live takeover, ranked hits, back-restore, debounce); `MeetingListUI` rich
-  grouping (Today/Yesterday/This Week/Earlier); `AppShellUI` full sidebar + toolbar search + routing.
+  grouping (Today/Yesterday/This Week/Earlier — grouping delivered early in Phase 3);
+  `AppShellUI` full sidebar + toolbar search + routing.
   (Transcript-text search landed in Phase 1.) *(functional §3; ui_design §1,2,4; components/ui_modules.md.
   Depends on Phase 3.)*
 

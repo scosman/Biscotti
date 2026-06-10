@@ -1,7 +1,9 @@
 #if DEBUG
     import AudioCapture
+    import Calendar
     import DataStore
     import Foundation
+    import MeetingCatalog
     import Permissions
     import Recording
     import Transcription
@@ -32,11 +34,19 @@
                 engine: PreviewTranscriber()
             )
 
+            let catalog = BundledMeetingCatalog()
+            let calendar = CalendarService(
+                store: store,
+                catalog: catalog,
+                provider: PreviewEventStore()
+            )
+
             return AppCore(
                 store: store,
                 permissions: permissions,
                 recording: recording,
-                transcription: transcription
+                transcription: transcription,
+                calendar: calendar
             )
         }
     }
@@ -86,6 +96,29 @@
                 speakerEmbeddings: [:],
                 processingDuration: 0
             )
+        }
+    }
+
+    /// No-op EventStore for previews: authorized, no calendars/events.
+    struct PreviewEventStore: EventStoreProviding {
+        func authorizationStatus() -> CalendarAuthStatus {
+            .authorized
+        }
+
+        func requestAccess() async throws -> Bool {
+            true
+        }
+
+        func calendars() -> [CalendarInfo] {
+            []
+        }
+
+        func events(in _: DateInterval, calendars _: [String]?) -> [EKEventDTO] {
+            []
+        }
+
+        func refreshEvent(eventIdentifier _: String, occurrenceStart _: Date) -> EKEventDTO? {
+            nil
         }
     }
 #endif

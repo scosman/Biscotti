@@ -1,13 +1,15 @@
 import AppCore
+import Calendar
 import DesignSystem
 import MeetingDetailUI
 import MeetingListUI
 import RecordingUI
+import SettingsUI
 import SwiftUI
 
-/// The main app window: a `NavigationSplitView` with a sidebar (Record +
-/// recording indicator + past meetings) and a detail pane routed by
-/// `AppCore.route`.
+/// The main app window: a `NavigationSplitView` with a sidebar (Home +
+/// Record indicator + Upcoming + Past grouped + Settings) and a detail
+/// pane routed by `AppCore.route`.
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
@@ -20,6 +22,14 @@ public struct AppShellView: View {
             sidebar
         } detail: {
             detailContent
+        }
+        .searchable(
+            text: $viewModel.searchText,
+            placement: .toolbar,
+            prompt: "Search meetings\u{2026}"
+        )
+        .onChange(of: viewModel.searchText) { _, newValue in
+            viewModel.onSearchTextChange(newValue)
         }
         .task { await viewModel.onLaunch() }
     }
@@ -39,6 +49,21 @@ public struct AppShellView: View {
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
 
+            // Home row
+            homeRow
+                .padding(.horizontal, Tokens.spacingSM)
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
+
+            // Upcoming section
+            if viewModel.hasCalendarAccess,
+               !viewModel.upcomingEvents.isEmpty
+            {
+                upcomingSection
+            }
+
+            // Past section
             Text("PAST")
                 .font(Tokens.sectionHeaderFont)
                 .foregroundStyle(Tokens.secondaryText)
@@ -50,6 +75,16 @@ public struct AppShellView: View {
                     viewModel: viewModel.meetingListViewModel
                 )
             }
+
+            Spacer()
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
+
+            // Settings (pinned bottom)
+            settingsRow
+                .padding(.horizontal, Tokens.spacingSM)
+                .padding(.bottom, Tokens.spacingSM)
         }
         .frame(minWidth: 180, idealWidth: 220)
     }
@@ -84,6 +119,94 @@ public struct AppShellView: View {
         .buttonStyle(.plain)
     }
 
+    private var homeRow: some View {
+        Button {
+            viewModel.showHome()
+        } label: {
+            HStack(spacing: Tokens.spacingSM) {
+                Image(systemName: "house")
+                    .foregroundStyle(
+                        viewModel.route == .home
+                            ? Color.accentColor
+                            : Tokens.secondaryText
+                    )
+                Text("Home")
+                    .font(.body)
+                Spacer()
+            }
+            .padding(.vertical, Tokens.spacingXS)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            viewModel.route == .home
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+    }
+
+    private var upcomingSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("UPCOMING")
+                .font(Tokens.sectionHeaderFont)
+                .foregroundStyle(Tokens.secondaryText)
+                .padding(.horizontal, Tokens.spacingMD)
+                .padding(.bottom, Tokens.spacingXS)
+
+            ForEach(viewModel.upcomingEvents) { event in
+                Button {
+                    viewModel.selectEvent(event.id)
+                } label: {
+                    UpcomingEventRow(
+                        title: event.title,
+                        timeText: AppShellViewModel.timeText(for: event),
+                        platformBadge: event.conferencePlatform
+                    )
+                    .padding(.vertical, Tokens.spacingXS)
+                    .padding(.horizontal, Tokens.spacingSM)
+                }
+                .buttonStyle(.plain)
+                .background(
+                    viewModel.route == .event(event.id)
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
+            }
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
+        }
+    }
+
+    private var settingsRow: some View {
+        Button {
+            viewModel.showSettings()
+        } label: {
+            HStack(spacing: Tokens.spacingSM) {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(
+                        viewModel.route == .settings
+                            ? Color.accentColor
+                            : Tokens.secondaryText
+                    )
+                Text("Settings")
+                    .font(.body)
+                Spacer()
+            }
+            .padding(.vertical, Tokens.spacingXS)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            viewModel.route == .settings
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+    }
+
     // MARK: - Detail pane
 
     @ViewBuilder
@@ -103,17 +226,18 @@ public struct AppShellView: View {
             )
             .id(meetingID)
 
-        case .event:
-            // TODO: Implement event detail view in Phase 3
-            emptyPlaceholder
+        case let .event(key):
+            EventPreviewView(
+                viewModel: viewModel.eventPreviewViewModel(for: key)
+            )
+            .id(key)
 
         case .search:
             // TODO: Implement search results view in Phase 7
             emptyPlaceholder
 
         case .settings:
-            // TODO: Implement settings view in Phase 10 (calendar selection slice in Phase 3)
-            emptyPlaceholder
+            SettingsView(viewModel: viewModel.settingsViewModel)
 
         case .onboarding:
             // TODO: Implement onboarding wizard in Phase 10

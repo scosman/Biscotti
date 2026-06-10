@@ -1,7 +1,9 @@
 import AppCore
 import AudioCapture
+import Calendar
 import DataStore
 import Foundation
+import MeetingCatalog
 import Permissions
 import Recording
 import TranscriptionService
@@ -18,6 +20,8 @@ public struct CoreFixture {
     public let fakeEngine: FakeTranscriber
     public let storageRoot: URL
     public let permissions: Permissions
+    public let calendarService: CalendarService
+    public let fakeEventStore: FakeEventStore
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -43,18 +47,56 @@ public struct CoreFixture {
     }
 }
 
+/// A configurable fake EventStore for tests.
+public final class FakeEventStore: EventStoreProviding, @unchecked Sendable {
+    public var authStatus: CalendarAuthStatus
+    public var requestAccessResult: Bool
+    public var calendarInfos: [CalendarInfo]
+    public var eventDTOs: [EKEventDTO]
+    public var refreshResult: EKEventDTO?
+
+    public init(
+        authStatus: CalendarAuthStatus = .authorized,
+        requestAccessResult: Bool = true,
+        calendarInfos: [CalendarInfo] = [],
+        eventDTOs: [EKEventDTO] = [],
+        refreshResult: EKEventDTO? = nil
+    ) {
+        self.authStatus = authStatus
+        self.requestAccessResult = requestAccessResult
+        self.calendarInfos = calendarInfos
+        self.eventDTOs = eventDTOs
+        self.refreshResult = refreshResult
+    }
+
+    public func authorizationStatus() -> CalendarAuthStatus {
+        authStatus
+    }
+
+    public func requestAccess() async throws -> Bool {
+        requestAccessResult
+    }
+
+    public func calendars() -> [CalendarInfo] {
+        calendarInfos
+    }
+
+    public func events(
+        in _: DateInterval, calendars _: [String]?
+    ) -> [EKEventDTO] {
+        eventDTOs
+    }
+
+    public func refreshEvent(
+        eventIdentifier _: String, occurrenceStart _: Date
+    ) -> EKEventDTO? {
+        refreshResult
+    }
+}
+
 /// Creates a `CoreFixture` with configurable fakes.
-///
-/// - Parameters:
-///   - micStatus: Initial mic permission status (default `.authorized`).
-///   - micRequestResult: Whether mic permission request succeeds (default `true`).
-///   - startError: Error to throw from the recorder's `start` method.
-///   - probableDenied: Whether the recorder reports probable system audio denial.
-///   - stateValues: Capture state values to emit from the recorder's state stream.
-///   - summaryLimit: Max meetings to load for the sidebar (default `50`).
-///   - denialCheckDelay: Delay before the denial check task runs (default `60s`).
-///   - testName: Used to namespace the storage directory (default `"Test"`).
 @MainActor
+// swiftlint:disable:next function_body_length
 public func makeCoreFixture(
     micStatus: PermissionState = .authorized,
     micRequestResult: Bool = true,
@@ -63,15 +105,23 @@ public func makeCoreFixture(
     stateValues: [CaptureState] = [],
     summaryLimit: Int = 50,
     denialCheckDelay: Duration = .seconds(60),
+    calendarAuthStatus: CalendarAuthStatus = .authorized,
+    calendarInfos: [CalendarInfo] = [],
+    calendarEventDTOs: [EKEventDTO] = [],
+    calendarRefreshResult: EKEventDTO? = nil,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
-    let micAuth = FakeMicAuthorizer(status: micStatus, requestResult: micRequestResult)
+    let micAuth = FakeMicAuthorizer(
+        status: micStatus, requestResult: micRequestResult
+    )
     let permissions = Permissions(mic: micAuth)
 
     let storageRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(testName)-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: storageRoot, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+        at: storageRoot, withIntermediateDirectories: true
+    )
 
     let fakeRecorder = FakeRecorder(
         startError: startError,
@@ -90,11 +140,26 @@ public func makeCoreFixture(
     let fakeEngine = FakeTranscriber()
     let transcription = TranscriptionService(store: store, engine: fakeEngine)
 
+    let fakeEventStore = FakeEventStore(
+        authStatus: calendarAuthStatus,
+        requestAccessResult: true,
+        calendarInfos: calendarInfos,
+        eventDTOs: calendarEventDTOs,
+        refreshResult: calendarRefreshResult
+    )
+    let catalog = BundledMeetingCatalog()
+    let calendarService = CalendarService(
+        store: store,
+        catalog: catalog,
+        provider: fakeEventStore
+    )
+
     let core = AppCore(
         store: store,
         permissions: permissions,
         recording: recording,
         transcription: transcription,
+        calendar: calendarService,
         summaryLimit: summaryLimit
     )
 
@@ -104,6 +169,8 @@ public func makeCoreFixture(
         fakeRecorder: fakeRecorder,
         fakeEngine: fakeEngine,
         storageRoot: storageRoot,
-        permissions: permissions
+        permissions: permissions,
+        calendarService: calendarService,
+        fakeEventStore: fakeEventStore
     )
 }

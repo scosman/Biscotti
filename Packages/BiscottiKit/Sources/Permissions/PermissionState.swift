@@ -3,6 +3,15 @@ public enum PermissionState: Sendable, Equatable {
     case notDetermined
     case authorized
     case denied
+
+    /// Human-readable label for display in Settings and Onboarding.
+    public var displayText: String {
+        switch self {
+        case .notDetermined: "Not Requested"
+        case .authorized: "Granted"
+        case .denied: "Denied"
+        }
+    }
 }
 
 /// The kinds of permissions the app requires.

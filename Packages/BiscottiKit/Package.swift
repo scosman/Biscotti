@@ -18,6 +18,7 @@ let package = Package(
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
         .library(name: "Calendar", targets: ["Calendar"]),
         .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
+        .library(name: "SettingsUI", targets: ["SettingsUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
     dependencies: [
@@ -104,6 +105,8 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Calendar",
+                "MeetingCatalog",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -117,7 +120,9 @@ let package = Package(
             name: "BiscottiTestSupport",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -132,7 +137,9 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -145,6 +152,7 @@ let package = Package(
             name: "MeetingListUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
                 "DesignSystem"
             ],
@@ -156,7 +164,9 @@ let package = Package(
                 "MeetingListUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -194,6 +204,7 @@ let package = Package(
             name: "MeetingDetailUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
                 "DesignSystem",
                 "TranscriptionService"
@@ -206,7 +217,9 @@ let package = Package(
                 "MeetingDetailUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -219,10 +232,12 @@ let package = Package(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DesignSystem",
                 "MeetingListUI",
+                "MeetingDetailUI",
                 "RecordingUI",
-                "MeetingDetailUI"
+                "SettingsUI"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -232,7 +247,9 @@ let package = Package(
                 "AppShellUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -255,6 +272,34 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "MeetingCatalog"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "SettingsUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem",
+                "Permissions"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SettingsUITests",
+            dependencies: [
+                "SettingsUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
         ),

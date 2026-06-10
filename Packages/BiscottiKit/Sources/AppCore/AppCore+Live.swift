@@ -1,6 +1,8 @@
 import AudioCapture
+import Calendar
 import DataStore
 import Foundation
+import MeetingCatalog
 import Permissions
 import Recording
 import Transcription
@@ -40,11 +42,15 @@ public extension AppCore {
         let engine = LiveTranscriberAdapter(transcriber: transcriber)
         let transcription = TranscriptionService(store: store, engine: engine)
 
+        let catalog = BundledMeetingCatalog()
+        let calendar = CalendarService(store: store, catalog: catalog)
+
         return AppCore(
             store: store,
             permissions: permissions,
             recording: recording,
-            transcription: transcription
+            transcription: transcription,
+            calendar: calendar
         )
     }
 }
@@ -52,12 +58,6 @@ public extension AppCore {
 // MARK: - AudioRecorder adapter
 
 /// Bridges `AudioCapture.AudioRecorder` to the `RecorderControlling` protocol.
-///
-/// `AudioRecorder` is an actor, so its `stateStream()` is isolated and
-/// requires `await`. The `RecorderControlling` protocol declares
-/// `stateStream()` as synchronous so tests can return scripted streams
-/// without async overhead. This adapter bridges the gap by relaying
-/// through an intermediate `AsyncStream` that spawns the actor call.
 private struct LiveRecorderAdapter: RecorderControlling {
     let recorder: AudioRecorder
 

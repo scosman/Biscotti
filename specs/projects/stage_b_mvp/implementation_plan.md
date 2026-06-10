@@ -39,7 +39,7 @@ in-memory stores. All hardware/human validation is the single final phase. Each 
   recording-state rendering, the three Meeting Detail states (downloading/transcribing · transcript ·
   failed+Retry), shell routing. *(arch §9, ui_design.md)*
 
-- [ ] **Phase 6 — App target + XPC integration.** Update `App/project.yml` (add `Transcription` +
+- [x] **Phase 6 — App target + XPC integration.** Update `App/project.yml` (add `Transcription` +
   `AudioCapture` packages; add the `BiscottiTranscriber` xpc-service target; app depends on
   `AppShellUI`/`AppCore`/`DataStore` + embeds the XPC service); add Info.plist usage strings + keep
   audio-input entitlement; replace `BiscottiApp.swift` stub with the `AppCore.live` composition root

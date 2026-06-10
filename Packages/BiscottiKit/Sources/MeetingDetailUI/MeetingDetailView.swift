@@ -7,7 +7,7 @@ import SwiftUI
 import TranscriptionService
 
 /// The Meeting Detail screen showing metadata, transcript, calendar
-/// context, and status.
+/// context, audio playback, notes, and status.
 ///
 /// Drives off three states: processing (download/transcribe in progress),
 /// transcript (ready to display), and failed (with optional retry).
@@ -37,6 +37,27 @@ public struct MeetingDetailView: View {
                         .padding(.bottom, Tokens.spacingMD)
                 }
 
+                // Audio transport
+                AudioTransport(
+                    isPlaying: viewModel.isPlaying,
+                    currentTime: viewModel.playbackCurrentTime,
+                    duration: viewModel.playbackDuration,
+                    isDisabled: !viewModel.canPlay,
+                    onPlayPause: { viewModel.playPause() },
+                    onSeek: { viewModel.seek(to: $0) }
+                )
+                .padding(.bottom, Tokens.spacingMD)
+
+                Divider()
+                    .padding(.bottom, Tokens.spacingMD)
+
+                // Notes section
+                notesSection
+                    .padding(.bottom, Tokens.spacingMD)
+
+                Divider()
+                    .padding(.bottom, Tokens.spacingMD)
+
                 stateContent
             }
             .padding(Tokens.spacingLG)
@@ -49,6 +70,9 @@ public struct MeetingDetailView: View {
         .task { await viewModel.load() }
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
+        }
+        .onDisappear {
+            Task { await viewModel.flushNotes() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
             EventPickerSheet(viewModel: viewModel)
@@ -64,6 +88,10 @@ public struct MeetingDetailView: View {
                     .font(Tokens.meetingTitleFont)
 
                 Spacer()
+
+                if viewModel.versions.count > 1 {
+                    versionPicker
+                }
 
                 if viewModel.canReTranscribe {
                     Button("Re-transcribe") {
@@ -89,6 +117,37 @@ public struct MeetingDetailView: View {
             }
         }
     }
+
+    // MARK: - Version picker
+
+    private var versionPicker: some View {
+        VersionPicker(
+            versions: viewModel.versions.map { version in
+                VersionPickerItem(
+                    id: version.id,
+                    dateText: Self.versionDateFormatter.string(
+                        from: version.createdAt
+                    ),
+                    methodLabel: version.methodId,
+                    isPreferred: version.isPreferred
+                )
+            },
+            // Safe: the picker is only shown when versions.count > 1,
+            // which guarantees activeVersionID is non-nil (a preferred
+            // or selected version always exists when versions are loaded).
+            selectedID: viewModel.activeVersionID ?? UUID(),
+            onSelect: { id in
+                Task { await viewModel.selectVersion(id) }
+            }
+        )
+    }
+
+    private static let versionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     // MARK: - Calendar context
 
@@ -122,16 +181,19 @@ public struct MeetingDetailView: View {
 
     private var reTranscribePrompt: some View {
         HStack {
-            Text("Calendar event changed. Re-transcribe for updated vocabulary?")
-                .font(.caption)
-                .foregroundStyle(Tokens.secondaryText)
+            Text(
+                "Calendar event changed. Re-transcribe for updated vocabulary?"
+            )
+            .font(.caption)
+            .foregroundStyle(Tokens.secondaryText)
 
             Spacer()
 
             if viewModel.canReTranscribe {
                 Button("Re-transcribe") {
-                    viewModel.dismissReTranscribePrompt()
-                    Task { await viewModel.reTranscribe() }
+                    Task {
+                        await viewModel.reTranscribeAfterCorrection()
+                    }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
@@ -150,6 +212,26 @@ public struct MeetingDetailView: View {
         )
     }
 
+    // MARK: - Notes
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+            Text("Notes")
+                .font(Tokens.sectionHeaderFont)
+                .foregroundStyle(Tokens.secondaryText)
+
+            TextEditor(
+                text: Binding(
+                    get: { viewModel.notes },
+                    set: { viewModel.updateNotes($0) }
+                )
+            )
+            .font(.body)
+            .frame(minHeight: 60)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
     // MARK: - State content
 
     @ViewBuilder
@@ -158,8 +240,8 @@ public struct MeetingDetailView: View {
         case let .processing(message, subtitle):
             processingView(message: message, subtitle: subtitle)
 
-        case let .transcript(detail):
-            transcriptView(detail: detail)
+        case .transcript:
+            transcriptView
 
         case let .failed(message, retriable):
             failedView(message: message, retriable: retriable)
@@ -179,8 +261,8 @@ public struct MeetingDetailView: View {
     }
 
     @ViewBuilder
-    private func transcriptView(detail: MeetingDetailData) -> some View {
-        if let transcript = detail.preferredTranscript,
+    private var transcriptView: some View {
+        if let transcript = viewModel.displayedTranscript,
            !transcript.segments.isEmpty
         {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -264,11 +346,17 @@ struct EventPickerSheet: View {
                                     HStack {
                                         Text(Self.formatEventTime(event))
                                             .font(Tokens.metadataFont)
-                                            .foregroundStyle(Tokens.secondaryText)
-                                        if let platform = event.conferencePlatform {
+                                            .foregroundStyle(
+                                                Tokens.secondaryText
+                                            )
+                                        if let platform =
+                                            event.conferencePlatform
+                                        {
                                             Text(platform)
                                                 .font(.caption2)
-                                                .foregroundStyle(Tokens.secondaryText)
+                                                .foregroundStyle(
+                                                    Tokens.secondaryText
+                                                )
                                         }
                                     }
                                 }

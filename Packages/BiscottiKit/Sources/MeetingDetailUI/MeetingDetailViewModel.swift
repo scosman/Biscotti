@@ -24,11 +24,12 @@ public enum MeetingDetailState: Sendable, Equatable {
 /// surfaces one of three states: processing, transcript, or failed.
 ///
 /// Stage C additions: calendar context display, association correction,
-/// and the upcoming event picker.
+/// audio playback, transcript version switching, and notes autosave.
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
     private let meetingID: UUID
+    private let makePlayer: () -> any AudioPlaybackProviding
 
     /// The meeting detail data loaded from the store.
     public private(set) var detail: MeetingDetailData?
@@ -45,9 +46,63 @@ public final class MeetingDetailViewModel {
     /// Whether to show a re-transcribe prompt after association correction.
     public private(set) var showReTranscribeAfterCorrection: Bool = false
 
-    public init(core: AppCore, meetingID: UUID) {
+    // MARK: - Phase 8: Audio playback
+
+    /// The audio player instance, nil if no audio file is available.
+    public private(set) var audioPlayer: (any AudioPlaybackProviding)?
+
+    /// Whether audio files are present for this meeting.
+    public private(set) var isAudioAvailable: Bool = false
+
+    /// Stored playback state, updated by a periodic ticker so SwiftUI
+    /// observes changes (the underlying player is non-`@Observable`).
+    public private(set) var isPlaying: Bool = false
+
+    /// Stored playback position, updated by the ticker ~4x/s while playing.
+    public private(set) var playbackCurrentTime: TimeInterval = 0
+
+    /// Stored total duration of the loaded audio.
+    public private(set) var playbackDuration: TimeInterval = 0
+
+    /// The periodic ticker task that syncs player state into stored
+    /// `@Observable` properties. Runs while playing; cancelled on
+    /// pause, stop, end-of-playback, flush, or dealloc.
+    private var playbackTickerTask: Task<Void, Never>?
+
+    /// Ticker interval (250ms = ~4 updates/sec for smooth scrubbing).
+    private static let tickerInterval: Duration = .milliseconds(250)
+
+    // MARK: - Phase 8: Transcript versions
+
+    /// All transcript versions for the meeting.
+    public private(set) var versions: [TranscriptVersionData] = []
+
+    /// The ID of the explicitly selected version, nil = use preferred.
+    public var selectedVersionID: UUID?
+
+    /// The loaded transcript for the selected (non-preferred) version.
+    public private(set) var selectedTranscript: TranscriptData?
+
+    // MARK: - Phase 8: Notes
+
+    /// The user-editable notes, two-way bound to the text editor.
+    public var notes: String = ""
+
+    /// Debounce handle for notes autosave.
+    private var notesAutosaveTask: Task<Void, Never>?
+
+    /// Debounce interval for notes autosave.
+    private static let notesDebounceInterval: Duration = .seconds(1)
+
+    public init(
+        core: AppCore,
+        meetingID: UUID,
+        makePlayer: @escaping () -> any AudioPlaybackProviding
+            = { AVAudioPlayerWrapper() }
+    ) {
         self.core = core
         self.meetingID = meetingID
+        self.makePlayer = makePlayer
     }
 
     // MARK: - Derived state
@@ -131,6 +186,21 @@ public final class MeetingDetailViewModel {
         core.upcoming
     }
 
+    /// Whether audio playback is available.
+    public var canPlay: Bool {
+        isAudioAvailable && audioPlayer != nil
+    }
+
+    /// The active version ID: explicit selection or the preferred version.
+    public var activeVersionID: UUID? {
+        selectedVersionID ?? detail?.preferredTranscript?.id
+    }
+
+    /// The transcript to display: selected version or preferred.
+    public var displayedTranscript: TranscriptData? {
+        selectedTranscript ?? detail?.preferredTranscript
+    }
+
     // MARK: - Actions
 
     /// Loads the meeting detail from the store.
@@ -139,6 +209,9 @@ public final class MeetingDetailViewModel {
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
             calendarContext = detail?.calendar
+            notes = detail?.notes ?? ""
+            versions = detail?.versions ?? []
+            await loadAudioPlayer()
         } catch {
             detail = nil
             calendarContext = nil
@@ -151,6 +224,9 @@ public final class MeetingDetailViewModel {
         if newStatus == .completed {
             do {
                 detail = try await core.store.meetingDetail(id: meetingID)
+                versions = detail?.versions ?? []
+                selectedVersionID = nil
+                selectedTranscript = nil
             } catch {
                 // Non-fatal.
             }
@@ -198,8 +274,168 @@ public final class MeetingDetailViewModel {
         showReTranscribeAfterCorrection = false
     }
 
-    // MARK: - Formatting
+    // MARK: - Phase 8: Audio playback actions
 
+    /// Toggles play/pause on the audio player and starts/stops the
+    /// periodic ticker that keeps the stored playback state in sync.
+    public func playPause() {
+        guard let player = audioPlayer else { return }
+        if player.isPlaying {
+            player.pause()
+            stopPlaybackTicker()
+            syncPlaybackState()
+        } else {
+            player.play()
+            startPlaybackTicker()
+            syncPlaybackState()
+        }
+    }
+
+    /// Seeks the audio player to the specified time.
+    public func seek(to time: TimeInterval) {
+        audioPlayer?.currentTime = time
+        syncPlaybackState()
+    }
+
+    /// Stops the playback ticker and cleans up. Called on disappear/flush.
+    public func stopPlayback() {
+        audioPlayer?.pause()
+        stopPlaybackTicker()
+        syncPlaybackState()
+    }
+
+    /// Reads the current player state into stored `@Observable` properties.
+    private func syncPlaybackState() {
+        isPlaying = audioPlayer?.isPlaying ?? false
+        playbackCurrentTime = audioPlayer?.currentTime ?? 0
+        playbackDuration = audioPlayer?.duration ?? 0
+    }
+
+    /// Starts the periodic ticker that polls the player ~4x/sec.
+    private func startPlaybackTicker() {
+        stopPlaybackTicker()
+        playbackTickerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: Self.tickerInterval)
+                } catch {
+                    break
+                }
+                guard let self, !Task.isCancelled else { break }
+                syncPlaybackState()
+                // Stop the ticker if the player reached the end
+                if !(audioPlayer?.isPlaying ?? false) {
+                    break
+                }
+            }
+        }
+    }
+
+    /// Cancels the periodic ticker.
+    private func stopPlaybackTicker() {
+        playbackTickerTask?.cancel()
+        playbackTickerTask = nil
+    }
+
+    // MARK: - Phase 8: Transcript version actions
+
+    /// Selects and loads a specific transcript version.
+    public func selectVersion(_ versionID: UUID) async {
+        selectedVersionID = versionID
+
+        // If selecting the preferred version, clear the override
+        if versionID == detail?.preferredTranscript?.id {
+            selectedTranscript = nil
+            return
+        }
+
+        do {
+            selectedTranscript = try await core.store.transcript(
+                id: versionID
+            )
+        } catch {
+            selectedTranscript = nil
+        }
+    }
+
+    // MARK: - Phase 8: Notes autosave
+
+    /// Updates notes and debounces autosave to the store.
+    ///
+    /// Uses `[weak self]` for the short debounce window. If the VM
+    /// deallocs mid-debounce, `flushNotes()` (called in `onDisappear`)
+    /// is the guarantee that pending edits are persisted before teardown.
+    public func updateNotes(_ text: String) {
+        notes = text
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.notesDebounceInterval)
+            } catch {
+                return // cancelled
+            }
+            guard let self, !Task.isCancelled else { return }
+            await saveNotes()
+        }
+    }
+
+    /// Flushes any pending notes autosave immediately and stops playback.
+    /// Called on navigation away (onDisappear) to prevent leaked timers.
+    public func flushNotes() async {
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        stopPlayback()
+        await saveNotes()
+    }
+
+    // MARK: - Phase 8: Re-transcribe after correction
+
+    /// Dismisses the re-transcribe prompt and triggers re-transcription.
+    public func reTranscribeAfterCorrection() async {
+        showReTranscribeAfterCorrection = false
+        await reTranscribe()
+    }
+}
+
+// MARK: - Private helpers
+
+private extension MeetingDetailViewModel {
+    func loadAudioPlayer() async {
+        do {
+            let refs = try await core.store.audioFileRefs(
+                meetingID: meetingID
+            )
+            isAudioAvailable = refs.present
+
+            guard refs.present, let micURL = refs.mic else {
+                audioPlayer = nil
+                syncPlaybackState()
+                return
+            }
+
+            let player = makePlayer()
+            try player.load(url: micURL)
+            audioPlayer = player
+            syncPlaybackState()
+        } catch {
+            audioPlayer = nil
+            isAudioAvailable = false
+            syncPlaybackState()
+        }
+    }
+
+    func saveNotes() async {
+        do {
+            try await core.store.setNotes(notes, for: meetingID)
+        } catch {
+            // Non-fatal; notes will be retried on next edit.
+        }
+    }
+}
+
+// MARK: - Formatting
+
+extension MeetingDetailViewModel {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

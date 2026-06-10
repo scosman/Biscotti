@@ -65,7 +65,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   (Transcript-text search landed in Phase 1.) *(functional §3; ui_design §1,2,4; components/ui_modules.md.
   Depends on Phase 3.)*
 
-- [ ] **Phase 8 — Rich Meeting Detail (completes Project 7).** Audio playback (`AudioPlaybackProviding`
+- [x] **Phase 8 — Rich Meeting Detail (completes Project 7).** Audio playback (`AudioPlaybackProviding`
   seam + transport, disabled when audio missing); transcript-version picker; notes autosave;
   association-correction full flow (+ offer re-transcribe). *(functional §3.5; ui_design §3;
   components/ui_modules.md. Depends on Phases 3, 7.)*

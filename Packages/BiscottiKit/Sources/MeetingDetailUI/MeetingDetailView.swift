@@ -174,7 +174,6 @@ public struct MeetingDetailView: View {
                 location: ctx.location,
                 organizer: ctx.organizer?.name,
                 attendees: ctx.attendees.map(\.name),
-                isStale: ctx.isStale,
                 onJoin: viewModel.showJoinButton
                     ? { if let url = ctx.conferenceURL {
                         NSWorkspace.shared.open(url)

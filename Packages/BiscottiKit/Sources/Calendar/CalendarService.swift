@@ -310,43 +310,6 @@ extension CalendarService {
             end: now.addingTimeInterval(24 * 60 * 60)
         )
         await refreshUpcoming(window: window)
-
-        // Check staleness for recent meetings with snapshots
-        await checkStaleness()
-    }
-
-    private func checkStaleness() async {
-        logger.info("checkStaleness: enter")
-        do {
-            let recentWithSnapshots = try await store
-                .recentMeetingsWithSnapshots(
-                    since: Date().addingTimeInterval(-7 * 24 * 60 * 60)
-                )
-            logger.info(
-                "checkStaleness: \(recentWithSnapshots.count) entries"
-            )
-
-            for entry in recentWithSnapshots {
-                let refreshed = await Task.detached { [provider] in
-                    provider.refreshEvent(
-                        eventIdentifier: entry.eventIdentifier,
-                        occurrenceStart: entry.occurrenceStart
-                    )
-                }.value
-
-                if refreshed == nil {
-                    logger.debug(
-                        "checkStaleness: marking stale meetingID=\(entry.meetingID)"
-                    )
-                    try await store.markSnapshotStale(
-                        meetingID: entry.meetingID
-                    )
-                }
-            }
-        } catch {
-            logger.error("Staleness check failed: \(error)")
-        }
-        logger.info("checkStaleness: done")
     }
 }
 

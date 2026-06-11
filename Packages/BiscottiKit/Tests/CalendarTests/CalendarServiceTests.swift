@@ -858,52 +858,10 @@ struct EventForKeyTests {
     }
 }
 
-// MARK: - Staleness / Observation Tests
+// MARK: - Observation Tests
 
-@Suite("CalendarService — Staleness & Observation")
-struct StalenessTests {
-    @Test("stale marked when event deleted")
-    @MainActor
-    func staleMarkedWhenEventDeleted() async throws {
-        let store = try makeStore()
-        let startDate = Date()
-
-        let meetingID = try await store.createMeeting(title: "Linked Meeting", start: startDate)
-        let snapshot = CalendarSnapshot(
-            eventIdentifier: "evt-stale",
-            calendarItemIdentifier: "ci-stale",
-            occurrenceStartDate: startDate,
-            compositeKey: "evt-stale|ci-stale|\(Int64(startDate.timeIntervalSince1970))",
-            title: "Linked Meeting",
-            startDate: startDate,
-            endDate: startDate.addingTimeInterval(3600)
-        )
-        try await store.setSnapshot(snapshot, for: meetingID)
-
-        var provider = FakeEventStoreProvider()
-        provider.eventList = []
-        provider.refreshResult = nil
-
-        let service = CalendarService(
-            store: store,
-            catalog: BundledMeetingCatalog(),
-            provider: provider
-        )
-        service.startObserving()
-        NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil)
-
-        // Poll until the notification handler's Task marks the snapshot stale.
-        var isStale = false
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !isStale, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-            let context = try await store.calendarContext(meetingID: meetingID)
-            isStale = context?.isStale == true
-        }
-
-        #expect(isStale == true)
-    }
-
+@Suite("CalendarService — Observation")
+struct ObservationTests {
     @Test("refresh upcoming called on store changed")
     @MainActor
     func refreshUpcomingCalledOnStoreChanged() async throws {

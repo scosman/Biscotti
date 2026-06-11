@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Displays calendar context for a meeting: conference platform/join link,
-/// calendar name + color dot, organizer, attendees, stale indicator, and
-/// a Change button for association correction.
+/// calendar name + color dot, organizer, attendees, and a Change button
+/// for association correction.
 ///
 /// Value-type inputs only -- no view model.
 public struct CalendarContextBlock: View {
@@ -13,7 +13,6 @@ public struct CalendarContextBlock: View {
     private let location: String?
     private let organizer: String?
     private let attendees: [String]
-    private let isStale: Bool
     private let onJoin: (() -> Void)?
     private let onChange: (() -> Void)?
 
@@ -25,7 +24,6 @@ public struct CalendarContextBlock: View {
         location: String?,
         organizer: String?,
         attendees: [String],
-        isStale: Bool,
         onJoin: (() -> Void)?,
         onChange: (() -> Void)?
     ) {
@@ -36,7 +34,6 @@ public struct CalendarContextBlock: View {
         self.location = location
         self.organizer = organizer
         self.attendees = attendees
-        self.isStale = isStale
         self.onJoin = onJoin
         self.onChange = onChange
     }
@@ -59,12 +56,6 @@ public struct CalendarContextBlock: View {
                             .font(.caption)
                             .foregroundStyle(Tokens.secondaryText)
                     }
-                }
-
-                if isStale {
-                    Text("(event deleted)")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
 
                 Spacer()
@@ -148,7 +139,6 @@ public extension Color {
             location: nil,
             organizer: "Sam Lee",
             attendees: ["You", "Alex Kim"],
-            isStale: false,
             onJoin: {},
             onChange: {}
         )
@@ -160,7 +150,6 @@ public extension Color {
             location: "Conference Room B",
             organizer: nil,
             attendees: ["Bob", "Carol"],
-            isStale: true,
             onJoin: nil,
             onChange: {}
         )

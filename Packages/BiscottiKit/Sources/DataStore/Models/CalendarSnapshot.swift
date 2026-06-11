@@ -56,7 +56,9 @@ import SwiftData
 
     /// When this snapshot was captured.
     public var snapshotDate = Date()
-    /// Source event deleted / not found on last sync.
+    /// Formerly set when the source event was deleted/not found on sync.
+    /// Deletion-detection was removed; this field is kept to avoid a SwiftData
+    /// schema migration and could be repurposed later.
     public var isStale: Bool = false
 
     public init(

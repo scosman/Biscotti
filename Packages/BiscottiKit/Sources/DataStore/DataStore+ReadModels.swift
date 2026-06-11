@@ -127,7 +127,6 @@ public struct CalendarContextData: Sendable, Equatable {
     public let calendarTitle: String?
     public let calendarColorHex: String?
     public let location: String?
-    public let isStale: Bool
     public let organizer: PersonData?
     public let attendees: [PersonData]
 
@@ -140,7 +139,6 @@ public struct CalendarContextData: Sendable, Equatable {
         calendarTitle: String? = nil,
         calendarColorHex: String? = nil,
         location: String? = nil,
-        isStale: Bool = false,
         organizer: PersonData? = nil,
         attendees: [PersonData] = []
     ) {
@@ -152,7 +150,6 @@ public struct CalendarContextData: Sendable, Equatable {
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
         self.location = location
-        self.isStale = isStale
         self.organizer = organizer
         self.attendees = attendees
     }
@@ -225,19 +222,6 @@ public struct SearchHit: Sendable, Identifiable, Equatable {
         self.date = date
         self.score = score
         self.matchedFields = matchedFields
-    }
-}
-
-/// Metadata for a meeting with a non-stale snapshot, used for staleness checks.
-public struct SnapshotStalenessEntry: Sendable, Equatable {
-    public let meetingID: UUID
-    public let eventIdentifier: String
-    public let occurrenceStart: Date
-
-    public init(meetingID: UUID, eventIdentifier: String, occurrenceStart: Date) {
-        self.meetingID = meetingID
-        self.eventIdentifier = eventIdentifier
-        self.occurrenceStart = occurrenceStart
     }
 }
 
@@ -399,7 +383,6 @@ public extension DataStore {
             calendarTitle: snapshot.calendarTitle,
             calendarColorHex: snapshot.calendarColorHex,
             location: snapshot.location,
-            isStale: snapshot.isStale,
             organizer: organizerData,
             attendees: attendeeData
         )

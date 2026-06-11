@@ -5,6 +5,7 @@ import Foundation
 import MeetingCatalog
 import MeetingDetection
 import Notifications
+import os
 import Permissions
 import Recording
 import Transcription
@@ -27,10 +28,19 @@ public extension AppCore {
         storageRoot: URL,
         transcriberServiceName: String
     ) throws -> AppCore {
+        let logger = Logger(
+            subsystem: "net.scosman.biscotti",
+            category: "startup"
+        )
+
+        logger.info("AppCore.live: DataStore init starting")
         let store = try DataStore(storage: .onDisk(storageRoot))
+        logger.info("AppCore.live: DataStore init done")
+
         let permissions = Permissions()
         let recordingsRoot = storageRoot.appendingPathComponent("Recordings")
 
+        logger.info("AppCore.live: RecordingController init")
         let recording = RecordingController(
             store: store,
             permissions: permissions,
@@ -40,16 +50,23 @@ public extension AppCore {
             }
         )
 
+        logger.info("AppCore.live: TranscriptionService init")
         let transcriber = Transcriber(backend: .hosted(serviceName: transcriberServiceName))
         let engine = LiveTranscriberAdapter(transcriber: transcriber)
         let transcription = TranscriptionService(store: store, engine: engine)
 
+        logger.info("AppCore.live: CalendarService init")
         let catalog = BundledMeetingCatalog()
         let calendar = CalendarService(store: store, catalog: catalog)
+
+        logger.info("AppCore.live: MeetingDetector init")
         let detector = MeetingDetector(catalog: catalog)
+
+        logger.info("AppCore.live: NotificationService init")
         let notifications = NotificationService()
 
-        return AppCore(
+        logger.info("AppCore.live: constructing AppCore")
+        let core = AppCore(
             store: store,
             permissions: permissions,
             recording: recording,
@@ -58,6 +75,8 @@ public extension AppCore {
             detector: detector,
             notifications: notifications
         )
+        logger.info("AppCore.live: done")
+        return core
     }
 }
 

@@ -142,12 +142,19 @@ public final class AppCore {
     /// re-creating the window and its `.task` modifier while the same
     /// long-lived AppCore instance persists).
     public func onLaunch() async {
-        guard !hasLaunched else { return }
+        guard !hasLaunched else {
+            logger.debug("onLaunch: skipped (already launched)")
+            return
+        }
         hasLaunched = true
+        logger.info("onLaunch: enter")
 
+        logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
+        logger.info("onLaunch: recoverOrphans done")
 
         // Check onboarding gate
+        logger.info("onLaunch: reading settings")
         let onboardingComplete: Bool
         do {
             let settings = try await store.settings()
@@ -157,15 +164,30 @@ public final class AppCore {
         }
 
         if !onboardingComplete {
+            logger.info("onLaunch: routing to onboarding")
             route = .onboarding
             await reloadSummaries()
+            logger.info("onLaunch: done (onboarding)")
             return
         }
 
+        logger.info("onLaunch: routing to home")
         route = .home
 
-        // Start calendar observation and refresh upcoming
+        await startBackgroundServices()
+
+        logger.info("onLaunch: reloadSummaries starting")
+        await reloadSummaries()
+        logger.info("onLaunch: done")
+    }
+
+    /// Starts calendar observation, detection, consumer tasks, and timers.
+    /// Extracted from `onLaunch` to stay within the function body length
+    /// lint limit.
+    private func startBackgroundServices() async {
+        logger.info("startBackgroundServices: calendar startObserving")
         calendar.startObserving()
+        logger.info("startBackgroundServices: calendar refreshUpcoming")
         let now = Date()
         await calendar.refreshUpcoming(
             window: DateInterval(
@@ -174,11 +196,12 @@ public final class AppCore {
             )
         )
         upcoming = calendar.upcoming
+        logger.info("startBackgroundServices: calendar done")
 
-        // Start detection
+        logger.info("startBackgroundServices: detector start")
         detector.start()
 
-        // Start consumer tasks
+        logger.info("startBackgroundServices: consumer tasks")
         detectorConsumerTask = Task { [weak self] in
             await self?.consumeDetectorEvents()
         }
@@ -186,11 +209,10 @@ public final class AppCore {
             await self?.consumeNotificationActions()
         }
 
-        // Schedule calendar-start timers
+        logger.info("startBackgroundServices: timers")
         scheduleCalendarTimers()
         startUpcomingMirrorTask()
-
-        await reloadSummaries()
+        logger.info("startBackgroundServices: done")
     }
 
     // MARK: - Recording coordination
@@ -323,28 +345,7 @@ public final class AppCore {
         route = .home
 
         // Start background services deferred during onboarding
-        calendar.startObserving()
-        let now = Date()
-        await calendar.refreshUpcoming(
-            window: DateInterval(
-                start: now,
-                end: now.addingTimeInterval(24 * 60 * 60)
-            )
-        )
-        upcoming = calendar.upcoming
-
-        detector.start()
-
-        detectorConsumerTask = Task { [weak self] in
-            await self?.consumeDetectorEvents()
-        }
-        notificationConsumerTask = Task { [weak self] in
-            await self?.consumeNotificationActions()
-        }
-
-        scheduleCalendarTimers()
-        startUpcomingMirrorTask()
-
+        await startBackgroundServices()
         await reloadSummaries()
     }
 

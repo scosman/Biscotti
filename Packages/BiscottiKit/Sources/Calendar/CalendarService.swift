@@ -182,6 +182,7 @@ public final class CalendarService {
 
     /// Subscribe to `.EKEventStoreChanged` and auto-refresh.
     public func startObserving() {
+        logger.info("startObserving: registering EKEventStoreChanged")
         let token = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: nil,
@@ -192,6 +193,7 @@ public final class CalendarService {
             }
         }
         observationBox.setToken(token)
+        logger.info("startObserving: done")
     }
 
     // MARK: - Internal (exposed for testing)
@@ -295,7 +297,11 @@ public final class CalendarService {
             type: dto.type
         )
     }
+}
 
+// MARK: - Store-change handling
+
+extension CalendarService {
     private func handleStoreChanged() async {
         // Re-fetch upcoming events with a 24h window
         let now = Date()
@@ -310,11 +316,15 @@ public final class CalendarService {
     }
 
     private func checkStaleness() async {
+        logger.info("checkStaleness: enter")
         do {
             let recentWithSnapshots = try await store
                 .recentMeetingsWithSnapshots(
                     since: Date().addingTimeInterval(-7 * 24 * 60 * 60)
                 )
+            logger.info(
+                "checkStaleness: \(recentWithSnapshots.count) entries"
+            )
 
             for entry in recentWithSnapshots {
                 let refreshed = await Task.detached { [provider] in
@@ -325,6 +335,9 @@ public final class CalendarService {
                 }.value
 
                 if refreshed == nil {
+                    logger.debug(
+                        "checkStaleness: marking stale meetingID=\(entry.meetingID)"
+                    )
                     try await store.markSnapshotStale(
                         meetingID: entry.meetingID
                     )
@@ -333,6 +346,7 @@ public final class CalendarService {
         } catch {
             logger.error("Staleness check failed: \(error)")
         }
+        logger.info("checkStaleness: done")
     }
 }
 

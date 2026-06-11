@@ -2,6 +2,7 @@ import AppCore
 import AppShellUI
 import MenuBarUI
 import Notifications
+import os
 import ServiceManagement
 import SwiftUI
 import UserNotifications
@@ -17,6 +18,15 @@ import UserNotifications
 /// `BiscottiApp.body` reads the already-built core so it survives
 /// window close/reopen without losing state.
 ///
+/// **Observability:** `AppDelegate` is an `NSObject` subclass and cannot
+/// itself be `@Observable`. The mutable startup state (`shellViewModel`,
+/// `menuBarViewModel`, `launchError`) lives in `LaunchState`, an
+/// `@Observable` class owned by the delegate. SwiftUI tracks reads from
+/// `LaunchState` so the body re-renders when `buildCore()` sets these
+/// properties — even when `applicationDidFinishLaunching` completes
+/// AFTER the first body evaluation (a timing race that caused an
+/// intermittent startup hang prior to this fix).
+///
 /// - TODO: License/attribution screen for argmax-oss-swift and model
 ///   licenses must be added before ship (Project 9).
 @main
@@ -27,9 +37,9 @@ struct BiscottiApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let shellVM = appDelegate.shellViewModel {
+                if let shellVM = appDelegate.launchState.shellViewModel {
                     AppShellView(viewModel: shellVM)
-                } else if let err = appDelegate.launchError {
+                } else if let err = appDelegate.launchState.launchError {
                     errorView(message: err)
                 } else {
                     ProgressView("Starting Biscotti\u{2026}")
@@ -58,13 +68,13 @@ struct BiscottiApp: App {
 
         // Menu bar extra (native menu style)
         MenuBarExtra {
-            if let menuBarVM = appDelegate.menuBarViewModel {
+            if let menuBarVM = appDelegate.launchState.menuBarViewModel {
                 MenuBarContentView(viewModel: menuBarVM)
             } else {
                 Text("Starting\u{2026}")
             }
         } label: {
-            if let menuBarVM = appDelegate.menuBarViewModel {
+            if let menuBarVM = appDelegate.launchState.menuBarViewModel {
                 MenuBarLabelView(viewModel: menuBarVM)
             } else {
                 Image(systemName: "circle.dotted.circle")
@@ -90,10 +100,31 @@ struct BiscottiApp: App {
     }
 }
 
+// MARK: - Observable launch state
+
+/// Holds the mutable state that the `BiscottiApp.body` reads to decide
+/// what to show (spinner / error / app shell / menu bar). Because this
+/// class is `@Observable`, mutations trigger SwiftUI re-renders
+/// regardless of when `buildCore()` runs relative to the first body
+/// evaluation.
+@MainActor @Observable
+final class LaunchState: @unchecked Sendable {
+    var shellViewModel: AppShellViewModel?
+    var menuBarViewModel: MenuBarViewModel?
+    var launchError: String?
+
+    /// Nonisolated init so `AppDelegate` (an `NSObject` subclass whose
+    /// stored-property initializers run in a nonisolated context) can
+    /// create the instance inline. All three properties start as `nil`;
+    /// subsequent reads/writes happen on the MainActor.
+    nonisolated init() {}
+}
+
 // MARK: - AppDelegate
 
 /// Handles lifecycle events that require AppKit hooks:
 /// - Owns the single long-lived `AppCore` instance (process lifetime).
+/// - Owns `LaunchState` (the observable bridge to SwiftUI).
 /// - Don't quit on last window close (keeps menu bar alive).
 /// - Quit-while-recording: stop and save before terminating.
 /// - `UNUserNotificationCenterDelegate`: forward notification
@@ -109,11 +140,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
 
     var core: AppCore?
     var notificationService: NotificationService?
-    var shellViewModel: AppShellViewModel?
-    var menuBarViewModel: MenuBarViewModel?
-    var launchError: String?
+
+    /// Observable state read by `BiscottiApp.body`. Mutations here
+    /// trigger SwiftUI re-renders (fixes the startup-hang race).
+    let launchState = LaunchState()
+
+    private let logger = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "startup"
+    )
 
     func applicationDidFinishLaunching(_: Notification) {
+        logger.info("applicationDidFinishLaunching: enter")
+
         // Register as the notification center delegate for action handling.
         UNUserNotificationCenter.current().delegate = self
 
@@ -198,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
 
     @MainActor
     private func buildCore() {
+        logger.info("buildCore: enter")
         do {
             let appSupport = try FileManager.default.url(
                 for: .applicationSupportDirectory,
@@ -211,27 +251,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
                 at: storageRoot,
                 withIntermediateDirectories: true
             )
+            logger.info("buildCore: app-support dir resolved")
 
+            logger.info("buildCore: AppCore.live starting")
             let appCore = try AppCore.live(
                 storageRoot: storageRoot,
                 transcriberServiceName:
                 "net.scosman.biscotti.BiscottiTranscriber"
             )
+            logger.info("buildCore: AppCore.live complete")
+
             core = appCore
             notificationService = appCore.notifications
-            shellViewModel = AppShellViewModel(core: appCore)
-            menuBarViewModel = MenuBarViewModel(
+
+            launchState.shellViewModel = AppShellViewModel(core: appCore)
+            launchState.menuBarViewModel = MenuBarViewModel(
                 core: appCore,
                 windowOpener: { [weak self] in
                     self?.showMainWindow()
                 }
             )
+            logger.info(
+                "buildCore: shellViewModel + menuBarViewModel assigned"
+            )
 
             // Register launch-at-login (default ON)
             registerLaunchAtLogin()
+            logger.info("buildCore: registerLaunchAtLogin done")
         } catch {
-            launchError = error.localizedDescription
+            logger.error("buildCore: FAILED — \(error)")
+            launchState.launchError = error.localizedDescription
         }
+        logger.info("buildCore: done")
     }
 
     private func registerLaunchAtLogin() {

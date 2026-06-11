@@ -23,8 +23,10 @@ public struct CalendarGroup: Identifiable, Sendable, Equatable {
     }
 }
 
-/// View model for the Settings screen (first slice: calendar include/exclude
-/// + permissions overview).
+// TODO(vocab): re-add a Custom Vocabulary settings section once the deferred Phase 9 SDK vocab support lands
+
+/// View model for the Settings screen: calendar include/exclude, permissions
+/// overview with inline request actions, and general preferences.
 @MainActor @Observable
 public final class SettingsViewModel {
     private let core: AppCore
@@ -46,13 +48,6 @@ public final class SettingsViewModel {
 
     /// The set of enabled calendar IDs. nil = all enabled.
     public private(set) var enabledCalendarIDs: Set<String>?
-
-    // MARK: - Custom Vocabulary (stubbed -- Phase 9 deferred)
-
-    /// TODO(Phase 9 deferred): wire to VocabularyService once SDK vocab support lands
-    /// Vocabulary editing is deferred until the SDK supports custom vocabulary.
-    /// This property exists for the UI to show a "Coming soon" placeholder.
-    public let vocabularyDeferred: Bool = true
 
     // MARK: - Permissions
 
@@ -193,20 +188,44 @@ public final class SettingsViewModel {
         NSWorkspace.shared.open(url)
     }
 
-    // MARK: - Navigation
-
-    /// Re-run onboarding from Settings.
-    public func rerunOnboarding() {
-        core.showOnboardingReplay()
+    /// Request access for a specific permission. Only effective when the
+    /// permission is `.notDetermined` (macOS won't re-prompt after denial).
+    /// After the request completes, the permission state updates automatically
+    /// through the observable `core.permissions` properties.
+    public func requestPermission(for kind: PermissionKind) async {
+        switch kind {
+        case .microphone:
+            await core.permissions.requestMicrophone()
+        case .systemAudio:
+            await core.requestSystemAudioPermission()
+        case .calendar:
+            let result = await core.calendar.requestAccess()
+            let mapped: PermissionState = switch result {
+            case .authorized: .authorized
+            case .denied, .restricted: .denied
+            case .notDetermined: .notDetermined
+            }
+            core.permissions.noteCalendar(mapped)
+        case .notifications:
+            let granted = await core.permissions.requestNotifications()
+            // noteNotifications is called inside requestNotifications
+            _ = granted
+        }
     }
 
     // MARK: - Lifecycle
 
-    /// Load initial data (calendars, settings, and launch-at-login).
+    /// Load initial data (calendars, settings, launch-at-login, and
+    /// live permission statuses).
+    ///
     /// Launch-at-login reads `SMAppService.mainApp.status` as the source
     /// of truth (the user can toggle it in System Settings > Login Items,
-    /// so the stored bool may drift).
+    /// so the stored bool may drift). Permission statuses are refreshed
+    /// from their live system sources so the overview reflects reality.
     public func load() async {
+        // Refresh all permission statuses from the system
+        await core.refreshAllPermissions()
+
         do {
             let settings = try await core.store.settings()
             enabledCalendarIDs = settings.enabledCalendarIDs

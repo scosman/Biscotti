@@ -146,3 +146,12 @@ User reviewed the autonomous calls above. **Recorded only — not yet implemente
 - **Test file split for type_body_length**: new granted-state and launch-at-login tests moved to `OnboardingGrantedAndLoginTests.swift` to keep both test files under the 250-line body-length limit.
 - **Notification permission TODO left in place**: `// TODO(notifications): onboarding notification permission request not functioning on-device -- revisit` added at the `.notifications` case in `requestPermission()`. Step remains in the flow and is skippable.
 - **Architecture.md G7 reconcile**: updated section 7 to state that conference-link detection (`conferenceMatch`) lives in `MeetingCatalog` (L0), not in Calendar or a RemoteConfig split. Minimal wording change; no topology change needed (code was already correct).
+
+### Phase 11 G2 implementation decisions
+
+- **Custom Vocabulary section removed entirely**: deleted `vocabularyDeferred` property and `vocabularySection` view. Left a single `// TODO(vocab):` comment at the top of `SettingsViewModel` for future re-addition.
+- **Re-run Onboarding removed**: deleted the Advanced section and `rerunOnboarding()` from `SettingsViewModel`. `AppCore.showOnboardingReplay()` remains for potential future use; just not exposed in Settings.
+- **Section reorder**: Permissions now appears above Calendars (Calendars is last).
+- **Per-permission request buttons**: each permission row shows "Request Access" when `.notDetermined` (triggers the real OS prompt), "Open Settings" when `.denied` (deep link), or nothing when `.authorized`. Microphone uses `Permissions.requestMicrophone()`, system audio uses `AppCore.requestSystemAudioPermission()`, calendar uses `CalendarService.requestAccess()` + `noteCalendar()`, notifications uses `Permissions.requestNotifications()`.
+- **Stale permission status fix**: added `AppCore.refreshAllPermissions()` which syncs mic from its seam, calendar from `CalendarService.auth` (EventKit ground truth), and notifications from `NotificationService.isCurrentlyAuthorized()`/`isDenied()`. Called in `SettingsViewModel.load()` before displaying the overview. Added `NotificationService.isCurrentlyAuthorized()` and `isDenied()` public methods.
+- **`makeCoreFixture` extended**: added optional `calendarAuthorizer` and `notificationAuthorizer` parameters so tests can inject fake seams for Permissions. Created `FakeCalendarAuthorizer` and `FakeNotificationAuthorizer` in BiscottiTestSupport (previously test-file-local in PermissionsTests).

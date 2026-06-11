@@ -332,6 +332,8 @@ public func makeCoreFixture(
     calendarInfos: [CalendarInfo] = [],
     calendarEventDTOs: [EKEventDTO] = [],
     calendarRefreshResult: EKEventDTO? = nil,
+    calendarAuthorizer: (any CalendarAuthorizing)? = nil,
+    notificationAuthorizer: (any NotificationAuthorizing)? = nil,
     useFakeScheduler: Bool = false,
     useImmediateDetectorClock: Bool = false,
     testName: String = "Test"
@@ -340,7 +342,11 @@ public func makeCoreFixture(
     let micAuth = FakeMicAuthorizer(
         status: micStatus, requestResult: micRequestResult
     )
-    let permissions = Permissions(mic: micAuth)
+    let permissions = Permissions(
+        mic: micAuth,
+        cal: calendarAuthorizer,
+        notif: notificationAuthorizer
+    )
 
     let storageRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(testName)-\(UUID().uuidString)")

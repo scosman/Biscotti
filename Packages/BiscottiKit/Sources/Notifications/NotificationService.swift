@@ -49,6 +49,29 @@ public final class NotificationService {
         }
     }
 
+    /// Queries the live notification authorization status from the system.
+    /// Returns `true` if currently authorized (any flavor), `false` otherwise.
+    /// Also refreshes the internal cache.
+    public func isCurrentlyAuthorized() async -> Bool {
+        let status = await provider.authorizationStatus()
+        cachedAuthStatus = status
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied, .notDetermined:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Whether the user has explicitly denied notifications (vs. never asked).
+    public func isDenied() async -> Bool {
+        let status = await provider.authorizationStatus()
+        cachedAuthStatus = status
+        return status == .denied
+    }
+
     // MARK: - Presentation
 
     /// Posts a notification for the given kind.

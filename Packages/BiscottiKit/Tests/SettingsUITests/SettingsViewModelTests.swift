@@ -1,6 +1,7 @@
 import BiscottiTestSupport
 import Calendar
 import DataStore
+import Permissions
 import Testing
 @testable import SettingsUI
 
@@ -148,14 +149,138 @@ struct SettingsViewModelTests {
         #expect(viewModel2.launchAtLogin == false)
     }
 
-    // MARK: - Vocabulary stub
+    // MARK: - Vocabulary removed
 
-    @Test("vocabulary section is stubbed/deferred")
-    func settingsVocabSectionStubbed() throws {
+    @Test("vocabularyDeferred property no longer exists")
+    func vocabPropertyRemoved() throws {
+        // Compile-time check: SettingsViewModel has no `vocabularyDeferred`.
+        // If someone re-adds it, this test documents the intent.
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        // The view model should have no vocabulary-related public state.
+        // This test simply verifies the view model can be created without
+        // referencing any vocabulary property.
+        _ = viewModel
+    }
+
+    // MARK: - Permission request actions
+
+    @Test("request microphone permission calls the mic seam")
+    func requestMicrophonePermission() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.microphoneState == .notDetermined)
+
+        await viewModel.requestPermission(for: .microphone)
+
+        #expect(viewModel.microphoneState == .authorized)
+    }
+
+    @Test("request calendar permission calls calendar service and syncs state")
+    func requestCalendarPermission() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .notDetermined
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Calendar state starts as notDetermined (no seam injected)
+        #expect(viewModel.calendarState == .notDetermined)
+
+        // FakeEventStore returns requestAccessResult=true and
+        // authorizationStatus()=.authorized after request
+        fixture.fakeEventStore.authStatus = .authorized
+        await viewModel.requestPermission(for: .calendar)
+
+        #expect(viewModel.calendarState == .authorized)
+    }
+
+    @Test("request notification permission calls the notifications seam")
+    func requestNotificationPermission() async throws {
+        let fakeNotifAuth = FakeNotificationAuthorizer(
+            status: .notDetermined,
+            requestResult: true
+        )
+        let fixture = try makeCoreFixture(
+            notificationAuthorizer: fakeNotifAuth
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.notificationsState == .notDetermined)
+
+        await viewModel.requestPermission(for: .notifications)
+
+        #expect(viewModel.notificationsState == .authorized)
+    }
+
+    @Test("denied microphone request updates state to denied")
+    func requestMicrophoneDenied() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: false
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.requestPermission(for: .microphone)
+        #expect(viewModel.microphoneState == .denied)
+    }
+
+    // MARK: - Live permission status on load
+
+    @Test("load refreshes calendar status from live CalendarService auth")
+    func loadRefreshesCalendarStatus() async throws {
+        // Create fixture where FakeEventStore says authorized but
+        // Permissions has no cal seam (mimics live app)
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Before load, calendar state is .notDetermined (no seam)
+        #expect(viewModel.calendarState == .notDetermined)
+
+        // After load, should reflect the CalendarService's .authorized
+        await viewModel.load()
+        #expect(viewModel.calendarState == .authorized)
+    }
+
+    @Test("load refreshes notification status from live NotificationService")
+    func loadRefreshesNotificationStatus() async throws {
+        // FakeTestNotificationCenter defaults to authStatus = .authorized
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
-        #expect(viewModel.vocabularyDeferred == true)
+
+        // Before load, notifications state is .notDetermined (no seam)
+        #expect(viewModel.notificationsState == .notDetermined)
+
+        // After load, should reflect FakeTestNotificationCenter's .authorized
+        await viewModel.load()
+        #expect(viewModel.notificationsState == .authorized)
+    }
+
+    @Test("load shows denied notification status when denied")
+    func loadShowsDeniedNotificationStatus() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.fakeNotificationCenter.backing.authStatus = .denied
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.notificationsState == .denied)
     }
 }

@@ -333,6 +333,35 @@ public final class AppCore {
         await reloadSummaries()
     }
 
+    // MARK: - Permission refresh
+
+    /// Refreshes all permission statuses from their live system sources.
+    ///
+    /// Microphone uses its injected seam. Calendar reads the live status
+    /// from `CalendarService` (which queries EventKit directly). Notifications
+    /// reads the live status from `NotificationService`. System audio has no
+    /// public TCC API so its status is unchanged here.
+    public func refreshAllPermissions() async {
+        // Refresh mic (and any injected cal/notif seams)
+        await permissions.refresh()
+
+        // Sync calendar status from CalendarService (ground truth)
+        let calStatus: PermissionState = switch calendar.auth {
+        case .authorized: .authorized
+        case .denied, .restricted: .denied
+        case .notDetermined: .notDetermined
+        }
+        permissions.noteCalendar(calStatus)
+
+        // Sync notification status from NotificationService (ground truth)
+        if await notifications.isCurrentlyAuthorized() {
+            permissions.noteNotifications(.authorized)
+        } else if await notifications.isDenied() {
+            permissions.noteNotifications(.denied)
+        }
+        // else: leave as .notDetermined
+    }
+
     // MARK: - Onboarding support
 
     /// Triggers the system-audio permission prompt by exercising the

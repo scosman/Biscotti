@@ -5,8 +5,8 @@ import DesignSystem
 import Permissions
 import SwiftUI
 
-/// In-window settings screen. First slice: calendar include/exclude +
-/// permissions overview.
+/// In-window settings screen. General preferences, permissions overview
+/// with inline request/grant actions, and calendar include/exclude.
 public struct SettingsView: View {
     @Bindable private var viewModel: SettingsViewModel
 
@@ -20,21 +20,11 @@ public struct SettingsView: View {
                 // General
                 generalSection
 
-                // Calendars
-                calendarSection
-
-                // Custom Vocabulary (stubbed)
-                vocabularySection
-
-                // Permissions
+                // Permissions (above Calendars per user feedback)
                 permissionsSection
 
-                // Advanced
-                Section("Advanced") {
-                    Button("Re-run Onboarding\u{2026}") {
-                        viewModel.rerunOnboarding()
-                    }
-                }
+                // Calendars (last)
+                calendarSection
             }
             .formStyle(.grouped)
             .padding(Tokens.spacingMD)
@@ -67,21 +57,6 @@ public struct SettingsView: View {
         )
     }
 
-    // MARK: - Vocabulary section (stubbed)
-
-    /// TODO(Phase 9 deferred): wire to VocabularyService once SDK vocab support lands
-    private var vocabularySection: some View {
-        Section("Custom Vocabulary") {
-            HStack {
-                Image(systemName: "text.badge.plus")
-                    .foregroundStyle(Tokens.secondaryText)
-                Text("Custom vocabulary editing coming soon.")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-            }
-        }
-    }
-
     // MARK: - Calendar section
 
     private var calendarSection: some View {
@@ -104,8 +79,7 @@ public struct SettingsView: View {
                 Text("Calendar access not granted.")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
-                permissionFixButton(
-                    label: "Calendar",
+                permissionActionButton(
                     state: viewModel.calendarState,
                     kind: .calendar
                 )
@@ -173,28 +147,36 @@ public struct SettingsView: View {
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
 
-            if state == .denied {
-                Button("Open Settings") {
-                    viewModel.openPermissionSettings(for: kind)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
+            permissionActionButton(state: state, kind: kind)
         }
     }
 
+    /// Shows the appropriate action button for a permission's current state:
+    /// - `.notDetermined` -> "Request Access" (triggers the OS permission prompt)
+    /// - `.denied` -> "Open Settings" (deep link to System Settings)
+    /// - `.authorized` -> no button
     @ViewBuilder
-    private func permissionFixButton(
-        label _: String,
+    private func permissionActionButton(
         state: PermissionState,
         kind: PermissionKind
     ) -> some View {
-        if state == .denied {
-            Button("Open System Settings") {
+        switch state {
+        case .notDetermined:
+            Button("Request Access") {
+                Task { await viewModel.requestPermission(for: kind) }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+        case .denied:
+            Button("Open Settings") {
                 viewModel.openPermissionSettings(for: kind)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+
+        case .authorized:
+            EmptyView()
         }
     }
 }

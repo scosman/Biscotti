@@ -49,12 +49,22 @@ public struct MenuBarContentView: View {
     @ViewBuilder
     private var recordingSection: some View {
         if viewModel.isRecording {
-            Button("Stop Recording (\(viewModel.elapsedText))") {
+            Button {
                 Task { await viewModel.stopRecording() }
+            } label: {
+                Label(
+                    "Stop Recording (\(viewModel.elapsedText))",
+                    systemImage: viewModel.recordActionIcon
+                )
             }
         } else {
-            Button("Start Recording") {
+            Button {
                 Task { await viewModel.startRecording() }
+            } label: {
+                Label(
+                    "Start Recording",
+                    systemImage: viewModel.recordActionIcon
+                )
             }
         }
     }

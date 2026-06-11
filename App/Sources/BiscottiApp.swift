@@ -11,7 +11,7 @@ import UserNotifications
 ///
 /// Builds a fully-wired `AppCore` (DataStore, Permissions, Recording,
 /// TranscriptionService, Calendar, MeetingDetector, NotificationService)
-/// and presents the `AppShellView` in a `WindowGroup` plus a
+/// and presents the `AppShellView` in a single-instance `Window` plus a
 /// `MenuBarExtra` for background operation.
 ///
 /// **Ownership model:** `AppCore` lives in `AppDelegate` (process-lifetime).
@@ -24,7 +24,7 @@ import UserNotifications
 /// `@Observable` class owned by the delegate.
 ///
 /// **Important:** Scene-level `@ViewBuilder` closures (the trailing
-/// closures of `WindowGroup` and `MenuBarExtra`) do NOT reliably
+/// closures of `Window` and `MenuBarExtra`) do NOT reliably
 /// establish SwiftUI Observation tracking the way a `View.body` does.
 /// Reads of `@Observable` properties inside those closures may never
 /// trigger a re-render when the property changes. To work around this,
@@ -42,7 +42,10 @@ struct BiscottiApp: App {
     private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        // Single-instance Window (not WindowGroup) so `openWindow(id: "main")`
+        // is idempotent — it reopens the one window, never spawns duplicates.
+        // This is the right primitive for a single-main-window menu-bar app.
+        Window("Biscotti", id: "main") {
             WindowRootView(launchState: appDelegate.launchState)
                 .frame(minWidth: 640, minHeight: 400)
                 .onReceive(NotificationCenter.default.publisher(
@@ -73,11 +76,17 @@ struct BiscottiApp: App {
 
 // MARK: - Root View wrappers (reliable Observation tracking)
 
-/// Root content for the `WindowGroup`. Reads `LaunchState` inside
-/// `body` so the nil-to-set transition of `shellViewModel` reliably
-/// triggers a SwiftUI re-render (Scene closures do not).
+/// Root content for the `Window(id: "main")` scene. Reads `LaunchState`
+/// inside `body` so the nil-to-set transition of `shellViewModel`
+/// reliably triggers a SwiftUI re-render (Scene closures do not).
+///
+/// Also captures `@Environment(\.openWindow)` and injects it into
+/// `LaunchState.sceneOpener` on appear. Because this view is shown at
+/// launch (before any user interaction), the closure is available to
+/// `AppDelegate.showMainWindow()` for dock-click and notification paths.
 private struct WindowRootView: View {
     let launchState: LaunchState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -91,6 +100,12 @@ private struct WindowRootView: View {
                         maxWidth: .infinity,
                         maxHeight: .infinity
                     )
+            }
+        }
+        .onAppear {
+            let captured = openWindow
+            launchState.sceneOpener = {
+                captured(id: "main")
             }
         }
     }
@@ -154,6 +169,14 @@ final class LaunchState: @unchecked Sendable {
     var shellViewModel: AppShellViewModel?
     var menuBarViewModel: MenuBarViewModel?
     var launchError: String?
+
+    /// Closure that calls `openWindow(id: "main")`. Captured from
+    /// `WindowRootView`'s `@Environment(\.openWindow)` on appear and
+    /// shared with `AppDelegate.showMainWindow()` so it can create the
+    /// SwiftUI `Window` scene from AppKit code paths (dock click,
+    /// notification actions). Set once on first `.onAppear`; nil until
+    /// then (harmless: `showMainWindow` falls back to AppKit activate).
+    @ObservationIgnored var sceneOpener: (@MainActor () -> Void)?
 
     /// Nonisolated init so `AppDelegate` (an `NSObject` subclass whose
     /// stored-property initializers run in a nonisolated context) can
@@ -244,13 +267,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     /// Shows the main window and switches to regular app mode
     /// (Dock icon visible). Called from menu bar "Open Biscotti",
     /// Dock icon click, and notification actions.
+    ///
+    /// Uses `launchState.sceneOpener` (captured from SwiftUI's
+    /// `@Environment(\.openWindow)`) to request window creation via
+    /// `openWindow(id: "main")`. This is necessary because AppKit's
+    /// `activate()` alone cannot instantiate a SwiftUI `Window` scene
+    /// from a cold (no-window) state. The `Window(id: "main")` scene
+    /// is single-instance, so `openWindow` is idempotent — it reopens
+    /// the existing window or creates one, never duplicates.
     @MainActor
     func showMainWindow() {
         NSApp.setActivationPolicy(.regular)
+        // Request the SwiftUI Window scene to open/show.
+        // This is idempotent: Window(id:) is single-instance.
+        launchState.sceneOpener?()
         // Activate the app (brings to front).
         NSApp.activate()
-        // If a main-capable window exists, bring it forward; otherwise
-        // SwiftUI's WindowGroup will create one on activation.
+        // If a main-capable window exists, bring it forward.
         if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
             window.makeKeyAndOrderFront(nil)
         }

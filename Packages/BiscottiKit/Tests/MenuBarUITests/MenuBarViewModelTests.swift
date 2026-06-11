@@ -204,7 +204,7 @@ struct MenuBarBodyTests {
 
 @Suite("MenuBarViewModel -- navigation actions")
 struct MenuBarNavigationTests {
-    @Test("openEvent navigates to event route")
+    @Test("openEvent navigates to event route and calls windowOpener")
     @MainActor
     func openEventSetsRoute() async throws {
         let now = Date()
@@ -241,7 +241,7 @@ struct MenuBarNavigationTests {
         #expect(windowOpened)
     }
 
-    @Test("openApp with meetingID navigates to meeting route")
+    @Test("openApp with meetingID navigates to meeting route and calls windowOpener")
     @MainActor
     func openAppMeetingRoute() async throws {
         let fix = try makeCoreFixture(
@@ -265,7 +265,7 @@ struct MenuBarNavigationTests {
         #expect(windowOpened)
     }
 
-    @Test("openApp without meetingID navigates to home")
+    @Test("openApp without meetingID navigates to home and calls windowOpener")
     @MainActor
     func openAppHomeRoute() throws {
         let fix = try makeCoreFixture(
@@ -287,6 +287,37 @@ struct MenuBarNavigationTests {
 
         #expect(fix.core.route == .home)
         #expect(windowOpened)
+    }
+}
+
+// MARK: - Record action icon tests
+
+@Suite("MenuBarViewModel -- record action icon")
+struct MenuBarRecordActionIconTests {
+    @Test("recordActionIcon is circle.dotted.circle when idle")
+    @MainActor
+    func recordActionIconIdle() throws {
+        let fix = try makeCoreFixture(
+            testName: "MenuBarIconTests"
+        )
+        defer { fix.cleanup() }
+
+        let model = MenuBarViewModel(core: fix.core)
+        #expect(model.recordActionIcon == "circle.dotted.circle")
+    }
+
+    @Test("recordActionIcon is record.circle.fill when recording")
+    @MainActor
+    func recordActionIconRecording() async throws {
+        let fix = try makeCoreFixture(
+            testName: "MenuBarIconTests"
+        )
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+
+        let model = MenuBarViewModel(core: fix.core)
+        #expect(model.recordActionIcon == "record.circle.fill")
     }
 }
 

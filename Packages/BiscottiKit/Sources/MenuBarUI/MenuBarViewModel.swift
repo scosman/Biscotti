@@ -18,6 +18,10 @@ public final class MenuBarViewModel {
     /// front (switching activation policy to `.regular`). Injected by
     /// the app target's `AppDelegate` at construction; the VM stays
     /// AppKit-free beyond `NSApplication.shared.terminate`.
+    ///
+    /// The closure routes through `AppDelegate.showMainWindow()` which
+    /// is the single owner of `openWindow(id: "main")` + activation
+    /// policy + `NSApp.activate()`.
     public let windowOpener: @MainActor () -> Void
 
     public init(
@@ -86,6 +90,13 @@ public final class MenuBarViewModel {
         Array(core.summaries.prefix(2))
     }
 
+    /// SF Symbol name for the record/stop action line.
+    /// Matches the two-state icons used by `MenuBarLabelView`:
+    /// `"circle.dotted.circle"` (idle) and `"record.circle.fill"` (recording).
+    public var recordActionIcon: String {
+        isRecording ? "record.circle.fill" : "circle.dotted.circle"
+    }
+
     // MARK: - Actions
 
     /// Start a new recording from the menu bar.
@@ -99,14 +110,20 @@ public final class MenuBarViewModel {
     }
 
     /// Open the main window and navigate to an upcoming event's page.
-    /// Activates the app to bring it to front.
+    /// Sets the route FIRST (so the new window reflects the right page),
+    /// then calls `windowOpener` which routes through
+    /// `AppDelegate.showMainWindow()` (the single owner of
+    /// `openWindow` + activate).
     public func openEvent(_ key: String) {
         core.selectEvent(key)
         windowOpener()
     }
 
     /// Open the main window and optionally navigate to a meeting.
-    /// Activates the app to bring it to front.
+    /// Sets the route FIRST (so the new window reflects the right page),
+    /// then calls `windowOpener` which routes through
+    /// `AppDelegate.showMainWindow()` (the single owner of
+    /// `openWindow` + activate).
     public func openApp(meetingID: UUID? = nil) {
         if let meetingID {
             core.select(meetingID)

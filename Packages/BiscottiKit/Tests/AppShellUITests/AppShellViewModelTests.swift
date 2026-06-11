@@ -493,3 +493,67 @@ struct AppShellUpcomingSearchTests {
         #expect(shellVM.route == .meeting(meetingID))
     }
 }
+
+// MARK: - Upcoming display cap tests
+
+@Suite("AppShellViewModel -- upcoming display cap")
+struct AppShellUpcomingCapTests {
+    @Test("upcomingEvents capped at 5")
+    @MainActor
+    func upcomingEventsCappedAt5() async throws {
+        let now = Date()
+        let dtos = (0 ..< 8).map { idx in
+            EKEventDTO(
+                eventIdentifier: "ev-cap-\(idx)",
+                calendarItemIdentifier: "ci-cap-\(idx)",
+                calendarItemExternalIdentifier: "ext-cap-\(idx)",
+                occurrenceDate: now.addingTimeInterval(
+                    Double(idx + 1) * 600
+                ),
+                title: "Cap Event \(idx)",
+                startDate: now.addingTimeInterval(
+                    Double(idx + 1) * 600
+                ),
+                endDate: now.addingTimeInterval(
+                    Double(idx + 1) * 600 + 3600
+                ),
+                isAllDay: false,
+                location: "https://zoom.us/j/cap\(idx)",
+                url: nil,
+                timeZone: nil,
+                notes: nil,
+                status: nil,
+                availability: nil,
+                calendarIdentifier: "cal-1",
+                calendarTitle: "Work",
+                calendarColorHex: "#0066CC",
+                calendarSourceTitle: "iCloud",
+                birthdayContactIdentifier: nil,
+                attendeeCount: 3,
+                attendees: [],
+                organizer: nil
+            )
+        }
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "AppShellUITests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Core should have more than 5 upcoming
+        #expect(fix.core.displayedUpcoming.count > 5)
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        // Sidebar caps at 5
+        #expect(shellVM.upcomingEvents.count == 5)
+        // Preserves order (first 5)
+        #expect(shellVM.upcomingEvents.first?.title == "Cap Event 0")
+        #expect(shellVM.upcomingEvents.last?.title == "Cap Event 4")
+    }
+}

@@ -191,7 +191,8 @@ public struct AppShellView: View {
                     UpcomingEventRow(
                         title: event.title,
                         timeText: viewModel.tickTimeText(for: event),
-                        platformBadge: event.conferencePlatform
+                        platformBadge: event.conferencePlatform,
+                        twoLine: true
                     )
                     .padding(.vertical, Tokens.spacingXS)
                     .padding(.horizontal, Tokens.spacingSM)

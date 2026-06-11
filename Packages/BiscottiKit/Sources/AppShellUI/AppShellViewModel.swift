@@ -128,11 +128,11 @@ public final class AppShellViewModel {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    /// Upcoming meeting-like calendar events for the sidebar.
+    /// Upcoming meeting-like calendar events for the sidebar (capped at 5).
     /// Uses `displayedUpcoming` which filters out ended events and
     /// refreshes every minute via the minute-tick.
     public var upcomingEvents: [CalendarEvent] {
-        core.displayedUpcoming
+        Array(core.displayedUpcoming.prefix(5))
     }
 
     /// Whether the calendar has been authorized (shows/hides upcoming section).

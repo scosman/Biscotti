@@ -57,6 +57,11 @@ let package = Package(
             name: "DesignSystem",
             swiftSettings: warningsAsErrors
         ),
+        .testTarget(
+            name: "DesignSystemTests",
+            dependencies: ["DesignSystem"],
+            swiftSettings: warningsAsErrors
+        ),
         .target(
             name: "Permissions",
             swiftSettings: warningsAsErrors

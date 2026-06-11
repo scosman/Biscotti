@@ -13,12 +13,12 @@ public enum TimeFormatting {
     ) -> String {
         let interval = date.timeIntervalSince(now)
         guard interval > 0 else { return "now" }
-        let minutes = Int(interval / 60)
-        if minutes < 60 {
-            return "in \(minutes)m"
+        let totalMinutes = Int(ceil(interval / 60))
+        if totalMinutes < 60 {
+            return "in \(totalMinutes)m"
         }
-        let hours = minutes / 60
-        let remainingMinutes = minutes % 60
+        let hours = totalMinutes / 60
+        let remainingMinutes = totalMinutes % 60
         if remainingMinutes == 0 {
             return "in \(hours)h"
         }

@@ -1,8 +1,15 @@
 ---
-status: in-progress
+status: complete
 ---
 
 # Phase 11 — Round 3 (third hardware pass)
+
+> **Status:** all items N1–N6 landed across two commits — **R1** (6ede1ad: N1
+> verify + N2 sidebar refresh + N3 editedTitle guard) and **R2** (N5 ceil
+> round-up + N6 two-line/cap-5 upcoming). N4 was a question (answered: standard
+> macOS behavior, no code). Each shipped coding → green `precommit_checks` →
+> spec-aware CR → commit. Awaiting the next hardware pass to confirm the
+> user-visible behaviors.
 
 Third batch of human-review feedback from running V1 on real Apple-silicon
 hardware. Executed as sequential sub-agent batches (coding → green
@@ -59,12 +66,22 @@ is one commit. Continues `phase_11_round2.md` (B1–B9).
   all confirms B7 fixed the "no prompt ever" bug.
 
 ## N5 — Time-to-upcoming rounding (off by one)
-- [ ] **Bug:** at 4:28.x a meeting 1.x min away shows **"1 min"**; should
+- [x] **Bug:** at 4:28.x a meeting 1.x min away shows **"1 min"**; should
   **round up** to "2 min". Applies to all relative upcoming times (menu bar +
   sidebar). Switch the countdown formatter from floor/round to **ceil**.
+- **Fixed:** `TimeFormatting.relativeTimeText` now uses `Int(ceil(interval/60))`
+  (was floor); the hours/minutes split derives from the ceiled total so the hour
+  boundary stays consistent (59m30s → "1h", 3601s → "1h 1m"). Single shared
+  helper → fixes sidebar + menu bar + Home at once. Commit: R2. 6 non-vacuous
+  boundary tests added (61s → "2m", etc.).
 
 ## N6 — Sidebar upcoming section: 2-line rows + up to 5
-- [ ] Make the **upcoming** section rows **2 lines**: **title** on line 1, the
+- [x] Make the **upcoming** section rows **2 lines**: **title** on line 1, the
   rest (time/relative) on line 2.
-- [ ] Allow up to **5** upcoming events (currently showing 3 — may be a
+- [x] Allow up to **5** upcoming events (currently showing 3 — may be a
   time-range limit, acceptable if so, but raise the display cap to 5).
+- **Fixed:** `UpcomingEventRow` gained an opt-in `twoLine: Bool = false`; only the
+  sidebar (`AppShellView`) passes `twoLine: true` (title line 1, time + platform
+  badge line 2) — Home's row is unchanged (default). `AppShellViewModel
+  .upcomingEvents` now caps at `prefix(5)` (the underlying list already filters
+  ended events; 3 shown earlier was simply all there were). Commit: R2.

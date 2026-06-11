@@ -106,6 +106,46 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         calendarResult == .authorized
     }
 
+    /// The footer button to display for a given step.
+    public enum FooterButton: Equatable, Sendable {
+        /// Show the primary "Continue" button (step action is done).
+        case continueButton
+        /// Show the secondary "Skip" button (step action is not done).
+        case skip
+        /// Show a custom footer (e.g. No/Yes for Launch at Login).
+        case custom
+    }
+
+    /// Returns the footer button state for the given step.
+    ///
+    /// Gated permission/download steps show "Skip" before their
+    /// action is completed and "Continue" after. Non-gated steps
+    /// (welcome, calendar selection, done) always show Continue.
+    /// The launch-at-login step uses a custom No/Yes footer.
+    public func footerButton(for step: Step) -> FooterButton {
+        switch step {
+        case .welcome, .calendarSelection, .done:
+            .continueButton
+        case .microphone:
+            microphoneGranted ? .continueButton : .skip
+        case .systemAudio:
+            systemAudioGranted ? .continueButton : .skip
+        case .calendar:
+            calendarGranted ? .continueButton : .skip
+        case .notifications:
+            notificationsGranted ? .continueButton : .skip
+        case .modelDownload:
+            downloadComplete ? .continueButton : .skip
+        case .launchAtLogin:
+            .custom
+        }
+    }
+
+    /// Whether the current step's gated action is complete.
+    public var isCurrentStepComplete: Bool {
+        footerButton(for: currentStep) == .continueButton
+    }
+
     /// Disk space check for the model download step.
     public private(set) var hasSufficientDisk: Bool = true
 

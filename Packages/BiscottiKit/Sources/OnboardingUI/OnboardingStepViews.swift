@@ -12,8 +12,7 @@ extension OnboardingView {
         wizardPage(
             title: "Welcome to Biscotti",
             explanation: "Private, on-device meeting transcripts. "
-                + "Nothing leaves your Mac.",
-            showSkip: false
+                + "Nothing leaves your Mac."
         ) {
             EmptyView()
         }
@@ -100,8 +99,7 @@ extension OnboardingView {
         wizardPage(
             title: "Choose calendars",
             explanation: "Select which calendars to monitor for "
-                + "meetings.",
-            showSkip: false
+                + "meetings."
         ) {
             calendarToggles
         }
@@ -147,13 +145,13 @@ extension OnboardingView {
                 + "can record."
         ) {
             VStack(spacing: Tokens.spacingSM) {
-                Button("Allow Notifications") {
-                    Task { await viewModel.requestPermission() }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-
-                if viewModel.notificationsGranted {
+                if !viewModel.notificationsGranted {
+                    Button("Allow Notifications") {
+                        Task { await viewModel.requestPermission() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                } else {
                     Label("Notifications enabled", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(Tokens.metadataFont)
@@ -263,7 +261,6 @@ extension OnboardingView {
     func wizardPage(
         title: String,
         explanation: String,
-        showSkip: Bool = true,
         @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(spacing: Tokens.spacingLG) {
@@ -279,19 +276,20 @@ extension OnboardingView {
 
             content()
 
-            HStack(spacing: Tokens.spacingMD) {
-                if showSkip {
-                    Button("Skip") {
-                        Task { await viewModel.skip() }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Tokens.secondaryText)
-                }
-
+            // Single conditional footer button: Continue (prominent)
+            // when the step's action is done, Skip (secondary) when not.
+            if viewModel.isCurrentStepComplete {
                 Button("Continue") {
                     Task { await viewModel.advance() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            } else {
+                Button("Skip") {
+                    Task { await viewModel.skip() }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Tokens.secondaryText)
             }
         }
     }

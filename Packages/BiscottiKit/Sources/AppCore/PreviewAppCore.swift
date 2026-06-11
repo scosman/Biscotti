@@ -111,6 +111,8 @@
                 processingDuration: 0
             )
         }
+
+        func shutdown() async {}
     }
 
     /// No-op EventStore for previews: authorized, no calendars/events.

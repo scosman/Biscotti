@@ -11,3 +11,5 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+
+.worktrees/

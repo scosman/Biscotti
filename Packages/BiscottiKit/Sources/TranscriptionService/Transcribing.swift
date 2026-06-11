@@ -19,6 +19,12 @@ public protocol Transcribing: Sendable {
         system: URL,
         customVocabulary: [String]
     ) async throws -> TranscriptResult
+
+    /// Release the transcription worker and its resources. For XPC-backed
+    /// implementations this tears down the connection so the heavyweight
+    /// worker process can exit. The engine remains usable; subsequent calls
+    /// will transparently reconnect.
+    func shutdown() async
 }
 
 // Re-export Transcription types so downstream modules (AppCore, UI) can use

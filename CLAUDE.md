@@ -74,6 +74,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
 - **Bundle ID is locked:** `net.scosman.biscotti`. Do not change it (TCC grants persist against it). Signing/notarization are deferred to Project 9.
+- **Custom vocabulary is blocked on an upstream SDK bug.** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations (both turbo and non-turbo models). The AI test for custom vocab is disabled. Do not start product-side custom-vocab work (Project 8's `Vocabulary` module) until the SDK issue is resolved. Tracked: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
 
 ---
 
@@ -101,6 +102,8 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make clean` | Remove `.build/`, `DerivedData/`, generated `.xcodeproj` | — |
 
 ### CI (three tiers)
+
+CI pins **Xcode 26.3** via `DEVELOPER_DIR` in `ci.yml` while targeting the **macOS 15 platform** (deployment target). The `macos-15` runner defaults to Xcode 16.4, whose SwiftData SDK lacks `Schema.Version: Sendable` and breaks Swift 6 strict concurrency.
 
 - **`package-tier`** (gating, required check): runs `make ci` (lint + test + build) on `macos-15`. This is the merge gate.
 - **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.

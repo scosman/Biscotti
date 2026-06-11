@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import SpeakerKit
 import WhisperKit
 
@@ -8,6 +9,11 @@ import WhisperKit
 /// and SpeakerKit (diarization) in the calling process. Used by the CLI harness
 /// and as the fallback when no XPC host is present.
 public actor InProcessTranscriptionEngine: TranscriptionEngine {
+    private static let log = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "TranscriberEngine"
+    )
+
     private let method: TranscriptionMethod
     private let resolvedSettings: ResolvedMethodSettings
     private let statusMachine: ModelStatusMachine
@@ -16,15 +22,17 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     private var speakerKit: SpeakerKit?
 
     /// Estimated bytes required for model download (STT + diarization).
-    /// Full-precision turbo ~3.1 GB + SpeakerKit ~33 MB; quantized ~1.3 GB + 33 MB.
+    /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
     /// We use a conservative estimate based on the model name.
     private var estimatedDownloadBytes: Int64 {
         if resolvedSettings.sttModel.contains("1307MB") {
             1_400_000_000 // ~1.3 GB + headroom
-        } else if resolvedSettings.sttModel.contains("954MB") {
-            1_050_000_000
         } else if resolvedSettings.sttModel.contains("1049MB") {
             1_150_000_000
+        } else if resolvedSettings.sttModel.contains("954MB") {
+            1_050_000_000
+        } else if resolvedSettings.sttModel.contains("626MB") {
+            750_000_000 // ~626 MB + headroom + SpeakerKit ~33 MB
         } else {
             3_300_000_000 // full-precision ~3.1 GB + headroom
         }
@@ -55,6 +63,7 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     public func ensureModelsDownloaded(
         status: @escaping @Sendable (String) -> Void
     ) async throws {
+        Self.log.debug("ensureModelsDownloaded: begin")
         try await checkDiskSpace()
         await statusMachine.transition(to: .downloading(progress: 0.0))
 
@@ -63,6 +72,7 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         // misleading, so we report a status message per stage instead.
         try await downloadWhisperKitIfNeeded(status: status)
         try await downloadSpeakerKitIfNeeded(status: status)
+        Self.log.debug("ensureModelsDownloaded: complete")
     }
 
     public func processAudio(
@@ -70,6 +80,7 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         systemPath: String,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
+        Self.log.debug("processAudio: begin")
         let startTime = CFAbsoluteTimeGetCurrent()
 
         let mergeResult = try loadAndMergeAudio(
@@ -94,13 +105,16 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         )
 
         await statusMachine.transition(to: .ready)
+        Self.log.debug("processAudio: complete")
         return result
     }
 
     public func unloadModels() async {
+        Self.log.debug("unloadModels: begin")
         await unloadWhisperKit()
         await unloadSpeakerKit()
         await statusMachine.transition(to: .needsDownload)
+        Self.log.debug("unloadModels: complete")
     }
 
     public func status() async -> ModelStatus {
@@ -229,6 +243,7 @@ private extension InProcessTranscriptionEngine {
 
     func ensureWhisperKitLoaded() async throws {
         if whisperKit == nil {
+            Self.log.info("WhisperKit: loading model (first init)")
             await statusMachine.transition(to: .loading)
             do {
                 whisperKit = try await WhisperKit(
@@ -241,14 +256,17 @@ private extension InProcessTranscriptionEngine {
                 await statusMachine.transition(to: .error(wrappedError))
                 throw wrappedError
             }
+            Self.log.info("WhisperKit: model loaded")
             await statusMachine.transition(to: .ready)
         } else {
+            Self.log.debug("WhisperKit: reloading existing model")
             try await whisperKit?.loadModels()
         }
     }
 
     func ensureSpeakerKitLoaded() async throws {
         if speakerKit == nil {
+            Self.log.info("SpeakerKit: loading model (first init)")
             do {
                 speakerKit = try await SpeakerKit(
                     makeSpeakerConfig(download: true, load: false)
@@ -260,7 +278,9 @@ private extension InProcessTranscriptionEngine {
                 await statusMachine.transition(to: .error(wrappedError))
                 throw wrappedError
             }
+            Self.log.info("SpeakerKit: model loaded")
         } else {
+            Self.log.debug("SpeakerKit: reloading existing model")
             try await speakerKit?.ensureModelsLoaded()
         }
     }

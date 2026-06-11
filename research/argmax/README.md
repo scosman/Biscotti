@@ -2,7 +2,7 @@
 
 ## Summary
 
-**V1 models:** **WhisperKit** (`openai_whisper-large-v3_turbo`) for speech-to-text and **SpeakerKit** (Pyannote v4 community-1, `argmaxinc/speakerkit-coreml`, ~33 MB) for speaker diarization -- both fully on-device, both free, both from the `argmax-oss-swift` SDK (MIT-licensed). Parakeet V3 and nvidia/sortformer-v2-1 are exclusively Argmax Pro SDK features and cannot be used on the free tier. Custom vocabulary is also Pro-only, but a partial workaround exists via Whisper's `promptTokens` (initial prompt) mechanism. Run the ML pipeline in an **XPC service** to isolate crashes and memory spikes from the host app, with a Swift actor managing model lifecycle inside the service. XPC isolation is standard, well-understood macOS tech; the only items to confirm during implementation are ANE access from the helper, the sandbox-container model-cache path, and memory behavior under pressure on 8 GB Macs (see Gotcha #3).
+**V1 models:** **WhisperKit** (`openai_whisper-large-v3-v20240930_626MB`) for speech-to-text and **SpeakerKit** (Pyannote v4 community-1, `argmaxinc/speakerkit-coreml`, ~33 MB) for speaker diarization -- both fully on-device, both free, both from the `argmax-oss-swift` SDK (MIT-licensed). Parakeet V3 and nvidia/sortformer-v2-1 are exclusively Argmax Pro SDK features and cannot be used on the free tier. Custom vocabulary is also Pro-only, but a partial workaround exists via Whisper's `promptTokens` (initial prompt) mechanism. Run the ML pipeline in an **XPC service** to isolate crashes and memory spikes from the host app, with a Swift actor managing model lifecycle inside the service. XPC isolation is standard, well-understood macOS tech; the only items to confirm during implementation are ANE access from the helper, the sandbox-container model-cache path, and memory behavior under pressure on 8 GB Macs (see Gotcha #3).
 
 **Licensing note:** The `argmax-oss-swift` package is MIT-licensed, but vendors HuggingFace Hub Swift and Tokenizers sources under their original Apache-2.0 license inside ArgmaxCore. The free SpeakerKit community model (`speakerkit-coreml`) is CC-BY-4.0.
 
@@ -21,7 +21,7 @@
 
 | Component | V1 Choice (free, on-device) | Pro Alternative (paid) | Quality Notes |
 |-----------|---------------------------|----------------------|---------------|
-| STT | `openai_whisper-large-v3_turbo` (full-precision, ~3.1 GB on disk; or quantized `_turbo_1307MB` / `_turbo_954MB` variants) | Parakeet V3 (494 MB, 9x faster) | Competitive WER -- Argmax reports 2.41% WER / 99.8% QoI for the full-precision turbo variant on LibriSpeech; quantized variants trade some accuracy for size (see table in section 2) |
+| STT | `openai_whisper-large-v3-v20240930_626MB` (~626 MB on disk, quantized Sept 2024 large-v3) | Parakeet V3 (494 MB, 9x faster) | ArgMax-recommended model. Non-turbo large-v3, quantized. Smaller download than the turbo variants (626 MB vs 1.3-3.1 GB). |
 | Diarization | Pyannote v4 (community-1) via SpeakerKit (~33 MB, `argmaxinc/speakerkit-coreml`) | Sortformer v2-1 via Pro SDK; or Precision-2 via Argmax Marketplace (see future upgrade note in Recommendation) | "Matches the error rate of state-of-the-art systems such as Pyannote across 13 datasets" per Argmax |
 
 Both V1 models are genuinely capable. Whisper large-v3-turbo is the industry standard open STT model optimized for speed (809M params, 4 decoder layers vs 32 in full large-v3, ~4-8x faster), and Pyannote v4 community-1 is well-regarded for diarization. The Pro models offer additional speed (Parakeet is ~9x faster than Whisper) and incrementally better diarization accuracy (Sortformer/Precision-2), but the free tier is solid for V1.
@@ -69,11 +69,11 @@ The `WhisperKitConfig.modelFolder` property pins an exact folder (bypassing the 
 
 | Model | Identifier in `whisperkit-coreml` | Size | WER / QoI | Notes |
 |-------|----------------------------------|------|-----------|-------|
-| **Whisper large-v3-turbo (full-precision)** | `openai_whisper-large-v3_turbo` | **~3.1 GB** | 2.41% / 99.8% | Team choice; 809M params, full f16 weights. Best accuracy in the turbo family. |
-| Whisper large-v3-turbo (quantized, recommended) | `openai_whisper-large-v3_turbo_1307MB` | ~1.3 GB | 2.6% / 97.7% | Mixed-bit quantized. Good balance of size vs. accuracy for 8 GB Macs. |
+| **Whisper large-v3 (Sept 2024, quantized)** | `openai_whisper-large-v3-v20240930_626MB` | **~626 MB** | -- | **V1 choice (ArgMax-recommended).** Non-turbo large-v3, quantized. Smaller download than turbo variants. |
+| Whisper large-v3-turbo (full-precision) | `openai_whisper-large-v3_turbo` | ~3.1 GB | 2.41% / 99.8% | 809M params, full f16 weights. Best accuracy in the turbo family, but triggers `promptTokens` empty-output bug (Gotcha #16). |
+| Whisper large-v3-turbo (quantized) | `openai_whisper-large-v3_turbo_1307MB` | ~1.3 GB | 2.6% / 97.7% | Mixed-bit quantized turbo variant. |
 | Whisper large-v3-turbo (aggressive quant) | `openai_whisper-large-v3_turbo_1049MB` | ~1.0 GB | 4.81% / 91% | Noticeable accuracy drop. |
 | Whisper large-v3-turbo (QLoRA compressed) | `openai_whisper-large-v3_turbo_954MB` | ~954 MB | -- | QLoRA compressed encoder+decoder variant. |
-| Whisper large-v3 (Sept 2024, quantized) | `openai_whisper-large-v3-v20240930_626MB` | ~626 MB | -- | Previous recommendation; non-turbo, smaller but slower. |
 | **SpeakerKit Pyannote v4 (community-1)** | (in `speakerkit-coreml` repo) | **~33 MB** | -- | Includes segmenter + embedder + clusterer CoreML models. |
 
 All WhisperKit models are in the [`argmaxinc/whisperkit-coreml`](https://huggingface.co/argmaxinc/whisperkit-coreml) HuggingFace repo (30.8 GB total repo). Only the selected variant is downloaded. SpeakerKit models are in [`argmaxinc/speakerkit-coreml`](https://huggingface.co/argmaxinc/speakerkit-coreml) (33.1 MB total repo).
@@ -237,7 +237,7 @@ Likely mechanism (unconfirmed, under investigation): the prompt is prepended as 
 - **Cap/curate** the term set; treat the prompt as best-effort.
 - The Pro custom-vocabulary API (a separate vocabulary-matching pass, not prompt conditioning) avoids this failure mode entirely — a point in its favor if vocab is important.
 
-**Recommendation:** Use the `promptTokens` approach in the free SDK. Build the API to accept a `[String]` vocabulary list, format it into a natural-language prompt, tokenize it, and pass it as `promptTokens` — **but lowercase the terms and guard against the empty-output failure above.** This lets us swap to Pro's custom vocabulary later with no API change for callers. See Gotcha #16 and `specs/projects/ai_test_set/` (the `make test-ai` custom-vocab test uses a curated lowercase trio `gnocci/facade/qwen`). Production `VocabularyFormatter` now lowercases all terms (mitigation a); the empty-output re-run guard (mitigation b) remains deferred.
+**Recommendation:** Use the `promptTokens` approach in the free SDK. Build the API to accept a `[String]` vocabulary list, format it into a natural-language prompt, tokenize it, and pass it as `promptTokens` — **but lowercase the terms and guard against the empty-output failure above.** This lets us swap to Pro's custom vocabulary later with no API change for callers. See Gotcha #16 and `specs/projects/ai_test_set/`. Production `VocabularyFormatter` now lowercases all terms (mitigation a); the empty-output re-run guard (mitigation b) remains deferred. **Note:** the `make test-ai` custom-vocab test is currently **disabled** because the empty-output bug affects both turbo and non-turbo models for certain term combinations. Tracked upstream: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
 
 **Sources:**
 - [OpenAI Whisper prompt vs prefix discussion](https://github.com/openai/whisper/discussions/117)
@@ -456,7 +456,7 @@ Yes, partially:
 ## Recommendation
 
 ### Models
-- **STT (V1):** `openai_whisper-large-v3_turbo` via WhisperKit (free SDK). Full-precision f16, ~3.1 GB on disk, 809M parameters, ~4-8x faster than full large-v3 with competitive WER (2.41% on LibriSpeech per Argmax benchmarks). Pin this exact variant in code. For 8 GB Macs, offer the quantized `openai_whisper-large-v3_turbo_1307MB` (~1.3 GB, 2.6% WER) as an alternative.
+- **STT (V1):** `openai_whisper-large-v3-v20240930_626MB` via WhisperKit (free SDK). Quantized Sept 2024 large-v3, ~626 MB on disk. ArgMax-recommended model. A single model is used regardless of RAM (sequential loading still used on low-RAM Macs).
 - **Diarization (V1):** Pyannote v4 (community-1) via SpeakerKit (free SDK). ~33 MB model, ~1 second for 4 minutes of audio. Fully on-device, CC-BY-4.0 licensed. Matches SotA error rates per Argmax's Interspeech 2025 benchmarks across 13 datasets.
 
 **Future upgrade paths** (not V1):

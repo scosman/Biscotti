@@ -127,6 +127,26 @@ func makeAudioURL() -> URL {
     URL(fileURLWithPath: "/tmp/test-audio.wav")
 }
 
+// MARK: - CallCounter
+
+/// Thread-safe counter for tracking factory/callback invocations in @Sendable closures.
+final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
+    }
+
+    func increment() {
+        lock.lock()
+        _value += 1
+        lock.unlock()
+    }
+}
+
 // MARK: - StatusCollector
 
 /// Thread-safe collector for status messages in @Sendable closures.

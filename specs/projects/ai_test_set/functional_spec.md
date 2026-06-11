@@ -71,11 +71,9 @@ If (1) fails, (3) cannot align and the check fails at (1) with the observed chun
 
 ### 1.4 Second reference clip — custom vocabulary
 
-`Tests/TranscriptionTests/Fixtures/custom_vocab_test.aac` is a single clip of one voice reading a list of deliberately-hard terms. The clip contains all 10 original terms (NASA, Kubernetes, Postgres, Qwen, Mistral, Llama, Croissant, gnocci, Paella, Facade), but the **custom-vocabulary list used by the test** is a curated 3-term lowercase subset:
+`Tests/TranscriptionTests/Fixtures/custom_vocab_test.aac` is a single clip of one voice reading a list of deliberately-hard terms. The clip contains all 10 terms (nasa, kubernetes, postgres, qwen, mistral, llama, croissant, gnocci, paella, facade) and the test uses the full list.
 
-> gnocci, facade, qwen
-
-WhisperKit's `promptTokens`-based vocab conditioning silently blanks the entire transcript for some terms when uppercase or in certain order/combination. This curated lowercase trio is empirically reliable with `custom_vocab_test.aac`. Robust custom-vocab handling is under separate investigation — do not expand back to the original 10 mixed-case terms without re-validating on hardware.
+> **Test currently disabled.** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations — this affects both turbo and non-turbo models. The custom-vocab AI test is skipped (`.disabled`) pending an upstream SDK fix: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
 
 **Single-file handling:** this is one mono track (no separate system audio). The pipeline's `processAudio(mic:system:)` requires both paths, so the test passes `custom_vocab_test.aac` as **both** `mic` and `system` (the merge sums identical content → same speech; diarization is **not** asserted for this clip).
 
@@ -84,9 +82,9 @@ WhisperKit's `promptTokens`-based vocab conditioning silently blanks the entire 
 - Take the with-vocab transcript's full text; split into words on whitespace.
 - Normalize each word: strip leading/trailing punctuation, lowercase.
 - Build the set of normalized transcript words.
-- Expected set (normalized): `gnocci, facade, qwen`.
+- Expected set (normalized): `nasa, kubernetes, postgres, qwen, mistral, llama, croissant, gnocci, paella, facade`.
 - A term **matches** iff it is an exact member of the transcript word set.
-- **Gating assertion:** with vocab applied, **all 3** expected terms match (3/3). Report any misses.
+- **Gating assertion:** with vocab applied, **all 10** expected terms match (10/10). Report any misses. *(Test currently disabled — see note above.)*
 
 ---
 
@@ -125,9 +123,9 @@ Both run the **in-process** pipeline (`Transcriber(backend: .inProcess)`), carry
 
 #### 2.4.2 Custom-vocabulary word match (`custom_vocab_test.aac`)
 
-`processAudio(mic:system:customVocabulary:)` with the clip as both streams (§1.4) and the 3-term vocab list, then assert via the **word-match contract** (§1.4):
+`processAudio(mic:system:customVocabulary:)` with the clip as both streams (§1.4) and the 10-term vocab list, then assert via the **word-match contract** (§1.4):
 
-5. **All 3 expected terms present** (3/3) as exact normalized word matches (hard). Failure detail lists the misses and the full transcript text.
+5. **All 10 expected terms present** (10/10) as exact normalized word matches (hard). Failure detail lists the misses and the full transcript text. *(Test currently disabled — see §1.4 note.)*
 
 This test does **not** pass a diarization threshold (diarization isn't asserted here). It deliberately uses one `processAudio` call **with** vocab — a without-vocab control run is not required for the gate (it's a soft-bias effect; we assert the with-vocab outcome the user confirmed works).
 

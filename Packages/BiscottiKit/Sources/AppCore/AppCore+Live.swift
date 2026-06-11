@@ -177,4 +177,8 @@ private struct LiveTranscriberAdapter: Transcribing {
             customVocabulary: customVocabulary
         )
     }
+
+    func shutdown() async {
+        await transcriber.shutdown()
+    }
 }

@@ -15,7 +15,7 @@ public enum DiarizationStrategy: String, Sendable, Codable, CaseIterable {
 
 /// Configuration for the ArgMax speech processing pipeline.
 public struct ProcessorConfig: Sendable, Codable, Equatable {
-    /// WhisperKit model variant (e.g. "large-v3_turbo", "large-v3_turbo_1307MB").
+    /// WhisperKit model variant (e.g. "openai_whisper-large-v3-v20240930_626MB").
     public let sttModel: String
 
     /// HuggingFace repo containing WhisperKit CoreML models.
@@ -32,7 +32,7 @@ public struct ProcessorConfig: Sendable, Codable, Equatable {
     public let sequentialLoading: Bool
 
     public init(
-        sttModel: String = "large-v3_turbo",
+        sttModel: String = "openai_whisper-large-v3-v20240930_626MB",
         sttModelRepo: String = "argmaxinc/whisperkit-coreml",
         enableWordTimestamps: Bool = true,
         diarizationStrategy: DiarizationStrategy = .subsegment,
@@ -140,7 +140,7 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     /// When this transcript was created.
     public let createdAt: Date
 
-    /// WhisperKit model variant used (e.g. "large-v3_turbo").
+    /// WhisperKit model variant used (e.g. "openai_whisper-large-v3-v20240930_626MB").
     public let modelVersion: String
 
     /// Detected language code (e.g. "en").

@@ -27,28 +27,6 @@ struct DiarizationEvaluatorTests {
         #expect(eval.passed)
         #expect(eval.chunkCount == 5)
         #expect(eval.distinctSpeakers == 3)
-        #expect(eval.perChunkRatios.count == 5)
-        #expect(eval.perChunkRatios.allSatisfy { $0 <= GroundTruth.chunkLevenshteinTolerance })
-    }
-
-    @Test("passes with minor text differences within tolerance")
-    func passWithMinorDifferences() {
-        // "importnt" instead of "important" => 1 char difference in a long string
-        let result = makeDiarizationResult(
-            segments: [
-                (speaker: 0, text: "This is a thing we actually need to do that's importnt."),
-                (speaker: 0, text: "I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice."),
-                (speaker: 1, text: "Banana,"),
-                (speaker: 1, text: "banana."),
-                (speaker: 0, text: "Say something for real James."),
-                (speaker: 1, text: "Okay, fine my banana head."),
-                (speaker: 2, text: "And what would you like me to say?"),
-                (speaker: 2, text: "Anything at all."),
-                (speaker: 2, text: "I would like more food please.")
-            ]
-        )
-        let eval = DiarizationGroundTruth.evaluate(result)
-        #expect(eval.passed)
     }
 
     @Test("fails when chunk count is wrong (too few)")
@@ -67,6 +45,9 @@ struct DiarizationEvaluatorTests {
         #expect(eval.detail.contains("text=\"Hello\""))
         #expect(eval.detail.contains("text=\"World\""))
         #expect(eval.detail.contains("Raw transcript:"))
+        // Full transcript diagnostics
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
     @Test("fails when too many chunks")
@@ -87,6 +68,9 @@ struct DiarizationEvaluatorTests {
         // Diagnostic: chunk text and raw transcript are surfaced
         #expect(eval.detail.contains("text=\"A\""))
         #expect(eval.detail.contains("Raw transcript: \"A B C D E F\""))
+        // Full transcript diagnostics
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
     @Test("fails when speaker pattern does not match (wrong interleaving)")
@@ -109,6 +93,9 @@ struct DiarizationEvaluatorTests {
         // Diagnostic: chunk text and raw transcript are surfaced
         #expect(eval.detail.contains("text=\"Banana, banana.\""))
         #expect(eval.detail.contains("Raw transcript:"))
+        // Full transcript diagnostics
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
     @Test("fails when only 2 distinct speakers (A/B/A/B/A pattern)")
@@ -130,6 +117,9 @@ struct DiarizationEvaluatorTests {
         // Diagnostic: chunk text and raw transcript are surfaced
         #expect(eval.detail.contains("text="))
         #expect(eval.detail.contains("Raw transcript:"))
+        // Full transcript diagnostics
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
     @Test("fails when all segments have the same speaker (merges to 1 chunk)")
@@ -148,11 +138,46 @@ struct DiarizationEvaluatorTests {
         // Diagnostic: merged chunk text and raw transcript are surfaced
         #expect(eval.detail.contains("text=\"A B C\""))
         #expect(eval.detail.contains("Raw transcript: \"A B C\""))
+        // Full transcript diagnostics
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
-    @Test("fails when Levenshtein ratio exceeds tolerance")
-    func highLevenshtein() {
-        // Correct pattern but wrong text in chunk 0
+    @Test("canonical pattern helper produces first-occurrence indices")
+    func canonicalPatternHelper() {
+        #expect(DiarizationGroundTruth.canonicalPattern(["A", "B", "A", "B", "C"]) == [0, 1, 0, 1, 2])
+        #expect(DiarizationGroundTruth.canonicalPattern([7, 3, 7, 3, 9]) == [0, 1, 0, 1, 2])
+        #expect(DiarizationGroundTruth.canonicalPattern([5, 5, 5]) == [0, 0, 0])
+        #expect(DiarizationGroundTruth.canonicalPattern([Int]()) == [])
+    }
+}
+
+// MARK: - Transcript accuracy evaluator tests
+
+@Suite("TranscriptAccuracyGroundTruth.evaluate")
+struct TranscriptAccuracyEvaluatorTests {
+    @Test("passes when transcript matches exactly")
+    func passExact() {
+        let result = makeDiarizationResult(
+            segments: [
+                (speaker: 0, text: "This is a thing we actually need to do that's important."),
+                (speaker: 0, text: "I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice."),
+                (speaker: 1, text: "Banana,"),
+                (speaker: 1, text: "banana."),
+                (speaker: 0, text: "Say something for real James."),
+                (speaker: 1, text: "Okay, fine my banana head."),
+                (speaker: 2, text: "And what would you like me to say?"),
+                (speaker: 2, text: "Anything at all."),
+                (speaker: 2, text: "I would like more food please.")
+            ]
+        )
+        let eval = TranscriptAccuracyGroundTruth.evaluate(result)
+        #expect(eval.passed)
+        #expect(eval.ratio < 0.01) // essentially 0 for exact match
+    }
+
+    @Test("fails when transcript text is substantially wrong")
+    func failWrongText() {
         let result = makeDiarizationResult(
             segments: [
                 (speaker: 0, text: "Completely wrong transcript that does not match at all and keeps going to be long enough."),
@@ -166,21 +191,35 @@ struct DiarizationEvaluatorTests {
                 (speaker: 2, text: "I would like more food please.")
             ]
         )
-        let eval = DiarizationGroundTruth.evaluate(result)
+        let eval = TranscriptAccuracyGroundTruth.evaluate(result)
         #expect(!eval.passed)
-        #expect(eval.chunkCount == 5)
-        #expect(eval.distinctSpeakers == 3)
-        #expect(eval.perChunkRatios[0] > GroundTruth.chunkLevenshteinTolerance)
-        #expect(eval.detail.contains("chunk[0]"))
-        #expect(eval.detail.contains("ratio="))
+        #expect(eval.ratio > GroundTruth.transcriptAccuracyTolerance)
+        #expect(eval.detail.contains("exceeds tolerance"))
+        #expect(eval.detail.contains("Actual transcript:"))
+        #expect(eval.detail.contains("Expected transcript:"))
     }
 
-    @Test("canonical pattern helper produces first-occurrence indices")
-    func canonicalPatternHelper() {
-        #expect(DiarizationGroundTruth.canonicalPattern(["A", "B", "A", "B", "C"]) == [0, 1, 0, 1, 2])
-        #expect(DiarizationGroundTruth.canonicalPattern([7, 3, 7, 3, 9]) == [0, 1, 0, 1, 2])
-        #expect(DiarizationGroundTruth.canonicalPattern([5, 5, 5]) == [0, 0, 0])
-        #expect(DiarizationGroundTruth.canonicalPattern([Int]()) == [])
+    @Test("passes when text is correct but attributed to wrong speakers")
+    func passWithMisattribution() {
+        // Same text in the same order, but speakers 0 and 1 are swapped.
+        // Diarization checks speaker structure; transcript accuracy must pass
+        // regardless of speaker assignment.
+        let result = makeDiarizationResult(
+            segments: [
+                (speaker: 1, text: "This is a thing we actually need to do that's important."),
+                (speaker: 1, text: "I'm going to talk for a second and then I'm going to hand it over to James who's going to say something regular and not in a weird voice."),
+                (speaker: 0, text: "Banana,"),
+                (speaker: 0, text: "banana."),
+                (speaker: 1, text: "Say something for real James."),
+                (speaker: 0, text: "Okay, fine my banana head."),
+                (speaker: 2, text: "And what would you like me to say?"),
+                (speaker: 2, text: "Anything at all."),
+                (speaker: 2, text: "I would like more food please.")
+            ]
+        )
+        let eval = TranscriptAccuracyGroundTruth.evaluate(result)
+        #expect(eval.passed, "Mis-attribution should not affect transcript accuracy: \(eval.detail)")
+        #expect(eval.ratio < 0.01)
     }
 }
 
@@ -188,15 +227,15 @@ struct DiarizationEvaluatorTests {
 
 @Suite("VocabGroundTruth.evaluate")
 struct VocabEvaluatorTests {
-    @Test("passes when all 3 terms are present")
+    @Test("passes when all 10 terms are present")
     func allPresent() {
-        let text = "gnocci facade qwen"
+        let text = "nasa kubernetes postgres qwen mistral llama croissant gnocci paella facade"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
-        #expect(eval.matched.count == 3)
+        #expect(eval.matched.count == 10)
         #expect(eval.missed.isEmpty)
-        #expect(eval.detail.contains("All 3"))
+        #expect(eval.detail.contains("All 10"))
     }
 
     @Test("fails when some terms are missing")
@@ -206,9 +245,10 @@ struct VocabEvaluatorTests {
         let eval = VocabGroundTruth.evaluate(result)
         #expect(!eval.passed)
         #expect(eval.matched.count == 2)
-        #expect(eval.missed.count == 1)
+        #expect(eval.missed.count == 8)
         #expect(eval.detail.contains("Missed:"))
-        // Diagnostic: actual transcript text is surfaced
+        // Diagnostic: actual transcript text and expected vocab are surfaced
+        #expect(eval.detail.contains("Expected vocab:"))
         #expect(eval.detail.contains("Transcript: \"gnocci facade\""))
     }
 
@@ -219,14 +259,15 @@ struct VocabEvaluatorTests {
         let eval = VocabGroundTruth.evaluate(result)
         #expect(!eval.passed)
         #expect(eval.matched.isEmpty)
-        #expect(eval.missed.count == 3)
-        // Diagnostic: actual transcript text is surfaced
+        #expect(eval.missed.count == 10)
+        // Diagnostic: actual transcript text and expected vocab are surfaced
+        #expect(eval.detail.contains("Expected vocab:"))
         #expect(eval.detail.contains("Transcript: \"hello world nothing matches here\""))
     }
 
     @Test("matches are case-insensitive")
     func caseInsensitive() {
-        let text = "Gnocci FACADE Qwen"
+        let text = "NASA KUBERNETES POSTGRES QWEN MISTRAL LLAMA CROISSANT GNOCCI PAELLA FACADE"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
@@ -234,7 +275,7 @@ struct VocabEvaluatorTests {
 
     @Test("handles terms surrounded by punctuation")
     func punctuationHandled() {
-        let text = "gnocci, facade; qwen."
+        let text = "nasa, kubernetes; postgres. qwen! mistral? llama: croissant, gnocci; paella. facade!"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
@@ -250,13 +291,13 @@ struct VocabEvaluatorTests {
                 TranscriptSegment(
                     speakerID: 0, speakerLabel: "Speaker 0",
                     startTime: 0, endTime: 1,
-                    text: "gnocci facade",
+                    text: "nasa kubernetes postgres qwen mistral",
                     confidence: 0, noSpeechProbability: 0, words: nil
                 ),
                 TranscriptSegment(
                     speakerID: 0, speakerLabel: "Speaker 0",
                     startTime: 1, endTime: 2,
-                    text: "qwen",
+                    text: "llama croissant gnocci paella facade",
                     confidence: 0, noSpeechProbability: 0, words: nil
                 )
             ],

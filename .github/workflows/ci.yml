@@ -4,12 +4,20 @@ on:
     branches: [main]
   pull_request:
 
+# Pin Xcode 26.3 — the macos-15 runner defaults to Xcode 16.4, whose SwiftData
+# SDK lacks Schema.Version: Sendable, breaking swift test/xcodebuild under Swift 6.
+# We target the macOS 15 *platform* (deployment target), not Xcode 16.
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
 jobs:
   package-tier:
     name: Packages (lint + test)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify Xcode version
+        run: xcodebuild -version
       - name: Cache Homebrew
         uses: actions/cache@v4
         with:

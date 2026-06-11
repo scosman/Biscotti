@@ -1,11 +1,12 @@
 import Foundation
+import os.log
 
 /// Testable seam for the XPC connection layer.
 ///
 /// The real implementation wraps `NSXPCConnection`; tests inject a mock that
 /// simulates normal replies, interruptions, and unavailability without a
 /// real XPC service process.
-protocol TranscriberXPCConnecting: Sendable {
+protocol TranscriberXPCConnecting: AnyObject, Sendable {
     /// Get a proxy object conforming to `TranscriberServiceProtocol`.
     /// Returns nil if the connection is unavailable.
     func remoteObjectProxy() -> (any TranscriberServiceProtocol)?
@@ -31,6 +32,11 @@ protocol TranscriberXPCConnecting: Sendable {
 /// status messages back. Thread-safe: `reportDownloadStatus` is called by XPC on
 /// an arbitrary queue while `setHandler` is called by the `Transcriber` actor.
 final class TranscriberStatusReceiver: NSObject, TranscriberStatusReporting, @unchecked Sendable {
+    private static let log = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "Transcriber"
+    )
+
     private let lock = NSLock()
     private var handler: (@Sendable (String) -> Void)?
 
@@ -41,6 +47,7 @@ final class TranscriberStatusReceiver: NSObject, TranscriberStatusReporting, @un
     }
 
     func reportDownloadStatus(_ status: String) {
+        Self.log.debug("client: received download status callback: \(status)")
         lock.lock()
         let handler = handler
         lock.unlock()

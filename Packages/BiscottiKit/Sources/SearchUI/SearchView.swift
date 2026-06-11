@@ -55,6 +55,9 @@ public struct SearchView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(viewModel.results) { hit in
+                            // TODO(nav-stack): migrate AppShell from single-Route replacement to a
+                            // NavigationStack path so tapping a search result PUSHES (Back returns
+                            // into the search results). Medium refactor -- its own follow-up.
                             Button {
                                 viewModel.selectResult(hit.id)
                             } label: {
@@ -67,6 +70,16 @@ public struct SearchView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Background underlay dismisses search focus when tapping empty space.
+        // Using .background + .onTapGesture avoids intercepting child button taps
+        // (unlike .onTapGesture on the outer VStack, which competes on macOS).
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    viewModel.dismissFocus()
+                }
+        }
     }
 
     private func searchResultRow(_ hit: SearchHit) -> some View {

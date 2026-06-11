@@ -232,4 +232,176 @@ struct SearchViewModelFormattingTests {
         let empty = SearchViewModel.matchedFieldsText([])
         #expect(empty == "")
     }
+
+    @Test("matchedFieldsText includes notes field")
+    func matchedFieldsTextIncludesNotes() {
+        let text = SearchViewModel.matchedFieldsText(
+            [.title, .notes]
+        )
+        #expect(text == "title, notes")
+
+        let notesOnly = SearchViewModel.matchedFieldsText([.notes])
+        #expect(notesOnly == "notes")
+    }
+}
+
+// MARK: - Immediate clear + spinner tests
+
+@Suite("SearchViewModel -- clear results on query change")
+struct SearchViewModelClearTests {
+    @Test("updateQuery clears results and sets searching synchronously")
+    @MainActor
+    func updateQueryClearsResultsImmediately() async throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "Test Meeting")
+        await fix.core.reloadSummaries()
+
+        let viewModel = SearchViewModel(core: fix.core)
+
+        // First, get some results
+        viewModel.updateQuery("Test")
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+
+        // Now change the query -- results should clear and spinner
+        // should show SYNCHRONOUSLY (before debounce fires)
+        viewModel.updateQuery("Other")
+
+        // Check immediately: results cleared, isSearching true
+        #expect(viewModel.results.isEmpty)
+        #expect(viewModel.isSearching == true)
+        #expect(viewModel.query == "Other")
+
+        // Let debounce complete
+        try await pollUntil {
+            viewModel.isSearching == false
+        }
+        // "Other" has no matches
+        #expect(viewModel.results.isEmpty)
+        #expect(viewModel.showNoResults == true)
+    }
+
+    @Test("empty query clears results and stops searching immediately, no spinner")
+    @MainActor
+    func emptyQueryClearsImmediatelyNoSpinner() async throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "Alpha")
+        await fix.core.reloadSummaries()
+
+        let viewModel = SearchViewModel(core: fix.core)
+
+        // Get results first
+        viewModel.updateQuery("Alpha")
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+
+        // Clear with empty query
+        viewModel.updateQuery("")
+
+        // Synchronous: no spinner, no results
+        #expect(viewModel.results.isEmpty)
+        #expect(viewModel.isSearching == false)
+        #expect(viewModel.query == "")
+    }
+
+    @Test("new query during debounce clears stale results immediately")
+    @MainActor
+    func newQueryDuringDebounceClearsStale() async throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "First Meeting")
+        _ = try await fix.store.createMeeting(title: "Second Meeting")
+        await fix.core.reloadSummaries()
+
+        let viewModel = SearchViewModel(core: fix.core)
+
+        // Get "First" results
+        viewModel.updateQuery("First")
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+        #expect(viewModel.results.first?.title == "First Meeting")
+
+        // Change to "Second" -- stale "First" results must clear immediately
+        viewModel.updateQuery("Second")
+        #expect(viewModel.results.isEmpty, "Stale results should clear synchronously")
+        #expect(viewModel.isSearching == true, "Spinner should show during debounce")
+
+        // Wait for "Second" search to complete
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+        #expect(viewModel.results.first?.title == "Second Meeting")
+    }
+}
+
+// MARK: - Back button tests
+
+@Suite("SearchViewModel -- back button bug fix")
+struct SearchViewModelBackButtonTests {
+    @Test("enter search from meeting, Back returns to that meeting in one step")
+    @MainActor
+    func backFromMeetingRestoresRoute() throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = UUID()
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        // Enter search (simulates typing in the search field)
+        fix.core.presentSearch()
+        #expect(fix.core.route == .search)
+        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
+
+        // Simulate continued typing (more presentSearch calls)
+        fix.core.presentSearch()
+        fix.core.presentSearch()
+        // Return route should NOT have been overwritten to .search
+        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
+
+        // Tap Back
+        let viewModel = SearchViewModel(core: fix.core)
+        viewModel.dismiss()
+
+        // Route should be the meeting, not .home, in ONE tap
+        #expect(fix.core.route == .meeting(meetingID))
+    }
+
+    @Test("presentSearch is idempotent -- does not overwrite return route")
+    @MainActor
+    func presentSearchIdempotent() throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        // Start on an event page
+        fix.core.selectEvent("event-123")
+        #expect(fix.core.route == .event("event-123"))
+
+        // First presentSearch captures the return route
+        fix.core.presentSearch()
+        #expect(fix.core.searchReturnRoute == .event("event-123"))
+
+        // Subsequent calls do NOT overwrite
+        fix.core.presentSearch()
+        #expect(fix.core.searchReturnRoute == .event("event-123"))
+
+        // Dismiss returns to the event
+        fix.core.dismissSearch()
+        #expect(fix.core.route == .event("event-123"))
+    }
 }

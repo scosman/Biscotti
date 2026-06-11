@@ -16,6 +16,10 @@ import SwiftUI
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
+    /// Bound to the `.searchable` field via `.searchFocused`. Setting this
+    /// to `false` programmatically dismisses the search field's focus/caret.
+    @FocusState private var isSearchFieldFocused: Bool
+
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
     }
@@ -38,8 +42,14 @@ public struct AppShellView: View {
                     placement: .toolbar,
                     prompt: "Search meetings\u{2026}"
                 )
+                .searchFocused($isSearchFieldFocused)
                 .onChange(of: viewModel.searchText) { _, newValue in
                     viewModel.onSearchTextChange(newValue)
+                }
+                .onChange(
+                    of: viewModel.searchViewModel.dismissFocusCount
+                ) {
+                    isSearchFieldFocused = false
                 }
             }
         }

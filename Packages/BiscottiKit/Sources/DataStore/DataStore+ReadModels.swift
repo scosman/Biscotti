@@ -195,6 +195,7 @@ public enum SearchField: Sendable, Equatable {
     case title
     case people
     case transcript
+    case notes
 }
 
 /// Audio file reference result for a meeting.
@@ -484,6 +485,7 @@ public extension DataStore {
         var score = 0
         var fields: Set<SearchField> = []
         let titleLower = meeting.title.lowercased()
+        let notesLower = meeting.notes.lowercased()
 
         for term in terms {
             if titleLower.localizedStandardContains(term) {
@@ -507,6 +509,11 @@ public extension DataStore {
             {
                 score += 1
                 fields.insert(.transcript)
+            }
+            // Notes scored at the same weight as transcript (1).
+            if !notesLower.isEmpty, notesLower.localizedStandardContains(term) {
+                score += 1
+                fields.insert(.notes)
             }
         }
 
@@ -546,6 +553,7 @@ public extension DataStore {
         case .title: 0
         case .people: 1
         case .transcript: 2
+        case .notes: 3
         }
     }
 }

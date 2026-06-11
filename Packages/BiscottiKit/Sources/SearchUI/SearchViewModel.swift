@@ -19,6 +19,11 @@ public final class SearchViewModel {
     /// Whether a search query is in progress.
     public private(set) var isSearching: Bool = false
 
+    /// Monotonic counter incremented when the search field should lose focus.
+    /// AppShellView observes this via `.onChange` and sets its `@FocusState`
+    /// to `false`. Using a counter (not a bool) avoids coalescing rapid signals.
+    public private(set) var dismissFocusCount: Int = 0
+
     private var searchTask: Task<Void, Never>?
 
     public init(core: AppCore) {
@@ -48,12 +53,20 @@ public final class SearchViewModel {
 
     /// Called when the user selects a search result. Opens meeting detail.
     public func selectResult(_ meetingID: UUID) {
+        dismissFocusCount += 1
         core.select(meetingID)
     }
 
     /// Called when the user taps Back. Restores the pre-search route.
     public func dismiss() {
+        dismissFocusCount += 1
         core.dismissSearch()
+    }
+
+    /// Called when the user taps the search page background (non-interactive area).
+    /// Signals focus dismissal without navigating.
+    public func dismissFocus() {
+        dismissFocusCount += 1
     }
 
     // MARK: - Formatting
@@ -67,6 +80,7 @@ public final class SearchViewModel {
             case .title: "title"
             case .people: "people"
             case .transcript: "transcript"
+            case .notes: "notes"
             }
         }.joined(separator: ", ")
     }
@@ -80,6 +94,11 @@ public final class SearchViewModel {
             isSearching = false
             return
         }
+        // Clear stale results and show spinner immediately on query change,
+        // before the debounce fires. This prevents showing outdated results
+        // while the user is still typing.
+        results = []
+        isSearching = true
         let currentQuery = query
         searchTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
@@ -87,7 +106,6 @@ public final class SearchViewModel {
                   let self,
                   query == currentQuery
             else { return }
-            isSearching = true
             do {
                 let hits = try await core.store.searchHits(
                     currentQuery, limit: 50

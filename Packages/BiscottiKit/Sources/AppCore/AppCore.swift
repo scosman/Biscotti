@@ -284,7 +284,11 @@ public final class AppCore {
     }
 
     /// Enters search mode, saving the current route for Back restoration.
+    /// Idempotent: if already in search mode, does not overwrite the saved
+    /// return route (fixes the bug where each keystroke reset the route to
+    /// `.search`, making Back require two taps and land on Home).
     public func presentSearch() {
+        guard route != .search else { return }
         searchReturnRoute = route
         route = .search
     }

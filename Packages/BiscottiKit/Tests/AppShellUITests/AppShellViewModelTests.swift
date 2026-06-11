@@ -466,4 +466,30 @@ struct AppShellUpcomingSearchTests {
         let search2 = shellVM.searchViewModel
         #expect(search1 === search2)
     }
+
+    @Test("back from search returns to the page user was on, not .home")
+    @MainActor
+    func backFromSearchReturnsToOriginalPage() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        let meetingID = UUID()
+
+        // Navigate to a meeting
+        fix.core.select(meetingID)
+        #expect(shellVM.route == .meeting(meetingID))
+
+        // Enter search via typing (multiple keystrokes)
+        shellVM.onSearchTextChange("m")
+        shellVM.onSearchTextChange("me")
+        shellVM.onSearchTextChange("meeting")
+        #expect(shellVM.route == .search)
+
+        // Clear search (simulates tapping Back)
+        shellVM.clearSearch()
+
+        // Should return to the meeting, not .home
+        #expect(shellVM.route == .meeting(meetingID))
+    }
 }

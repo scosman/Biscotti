@@ -51,6 +51,18 @@ public final class SearchViewModel {
         debounceAndSearch()
     }
 
+    /// Re-activates the search takeover for the current query without
+    /// requiring a text change. Used when the user presses Enter/submit
+    /// or re-focuses the search field after navigating away from results.
+    ///
+    /// Does nothing if the query is empty. If the search pane is already
+    /// active, refreshes results for the current query.
+    public func reactivateSearch() {
+        guard !query.isEmpty else { return }
+        core.presentSearch()
+        searchImmediately()
+    }
+
     /// Called when the user selects a search result. Opens meeting detail.
     public func selectResult(_ meetingID: UUID) {
         dismissFocusCount += 1
@@ -86,6 +98,33 @@ public final class SearchViewModel {
     }
 
     // MARK: - Private
+
+    /// Runs the search for the current query immediately (no debounce).
+    /// Cancels any prior in-flight search task.
+    private func searchImmediately() {
+        searchTask?.cancel()
+        guard !query.isEmpty else {
+            results = []
+            isSearching = false
+            return
+        }
+        isSearching = true
+        let currentQuery = query
+        searchTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let hits = try await core.store.searchHits(
+                    currentQuery, limit: 50
+                )
+                guard !Task.isCancelled else { return }
+                results = hits
+            } catch {
+                guard !Task.isCancelled else { return }
+                results = []
+            }
+            isSearching = false
+        }
+    }
 
     private func debounceAndSearch() {
         searchTask?.cancel()

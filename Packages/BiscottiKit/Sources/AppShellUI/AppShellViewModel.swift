@@ -185,6 +185,20 @@ public final class AppShellViewModel {
         }
     }
 
+    /// Called when the user submits (presses Enter) in the search field.
+    /// Re-activates the search takeover if the field has a non-empty query.
+    public func onSearchSubmit() {
+        searchViewModel.reactivateSearch()
+    }
+
+    /// Called when the search field gains focus with a non-empty query
+    /// and the search pane is not currently displayed. Re-activates the
+    /// search takeover so the user sees their previous results.
+    public func onSearchFieldFocused() {
+        guard !searchText.isEmpty, core.route != .search else { return }
+        searchViewModel.reactivateSearch()
+    }
+
     /// Clears the search and restores the previous route.
     public func clearSearch() {
         searchText = ""

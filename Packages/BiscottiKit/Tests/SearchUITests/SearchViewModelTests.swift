@@ -349,6 +349,98 @@ struct SearchViewModelClearTests {
     }
 }
 
+// MARK: - Reactivation tests
+
+@Suite("SearchViewModel -- reactivation")
+struct SearchViewModelReactivationTests {
+    @Test("reactivateSearch with non-empty query re-activates takeover and produces results")
+    @MainActor
+    func reactivateSearchReactivatesTakeover() async throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "Budget review")
+        await fix.core.reloadSummaries()
+
+        let viewModel = SearchViewModel(core: fix.core)
+
+        // Simulate initial search: enter search mode, run query
+        fix.core.presentSearch()
+        viewModel.updateQuery("Budget")
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+        #expect(fix.core.route == .search)
+
+        // Simulate clicking a result: navigates away from search
+        try viewModel.selectResult(#require(viewModel.results.first?.id))
+        #expect(fix.core.route != .search)
+
+        // Query is still set but takeover is gone
+        #expect(viewModel.query == "Budget")
+
+        // Now reactivate (simulates Enter/submit or refocus)
+        viewModel.reactivateSearch()
+        #expect(fix.core.route == .search)
+
+        // Wait for the immediate search to complete
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+        #expect(viewModel.results.first?.title == "Budget review")
+    }
+
+    @Test("reactivateSearch with empty query does nothing")
+    @MainActor
+    func reactivateSearchEmptyQueryNoOp() throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = SearchViewModel(core: fix.core)
+        // Query is empty by default
+        #expect(viewModel.query.isEmpty)
+
+        // Should not activate search
+        viewModel.reactivateSearch()
+        #expect(fix.core.route == .home)
+        #expect(viewModel.results.isEmpty)
+    }
+
+    @Test("reactivateSearch when already in search mode refreshes results")
+    @MainActor
+    func reactivateSearchWhenAlreadyActive() async throws {
+        let fix = try makeCoreFixture(testName: "SearchUITests")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "Alpha")
+        await fix.core.reloadSummaries()
+
+        let viewModel = SearchViewModel(core: fix.core)
+
+        fix.core.presentSearch()
+        viewModel.updateQuery("Alpha")
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(fix.core.route == .search)
+
+        // Re-activate while already in search mode -- should still work
+        viewModel.reactivateSearch()
+        #expect(fix.core.route == .search)
+
+        try await pollUntil {
+            viewModel.isSearching == false
+                && !viewModel.results.isEmpty
+        }
+        #expect(viewModel.results.count == 1)
+    }
+}
+
 // MARK: - Back button tests
 
 @Suite("SearchViewModel -- back button bug fix")

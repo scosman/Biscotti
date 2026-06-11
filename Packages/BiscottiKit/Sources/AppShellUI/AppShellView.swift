@@ -43,8 +43,16 @@ public struct AppShellView: View {
                     prompt: "Search meetings\u{2026}"
                 )
                 .searchFocused($isSearchFieldFocused)
+                .onSubmit(of: .search) {
+                    viewModel.onSearchSubmit()
+                }
                 .onChange(of: viewModel.searchText) { _, newValue in
                     viewModel.onSearchTextChange(newValue)
+                }
+                .onChange(of: isSearchFieldFocused) { _, focused in
+                    if focused {
+                        viewModel.onSearchFieldFocused()
+                    }
                 }
                 .onChange(
                     of: viewModel.searchViewModel.dismissFocusCount

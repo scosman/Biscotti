@@ -252,13 +252,14 @@ struct RecordingStartStopTests {
         #expect(fix.controller.state.meetingID == nil)
     }
 
-    @Test("Auto-title format")
+    @Test("Auto-title is date-free")
     @MainActor
     func autoTitleFormat() {
-        let date = Date(timeIntervalSince1970: 1_717_955_400)
-        let title = RecordingController.autoTitle(date: date)
-        #expect(title.hasPrefix("Recording"))
-        #expect(title.contains("\u{2014}")) // em dash
+        let title = RecordingController.autoTitle()
+        #expect(title == "Recording")
+        // Date must NOT be embedded in the title -- it is shown
+        // separately from MeetingDetailData.date metadata.
+        #expect(!title.contains("\u{2014}")) // no em dash
     }
 }
 

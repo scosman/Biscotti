@@ -24,12 +24,17 @@ public enum MeetingDetailState: Sendable, Equatable {
 /// surfaces one of three states: processing, transcript, or failed.
 ///
 /// Stage C additions: calendar context display, association correction,
-/// audio playback, transcript version switching, and notes autosave.
+/// audio playback, transcript version switching, notes autosave,
+/// editable title, and Join-button time gating.
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
     private let meetingID: UUID
     private let makePlayer: () -> any AudioPlaybackProviding
+
+    /// Injectable "now" for deterministic testing of time-gated UI
+    /// (e.g. showJoinButton's 30-min cutoff).
+    private let currentDate: () -> Date
 
     /// The meeting detail data loaded from the store.
     public private(set) var detail: MeetingDetailData?
@@ -43,7 +48,12 @@ public final class MeetingDetailViewModel {
     /// Whether to show the event picker sheet for association correction.
     public var showEventPicker: Bool = false
 
+    // TODO(re-transcribe-prompt): restore the "calendar changed -- re-transcribe"
+    // prompt once vocab support (Phase 9) lands. The underlying flag and plumbing
+    // remain; only the UI is suppressed.
+
     /// Whether to show a re-transcribe prompt after association correction.
+    /// Currently always false -- suppressed until vocabulary support lands.
     public private(set) var showReTranscribeAfterCorrection: Bool = false
 
     // MARK: - Phase 8: Audio playback
@@ -94,15 +104,22 @@ public final class MeetingDetailViewModel {
     /// Debounce interval for notes autosave.
     private static let notesDebounceInterval: Duration = .seconds(1)
 
+    // MARK: - Phase 11: Editable title
+
+    /// The user-editable title, two-way bound to the inline TextField.
+    public var editableTitle: String = ""
+
     public init(
         core: AppCore,
         meetingID: UUID,
         makePlayer: @escaping () -> any AudioPlaybackProviding
-            = { AVAudioPlayerWrapper() }
+            = { AVAudioPlayerWrapper() },
+        currentDate: @escaping () -> Date = { Date() }
     ) {
         self.core = core
         self.meetingID = meetingID
         self.makePlayer = makePlayer
+        self.currentDate = currentDate
     }
 
     // MARK: - Derived state
@@ -154,11 +171,6 @@ public final class MeetingDetailViewModel {
         }
     }
 
-    /// The meeting title for the header.
-    public var title: String {
-        detail?.title ?? ""
-    }
-
     /// Formatted date for display.
     public var formattedDate: String {
         guard let detail else { return "" }
@@ -179,6 +191,20 @@ public final class MeetingDetailViewModel {
     /// Whether to show the quiet "Link a calendar event..." prompt.
     public var showLinkEventPrompt: Bool {
         !hasCalendarContext
+    }
+
+    /// Whether the Join button should be shown.
+    ///
+    /// Hidden when the meeting ended more than 30 minutes ago (the link
+    /// is no longer useful). Uses the meeting's `endDate`, falling back
+    /// to `date + duration` if `endDate` is nil, or `date` if duration
+    /// is also nil.
+    public var showJoinButton: Bool {
+        guard calendarContext?.conferenceURL != nil else { return false }
+        let meetingEnd = effectiveMeetingEnd
+        guard let meetingEnd else { return true }
+        let cutoff = meetingEnd.addingTimeInterval(30 * 60)
+        return currentDate() <= cutoff
     }
 
     /// The upcoming events available for association correction.
@@ -209,6 +235,7 @@ public final class MeetingDetailViewModel {
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
             calendarContext = detail?.calendar
+            editableTitle = detail?.title ?? ""
             notes = detail?.notes ?? ""
             versions = detail?.versions ?? []
             await loadAudioPlayer()
@@ -258,9 +285,10 @@ public final class MeetingDetailViewModel {
         )
         await load()
         showEventPicker = false
-        if eventKey != nil {
-            showReTranscribeAfterCorrection = true
-        }
+        // TODO(re-transcribe-prompt): restore setting
+        // showReTranscribeAfterCorrection = true when vocab support
+        // (Phase 9) lands. Suppressed because re-transcription without
+        // vocabulary changes has no user-visible benefit.
     }
 
     /// Removes the calendar association.
@@ -379,13 +407,15 @@ public final class MeetingDetailViewModel {
         }
     }
 
-    /// Flushes any pending notes autosave immediately and stops playback.
-    /// Called on navigation away (onDisappear) to prevent leaked timers.
+    /// Flushes any pending notes and title changes immediately and stops
+    /// playback. Called on navigation away (onDisappear) to prevent
+    /// leaked timers and lost edits.
     public func flushNotes() async {
         notesAutosaveTask?.cancel()
         notesAutosaveTask = nil
         stopPlayback()
         await saveNotes()
+        await saveTitle()
     }
 
     // MARK: - Phase 8: Re-transcribe after correction
@@ -397,9 +427,47 @@ public final class MeetingDetailViewModel {
     }
 }
 
+// MARK: - Phase 11: Title save
+
+public extension MeetingDetailViewModel {
+    /// Saves the current `editableTitle` to the store. Called on submit
+    /// (Enter key) and on blur (focus loss) to prevent losing edits.
+    func saveTitle() async {
+        let trimmed = editableTitle
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            // Revert to the stored title if the user blanked it out
+            editableTitle = detail?.title ?? ""
+            return
+        }
+        editableTitle = trimmed
+        do {
+            try await core.store.setTitle(trimmed, for: meetingID)
+            // Refresh the detail snapshot so `title` stays consistent
+            detail = try await core.store.meetingDetail(id: meetingID)
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal; title will be retried on next edit.
+        }
+    }
+}
+
 // MARK: - Private helpers
 
 private extension MeetingDetailViewModel {
+    /// The effective end time of the meeting, used for Join-button gating.
+    /// Prefers the calendar event's endDate (when the scheduled meeting
+    /// ends), falls back to the recording's endDate, then date + duration.
+    /// Returns nil if none are available.
+    var effectiveMeetingEnd: Date? {
+        if let calEnd = calendarContext?.endDate { return calEnd }
+        if let end = detail?.endDate { return end }
+        if let dur = detail?.duration {
+            return detail?.date.addingTimeInterval(dur)
+        }
+        return nil
+    }
+
     func loadAudioPlayer() async {
         do {
             let refs = try await core.store.audioFileRefs(

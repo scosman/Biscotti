@@ -242,16 +242,13 @@ public final class RecordingController {
 
     // MARK: - Private helpers
 
-    /// Generates an auto-title like "Recording -- Jun 9, 2:30 PM".
+    /// Generates an auto-title for a new recording.
     ///
-    /// - TODO: the hardcoded `"MMM d, h:mm a"` format ignores the user's locale
-    ///   (12h vs 24h, date-component ordering). Before ship, migrate to
-    ///   `Date.FormatStyle` or `DateFormatter.dateFormat(fromTemplate:locale:)`
-    ///   for locale-aware formatting. Deferred past MVP.
-    public static func autoTitle(date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
-        return "Recording \u{2014} \(formatter.string(from: date))"
+    /// The title is just "Recording" -- the date is already stored as
+    /// `Meeting.startDate` / `Meeting.createdAt` and displayed separately
+    /// in the UI, so embedding it in the title would cause duplication.
+    public static func autoTitle() -> String {
+        "Recording"
     }
 
     /// Triggers the system-audio TCC prompt by briefly exercising the engine.
@@ -272,7 +269,7 @@ public final class RecordingController {
     /// `lastError` already set). Eagerly cleans up partial state on failure
     /// so the meeting doesn't become an invisible orphan.
     private func setupMeetingStorage() async -> MeetingSetup? {
-        let title = Self.autoTitle(date: Date())
+        let title = Self.autoTitle()
         let meetingID: UUID
         do {
             meetingID = try await store.createMeeting(title: title)

@@ -31,13 +31,18 @@ public struct MeetingDetailView: View {
                 calendarSection
                     .padding(.bottom, Tokens.spacingMD)
 
-                // Re-transcribe prompt after association correction
+                // TODO(re-transcribe-prompt): restore the "calendar changed
+                // -- re-transcribe" prompt once vocab support (Phase 9) lands.
+                // The showReTranscribeAfterCorrection flag is always false until then.
                 if viewModel.showReTranscribeAfterCorrection {
                     reTranscribePrompt
                         .padding(.bottom, Tokens.spacingMD)
                 }
 
                 // Audio transport
+                // TODO(playback-duration): total time is wrong -- our AAC (ADTS)
+                // files have no duration in the container header; need to decode/process
+                // the files to compute true duration.
                 AudioTransport(
                     isPlaying: viewModel.isPlaying,
                     currentTime: viewModel.playbackCurrentTime,
@@ -84,8 +89,15 @@ public struct MeetingDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             HStack {
-                Text(viewModel.title)
-                    .font(Tokens.meetingTitleFont)
+                TextField(
+                    "Meeting title",
+                    text: $viewModel.editableTitle
+                )
+                .font(Tokens.meetingTitleFont)
+                .textFieldStyle(.plain)
+                .onSubmit {
+                    Task { await viewModel.saveTitle() }
+                }
 
                 Spacer()
 
@@ -163,8 +175,10 @@ public struct MeetingDetailView: View {
                 organizer: ctx.organizer?.name,
                 attendees: ctx.attendees.map(\.name),
                 isStale: ctx.isStale,
-                onJoin: ctx.conferenceURL != nil
-                    ? { openConferenceURL(ctx.conferenceURL) }
+                onJoin: viewModel.showJoinButton
+                    ? { if let url = ctx.conferenceURL {
+                        NSWorkspace.shared.open(url)
+                    } }
                     : nil,
                 onChange: {
                     viewModel.presentAssociationCorrection()
@@ -301,13 +315,6 @@ public struct MeetingDetailView: View {
             Spacer(minLength: Tokens.spacingXL)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Helpers
-
-    private func openConferenceURL(_ url: URL?) {
-        guard let url else { return }
-        NSWorkspace.shared.open(url)
     }
 }
 

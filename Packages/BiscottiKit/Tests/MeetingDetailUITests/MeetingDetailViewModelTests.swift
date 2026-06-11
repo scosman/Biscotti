@@ -219,7 +219,7 @@ struct MeetingDetailActionsTests {
         let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
         await viewModel.load()
 
-        #expect(viewModel.title == "My Meeting")
+        #expect(viewModel.editableTitle == "My Meeting")
     }
 
     @Test("formattedDate is non-empty after load")

@@ -601,9 +601,11 @@ private func makeMeetingEventDTO(suffix: String) -> EKEventDTO {
 
 @Suite("MeetingDetailViewModel -- association correction re-transcribe")
 struct MeetingDetailCorrectionReTranscribeTests {
-    @Test("association correction offers re-transcribe")
+    // TODO(re-transcribe-prompt): restore this test once vocab support
+    // (Phase 9) lands. The prompt is currently suppressed.
+    @Test("association correction does NOT show re-transcribe prompt (vocab deferred)")
     @MainActor
-    func associationCorrectionOffersReTranscribe() async throws {
+    func associationCorrectionSuppressesPrompt() async throws {
         let dto = makeMeetingEventDTO(suffix: "retx")
         let fix = try makeCoreFixture(
             calendarEventDTOs: [dto],
@@ -633,10 +635,11 @@ struct MeetingDetailCorrectionReTranscribeTests {
         }
 
         await viewModel.correctAssociation(eventKey: eventKey)
-        #expect(viewModel.showReTranscribeAfterCorrection == true)
+        // Prompt suppressed until vocab support lands
+        #expect(viewModel.showReTranscribeAfterCorrection == false)
     }
 
-    @Test("reTranscribeAfterCorrection dismisses prompt and triggers job")
+    @Test("reTranscribeAfterCorrection still works when invoked directly")
     @MainActor
     func reTranscribeAfterCorrectionTriggersJob() async throws {
         let dto = makeMeetingEventDTO(suffix: "retx2")
@@ -659,16 +662,8 @@ struct MeetingDetailCorrectionReTranscribeTests {
         )
         await viewModel.load()
 
-        // Exercise the REAL flow: correct association to a valid event
-        guard let eventKey = fix.core.upcoming.first?.id else {
-            Issue.record("Expected at least one upcoming event")
-            return
-        }
-
-        await viewModel.correctAssociation(eventKey: eventKey)
-        #expect(viewModel.showReTranscribeAfterCorrection == true)
-
-        // Accept the re-transcribe prompt
+        // The prompt won't show after correction (suppressed), but
+        // reTranscribeAfterCorrection() still functions if called
         await viewModel.reTranscribeAfterCorrection()
         #expect(viewModel.showReTranscribeAfterCorrection == false)
 

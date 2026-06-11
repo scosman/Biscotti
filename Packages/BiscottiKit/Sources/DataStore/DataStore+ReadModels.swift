@@ -26,6 +26,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let id: UUID
     public let title: String
     public let date: Date
+    /// The meeting's end date, nil if not known.
+    public let endDate: Date?
     /// Duration derived from audio refs if known, nil otherwise.
     public let duration: TimeInterval?
     public let hasAudio: Bool
@@ -41,6 +43,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         id: UUID,
         title: String,
         date: Date,
+        endDate: Date? = nil,
         duration: TimeInterval?,
         hasAudio: Bool,
         preferredTranscript: TranscriptData?,
@@ -51,6 +54,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.id = id
         self.title = title
         self.date = date
+        self.endDate = endDate
         self.duration = duration
         self.hasAudio = hasAudio
         self.preferredTranscript = preferredTranscript
@@ -116,6 +120,8 @@ public struct AppSettingsData: Sendable, Equatable {
 /// Calendar context derived from a `CalendarSnapshot` for display in Meeting Detail.
 public struct CalendarContextData: Sendable, Equatable {
     public let title: String?
+    public let startDate: Date?
+    public let endDate: Date?
     public let conferencePlatform: String?
     public let conferenceURL: URL?
     public let calendarTitle: String?
@@ -127,6 +133,8 @@ public struct CalendarContextData: Sendable, Equatable {
 
     public init(
         title: String? = nil,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
         conferencePlatform: String? = nil,
         conferenceURL: URL? = nil,
         calendarTitle: String? = nil,
@@ -137,6 +145,8 @@ public struct CalendarContextData: Sendable, Equatable {
         attendees: [PersonData] = []
     ) {
         self.title = title
+        self.startDate = startDate
+        self.endDate = endDate
         self.conferencePlatform = conferencePlatform
         self.conferenceURL = conferenceURL
         self.calendarTitle = calendarTitle
@@ -281,6 +291,7 @@ public extension DataStore {
             id: meeting.id,
             title: meeting.title,
             date: meeting.startDate ?? meeting.createdAt,
+            endDate: meeting.endDate,
             duration: duration,
             hasAudio: hasAudio,
             preferredTranscript: transcript,
@@ -380,6 +391,8 @@ public extension DataStore {
 
         return CalendarContextData(
             title: snapshot.title.isEmpty ? nil : snapshot.title,
+            startDate: snapshot.startDate,
+            endDate: snapshot.endDate,
             conferencePlatform: snapshot.conferencePlatform,
             conferenceURL: snapshot.conferenceURL,
             calendarTitle: snapshot.calendarTitle,
@@ -426,6 +439,17 @@ public extension DataStore {
             throw DataStoreError.notFound(meetingID)
         }
         meeting.notes = text
+        try save()
+    }
+
+    // MARK: - Title
+
+    /// Updates the user-editable title for a meeting.
+    func setTitle(_ title: String, for meetingID: UUID) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        meeting.title = title
         try save()
     }
 

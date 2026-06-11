@@ -35,8 +35,12 @@ final class FakeAudioPlayer: AudioPlaybackProviding, @unchecked Sendable {
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 120 // 2 minutes
-    var loadedURL: URL?
+    var loadedURLs: [URL] = []
     var loadShouldThrow = false
+
+    /// Track play/pause calls for sync verification.
+    var playCalls: Int = 0
+    var pauseCalls: Int = 0
 
     /// Simulates time advancing while playing. Tests call this to mimic
     /// real playback progression so the ticker picks up updated values.
@@ -52,13 +56,15 @@ final class FakeAudioPlayer: AudioPlaybackProviding, @unchecked Sendable {
 
     func play() {
         isPlaying = true
+        playCalls += 1
     }
 
     func pause() {
         isPlaying = false
+        pauseCalls += 1
     }
 
-    func load(url: URL) throws {
+    func load(urls: [URL]) throws {
         if loadShouldThrow {
             throw NSError(
                 domain: "FakeAudioPlayer",
@@ -66,7 +72,7 @@ final class FakeAudioPlayer: AudioPlaybackProviding, @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Load failed"]
             )
         }
-        loadedURL = url
+        loadedURLs = urls
     }
 }
 

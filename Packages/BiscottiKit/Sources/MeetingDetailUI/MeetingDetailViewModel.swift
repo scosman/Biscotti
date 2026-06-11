@@ -475,14 +475,25 @@ private extension MeetingDetailViewModel {
             )
             isAudioAvailable = refs.present
 
-            guard refs.present, let micURL = refs.mic else {
+            guard refs.present else {
+                audioPlayer = nil
+                syncPlaybackState()
+                return
+            }
+
+            // Collect whichever audio files exist (mic, system, or both).
+            var urls: [URL] = []
+            if let mic = refs.mic { urls.append(mic) }
+            if let sys = refs.system { urls.append(sys) }
+
+            guard !urls.isEmpty else {
                 audioPlayer = nil
                 syncPlaybackState()
                 return
             }
 
             let player = makePlayer()
-            try player.load(url: micURL)
+            try player.load(urls: urls)
             audioPlayer = player
             syncPlaybackState()
         } catch {

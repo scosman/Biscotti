@@ -635,5 +635,5 @@ private final class G3aFakePlayer: AudioPlaybackProviding,
         isPlaying = false
     }
 
-    func load(url _: URL) throws {}
+    func load(urls _: [URL]) throws {}
 }

@@ -11,14 +11,17 @@ struct CIGateTests {
         return ResultsStore(fileURL: file)
     }
 
-    /// A minimal script for testing purposes.
+    /// A minimal script for testing purposes. Uses recordable (`.humanQuestion`)
+    /// steps so the gate-mechanics tests below exercise steps that the gate
+    /// actually tracks — instruction steps are never gated (see
+    /// `instructionStepsAreNeverGated`).
     private static let tinyScript = TestScript(
         id: "tiny",
         title: "Tiny Script",
         steps: [
-            .instruction(id: "t1", text: "Step one"),
-            .instruction(id: "t2", text: "Step two"),
-            .instruction(id: "t3", text: "Step three")
+            .humanQuestion(id: "t1", prompt: "Step one?"),
+            .humanQuestion(id: "t2", prompt: "Step two?"),
+            .humanQuestion(id: "t3", prompt: "Step three?")
         ]
     )
 
@@ -77,7 +80,7 @@ struct CIGateTests {
         #expect(unrun.isEmpty)
     }
 
-    @Test("allStepIDs collects IDs from multiple scripts")
+    @Test("allStepIDs collects every ID, including instructions")
     func allStepIDsMultipleScripts() {
         let store = makeStore()
         let secondScript = TestScript(
@@ -87,6 +90,27 @@ struct CIGateTests {
         )
         let ids = store.allStepIDs(in: [CIGateTests.tinyScript, secondScript])
         #expect(ids == ["t1", "t2", "t3", "e1"])
+    }
+
+    @Test("recordableStepIDs and the gate exclude instruction steps")
+    func instructionStepsAreNeverGated() throws {
+        let store = makeStore()
+        let mixed = TestScript(
+            id: "mixed",
+            title: "Mixed",
+            steps: [
+                .instruction(id: "i1", text: "Do some setup"),
+                .humanQuestion(id: "q1", prompt: "Did it work?")
+            ]
+        )
+
+        // The instruction is not part of the recordable set...
+        #expect(store.recordableStepIDs(in: [mixed]) == ["q1"])
+
+        // ...so with an empty results file only the recordable step is unrun;
+        // the instruction never appears even though it has no entry.
+        let unrun = try store.unrun(in: [mixed])
+        #expect(unrun == ["q1"])
     }
 
     // MARK: - Seed file integration
@@ -119,17 +143,28 @@ struct CIGateTests {
         let store = ResultsStore(fileURL: resultsURL)
         // Must parse as a valid results dictionary.
         let results = try store.load()
-        let allIDs = store.allStepIDs(in: allScripts)
+        let recordableIDs = store.recordableStepIDs(in: allScripts)
 
-        // Every canonical step ID must have an entry (any status). This catches
-        // script/results drift WITHOUT constraining the human-recorded status:
-        // this file is the live Phase 4.5 results store (populated on real
-        // hardware), not a pristine seed, so saved pass/fail results must coexist
-        // with a green `make test`. The non-gating `manual-tests-check` is what
-        // tracks whether every step has actually been run.
-        #expect(allIDs.count == 20, "Expected 20 total step IDs (16 audio + 4 transcription)")
-        for id in allIDs {
+        // Every *recordable* step ID must have an entry (any status). Instruction
+        // steps are display-only and never written to the file, so they are
+        // excluded here. This catches script/results drift WITHOUT constraining
+        // the human-recorded status: this file is the live Phase 4.5 results
+        // store (populated on real hardware), not a pristine seed, so saved
+        // pass/fail results must coexist with a green `make test`. The non-gating
+        // `manual-tests-check` is what tracks whether every step has actually run.
+        #expect(
+            recordableIDs.count == 17,
+            "Expected 17 recordable step IDs (13 audio + 4 transcription)"
+        )
+        for id in recordableIDs {
             #expect(results[id] != nil, "Results file is missing an entry for step '\(id)'")
+        }
+
+        // Non-recordable (instruction) steps must NOT be written to the file.
+        let instructionIDs = Set(store.allStepIDs(in: allScripts))
+            .subtracting(recordableIDs)
+        for id in instructionIDs {
+            #expect(results[id] == nil, "Instruction step '\(id)' should not be in the results file")
         }
     }
 }

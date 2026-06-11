@@ -4,10 +4,6 @@
     "stepID" : "ac_crash_safety_check",
     "timestamp" : "2026-06-10T21:33:39Z"
   },
-  "ac_crash_safety_setup" : {
-    "status" : "not-run",
-    "stepID" : "ac_crash_safety_setup"
-  },
   "ac_files_exist" : {
     "note" : "Both .aac files exist with sane sizes",
     "status" : "pass",
@@ -23,10 +19,6 @@
     "status" : "pass",
     "stepID" : "ac_meet_open_midcapture",
     "timestamp" : "2026-06-10T21:28:37Z"
-  },
-  "ac_mega_setup" : {
-    "status" : "not-run",
-    "stepID" : "ac_mega_setup"
   },
   "ac_mega_timing" : {
     "status" : "pass",
@@ -68,10 +60,6 @@
     "status" : "pass",
     "stepID" : "ac_stop_recording",
     "timestamp" : "2026-06-10T21:30:29Z"
-  },
-  "ac_timed_capture" : {
-    "status" : "not-run",
-    "stepID" : "ac_timed_capture"
   },
   "ac_two_dialogs" : {
     "status" : "pass",

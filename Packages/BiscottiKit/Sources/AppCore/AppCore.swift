@@ -769,3 +769,97 @@ extension AppCore {
         }
     }
 }
+
+// MARK: - Delete
+
+extension AppCore {
+    /// Deletes a meeting's on-disk recording files and its DataStore row.
+    ///
+    /// **Order:** files are deleted first (best-effort), then the DB row.
+    /// Rationale: if the DB delete fails after files are removed, the
+    /// meeting row lingers but its audio refs already show `isPresent ==
+    /// false` on next reconciliation -- a recoverable state. The reverse
+    /// (DB deleted, files orphaned) is unrecoverable without a separate
+    /// storage scan.
+    ///
+    /// After deletion, reloads summaries and routes Home so the user
+    /// is not left viewing a dead detail screen.
+    public func deleteMeeting(meetingID: UUID) async {
+        // Guard: refuse to delete a meeting that is actively recording.
+        // Deleting files mid-write would corrupt the recording. Callers
+        // should stop the recording first.
+        if recording.state.isRecording,
+           recording.state.meetingID == meetingID
+        {
+            logger.warning(
+                "deleteMeeting: refusing to delete actively-recording meeting \(meetingID)"
+            )
+            return
+        }
+
+        // 1. Collect on-disk paths from the store BEFORE deleting the row.
+        let filePaths: [String]
+        do {
+            filePaths = try await store.audioFilePaths(
+                meetingID: meetingID
+            )
+        } catch {
+            filePaths = []
+            logger.warning(
+                "deleteMeeting: failed to read audio paths for \(meetingID): \(error)"
+            )
+        }
+
+        // 2. Delete files best-effort (missing files are fine).
+        deleteRecordingFiles(filePaths)
+
+        // 3. Delete the DB row (cascade handles snapshot, audio refs,
+        //    transcripts).
+        do {
+            try await store.delete(meetingID: meetingID)
+        } catch {
+            logger.error(
+                "deleteMeeting: DB delete failed for \(meetingID): \(error)"
+            )
+        }
+
+        // 4. Refresh UI.
+        await reloadSummaries()
+        route = .home
+    }
+
+    /// Best-effort removal of audio files and their per-meeting directory.
+    private func deleteRecordingFiles(_ paths: [String]) {
+        let fileManager = FileManager.default
+        var parentDirectories: Set<String> = []
+
+        for path in paths {
+            let url = URL(fileURLWithPath: path)
+            do {
+                try fileManager.removeItem(at: url)
+            } catch let error as NSError
+                where error.domain == NSCocoaErrorDomain
+                && error.code == NSFileNoSuchFileError
+            {
+                // File already gone -- not an error.
+            } catch {
+                logger.warning(
+                    "deleteMeeting: failed to remove \(path): \(error)"
+                )
+            }
+            parentDirectories.insert(
+                url.deletingLastPathComponent().path
+            )
+        }
+
+        // Remove empty per-meeting directories.
+        for dirPath in parentDirectories {
+            let dirURL = URL(fileURLWithPath: dirPath)
+            if let contents = try? fileManager.contentsOfDirectory(
+                at: dirURL, includingPropertiesForKeys: nil
+            ), contents.isEmpty {
+                try? fileManager.removeItem(at: dirURL)
+            }
+        }
+    }
+}

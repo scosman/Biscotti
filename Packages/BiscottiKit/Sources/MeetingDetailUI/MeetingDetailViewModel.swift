@@ -122,6 +122,14 @@ public final class MeetingDetailViewModel {
     /// The user-editable title, two-way bound to the inline TextField.
     public var editableTitle: String = ""
 
+    // MARK: - Phase 11: Delete meeting
+
+    /// Whether the delete confirmation dialog is presented.
+    public var showDeleteConfirmation: Bool = false
+
+    /// Whether a delete operation is in progress.
+    public private(set) var isDeleting: Bool = false
+
     public init(
         core: AppCore,
         meetingID: UUID,
@@ -581,5 +589,24 @@ extension MeetingDetailViewModel {
             return "\(minutes)m \(seconds)s"
         }
         return "\(seconds)s"
+    }
+}
+
+// MARK: - Delete meeting
+
+public extension MeetingDetailViewModel {
+    /// Presents the delete confirmation dialog.
+    func requestDelete() {
+        showDeleteConfirmation = true
+    }
+
+    /// Confirms deletion: stops playback, deletes files + DB row, navigates away.
+    func confirmDelete() async {
+        isDeleting = true
+        stopPlayback()
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        await core.deleteMeeting(meetingID: meetingID)
+        isDeleting = false
     }
 }

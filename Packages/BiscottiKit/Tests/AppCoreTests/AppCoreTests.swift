@@ -443,6 +443,134 @@ struct AppCoreFlowTests {
     }
 }
 
+// MARK: - Delete meeting tests
+
+@Suite("AppCore -- delete meeting")
+struct AppCoreDeleteMeetingTests {
+    @Test("deleteMeeting removes on-disk files and DB row, routes Home")
+    @MainActor
+    func deleteMeetingRemovesFilesAndRow() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        // Create a meeting with on-disk audio files
+        let meetingID = try await fix.store.createMeeting(title: "Delete Me")
+        let meetingDir = fix.storageRoot
+            .appendingPathComponent(meetingID.uuidString)
+        try FileManager.default.createDirectory(
+            at: meetingDir, withIntermediateDirectories: true
+        )
+        let micPath = meetingDir.appendingPathComponent("mic.aac")
+        let sysPath = meetingDir.appendingPathComponent("system.aac")
+        try Data(repeating: 0xFF, count: 64).write(to: micPath)
+        try Data(repeating: 0xAA, count: 64).write(to: sysPath)
+
+        let micRef = AudioFileRef(
+            role: .mic, path: micPath.path, byteSize: 64, isPresent: true
+        )
+        let sysRef = AudioFileRef(
+            role: .system, path: sysPath.path, byteSize: 64, isPresent: true
+        )
+        try await fix.store.attachAudio([micRef, sysRef], to: meetingID)
+
+        // Load summaries so the meeting appears
+        await fix.core.reloadSummaries()
+        #expect(fix.core.summaries.count == 1)
+
+        // Navigate to the meeting's detail
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        // Delete
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Files should be gone
+        #expect(!FileManager.default.fileExists(atPath: micPath.path))
+        #expect(!FileManager.default.fileExists(atPath: sysPath.path))
+
+        // Directory should be gone (was emptied)
+        #expect(!FileManager.default.fileExists(atPath: meetingDir.path))
+
+        // DB row should be gone
+        let fetched = try await fix.store.meeting(id: meetingID)
+        #expect(fetched == nil)
+
+        // Summaries refreshed
+        #expect(fix.core.summaries.isEmpty)
+
+        // Route should be Home
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("deleteMeeting with missing files does not throw")
+    @MainActor
+    func deleteMeetingMissingFilesNoThrow() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Already Gone"
+        )
+
+        // Attach audio refs pointing to non-existent files
+        let micRef = AudioFileRef(
+            role: .mic,
+            path: "/tmp/nonexistent-\(UUID())/mic.aac",
+            byteSize: 0,
+            isPresent: false
+        )
+        try await fix.store.attachAudio([micRef], to: meetingID)
+
+        // Should not throw
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Row still deleted
+        let fetched = try await fix.store.meeting(id: meetingID)
+        #expect(fetched == nil)
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("deleteMeeting refuses to delete the actively-recording meeting")
+    @MainActor
+    func deleteMeetingRefusedWhileRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        // Start a recording so a meeting is created
+        await fix.core.startRecording()
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        // The fake recorder doesn't write real audio files, so create
+        // them manually (mirrors how the real engine would populate
+        // the directory that RecordingController.setupMeetingStorage
+        // already created).
+        let meetingDir = fix.storageRoot
+            .appendingPathComponent(meetingID.uuidString)
+        let micPath = meetingDir.appendingPathComponent("mic.aac")
+        let sysPath = meetingDir.appendingPathComponent("system.aac")
+        try Data(repeating: 0xFF, count: 64).write(to: micPath)
+        try Data(repeating: 0xAA, count: 64).write(to: sysPath)
+
+        // Attempt to delete the actively-recording meeting
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Meeting row must still exist
+        let fetched = try await fix.store.meeting(id: meetingID)
+        #expect(fetched != nil)
+
+        // Files must still exist (not deleted mid-write)
+        #expect(FileManager.default.fileExists(atPath: micPath.path))
+        #expect(FileManager.default.fileExists(atPath: sysPath.path))
+
+        // Route must NOT have changed to .home (still .recording)
+        #expect(fix.core.route == .recording)
+
+        // Recording must still be active
+        #expect(fix.core.recording.state.isRecording == true)
+    }
+}
+
 // MARK: - Calendar auto-association tests (C4)
 
 @Suite("AppCore -- calendar auto-association")

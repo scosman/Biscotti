@@ -115,4 +115,51 @@ struct CascadeDeleteTests {
         // Shared Person should survive
         #expect(try await store.fetchAllPersons().count == 1)
     }
+
+    @Test("Deleting one meeting preserves shared Person linked to another meeting")
+    func deleteOnePreservesSharedPerson() async throws {
+        let store = try makeStore()
+
+        // Create two meetings
+        let id1 = try await store.createMeeting(title: "Meeting A")
+        let id2 = try await store.createMeeting(title: "Meeting B")
+
+        // Create a person shared across both meetings
+        let personID = try await store.findOrCreatePerson(
+            name: "Bob", email: "bob@test.com"
+        )
+        try await store.setParticipants(
+            [personID], organizer: personID, for: id1
+        )
+        try await store.setParticipants(
+            [personID], organizer: personID, for: id2
+        )
+
+        // Give Meeting A a calendar snapshot (cascade target)
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-shared",
+            compositeKey: "shared|test",
+            title: "Shared Event"
+        )
+        try await store.setSnapshot(snapshot, for: id1)
+
+        // Verify setup
+        #expect(try await store.fetchAllPersons().count == 1)
+        #expect(try await store.fetchAllSnapshots().count == 1)
+
+        // Delete Meeting A
+        try await store.delete(meetingID: id1)
+
+        // Meeting B and the shared Person must survive
+        #expect(try await store.meeting(id: id2) != nil)
+        #expect(try await store.meeting(id: id2)?.title == "Meeting B")
+        #expect(try await store.fetchAllPersons().count == 1)
+        #expect(try await store.fetchAllPersons().first?.name == "Bob")
+
+        // Meeting A's snapshot should be gone (cascade)
+        #expect(try await store.fetchAllSnapshots().isEmpty)
+
+        // Meeting A should be gone
+        #expect(try await store.meeting(id: id1) == nil)
+    }
 }

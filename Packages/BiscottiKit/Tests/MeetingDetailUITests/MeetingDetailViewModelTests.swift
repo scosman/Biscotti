@@ -618,6 +618,68 @@ struct MeetingDetailCalendarContextTests {
     }
 }
 
+// MARK: - Delete meeting tests
+
+@Suite("MeetingDetailViewModel -- delete meeting")
+struct MeetingDetailDeleteTests {
+    @Test("requestDelete sets showDeleteConfirmation to true")
+    @MainActor
+    func requestDeleteShowsConfirmation() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Delete Test")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+
+        #expect(detailVM.showDeleteConfirmation == false)
+        detailVM.requestDelete()
+        #expect(detailVM.showDeleteConfirmation == true)
+    }
+
+    @Test("confirmDelete calls core delete and navigates to Home")
+    @MainActor
+    func confirmDeleteNavigatesHome() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Confirm Delete")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        // Route to the meeting
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        // Confirm delete
+        await detailVM.confirmDelete()
+
+        // Route should be Home
+        #expect(fix.core.route == .home)
+
+        // Meeting should be deleted from the store
+        let fetched = try await fix.store.meeting(id: meetingID)
+        #expect(fetched == nil)
+    }
+
+    @Test("confirmDelete removes meeting from summaries")
+    @MainActor
+    func confirmDeleteRemovesFromSummaries() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Summary Delete"
+        )
+        await fix.core.reloadSummaries()
+        #expect(fix.core.summaries.count == 1)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.confirmDelete()
+
+        #expect(fix.core.summaries.isEmpty)
+    }
+}
+
 // MARK: - EventPreviewViewModel tests
 
 @Suite("EventPreviewViewModel")

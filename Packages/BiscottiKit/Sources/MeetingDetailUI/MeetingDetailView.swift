@@ -63,6 +63,11 @@ public struct MeetingDetailView: View {
                     .padding(.bottom, Tokens.spacingMD)
 
                 stateContent
+
+                Divider()
+                    .padding(.vertical, Tokens.spacingMD)
+
+                deleteSection
             }
             .padding(Tokens.spacingLG)
         }
@@ -80,6 +85,20 @@ public struct MeetingDetailView: View {
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
             EventPickerSheet(viewModel: viewModel)
+        }
+        .confirmationDialog(
+            "Delete this meeting?",
+            isPresented: $viewModel.showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task { await viewModel.confirmDelete() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This permanently deletes the recording and transcript."
+            )
         }
     }
 
@@ -238,6 +257,22 @@ public struct MeetingDetailView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.accentColor.opacity(0.08))
         )
+    }
+
+    // MARK: - Delete
+
+    private var deleteSection: some View {
+        HStack {
+            Spacer()
+            Button(role: .destructive) {
+                viewModel.requestDelete()
+            } label: {
+                Label("Delete Meeting", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(viewModel.isDeleting)
+        }
     }
 
     // MARK: - Notes

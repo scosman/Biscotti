@@ -315,6 +315,14 @@ public extension DataStore {
         return AudioFileRefsResult(mic: micURL, system: systemURL, present: present)
     }
 
+    /// Returns the stored file paths for all audio refs belonging to a meeting.
+    /// Used by `AppCore.deleteMeeting` to remove on-disk files before deleting
+    /// the row. Returns an empty array if the meeting is not found.
+    func audioFilePaths(meetingID: UUID) throws -> [String] {
+        guard let meeting = try meeting(id: meetingID) else { return [] }
+        return meeting.audioFiles.map(\.path)
+    }
+
     // MARK: - Settings
 
     /// Reads the application settings singleton. Creates it with defaults on first call.

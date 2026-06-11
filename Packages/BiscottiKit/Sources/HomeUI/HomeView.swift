@@ -1,10 +1,11 @@
 import AppCore
 import Calendar
+import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The Home screen: welcome text, a prominent Start Recording button,
-/// and a preview of upcoming meeting-like events (or an empty state).
+/// The Home screen: app title, a prominent Start Recording button,
+/// upcoming meeting previews, and recent meeting history.
 public struct HomeView: View {
     @Bindable private var viewModel: HomeViewModel
 
@@ -13,81 +14,177 @@ public struct HomeView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: Tokens.spacingLG) {
+                // Header
+                headerBlock
 
-            // Welcome text
-            Text("Welcome to Biscotti")
-                .font(.title2)
-                .padding(.bottom, Tokens.spacingXS)
+                // Start Recording CTA
+                StartRecordingButton(
+                    isDisabled: viewModel.startDisabled
+                ) {
+                    Task { await viewModel.startRecording() }
+                }
+
+                // Upcoming section
+                upcomingSection
+
+                // Recent Meetings section
+                recentSection
+            }
+            .frame(maxWidth: 600, alignment: .leading)
+            .padding(Tokens.spacingXL)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerBlock: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+            Text("Biscotti")
+                .font(.largeTitle)
+                .fontWeight(.bold)
 
             Text("Private, on-device meeting transcripts")
-                .font(Tokens.metadataFont)
+                .font(.title3)
                 .foregroundStyle(Tokens.secondaryText)
-
-            Spacer()
-                .frame(minHeight: Tokens.spacingLG)
-
-            // Start Recording (centered, prominent)
-            RecordButton(isDisabled: viewModel.startDisabled) {
-                Task { await viewModel.startRecording() }
-            }
-
-            Spacer()
-                .frame(minHeight: Tokens.spacingLG)
-
-            // Upcoming section
-            upcomingSection
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(Tokens.spacingXL)
     }
+
+    // MARK: - Upcoming section
 
     @ViewBuilder
     private var upcomingSection: some View {
         if viewModel.showConnectCalendar {
-            VStack(spacing: Tokens.spacingSM) {
-                Text("Connect your calendar to see upcoming meetings")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                    .multilineTextAlignment(.center)
+            sectionCard {
+                sectionHeader("UPCOMING")
 
-                Button("Allow Calendar Access") {
-                    Task { await viewModel.requestCalendarAccess() }
+                VStack(spacing: Tokens.spacingSM) {
+                    Text("Connect your calendar to see upcoming meetings")
+                        .font(Tokens.metadataFont)
+                        .foregroundStyle(Tokens.secondaryText)
+
+                    Button("Allow Calendar Access") {
+                        Task { await viewModel.requestCalendarAccess() }
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Tokens.spacingSM)
             }
         } else if viewModel.showNoUpcoming {
-            Text("No meetings coming up.")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
-        } else if !viewModel.upcomingPreview.isEmpty {
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Text("Upcoming")
-                    .font(Tokens.sectionHeaderFont)
-                    .foregroundStyle(Tokens.secondaryText)
+            sectionCard {
+                sectionHeader("UPCOMING")
 
-                ForEach(viewModel.upcomingPreview) { event in
+                Text("No meetings coming up")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                    .padding(.vertical, Tokens.spacingSM)
+            }
+        } else if !viewModel.upcomingPreview.isEmpty {
+            sectionCard {
+                sectionHeader("UPCOMING")
+
+                ForEach(
+                    Array(viewModel.upcomingPreview.enumerated()),
+                    id: \.element.id
+                ) { index, event in
+                    if index > 0 {
+                        Divider()
+                    }
                     Button {
                         viewModel.selectEvent(event.id)
                     } label: {
                         UpcomingEventRow(
                             title: event.title,
                             timeText: viewModel.tickTimeText(for: event),
-                            platformBadge: event.conferencePlatform
+                            platformBadge: event.conferencePlatform,
+                            twoLine: true
                         )
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .frame(maxWidth: 400)
         }
+    }
+
+    // MARK: - Recent Meetings section
+
+    private var recentSection: some View {
+        sectionCard {
+            sectionHeader("RECENT MEETINGS")
+
+            if viewModel.showNoRecent {
+                Text("No recordings yet")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                    .padding(.vertical, Tokens.spacingSM)
+            } else {
+                ForEach(
+                    Array(viewModel.recentMeetings.enumerated()),
+                    id: \.element.id
+                ) { index, meeting in
+                    if index > 0 {
+                        Divider()
+                    }
+                    Button {
+                        viewModel.selectMeeting(meeting.id)
+                    } label: {
+                        recentMeetingRow(meeting)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func recentMeetingRow(
+        _ meeting: MeetingSummary
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+            Text(meeting.title)
+                .font(.body)
+                .lineLimit(1)
+
+            Text(HomeViewModel.recentSecondLine(for: meeting))
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+        }
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Shared card / header helpers
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(Tokens.sectionHeaderFont)
+            .foregroundStyle(Tokens.secondaryText)
+    }
+
+    private func sectionCard(
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            content()
+        }
+        .padding(Tokens.spacingSM)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.06))
+        )
     }
 }
 
-#Preview("Home - No Calendar") {
+#Preview("Home - Populated") {
+    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+    let viewModel = HomeViewModel(core: core)
+    HomeView(viewModel: viewModel)
+        .frame(width: 500, height: 500)
+}
+
+#Preview("Home - Empty") {
     let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
     let viewModel = HomeViewModel(core: core)
     HomeView(viewModel: viewModel)

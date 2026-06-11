@@ -130,14 +130,16 @@ public final class MeetingListViewModel {
     /// Builds the second-line text for a sidebar meeting row.
     /// Format: "Jun 9, 2026 \u{00B7} 34m" (date + middot + duration),
     /// or just "Jun 9, 2026" when no recording duration is available.
+    ///
+    /// Delegates to `TimeFormatting.meetingSecondLine` so the Home
+    /// screen's recent-meetings section produces byte-identical text.
     public static func secondLineText(
         for meeting: MeetingSummary
     ) -> String {
-        let dateStr = TimeFormatting.shortDate(meeting.date)
-        guard let duration = meeting.recordingDuration, duration > 0 else {
-            return dateStr
-        }
-        return "\(dateStr) \u{00B7} \(TimeFormatting.compactDuration(duration))"
+        TimeFormatting.meetingSecondLine(
+            date: meeting.date,
+            duration: meeting.recordingDuration
+        )
     }
 
     // MARK: - Private

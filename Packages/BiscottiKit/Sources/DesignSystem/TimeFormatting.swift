@@ -46,6 +46,23 @@ public enum TimeFormatting {
         shortDateFormatter.string(from: date)
     }
 
+    /// Builds the second-line text for a meeting row: "Jun 9, 2026 \u{00B7} 34m"
+    /// (date + middot + duration), or just "Jun 9, 2026" when no recording
+    /// duration is available (nil or zero).
+    ///
+    /// Shared between the sidebar (`MeetingListViewModel`) and the Home
+    /// screen's recent-meetings section so the format is byte-identical.
+    public static func meetingSecondLine(
+        date: Date,
+        duration: TimeInterval?
+    ) -> String {
+        let dateStr = shortDate(date)
+        guard let duration, duration > 0 else {
+            return dateStr
+        }
+        return "\(dateStr) \u{00B7} \(compactDuration(duration))"
+    }
+
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

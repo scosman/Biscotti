@@ -6,7 +6,7 @@ import Foundation
 
 /// View model for the Home screen.
 ///
-/// Provides the welcome/start/upcoming preview state and actions.
+/// Provides the welcome/start/upcoming/recent state and actions.
 /// All data is derived from `AppCore` observable properties; no
 /// direct DataStore queries.
 @MainActor @Observable
@@ -19,10 +19,15 @@ public final class HomeViewModel {
 
     // MARK: - State (derived from core)
 
-    /// The upcoming meeting-like events to show as a preview list (max 3).
+    /// The upcoming meeting-like events to show as a preview list (max 5).
     /// Uses `displayedUpcoming` which filters out ended events.
     public var upcomingPreview: [CalendarEvent] {
-        Array(core.displayedUpcoming.prefix(3))
+        Array(core.displayedUpcoming.prefix(5))
+    }
+
+    /// The most recent meetings (max 4, newest-first).
+    public var recentMeetings: [MeetingSummary] {
+        Array(core.summaries.prefix(4))
     }
 
     /// Whether the Start Recording button should be disabled.
@@ -46,6 +51,11 @@ public final class HomeViewModel {
         calendarAccess != .authorized
     }
 
+    /// Show the "No recordings yet" empty state when there are no meetings.
+    public var showNoRecent: Bool {
+        core.summaries.isEmpty
+    }
+
     // MARK: - Actions
 
     /// Start a new recording session.
@@ -61,6 +71,11 @@ public final class HomeViewModel {
     /// Select an upcoming event to preview its detail.
     public func selectEvent(_ key: String) {
         core.selectEvent(key)
+    }
+
+    /// Select a recent meeting to view its detail.
+    public func selectMeeting(_ id: UUID) {
+        core.select(id)
     }
 
     // MARK: - Formatting
@@ -79,6 +94,18 @@ public final class HomeViewModel {
     public func tickTimeText(for event: CalendarEvent) -> String {
         TimeFormatting.relativeTimeText(
             event.start, relativeTo: core.minuteTick
+        )
+    }
+
+    /// Builds the second-line text for a recent meeting row (date + duration).
+    /// Uses `TimeFormatting.meetingSecondLine` so it is byte-identical
+    /// to the sidebar's meeting rows.
+    public static func recentSecondLine(
+        for meeting: MeetingSummary
+    ) -> String {
+        TimeFormatting.meetingSecondLine(
+            date: meeting.date,
+            duration: meeting.recordingDuration
         )
     }
 }

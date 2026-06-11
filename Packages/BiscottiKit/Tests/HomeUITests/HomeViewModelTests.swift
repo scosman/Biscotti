@@ -1,6 +1,7 @@
 import BiscottiTestSupport
 import Calendar
 import DataStore
+import DesignSystem
 import Foundation
 import Testing
 @testable import AppCore
@@ -10,11 +11,11 @@ import Testing
 
 @Suite("HomeViewModel -- state")
 struct HomeViewModelStateTests {
-    @Test("upcomingPreview returns first 3 events from core.displayedUpcoming")
+    @Test("upcomingPreview returns first 5 events from core.displayedUpcoming")
     @MainActor
     func homeShowsUpcomingPreview() async throws {
         let now = Date()
-        let dtos = (0 ..< 5).map { idx in
+        let dtos = (0 ..< 6).map { idx in
             EKEventDTO(
                 eventIdentifier: "ev-\(idx)",
                 calendarItemIdentifier: "ci-\(idx)",
@@ -51,9 +52,9 @@ struct HomeViewModelStateTests {
         await fix.core.onLaunch()
 
         let viewModel = HomeViewModel(core: fix.core)
-        #expect(viewModel.upcomingPreview.count == 3)
+        #expect(viewModel.upcomingPreview.count == 5)
         #expect(viewModel.upcomingPreview[0].title == "Event 0")
-        #expect(viewModel.upcomingPreview[2].title == "Event 2")
+        #expect(viewModel.upcomingPreview[4].title == "Event 4")
     }
 
     @Test("showConnectCalendar is true when calendar access not authorized")
@@ -115,6 +116,88 @@ struct HomeViewModelStateTests {
     }
 }
 
+// MARK: - Recent Meetings state tests
+
+@Suite("HomeViewModel -- recentMeetings")
+struct HomeViewModelRecentTests {
+    @Test("recentMeetings returns at most 4, newest-first, order preserved")
+    @MainActor
+    func recentMeetingsCapAndOrder() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUIRecentTests")
+        defer { fix.cleanup() }
+
+        // Create 5 meetings with distinct titles; createMeeting order
+        // determines the effective date (createdAt, newest = last created).
+        var ids: [UUID] = []
+        for idx in 0 ..< 5 {
+            let id = try await fix.createMeetingWithAudio(
+                title: "Meeting \(idx)",
+                recordingDuration: Double(idx + 1) * 60
+            )
+            ids.append(id)
+        }
+
+        // Reload summaries so core.summaries is populated
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+
+        // Should return exactly 4 (cap), not 5
+        #expect(viewModel.recentMeetings.count == 4)
+
+        // Newest-first: the last created meeting appears first.
+        // Summaries are sorted by date descending; since all use
+        // createdAt (no startDate set), the last inserted is newest.
+        #expect(viewModel.recentMeetings[0].title == "Meeting 4")
+        #expect(viewModel.recentMeetings[1].title == "Meeting 3")
+        #expect(viewModel.recentMeetings[2].title == "Meeting 2")
+        #expect(viewModel.recentMeetings[3].title == "Meeting 1")
+
+        // Meeting 0 (oldest) is excluded by the cap
+        let titles = viewModel.recentMeetings.map(\.title)
+        #expect(!titles.contains("Meeting 0"))
+    }
+
+    @Test("showNoRecent is true when no meetings exist")
+    @MainActor
+    func showNoRecentWhenEmpty() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUIRecentEmpty")
+        defer { fix.cleanup() }
+
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+        #expect(viewModel.showNoRecent == true)
+    }
+
+    @Test("showNoRecent is false when meetings exist")
+    @MainActor
+    func showNoRecentFalseWhenMeetingsExist() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUIRecentPresent")
+        defer { fix.cleanup() }
+
+        _ = try await fix.createMeetingWithAudio(title: "Exists")
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+        #expect(viewModel.showNoRecent == false)
+    }
+
+    @Test("selectMeeting routes to .meeting(id)")
+    @MainActor
+    func selectMeetingRoutes() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUISelectMeeting")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio(title: "Test")
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+        viewModel.selectMeeting(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+    }
+}
+
 // MARK: - Formatting tests
 
 @Suite("HomeViewModel -- timeText formatting")
@@ -165,6 +248,42 @@ struct HomeViewModelFormattingTests {
             relativeTo: now
         )
         #expect(textPast == "now")
+    }
+}
+
+// MARK: - Recent second-line formatting tests
+
+@Suite("HomeViewModel -- recentSecondLine formatting")
+struct HomeViewModelRecentFormattingTests {
+    @Test("recentSecondLine matches sidebar format with duration")
+    @MainActor
+    func recentSecondLineWithDuration() {
+        let date = Date(timeIntervalSince1970: 1_781_193_600)
+        let summary = MeetingSummary(
+            id: UUID(),
+            title: "Test",
+            date: date,
+            hasTranscript: false,
+            recordingDuration: 34 * 60
+        )
+        let text = HomeViewModel.recentSecondLine(for: summary)
+        let expected = "\(TimeFormatting.shortDate(date)) \u{00B7} 34m"
+        #expect(text == expected)
+    }
+
+    @Test("recentSecondLine shows date only when no duration")
+    @MainActor
+    func recentSecondLineNoDuration() {
+        let date = Date(timeIntervalSince1970: 1_781_193_600)
+        let summary = MeetingSummary(
+            id: UUID(),
+            title: "Test",
+            date: date,
+            hasTranscript: false,
+            recordingDuration: nil
+        )
+        let text = HomeViewModel.recentSecondLine(for: summary)
+        #expect(text == TimeFormatting.shortDate(date))
     }
 }
 

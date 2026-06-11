@@ -900,6 +900,264 @@ struct ObservationTests {
     }
 }
 
+// MARK: - eventsNear Tests
+
+/// Creates a CalendarService for `eventsNear` testing (no `refreshUpcoming`).
+@MainActor
+private func serviceForNearby(
+    _ events: [EKEventDTO],
+    store: DataStore? = nil,
+    refreshResult: EKEventDTO? = nil
+) throws -> CalendarService {
+    var provider = FakeEventStoreProvider()
+    provider.eventList = events
+    provider.refreshResult = refreshResult
+    return try CalendarService(
+        store: store ?? makeStore(),
+        catalog: BundledMeetingCatalog(),
+        provider: provider
+    )
+}
+
+@Suite("CalendarService — eventsNear")
+struct EventsNearTests {
+    @Test("excludes event whose start is > 1.5h before reference date")
+    @MainActor
+    func excludesEventOutsideStartWindow() async throws {
+        // Event started 2 hours before `now` — its start is outside
+        // the ±1.5h window even though it OVERLAPS the window
+        // (it ends 1 hour after `now`).
+        let tooEarly = makeDTO(
+            eventIdentifier: "too-early",
+            calendarItemIdentifier: "ci-early",
+            occurrenceDate: now.addingTimeInterval(-7200),
+            startDate: now.addingTimeInterval(-7200),
+            endDate: now.addingTimeInterval(3600),
+            attendeeCount: 3
+        )
+        let service = try serviceForNearby([tooEarly])
+        let results = await service.eventsNear(now)
+        #expect(results.isEmpty)
+    }
+
+    @Test("excludes event whose start is > 1.5h after reference date")
+    @MainActor
+    func excludesEventStartTooFarAfter() async throws {
+        // Event starts 2 hours after `now` — outside the window.
+        let tooLate = makeDTO(
+            eventIdentifier: "too-late",
+            calendarItemIdentifier: "ci-late",
+            occurrenceDate: now.addingTimeInterval(7200),
+            startDate: now.addingTimeInterval(7200),
+            endDate: now.addingTimeInterval(10800),
+            attendeeCount: 3
+        )
+        let service = try serviceForNearby([tooLate])
+        let results = await service.eventsNear(now)
+        #expect(results.isEmpty)
+    }
+
+    @Test("includes event whose start is within 1.5h")
+    @MainActor
+    func includesEventWithinStartWindow() async throws {
+        // Event starts 1 hour before `now` — within ±1.5h.
+        let withinWindow = makeDTO(
+            eventIdentifier: "in-range",
+            calendarItemIdentifier: "ci-range",
+            occurrenceDate: oneHourAgo,
+            startDate: oneHourAgo,
+            endDate: oneHourFromNow,
+            attendeeCount: 3
+        )
+        let service = try serviceForNearby([withinWindow])
+        let results = await service.eventsNear(now)
+        #expect(results.count == 1)
+    }
+
+    @Test("includes event at exact 1.5h boundary")
+    @MainActor
+    func includesEventAtBoundary() async throws {
+        let boundary: TimeInterval = 1.5 * 60 * 60
+        let atBoundary = makeDTO(
+            eventIdentifier: "boundary",
+            calendarItemIdentifier: "ci-boundary",
+            occurrenceDate: now.addingTimeInterval(-boundary),
+            startDate: now.addingTimeInterval(-boundary),
+            endDate: now.addingTimeInterval(3600),
+            attendeeCount: 2
+        )
+        let service = try serviceForNearby([atBoundary])
+        let results = await service.eventsNear(now)
+        #expect(results.count == 1)
+    }
+
+    @Test("sorts by |start − date| ascending")
+    @MainActor
+    func sortsByDeltaFromDate() async throws {
+        // Three events: 10min after, 70min before, 30min after.
+        // Expected order: 10min after, 30min after, 70min before.
+        let tenMinAfter = makeDTO(
+            eventIdentifier: "e-10",
+            calendarItemIdentifier: "ci-10",
+            occurrenceDate: now.addingTimeInterval(600),
+            startDate: now.addingTimeInterval(600),
+            endDate: now.addingTimeInterval(4200),
+            attendeeCount: 2
+        )
+        let seventyMinBefore = makeDTO(
+            eventIdentifier: "e-70",
+            calendarItemIdentifier: "ci-70",
+            occurrenceDate: now.addingTimeInterval(-4200),
+            startDate: now.addingTimeInterval(-4200),
+            endDate: now.addingTimeInterval(-600),
+            attendeeCount: 2
+        )
+        let thirtyMinAfter = makeDTO(
+            eventIdentifier: "e-30",
+            calendarItemIdentifier: "ci-30",
+            occurrenceDate: now.addingTimeInterval(1800),
+            startDate: now.addingTimeInterval(1800),
+            endDate: now.addingTimeInterval(5400),
+            attendeeCount: 2
+        )
+        let service = try serviceForNearby(
+            [seventyMinBefore, thirtyMinAfter, tenMinAfter]
+        )
+        let results = await service.eventsNear(now)
+
+        #expect(results.count == 3)
+        #expect(results[0].id.contains("e-10"))
+        #expect(results[1].id.contains("e-30"))
+        #expect(results[2].id.contains("e-70"))
+    }
+
+    @Test("tie-breaks equal deltas by start ascending")
+    @MainActor
+    func tieBreaksByStartAscending() async throws {
+        // Two events with the same |delta| from `now`: one 1h before,
+        // one 1h after. Tie-break: earlier start first.
+        let before = makeDTO(
+            eventIdentifier: "e-before",
+            calendarItemIdentifier: "ci-before",
+            occurrenceDate: oneHourAgo,
+            startDate: oneHourAgo,
+            endDate: now,
+            attendeeCount: 2
+        )
+        let after = makeDTO(
+            eventIdentifier: "e-after",
+            calendarItemIdentifier: "ci-after",
+            occurrenceDate: oneHourFromNow,
+            startDate: oneHourFromNow,
+            endDate: twoHoursFromNow,
+            attendeeCount: 2
+        )
+        let service = try serviceForNearby([after, before])
+        let results = await service.eventsNear(now)
+
+        #expect(results.count == 2)
+        #expect(results[0].id.contains("e-before"))
+        #expect(results[1].id.contains("e-after"))
+    }
+
+    @Test("excludes all-day and birthday events")
+    @MainActor
+    func excludesAllDayAndBirthday() async throws {
+        let allDay = makeDTO(
+            eventIdentifier: "all-day",
+            calendarItemIdentifier: "ci-allday",
+            occurrenceDate: now,
+            startDate: now,
+            endDate: oneHourFromNow,
+            isAllDay: true,
+            attendeeCount: 2
+        )
+        let birthday = makeDTO(
+            eventIdentifier: "bday",
+            calendarItemIdentifier: "ci-bday",
+            occurrenceDate: now,
+            startDate: now,
+            endDate: oneHourFromNow,
+            birthdayContactIdentifier: "contact-1",
+            attendeeCount: 2
+        )
+        let normal = makeDTO(
+            eventIdentifier: "normal",
+            calendarItemIdentifier: "ci-normal",
+            occurrenceDate: now,
+            startDate: now,
+            endDate: oneHourFromNow,
+            attendeeCount: 2
+        )
+        let service = try serviceForNearby([allDay, birthday, normal])
+        let results = await service.eventsNear(now)
+        #expect(results.count == 1)
+        #expect(results[0].id.contains("normal"))
+    }
+
+    @Test("includes non-meeting-like events (solo, no conference)")
+    @MainActor
+    func includesNonMeetingLikeEvents() async throws {
+        let solo = makeDTO(
+            eventIdentifier: "solo",
+            calendarItemIdentifier: "ci-solo",
+            occurrenceDate: now,
+            startDate: now,
+            endDate: oneHourFromNow,
+            attendeeCount: 1
+        )
+        let service = try serviceForNearby([solo])
+        let results = await service.eventsNear(now)
+        #expect(results.count == 1)
+        #expect(results[0].isMeetingLike == false)
+    }
+
+    @Test("candidateDTOs cache contains only filtered events")
+    @MainActor
+    func candidateDTOsCacheMatchesFilteredSet() async throws {
+        let inRange = makeDTO(
+            eventIdentifier: "in",
+            calendarItemIdentifier: "ci-in",
+            occurrenceDate: now,
+            startDate: now,
+            endDate: oneHourFromNow,
+            attendeeCount: 2
+        )
+        let outOfRange = makeDTO(
+            eventIdentifier: "out",
+            calendarItemIdentifier: "ci-out",
+            occurrenceDate: now.addingTimeInterval(-7200),
+            startDate: now.addingTimeInterval(-7200),
+            endDate: now.addingTimeInterval(3600),
+            attendeeCount: 2
+        )
+        let service = try serviceForNearby(
+            [inRange, outOfRange],
+            refreshResult: inRange
+        )
+        let results = await service.eventsNear(now)
+        #expect(results.count == 1)
+
+        // The in-range event should be resolvable via snapshot.
+        let inKey = CompositeKey.make(
+            eventIdentifier: "in",
+            calendarItemIdentifier: "ci-in",
+            occurrenceStartDate: now
+        )
+        let snap = await service.snapshot(forKey: inKey)
+        #expect(snap != nil)
+
+        // The out-of-range event should NOT be in the cache.
+        let outKey = CompositeKey.make(
+            eventIdentifier: "out",
+            calendarItemIdentifier: "ci-out",
+            occurrenceStartDate: now.addingTimeInterval(-7200)
+        )
+        let outSnap = await service.snapshot(forKey: outKey)
+        #expect(outSnap == nil)
+    }
+}
+
 /// Provider that tracks call counts for observation tests.
 private final class CallCountProvider: EventStoreProviding, @unchecked Sendable {
     private let _events: [EKEventDTO]

@@ -114,15 +114,21 @@ public final class CalendarService {
         upcoming.first { $0.id == key }
     }
 
-    /// Fetch calendar events in a window around `date` for association
-    /// correction on past meetings. Returns ALL non-all-day, non-birthday
-    /// events (not just meeting-like) so the user can link any event.
+    /// Fetch calendar events near `date` (the recording start) for
+    /// association correction on past meetings. Returns ALL non-all-day,
+    /// non-birthday events whose **start time** is within ±1.5 hours of
+    /// `date` (not just meeting-like) so the user can link any event.
     /// Also caches the underlying DTOs so `snapshot(forKey:)` can resolve
     /// them later.
     ///
-    /// Window: +/- 2 hours around `date`.
+    /// **Window:** events whose start is within ±1.5 h of `date`.
+    /// Because EventKit's `events(in:)` returns events that *overlap*
+    /// the interval, the results are post-filtered on start time.
+    ///
+    /// **Sort:** ascending by `|event.start − date|` (closest first),
+    /// tie-broken by `start` ascending.
     public func eventsNear(_ date: Date) async -> [CalendarEvent] {
-        let windowRadius: TimeInterval = 2 * 60 * 60 // 2 hours
+        let windowRadius: TimeInterval = 1.5 * 60 * 60 // 1.5 hours
         let window = DateInterval(
             start: date.addingTimeInterval(-windowRadius),
             end: date.addingTimeInterval(windowRadius)
@@ -134,6 +140,13 @@ public final class CalendarService {
         for dto in dtos {
             guard !dto.isAllDay else { continue }
             guard dto.birthdayContactIdentifier == nil else { continue }
+
+            // Post-filter: only include events whose START is within
+            // ±1.5h of the reference date. EventKit's overlap semantics
+            // can return long events that started well outside the range.
+            let delta = abs(dto.startDate.timeIntervalSince(date))
+            guard delta <= windowRadius else { continue }
+
             let conference = conferenceResult(for: dto)
             let meetingLike = isMeetingLike(
                 dto, conference: conference
@@ -146,7 +159,14 @@ public final class CalendarService {
         }
 
         candidateDTOs = newCandidates
-        events.sort { $0.start < $1.start }
+
+        // Sort by proximity to the reference date, tie-break by start.
+        events.sort { lhs, rhs in
+            let deltaL = abs(lhs.start.timeIntervalSince(date))
+            let deltaR = abs(rhs.start.timeIntervalSince(date))
+            if deltaL != deltaR { return deltaL < deltaR }
+            return lhs.start < rhs.start
+        }
         return events
     }
 

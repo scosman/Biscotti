@@ -75,7 +75,7 @@ public struct HomeView: View {
                     } label: {
                         UpcomingEventRow(
                             title: event.title,
-                            timeText: HomeViewModel.timeText(for: event),
+                            timeText: viewModel.tickTimeText(for: event),
                             platformBadge: event.conferencePlatform
                         )
                     }

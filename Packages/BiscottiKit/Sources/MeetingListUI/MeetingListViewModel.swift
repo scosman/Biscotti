@@ -1,5 +1,6 @@
 import AppCore
 import DataStore
+import DesignSystem
 import Foundation
 
 /// A group of meetings for sidebar display (Today, Yesterday, etc.).
@@ -124,6 +125,19 @@ public final class MeetingListViewModel {
     /// Formats a meeting date as a relative string for sidebar display.
     public static func relativeDate(_ date: Date) -> String {
         relativeDateFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Builds the second-line text for a sidebar meeting row.
+    /// Format: "Jun 9, 2026 \u{00B7} 34m" (date + middot + duration),
+    /// or just "Jun 9, 2026" when no recording duration is available.
+    public static func secondLineText(
+        for meeting: MeetingSummary
+    ) -> String {
+        let dateStr = TimeFormatting.shortDate(meeting.date)
+        guard let duration = meeting.recordingDuration, duration > 0 else {
+            return dateStr
+        }
+        return "\(dateStr) \u{00B7} \(TimeFormatting.compactDuration(duration))"
     }
 
     // MARK: - Private

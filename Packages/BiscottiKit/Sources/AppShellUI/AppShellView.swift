@@ -182,7 +182,7 @@ public struct AppShellView: View {
                 } label: {
                     UpcomingEventRow(
                         title: event.title,
-                        timeText: AppShellViewModel.timeText(for: event),
+                        timeText: viewModel.tickTimeText(for: event),
                         platformBadge: event.conferencePlatform
                     )
                     .padding(.vertical, Tokens.spacingXS)

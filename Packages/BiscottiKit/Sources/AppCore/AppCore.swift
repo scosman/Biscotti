@@ -30,7 +30,19 @@ public final class AppCore {
     public private(set) var summaries: [MeetingSummary] = []
 
     /// Meeting-like upcoming calendar events, mirrored from CalendarService.
-    public private(set) var upcoming: [CalendarEvent] = []
+    public package(set) var upcoming: [CalendarEvent] = []
+
+    /// Clock-minute-aligned tick used to refresh upcoming event filtering
+    /// and relative-time labels. Updated every minute at :00 of the wall
+    /// clock. Driven by the `AppScheduler` seam for testability.
+    public private(set) var minuteTick: Date = .init()
+
+    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
+    /// The sidebar, menu bar, and home screen should use this instead of
+    /// `upcoming` directly.
+    public var displayedUpcoming: [CalendarEvent] {
+        upcoming.filter { $0.end > minuteTick }
+    }
 
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
@@ -88,6 +100,11 @@ public final class AppCore {
 
     /// Task that mirrors calendar.upcoming into self.upcoming.
     private var upcomingMirrorTask: Task<Void, Never>?
+
+    /// Task that fires at each clock-minute boundary to refresh
+    /// `minuteTick`, driving displayed-upcoming filtering and
+    /// relative-time label recomputation.
+    private var minuteTickTask: Task<Void, Never>?
 
     /// The fire-and-forget transcription task spawned by `stopRecording()`.
     package var pendingTranscriptionTask: Task<Void, Never>?
@@ -212,6 +229,7 @@ public final class AppCore {
         logger.info("startBackgroundServices: timers")
         scheduleCalendarTimers()
         startUpcomingMirrorTask()
+        startMinuteTickTask()
         logger.info("startBackgroundServices: done")
     }
 
@@ -635,6 +653,48 @@ extension AppCore {
                 scheduleCalendarTimers()
             }
         }
+    }
+
+    /// Fires at each wall-clock minute boundary to update `minuteTick`.
+    ///
+    /// Computes the delay to the next :00 second mark, sleeps via the
+    /// scheduler seam (deterministic in tests), then reschedules. The
+    /// `minuteTick` update triggers `displayedUpcoming` recomputation
+    /// and re-renders any view reading relative-time labels from it.
+    private func startMinuteTickTask() {
+        minuteTickTask?.cancel()
+        let sched = scheduler
+        minuteTickTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                // Compute delay to the next minute boundary.
+                let now = Date()
+                let cal = Foundation.Calendar.current
+                let nextMinute = cal.nextDate(
+                    after: now,
+                    matching: DateComponents(second: 0),
+                    matchingPolicy: .nextTime
+                ) ?? now.addingTimeInterval(60)
+                let delay = max(
+                    nextMinute.timeIntervalSince(now), 0.1
+                )
+
+                do {
+                    try await sched.sleep(
+                        for: .milliseconds(Int(delay * 1000))
+                    )
+                } catch {
+                    return // cancelled
+                }
+                guard !Task.isCancelled else { return }
+                minuteTick = Date()
+            }
+        }
+    }
+
+    /// Test-only: directly sets `minuteTick` to a specific date so
+    /// tests can verify filtering/label recomputation without real delays.
+    package func setMinuteTick(_ date: Date) {
+        minuteTick = date
     }
 }
 

@@ -351,6 +351,9 @@ struct AppCoreDetectionAutoStopTests {
             return
         }
 
+        // Capture baseline pending count (minute-tick may have registered)
+        let baselinePending = fakeScheduler.pendingCount
+
         // Emit Zoom in-call then idle -> detection events fire
         fix.fakeActivitySource.emit([
             makeAudioProcess(
@@ -367,8 +370,8 @@ struct AppCoreDetectionAutoStopTests {
         ])
         try await Task.sleep(for: .milliseconds(200))
 
-        // No countdown should have been scheduled
-        #expect(fakeScheduler.pendingCount == 0)
+        // No countdown should have been scheduled (pending count unchanged)
+        #expect(fakeScheduler.pendingCount == baselinePending)
 
         // Recording should still be active
         #expect(fix.core.recording.state.isRecording == true)
@@ -410,6 +413,9 @@ struct AppCoreDetectionAutoStopTests {
             return
         }
 
+        // Capture baseline pending count (minute-tick may have registered)
+        let baselinePending = fakeScheduler.pendingCount
+
         // A DIFFERENT app (Teams) starts and stops -- Zoom is still active
         fix.fakeActivitySource.emit([
             makeAudioProcess(
@@ -431,7 +437,7 @@ struct AppCoreDetectionAutoStopTests {
         try await Task.sleep(for: .milliseconds(200))
 
         // No countdown -- the stopped app was Teams, not Zoom
-        #expect(fakeScheduler.pendingCount == 0)
+        #expect(fakeScheduler.pendingCount == baselinePending)
         #expect(fix.core.recording.state.isRecording == true)
 
         _ = await fix.core.stopRecording()

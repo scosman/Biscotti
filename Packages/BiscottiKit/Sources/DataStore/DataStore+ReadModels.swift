@@ -11,12 +11,21 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
     /// The meeting's effective date: `startDate` if available, otherwise `createdAt`.
     public let date: Date
     public let hasTranscript: Bool
+    /// The recording's wall-clock duration in seconds, or `nil` if unknown.
+    public let recordingDuration: TimeInterval?
 
-    public init(id: UUID, title: String, date: Date, hasTranscript: Bool) {
+    public init(
+        id: UUID,
+        title: String,
+        date: Date,
+        hasTranscript: Bool,
+        recordingDuration: TimeInterval? = nil
+    ) {
         self.id = id
         self.title = title
         self.date = date
         self.hasTranscript = hasTranscript
+        self.recordingDuration = recordingDuration
     }
 }
 
@@ -251,7 +260,8 @@ public extension DataStore {
                 id: meeting.id,
                 title: meeting.title,
                 date: meeting.startDate ?? meeting.createdAt,
-                hasTranscript: meeting.preferredTranscriptID != nil
+                hasTranscript: meeting.preferredTranscriptID != nil,
+                recordingDuration: meeting.recordingDuration
             )
         }
     }

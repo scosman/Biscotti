@@ -149,6 +149,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "DesignSystem",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",

@@ -19,6 +19,12 @@ import SwiftData
     /// association will NOT overwrite the title with the event name.
     public var editedTitle: Bool = false
 
+    /// The recording's wall-clock duration in seconds, captured when the
+    /// recording stops. `nil` for meetings that were never recorded (e.g.
+    /// calendar-only entries) or recordings from before this field existed.
+    /// Additive field -- defaults nil, no migration needed.
+    public var recordingDuration: TimeInterval?
+
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []
 

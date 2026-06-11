@@ -103,6 +103,17 @@ public actor DataStore {
         return Array(filtered.prefix(limit))
     }
 
+    /// Sets the recording duration for a meeting.
+    public func setRecordingDuration(
+        _ duration: TimeInterval, for meetingID: UUID
+    ) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        meeting.recordingDuration = duration
+        try save()
+    }
+
     /// Deletes a meeting by ID. Throws `notFound` if the meeting does not exist.
     public func delete(meetingID: UUID) throws {
         guard let meeting = try meeting(id: meetingID) else {

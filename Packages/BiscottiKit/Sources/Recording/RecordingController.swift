@@ -159,6 +159,16 @@ public final class RecordingController {
             Self.logger.warning("markAudioPresence failed for \(meetingID): \(error.localizedDescription)")
         }
 
+        // Persist recording duration (capture before resetting state)
+        let elapsed = state.elapsed
+        if elapsed > 0 {
+            do {
+                try await store.setRecordingDuration(elapsed, for: meetingID)
+            } catch {
+                Self.logger.warning("setRecordingDuration failed for \(meetingID): \(error.localizedDescription)")
+            }
+        }
+
         // Reset state
         recorder = nil
         state = .idle

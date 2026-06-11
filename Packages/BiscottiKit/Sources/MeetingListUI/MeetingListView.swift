@@ -59,7 +59,7 @@ public struct MeetingListView: View {
                 .font(.body)
                 .lineLimit(1)
 
-            Text(MeetingListViewModel.relativeDate(meeting.date))
+            Text(MeetingListViewModel.secondLineText(for: meeting))
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
         }

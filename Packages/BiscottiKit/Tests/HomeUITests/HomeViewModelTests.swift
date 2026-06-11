@@ -10,10 +10,10 @@ import Testing
 
 @Suite("HomeViewModel -- state")
 struct HomeViewModelStateTests {
-    @Test("upcomingPreview returns first 3 events from core.upcoming")
+    @Test("upcomingPreview returns first 3 events from core.displayedUpcoming")
     @MainActor
     func homeShowsUpcomingPreview() async throws {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let now = Date()
         let dtos = (0 ..< 5).map { idx in
             EKEventDTO(
                 eventIdentifier: "ev-\(idx)",

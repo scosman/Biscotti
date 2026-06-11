@@ -68,7 +68,7 @@ public struct MenuBarContentView: View {
                 viewModel.openEvent(event.id)
             } label: {
                 Text(
-                    "\(event.title) \u{2014} \(MenuBarViewModel.relativeTimeText(event.start))"
+                    "\(event.title) \u{2014} \(viewModel.tickTimeText(for: event))"
                 )
             }
         }

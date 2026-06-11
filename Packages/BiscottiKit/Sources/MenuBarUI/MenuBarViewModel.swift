@@ -48,13 +48,17 @@ public final class MenuBarViewModel {
         if core.recording.state.isRecording {
             return .recording
         }
-        if let next = core.upcoming.first,
-           Self.isWithin2Hours(next.start)
+        if let next = core.displayedUpcoming.first,
+           Self.isWithin2Hours(
+               next.start, relativeTo: core.minuteTick
+           )
         {
             let title = Self.truncateTitle(
                 next.title, maxLength: 20
             )
-            let time = Self.relativeTimeText(next.start)
+            let time = Self.relativeTimeText(
+                next.start, relativeTo: core.minuteTick
+            )
             return .nextMeeting(title: title, timeText: time)
         }
         return .idle
@@ -72,9 +76,9 @@ public final class MenuBarViewModel {
         Self.formatElapsed(core.recording.state.elapsed)
     }
 
-    /// The next 2 upcoming meeting-like events.
+    /// The next 2 upcoming meeting-like events (ended events filtered out).
     public var upcomingEvents: [CalendarEvent] {
-        Array(core.upcoming.prefix(2))
+        Array(core.displayedUpcoming.prefix(2))
     }
 
     /// The last 2 recorded meetings.
@@ -145,6 +149,14 @@ public final class MenuBarViewModel {
         _ date: Date, relativeTo now: Date = Date()
     ) -> String {
         TimeFormatting.relativeTimeText(date, relativeTo: now)
+    }
+
+    /// Formats a CalendarEvent's start time relative to the
+    /// minute-tick, ensuring the label refreshes every minute.
+    public func tickTimeText(for event: CalendarEvent) -> String {
+        TimeFormatting.relativeTimeText(
+            event.start, relativeTo: core.minuteTick
+        )
     }
 
     /// Whether a date is within 2 hours from now.

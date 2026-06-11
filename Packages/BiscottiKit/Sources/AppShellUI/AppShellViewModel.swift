@@ -129,8 +129,10 @@ public final class AppShellViewModel {
     }
 
     /// Upcoming meeting-like calendar events for the sidebar.
+    /// Uses `displayedUpcoming` which filters out ended events and
+    /// refreshes every minute via the minute-tick.
     public var upcomingEvents: [CalendarEvent] {
-        core.upcoming
+        core.displayedUpcoming
     }
 
     /// Whether the calendar has been authorized (shows/hides upcoming section).
@@ -204,5 +206,13 @@ public final class AppShellViewModel {
         relativeTo now: Date = Date()
     ) -> String {
         TimeFormatting.relativeTimeText(event.start, relativeTo: now)
+    }
+
+    /// Formats a CalendarEvent's start time relative to the
+    /// minute-tick, ensuring the label refreshes every minute.
+    public func tickTimeText(for event: CalendarEvent) -> String {
+        TimeFormatting.relativeTimeText(
+            event.start, relativeTo: core.minuteTick
+        )
     }
 }

@@ -20,8 +20,9 @@ public final class HomeViewModel {
     // MARK: - State (derived from core)
 
     /// The upcoming meeting-like events to show as a preview list (max 3).
+    /// Uses `displayedUpcoming` which filters out ended events.
     public var upcomingPreview: [CalendarEvent] {
-        Array(core.upcoming.prefix(3))
+        Array(core.displayedUpcoming.prefix(3))
     }
 
     /// Whether the Start Recording button should be disabled.
@@ -34,7 +35,8 @@ public final class HomeViewModel {
         core.calendar.auth
     }
 
-    /// Show "No meetings coming up" when authorized but no upcoming events.
+    /// Show "No meetings coming up" when authorized but no upcoming events
+    /// (including events that have since ended).
     public var showNoUpcoming: Bool {
         calendarAccess == .authorized && upcomingPreview.isEmpty
     }
@@ -70,5 +72,13 @@ public final class HomeViewModel {
         relativeTo now: Date = Date()
     ) -> String {
         TimeFormatting.relativeTimeText(event.start, relativeTo: now)
+    }
+
+    /// Formats a CalendarEvent's start time relative to the
+    /// minute-tick, ensuring the label refreshes every minute.
+    public func tickTimeText(for event: CalendarEvent) -> String {
+        TimeFormatting.relativeTimeText(
+            event.start, relativeTo: core.minuteTick
+        )
     }
 }

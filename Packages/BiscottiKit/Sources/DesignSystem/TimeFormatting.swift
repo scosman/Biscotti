@@ -24,4 +24,32 @@ public enum TimeFormatting {
         }
         return "in \(hours)h \(remainingMinutes)m"
     }
+
+    /// Formats a recording duration in seconds as a compact string.
+    /// Examples: "34m", "1h 12m", "2h", "<1m".
+    public static func compactDuration(
+        _ seconds: TimeInterval
+    ) -> String {
+        let totalMinutes = Int(seconds / 60)
+        if totalMinutes < 1 { return "<1m" }
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours == 0 { return "\(minutes)m" }
+        if minutes == 0 { return "\(hours)h" }
+        return "\(hours)h \(minutes)m"
+    }
+
+    /// Short date formatter for sidebar meeting rows (e.g. "Jun 9, 2026").
+    public static func shortDate(
+        _ date: Date
+    ) -> String {
+        shortDateFormatter.string(from: date)
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }

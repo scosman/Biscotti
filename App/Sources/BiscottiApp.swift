@@ -21,11 +21,18 @@ import UserNotifications
 /// **Observability:** `AppDelegate` is an `NSObject` subclass and cannot
 /// itself be `@Observable`. The mutable startup state (`shellViewModel`,
 /// `menuBarViewModel`, `launchError`) lives in `LaunchState`, an
-/// `@Observable` class owned by the delegate. SwiftUI tracks reads from
-/// `LaunchState` so the body re-renders when `buildCore()` sets these
-/// properties — even when `applicationDidFinishLaunching` completes
-/// AFTER the first body evaluation (a timing race that caused an
-/// intermittent startup hang prior to this fix).
+/// `@Observable` class owned by the delegate.
+///
+/// **Important:** Scene-level `@ViewBuilder` closures (the trailing
+/// closures of `WindowGroup` and `MenuBarExtra`) do NOT reliably
+/// establish SwiftUI Observation tracking the way a `View.body` does.
+/// Reads of `@Observable` properties inside those closures may never
+/// trigger a re-render when the property changes. To work around this,
+/// dedicated `View` structs (`WindowRootView`, `MenuBarRootContent`,
+/// `MenuBarRootLabel`) accept `LaunchState` as a stored property and
+/// read it inside their `body` — where Observation tracking IS
+/// reliable. This ensures the nil-to-set transition of
+/// `shellViewModel`/`menuBarViewModel` always invalidates the UI.
 ///
 /// - TODO: License/attribution screen for argmax-oss-swift and model
 ///   licenses must be added before ship (Project 9).
@@ -36,51 +43,56 @@ struct BiscottiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if let shellVM = appDelegate.launchState.shellViewModel {
-                    AppShellView(viewModel: shellVM)
-                } else if let err = appDelegate.launchState.launchError {
-                    errorView(message: err)
-                } else {
-                    ProgressView("Starting Biscotti\u{2026}")
-                        .frame(
-                            maxWidth: .infinity,
-                            maxHeight: .infinity
-                        )
+            WindowRootView(launchState: appDelegate.launchState)
+                .frame(minWidth: 640, minHeight: 400)
+                .onReceive(NotificationCenter.default.publisher(
+                    for: NSWindow.willCloseNotification
+                )) { notification in
+                    // Filter to real content windows; ignore sheets, panels,
+                    // alerts, and file dialogs that also post this notification.
+                    guard let window = notification.object as? NSWindow,
+                          window.level == .normal
+                    else { return }
+                    // Schedule the policy switch for the next run loop so
+                    // SwiftUI has finished tearing down the window.
+                    Task { @MainActor in
+                        appDelegate.handleWindowClosed()
+                    }
                 }
-            }
-            .frame(minWidth: 640, minHeight: 400)
-            .onReceive(NotificationCenter.default.publisher(
-                for: NSWindow.willCloseNotification
-            )) { notification in
-                // Filter to real content windows; ignore sheets, panels,
-                // alerts, and file dialogs that also post this notification.
-                guard let window = notification.object as? NSWindow,
-                      window.level == .normal
-                else { return }
-                // Schedule the policy switch for the next run loop so
-                // SwiftUI has finished tearing down the window.
-                Task { @MainActor in
-                    appDelegate.handleWindowClosed()
-                }
-            }
         }
 
         // Menu bar extra (native menu style)
         MenuBarExtra {
-            if let menuBarVM = appDelegate.launchState.menuBarViewModel {
-                MenuBarContentView(viewModel: menuBarVM)
-            } else {
-                Text("Starting\u{2026}")
-            }
+            MenuBarRootContent(launchState: appDelegate.launchState)
         } label: {
-            if let menuBarVM = appDelegate.launchState.menuBarViewModel {
-                MenuBarLabelView(viewModel: menuBarVM)
-            } else {
-                Image(systemName: "circle.dotted.circle")
-            }
+            MenuBarRootLabel(launchState: appDelegate.launchState)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+// MARK: - Root View wrappers (reliable Observation tracking)
+
+/// Root content for the `WindowGroup`. Reads `LaunchState` inside
+/// `body` so the nil-to-set transition of `shellViewModel` reliably
+/// triggers a SwiftUI re-render (Scene closures do not).
+private struct WindowRootView: View {
+    let launchState: LaunchState
+
+    var body: some View {
+        Group {
+            if let shellVM = launchState.shellViewModel {
+                AppShellView(viewModel: shellVM)
+            } else if let err = launchState.launchError {
+                errorView(message: err)
+            } else {
+                ProgressView("Starting Biscotti\u{2026}")
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+            }
+        }
     }
 
     private func errorView(message: String) -> some View {
@@ -97,6 +109,36 @@ struct BiscottiApp: App {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Root content for the `MenuBarExtra` menu body. Reads `LaunchState`
+/// inside `body` so the nil-to-set transition of `menuBarViewModel`
+/// reliably triggers a SwiftUI re-render.
+private struct MenuBarRootContent: View {
+    let launchState: LaunchState
+
+    var body: some View {
+        if let menuBarVM = launchState.menuBarViewModel {
+            MenuBarContentView(viewModel: menuBarVM)
+        } else {
+            Text("Starting\u{2026}")
+        }
+    }
+}
+
+/// Root label for the `MenuBarExtra` icon. Reads `LaunchState` inside
+/// `body` so the nil-to-set transition of `menuBarViewModel` reliably
+/// triggers a SwiftUI re-render.
+private struct MenuBarRootLabel: View {
+    let launchState: LaunchState
+
+    var body: some View {
+        if let menuBarVM = launchState.menuBarViewModel {
+            MenuBarLabelView(viewModel: menuBarVM)
+        } else {
+            Image(systemName: "circle.dotted.circle")
+        }
     }
 }
 
@@ -271,8 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
                     self?.showMainWindow()
                 }
             )
+            let hasShellVM = launchState.shellViewModel != nil
+            let hasMenuBarVM = launchState.menuBarViewModel != nil
             logger.info(
-                "buildCore: shellViewModel + menuBarViewModel assigned"
+                "buildCore: shellViewModel=\(hasShellVM), menuBarViewModel=\(hasMenuBarVM)"
             )
 
             // Register launch-at-login (default ON)

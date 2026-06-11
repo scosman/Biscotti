@@ -15,16 +15,17 @@ public struct OnboardingView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Step indicator dots
+            // Step indicator dots pinned near the top
             stepIndicator
                 .padding(.top, Tokens.spacingLG)
+                .padding(.bottom, Tokens.spacingMD)
 
-            Spacer()
-
-            // Step content
+            // Step content fills remaining space, centered vertically
             stepContent
-
-            Spacer()
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Tokens.spacingXL)
@@ -65,6 +66,8 @@ public struct OnboardingView: View {
             notificationsStep
         case .modelDownload:
             modelDownloadStep
+        case .launchAtLogin:
+            launchAtLoginStep
         case .done:
             doneStep
         }

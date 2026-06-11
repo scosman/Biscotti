@@ -10,9 +10,11 @@ import Testing
 struct OnboardingViewModelTests {
     // MARK: - Step advancement
 
-    @Test("advances through all steps in order")
-    func onboardingAdvancesThroughSteps() async throws {
-        let fixture = try makeCoreFixture()
+    @Test("advances through all steps when calendar authorized")
+    func onboardingAdvancesThroughAllSteps() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
@@ -24,18 +26,52 @@ struct OnboardingViewModelTests {
         #expect(model.currentStep == .systemAudio)
         await model.advance()
         #expect(model.currentStep == .calendar)
-        // Calendar not authorized -> skip calendarSelection
+        // Calendar authorized (synced from live state) -> calendarSelection
+        await model.advance()
+        #expect(model.currentStep == .calendarSelection)
         await model.advance()
         #expect(model.currentStep == .notifications)
         await model.advance()
         #expect(model.currentStep == .modelDownload)
+        await model.advance()
+        #expect(model.currentStep == .launchAtLogin)
+        await model.advance()
+        #expect(model.currentStep == .done)
+    }
+
+    @Test("advances skipping calendar selection when denied")
+    func onboardingAdvancesSkippingCalendarSelection() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+
+        #expect(model.currentStep == .welcome)
+        await model.advance()
+        #expect(model.currentStep == .microphone)
+        await model.advance()
+        #expect(model.currentStep == .systemAudio)
+        await model.advance()
+        #expect(model.currentStep == .calendar)
+        // Calendar denied (synced from live state) -> skip calendarSelection
+        await model.advance()
+        #expect(model.currentStep == .notifications)
+        await model.advance()
+        #expect(model.currentStep == .modelDownload)
+        await model.advance()
+        #expect(model.currentStep == .launchAtLogin)
         await model.advance()
         #expect(model.currentStep == .done)
     }
 
     @Test("skip skips permission without requesting")
     func onboardingSkipSkipsPermission() async throws {
-        let fixture = try makeCoreFixture()
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: false
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
@@ -115,7 +151,7 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .modelDownload)
         await model.skip()
-        #expect(model.currentStep == .done)
+        #expect(model.currentStep == .launchAtLogin)
     }
 
     @Test("model download sets isDownloading and updates status")
@@ -175,7 +211,9 @@ struct OnboardingViewModelTests {
         await model.skip()
         #expect(model.progressIndex == 5) // modelDownload
         await model.skip()
-        #expect(model.progressIndex == 6) // done
+        #expect(model.progressIndex == 6) // launchAtLogin
+        await model.skip()
+        #expect(model.progressIndex == 7) // done
     }
 
     @Test("disk check surfaces warning when insufficient")
@@ -246,12 +284,12 @@ struct OnboardingViewModelTests {
         #expect(model.isCalendarEnabled("any-id") == true)
     }
 
-    @Test("total steps is 7")
-    func totalStepsIs7() throws {
+    @Test("total steps is 8")
+    func totalStepsIs8() throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        #expect(model.totalSteps == 7)
+        #expect(model.totalSteps == 8)
     }
 }

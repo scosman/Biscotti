@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import Foundation
 import Permissions
+import ServiceManagement
 import TranscriptionService
 
 /// A group of calendars from the same source, for the onboarding
@@ -30,7 +31,7 @@ public struct OnboardingCalendarGroup: Identifiable, Sendable, Equatable {
 /// All permission requests, calendar selection, and model download are
 /// delegated to `AppCore` services. Every step is skippable (C3).
 @MainActor @Observable
-public final class OnboardingViewModel {
+public final class OnboardingViewModel { // swiftlint:disable:this type_body_length
     private let core: AppCore
 
     // MARK: - Step state machine
@@ -44,6 +45,7 @@ public final class OnboardingViewModel {
         case calendarSelection
         case notifications
         case modelDownload
+        case launchAtLogin
         case done
     }
 
@@ -53,7 +55,7 @@ public final class OnboardingViewModel {
     /// Total visible steps for the progress indicator (calendar
     /// selection is treated as part of the calendar step).
     public var totalSteps: Int {
-        7
+        8
     }
 
     /// The 0-based progress index for the step indicator dots.
@@ -65,7 +67,8 @@ public final class OnboardingViewModel {
         case .calendar, .calendarSelection: 3
         case .notifications: 4
         case .modelDownload: 5
-        case .done: 6
+        case .launchAtLogin: 6
+        case .done: 7
         }
     }
 
@@ -85,6 +88,23 @@ public final class OnboardingViewModel {
     public private(set) var downloadStatus: String?
     public private(set) var isDownloading: Bool = false
     public private(set) var downloadComplete: Bool = false
+
+    // MARK: - Granted-state derivation
+
+    /// Whether the microphone permission has been granted in this session.
+    public var microphoneGranted: Bool {
+        microphoneResult == .authorized
+    }
+
+    /// Whether the system audio permission has been granted in this session.
+    public var systemAudioGranted: Bool {
+        systemAudioResult == .authorized
+    }
+
+    /// Whether calendar access has been granted in this session.
+    public var calendarGranted: Bool {
+        calendarResult == .authorized
+    }
 
     /// Disk space check for the model download step.
     public private(set) var hasSufficientDisk: Bool = true
@@ -150,10 +170,13 @@ public final class OnboardingViewModel {
             checkDiskSpace()
             currentStep = .modelDownload
         case .modelDownload:
+            currentStep = .launchAtLogin
+        case .launchAtLogin:
             currentStep = .done
         case .done:
             await completeOnboarding()
         }
+        syncLivePermissionState()
     }
 
     /// Skip the current step without performing its action.
@@ -173,10 +196,13 @@ public final class OnboardingViewModel {
             checkDiskSpace()
             currentStep = .modelDownload
         case .modelDownload:
+            currentStep = .launchAtLogin
+        case .launchAtLogin:
             currentStep = .done
         case .done:
             await completeOnboarding()
         }
+        syncLivePermissionState()
     }
 
     /// Request the permission for the current step.
@@ -203,6 +229,7 @@ public final class OnboardingViewModel {
             // Also update Permissions so the settings pane stays consistent
             core.permissions.noteCalendar(calendarResult)
         case .notifications:
+            // TODO(notifications): onboarding notification permission request not functioning on-device -- revisit
             let granted = await core.permissions
                 .requestNotifications()
             notificationsGranted = granted
@@ -278,12 +305,63 @@ public final class OnboardingViewModel {
         NSWorkspace.shared.open(url)
     }
 
+    /// Set the launch-at-login preference. Persists to settings and
+    /// updates `SMAppService` registration (same path as SettingsViewModel).
+    public func setLaunchAtLogin(_ enabled: Bool) async {
+        do {
+            try await core.store.updateSettings { settings in
+                settings.launchAtLogin = enabled
+            }
+        } catch {
+            // Non-fatal: best-effort persistence
+        }
+
+        let service = SMAppService.mainApp
+        do {
+            if enabled {
+                try service.register()
+            } else {
+                try await service.unregister()
+            }
+        } catch {
+            // Non-fatal: service management may fail in
+            // sandboxed/debug environments.
+        }
+    }
+
     /// Complete onboarding: persist the flag and navigate to Home.
     public func completeOnboarding() async {
         await core.completeOnboarding()
     }
 
     // MARK: - Private
+
+    /// Reads the live system permission state for the current step
+    /// so that already-granted permissions show the checkmark
+    /// immediately (e.g. when re-running onboarding or when the
+    /// user granted the permission outside the wizard).
+    private func syncLivePermissionState() {
+        switch currentStep {
+        case .microphone:
+            microphoneResult = core.permissions.microphone
+        case .systemAudio:
+            systemAudioResult = core.permissions.systemAudio
+        case .calendar:
+            switch core.calendar.auth {
+            case .authorized:
+                calendarResult = .authorized
+            case .denied, .restricted:
+                calendarResult = .denied
+            case .notDetermined:
+                calendarResult = .notDetermined
+            }
+        case .notifications:
+            notificationsGranted =
+                core.permissions.notifications == .authorized
+        default:
+            break
+        }
+    }
 
     private func checkDiskSpace() {
         let requiredBytes = Int64(Self.requiredDiskSpaceMB)

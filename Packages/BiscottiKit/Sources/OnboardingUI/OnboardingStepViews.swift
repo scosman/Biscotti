@@ -28,11 +28,13 @@ extension OnboardingView {
                 + "transcribe your meetings."
         ) {
             VStack(spacing: Tokens.spacingSM) {
-                Button("Allow Microphone") {
-                    Task { await viewModel.requestPermission() }
+                if !viewModel.microphoneGranted {
+                    Button("Allow Microphone") {
+                        Task { await viewModel.requestPermission() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
 
                 denialGuidance(
                     state: viewModel.microphoneResult,
@@ -51,11 +53,13 @@ extension OnboardingView {
                 + "and Teams."
         ) {
             VStack(spacing: Tokens.spacingSM) {
-                Button("Allow System Audio") {
-                    Task { await viewModel.requestPermission() }
+                if !viewModel.systemAudioGranted {
+                    Button("Allow System Audio") {
+                        Task { await viewModel.requestPermission() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
 
                 denialGuidance(
                     state: viewModel.systemAudioResult,
@@ -74,11 +78,13 @@ extension OnboardingView {
                 + "recordings to events."
         ) {
             VStack(spacing: Tokens.spacingSM) {
-                Button("Allow Calendar Access") {
-                    Task { await viewModel.requestPermission() }
+                if !viewModel.calendarGranted {
+                    Button("Allow Calendar Access") {
+                        Task { await viewModel.requestPermission() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
 
                 denialGuidance(
                     state: viewModel.calendarResult,
@@ -123,7 +129,6 @@ extension OnboardingView {
             }
             .frame(maxWidth: 400)
         }
-        .frame(maxHeight: 200)
     }
 
     private func calendarBinding(_ calID: String) -> Binding<Bool> {
@@ -161,7 +166,7 @@ extension OnboardingView {
 
     var modelDownloadStep: some View {
         wizardPage(
-            title: "Download speech model",
+            title: "Download Local AI Models",
             explanation: "A one-time download (~1.5 GB). Runs "
                 + "entirely on your Mac."
         ) {
@@ -173,7 +178,7 @@ extension OnboardingView {
                         style: .warning
                     )
                 } else if viewModel.downloadComplete {
-                    Label("Model ready", systemImage: "checkmark.circle.fill")
+                    Label("Models ready", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else if viewModel.isDownloading {
                     VStack(spacing: Tokens.spacingXS) {
@@ -191,6 +196,44 @@ extension OnboardingView {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                 }
+            }
+        }
+    }
+
+    // MARK: - Launch at Login
+
+    var launchAtLoginStep: some View {
+        VStack(spacing: Tokens.spacingLG) {
+            Text("Launch at Login")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text(
+                "Start Biscotti when you start your computer?"
+            )
+            .font(Tokens.metadataFont)
+            .foregroundStyle(Tokens.secondaryText)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 400)
+
+            HStack(spacing: Tokens.spacingMD) {
+                Button("No") {
+                    Task {
+                        await viewModel.setLaunchAtLogin(false)
+                        await viewModel.advance()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Button("Yes") {
+                    Task {
+                        await viewModel.setLaunchAtLogin(true)
+                        await viewModel.advance()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         }
     }

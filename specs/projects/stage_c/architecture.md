@@ -311,12 +311,12 @@ public struct BundledMeetingCatalog: MeetingCatalog {         // V1: compiled-in
 }
 ```
 
-Lives in a small module (or in `Calendar` with `MeetingDetection` depending on it — to avoid a new
-shared module, put `MeetingCatalog` + `BundledMeetingCatalog` in **`Calendar`** and have
-`MeetingDetection` depend on `Calendar` for the protocol only; or put it in a tiny `MeetingCatalog`
-target). **Decision:** put it in its own tiny `MeetingCatalog` target (L0, no deps) so both L1
-services depend on it without `MeetingDetection`→`Calendar` coupling. The conference-regex data and
-the bundle-ID list move here from their current homes (logged in `review_for_human.md`).
+Lives in its own tiny `MeetingCatalog` target (L0, no deps) so both L1 services depend on it without
+`MeetingDetection`→`Calendar` coupling. **Conference-link detection (`conferenceMatch`) lives here in
+`MeetingCatalog` (L0)** — not in `Calendar` or a separate `RemoteConfig` — because both `Calendar`
+and `MeetingDetection` need it. The regex patterns for Zoom, Meet, Teams, etc. and the bundle-ID
+watchlist are compiled into `BundledMeetingCatalog`; `CalendarService` calls `catalog.conferenceMatch`
+when mapping events to DTOs.
 
 ---
 

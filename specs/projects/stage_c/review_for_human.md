@@ -122,3 +122,27 @@ Running log of decisions for the final **human review, feedback & bug-fixing** p
 - **Stabilized flaky `cancelAllThrowsCancellation` FakeScheduler test** (out-of-Phase-10-scope build-stability fix): replaced bare `Task.yield()` with `pollUntil` to ensure the inner task is actually suspended inside `withCheckedThrowingContinuation` before `cancelAll()` fires, and that the catch block has executed before asserting. Applied the same fix to `advanceResumesPendingSleeps` and `partialAdvanceLeavesRemaining` for consistency. Confirmed stable across 3 consecutive test runs.
 - **Disk-check seam added to `OnboardingViewModel`**: injectable `availableDiskBytes` closure (defaults to real filesystem check). Test now deterministically drives both the low-disk warning path and the sufficient-disk path.
 - **Stabilized debounce-timed SearchUI and MeetingDetailUI tests** (post-Phase-10 build-stability): replaced fixed `Task.sleep` waits with `pollUntil` polling in `SearchViewModelTests` (5 tests) and `MeetingDetailPhase8Tests` (ticker + notes autosave, 2 tests). Confirmed stable across 3 consecutive runs.
+
+---
+
+## Phase 11 human-review resolutions (2026-06-10)
+
+User reviewed the autonomous calls above. **Recorded only — not yet implemented** (changes happen during Phase 11, alongside UI feedback).
+
+| # | Item | Resolution | Action |
+|---|------|-----------|--------|
+| 1 | All-day events (currently fully excluded, no setting) | **Confirmed** — keep fully excluded | none |
+| 2 | Auto-stop countdown (15s) | **Confirmed** — keep 15s | none |
+| 3 | Custom-vocabulary Settings section (currently disabled "Coming soon" stub) | **CHANGE** — **hide the section entirely** until the deferred Phase 9 SDK vocab fix lands; leave a `// TODO` at the integration point. Also part of forthcoming UI feedback. | **TODO (Phase 11)** |
+| 4 | Conference-link detection (URL-only; no phone/dial-in) | **Confirmed** — URL-only for V1 | none |
+| — | Lower-priority deferrals: no-FTS transcript search; system-audio permission via silence-inference (no private TCC preflight); recurring-series grouping (P2); onboarding demo step (P2); per-recording manual vocab (P3); audio file-usage view + deletion in Settings (P3) | **Confirmed** as-is / deferred | none |
+
+**Pending Phase 11 actions from this review:** (3) hide the custom-vocab Settings section + leave TODO.
+
+### Phase 11 G1 implementation decisions
+
+- **Launch-at-Login `setLaunchAtLogin` uses same pattern as SettingsViewModel**: persists to `AppSettings.launchAtLogin` via `DataStore.updateSettings` and calls `SMAppService.mainApp.register()`/`.unregister()`. Injectable `readLaunchAtLoginStatus` seam for tests (matches SettingsVM).
+- **`SMAppService.mainApp.unregister()` is async**: unlike `register()` (sync throws), `unregister()` requires `await`. Discovered during compilation; fixed.
+- **Test file split for type_body_length**: new granted-state and launch-at-login tests moved to `OnboardingGrantedAndLoginTests.swift` to keep both test files under the 250-line body-length limit.
+- **Notification permission TODO left in place**: `// TODO(notifications): onboarding notification permission request not functioning on-device -- revisit` added at the `.notifications` case in `requestPermission()`. Step remains in the flow and is skippable.
+- **Architecture.md G7 reconcile**: updated section 7 to state that conference-link detection (`conferenceMatch`) lives in `MeetingCatalog` (L0), not in Calendar or a RemoteConfig split. Minimal wording change; no topology change needed (code was already correct).

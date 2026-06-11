@@ -39,6 +39,9 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let endDate: Date?
     /// Duration derived from audio refs if known, nil otherwise.
     public let duration: TimeInterval?
+    /// The recording's wall-clock duration in seconds, captured at record-stop.
+    /// `nil` for meetings that were never recorded or pre-date the field.
+    public let recordingDuration: TimeInterval?
     public let hasAudio: Bool
     public let preferredTranscript: TranscriptData?
     /// Calendar context from the associated snapshot, if any.
@@ -54,6 +57,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         date: Date,
         endDate: Date? = nil,
         duration: TimeInterval?,
+        recordingDuration: TimeInterval? = nil,
         hasAudio: Bool,
         preferredTranscript: TranscriptData?,
         calendar: CalendarContextData? = nil,
@@ -65,6 +69,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.date = date
         self.endDate = endDate
         self.duration = duration
+        self.recordingDuration = recordingDuration
         self.hasAudio = hasAudio
         self.preferredTranscript = preferredTranscript
         self.calendar = calendar
@@ -292,6 +297,7 @@ public extension DataStore {
             date: meeting.startDate ?? meeting.createdAt,
             endDate: meeting.endDate,
             duration: duration,
+            recordingDuration: meeting.recordingDuration,
             hasAudio: hasAudio,
             preferredTranscript: transcript,
             calendar: calendarContext(meetingID: id),

@@ -38,10 +38,10 @@ public struct MeetingDetailView: View {
                         .padding(.bottom, Tokens.spacingMD)
                 }
 
-                // Audio transport
-                // TODO(playback-duration): total time is wrong -- our AAC (ADTS)
-                // files have no duration in the container header; need to decode/process
-                // the files to compute true duration.
+                // Audio transport — total duration uses the meeting's stored
+                // recordingDuration when available; falls back to
+                // AVAudioPlayer.duration (decode-time self-correction) for
+                // legacy recordings without a stored duration.
                 AudioTransport(
                     isPlaying: viewModel.isPlaying,
                     currentTime: viewModel.playbackCurrentTime,

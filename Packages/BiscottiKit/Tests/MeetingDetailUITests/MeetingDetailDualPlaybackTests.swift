@@ -327,6 +327,42 @@ struct DualFileControlTests {
         #expect(viewModel.playbackDuration == 300)
     }
 
+    @Test("duration uses model recordingDuration over dual player guess")
+    @MainActor
+    func durationModelWinsDual() async throws {
+        let fix = try makeCoreFixture(testName: "DualModelDur")
+        defer { fix.cleanup() }
+
+        // Create a meeting with a known recordingDuration (1800s)
+        let meetingID = try await fix.createMeetingWithAudio(
+            recordingDuration: 1800
+        )
+
+        // Dual player reports a wrong combined duration (7200s)
+        let player = DualFakePlayer()
+        player.duration = 7200
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { player }
+        )
+        await viewModel.load()
+
+        // Model value wins over the player's wrong guess
+        #expect(viewModel.playbackDuration == 1800)
+
+        // Start playback so the ticker fires
+        viewModel.playPause()
+        player.advanceTime(by: 3)
+
+        try await pollUntil { viewModel.playbackCurrentTime == 3 }
+
+        // Model value must still win after ticker
+        #expect(viewModel.playbackDuration == 1800)
+
+        viewModel.stopPlayback()
+    }
+
     @Test("stopPlayback pauses player and stops ticker")
     @MainActor
     func stopPlaybackPauses() async throws {

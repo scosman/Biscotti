@@ -36,8 +36,14 @@ public struct CoreFixture {
     }
 
     /// Creates a meeting with present audio files and returns its ID.
+    ///
+    /// - Parameters:
+    ///   - title: The meeting title.
+    ///   - recordingDuration: Optional wall-clock recording duration (seconds).
+    ///     When non-nil, stored via `setRecordingDuration(_:for:)`.
     public func createMeetingWithAudio(
-        title: String = "Test Meeting"
+        title: String = "Test Meeting",
+        recordingDuration: TimeInterval? = nil
     ) async throws -> UUID {
         let meetingID = try await store.createMeeting(title: title)
         let micRef = AudioFileRef(
@@ -53,6 +59,11 @@ public struct CoreFixture {
             isPresent: true
         )
         try await store.attachAudio([micRef, sysRef], to: meetingID)
+        if let recordingDuration {
+            try await store.setRecordingDuration(
+                recordingDuration, for: meetingID
+            )
+        }
         return meetingID
     }
 }

@@ -243,6 +243,68 @@ struct MeetingDetailAudioPlaybackTests {
         #expect(viewModel.playbackCurrentTime == 10)
     }
 
+    @Test("playback duration uses model recordingDuration over player guess")
+    @MainActor
+    func playbackDurationModelWins() async throws {
+        let fix = try makeCoreFixture(testName: "Phase8ModelDur")
+        defer { fix.cleanup() }
+
+        // Create a meeting with a known recordingDuration (30 min = 1800s)
+        let meetingID = try await fix.createMeetingWithAudio(
+            recordingDuration: 1800
+        )
+
+        // Set the fake player's duration to a WRONG value (2h = 7200s),
+        // simulating the bad ADTS-AAC size/bitrate guess.
+        let fakePlayer = FakeAudioPlayer()
+        fakePlayer.duration = 7200
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        // After load, the displayed duration must be the model value,
+        // NOT the player's wrong guess.
+        #expect(viewModel.playbackDuration == 1800)
+
+        // Start playback so the ticker fires at least once
+        viewModel.playPause()
+        fakePlayer.advanceTime(by: 5)
+
+        // Poll until the ticker has run at least once
+        try await pollUntil { viewModel.playbackCurrentTime == 5 }
+
+        // The model value must STILL win -- syncPlaybackState must not
+        // snap back to the player's 7200.
+        #expect(viewModel.playbackDuration == 1800)
+
+        viewModel.stopPlayback()
+    }
+
+    @Test("playback duration falls back to player when recordingDuration is nil")
+    @MainActor
+    func playbackDurationLegacyFallback() async throws {
+        let fix = try makeCoreFixture(testName: "Phase8LegacyDur")
+        defer { fix.cleanup() }
+
+        // Create a meeting WITHOUT recordingDuration (legacy)
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        fakePlayer.duration = 1234
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        // With no stored duration, the player's value is the fallback
+        #expect(viewModel.playbackDuration == 1234)
+    }
+
     @Test("stopPlayback cancels ticker and pauses player")
     @MainActor
     func stopPlaybackCancelsTicker() async throws {

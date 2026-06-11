@@ -354,10 +354,20 @@ public final class MeetingDetailViewModel {
     }
 
     /// Reads the current player state into stored `@Observable` properties.
+    ///
+    /// Uses the meeting's stored `recordingDuration` as the authoritative
+    /// total when available — ADTS AAC files have no container-level
+    /// duration, so `AVAudioPlayer.duration` is a size/bitrate guess that
+    /// is often very wrong. The player-derived value is the fallback for
+    /// legacy recordings that pre-date the stored field.
     private func syncPlaybackState() {
         isPlaying = audioPlayer?.isPlaying ?? false
         playbackCurrentTime = audioPlayer?.currentTime ?? 0
-        playbackDuration = audioPlayer?.duration ?? 0
+        if let recDur = detail?.recordingDuration, recDur > 0 {
+            playbackDuration = recDur
+        } else {
+            playbackDuration = audioPlayer?.duration ?? 0
+        }
     }
 
     /// Starts the periodic ticker that polls the player ~4x/sec.

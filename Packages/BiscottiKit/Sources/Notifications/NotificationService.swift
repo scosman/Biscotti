@@ -38,12 +38,18 @@ public final class NotificationService {
     /// Requests notification authorization (alert + sound).
     /// Returns `true` if granted. Safe to call multiple times.
     public func requestAuthorization() async -> Bool {
+        logger.info("requestAuthorization: entry, options=[.alert, .sound]")
         do {
             let granted = try await provider.requestAuthorization()
             cachedAuthStatus = granted ? .authorized : .denied
+            logger.info(
+                "requestAuthorization: result granted=\(granted)"
+            )
             return granted
         } catch {
-            logger.error("Authorization request failed: \(error)")
+            logger.error(
+                "requestAuthorization: threw error: \(error)"
+            )
             cachedAuthStatus = .denied
             return false
         }

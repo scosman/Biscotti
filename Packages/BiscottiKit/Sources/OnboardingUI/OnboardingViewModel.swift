@@ -269,7 +269,6 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
             // Also update Permissions so the settings pane stays consistent
             core.permissions.noteCalendar(calendarResult)
         case .notifications:
-            // TODO(notifications): onboarding notification permission request not functioning on-device -- revisit
             let granted = await core.permissions
                 .requestNotifications()
             notificationsGranted = granted

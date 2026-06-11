@@ -65,6 +65,14 @@ public extension AppCore {
         logger.info("AppCore.live: NotificationService init")
         let notifications = NotificationService()
 
+        // Wire the live notification authorizer into Permissions so
+        // that requestNotifications() actually calls
+        // UNUserNotificationCenter.requestAuthorization(options:).
+        let notifAuth = LiveNotificationAuthorizerAdapter(
+            service: notifications
+        )
+        permissions.setNotificationAuthorizer(notifAuth)
+
         logger.info("AppCore.live: constructing AppCore")
         let core = AppCore(
             store: store,
@@ -117,6 +125,32 @@ private struct LiveRecorderAdapter: RecorderControlling {
 
     func probableSystemAudioDenied() async -> Bool {
         await recorder.probableSystemAudioDenied()
+    }
+}
+
+// MARK: - Notification authorizer adapter
+
+/// Bridges `NotificationService` to the `NotificationAuthorizing` protocol
+/// so that `Permissions.requestNotifications()` actually fires the real
+/// `UNUserNotificationCenter.requestAuthorization(options:)` call.
+///
+/// `@MainActor` because `NotificationService` is `@MainActor`-isolated.
+private struct LiveNotificationAuthorizerAdapter: NotificationAuthorizing,
+    @unchecked Sendable
+{
+    let service: NotificationService
+
+    func status() async -> PermissionState {
+        let authorized = await service.isCurrentlyAuthorized()
+        if authorized {
+            return .authorized
+        }
+        let denied = await service.isDenied()
+        return denied ? .denied : .notDetermined
+    }
+
+    func request() async -> Bool {
+        await service.requestAuthorization()
     }
 }
 

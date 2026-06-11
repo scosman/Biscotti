@@ -1,14 +1,27 @@
+import os
 import UserNotifications
 
 /// Production wrapper around `UNUserNotificationCenter.current()`.
 ///
 /// Thin forwarding — no interesting logic. Exists purely so the seam is injectable.
 public struct LiveNotificationCenter: NotificationCenterProviding, Sendable {
+    private let logger = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "LiveNotificationCenter"
+    )
+
     public init() {}
 
     public func requestAuthorization() async throws -> Bool {
-        try await UNUserNotificationCenter.current()
+        logger.info(
+            "requestAuthorization: calling UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])"
+        )
+        let granted = try await UNUserNotificationCenter.current()
             .requestAuthorization(options: [.alert, .sound])
+        logger.info(
+            "requestAuthorization: UNUserNotificationCenter returned granted=\(granted)"
+        )
+        return granted
     }
 
     public func setCategories(_ categories: Set<UNNotificationCategory>) {
@@ -31,6 +44,9 @@ public struct LiveNotificationCenter: NotificationCenterProviding, Sendable {
 
     public func authorizationStatus() async -> UNAuthorizationStatus {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
+        logger.info(
+            "authorizationStatus: \(settings.authorizationStatus.rawValue)"
+        )
         return settings.authorizationStatus
     }
 }

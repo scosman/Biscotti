@@ -25,7 +25,7 @@ public final class Permissions {
 
     private let mic: any MicAuthorizing
     private let cal: (any CalendarAuthorizing)?
-    private let notif: (any NotificationAuthorizing)?
+    private var notif: (any NotificationAuthorizing)?
 
     /// Creates a Permissions instance.
     /// - Parameters:
@@ -46,6 +46,16 @@ public final class Permissions {
         systemAudio = .notDetermined
         calendar = cal?.status() ?? .notDetermined
         notifications = .notDetermined
+    }
+
+    /// Sets the notification authorization seam after construction.
+    ///
+    /// Used by `AppCore.live` where `NotificationService` is created
+    /// after `Permissions` but before any notification requests.
+    public func setNotificationAuthorizer(
+        _ authorizer: any NotificationAuthorizing
+    ) {
+        notif = authorizer
     }
 
     /// Re-reads statuses from the system.

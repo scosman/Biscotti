@@ -324,7 +324,7 @@ struct MeetingDetailCalendarContextDisplayTests {
     }
 
     @Test(
-        "single VM: associate event, context appears"
+        "single VM: load nearby events, associate, context appears"
     )
     @MainActor
     func singleVMAssociateThenVerify() async throws {
@@ -343,11 +343,6 @@ struct MeetingDetailCalendarContextDisplayTests {
         )
         defer { fix.cleanup() }
 
-        try await fix.store.updateSettings {
-            $0.onboardingComplete = true
-        }
-        await fix.core.onLaunch()
-
         let meetingID = try await fix.store.createMeeting(
             title: "Link Test"
         )
@@ -360,8 +355,10 @@ struct MeetingDetailCalendarContextDisplayTests {
         await viewModel.load()
         #expect(viewModel.hasCalendarContext == false)
 
-        guard let eventKey = fix.core.upcoming.first?.id else {
-            Issue.record("Expected at least one upcoming event")
+        // Load nearby events (uses eventsNear the meeting's date)
+        await viewModel.loadNearbyEvents()
+        guard let eventKey = viewModel.availableEvents.first?.id else {
+            Issue.record("Expected at least one nearby event")
             return
         }
         await viewModel.correctAssociation(eventKey: eventKey)
@@ -388,14 +385,10 @@ struct MeetingDetailReTranscribeHiddenTests {
 
         let fix = try makeCoreFixture(
             calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
             testName: "G3aNoPrompt"
         )
         defer { fix.cleanup() }
-
-        try await fix.store.updateSettings {
-            $0.onboardingComplete = true
-        }
-        await fix.core.onLaunch()
 
         let meetingID = try await fix.store.createMeeting(
             title: "No Prompt Test"
@@ -408,8 +401,10 @@ struct MeetingDetailReTranscribeHiddenTests {
         )
         await viewModel.load()
 
-        guard let eventKey = fix.core.upcoming.first?.id else {
-            Issue.record("Expected at least one upcoming event")
+        await viewModel.loadNearbyEvents()
+        guard let eventKey = viewModel.availableEvents.first?.id
+        else {
+            Issue.record("Expected at least one nearby event")
             return
         }
 
@@ -442,18 +437,18 @@ struct MeetingDetailReTranscribeHiddenTests {
     }
 }
 
-// MARK: - Join button 30-min gating (item 5)
+// MARK: - Open in Calendar (replaced Join button)
 
-@Suite("MeetingDetailViewModel -- Join button visibility")
-struct MeetingDetailJoinButtonTests {
-    @Test("showJoinButton false when no conference URL")
+@Suite("MeetingDetailViewModel -- Open in Calendar")
+struct MeetingDetailOpenInCalendarTests {
+    @Test("showOpenInCalendar false when no calendar context")
     @MainActor
-    func joinHiddenWithoutURL() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func openInCalHiddenWithoutContext() async throws {
+        let fix = try makeCoreFixture(testName: "G3aOpenCal")
         defer { fix.cleanup() }
 
         let meetingID = try await fix.store.createMeeting(
-            title: "No URL Meeting"
+            title: "No Context"
         )
 
         let viewModel = MeetingDetailViewModel(
@@ -463,156 +458,382 @@ struct MeetingDetailJoinButtonTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.showJoinButton == false)
+        #expect(viewModel.showOpenInCalendar == false)
     }
 
-    @Test("showJoinButton true for recent meeting with conference URL")
+    @Test("showOpenInCalendar true when calendar context exists")
     @MainActor
-    func joinShownForRecentMeeting() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func openInCalShownWithContext() async throws {
+        let fix = try makeCoreFixture(testName: "G3aOpenCal")
         defer { fix.cleanup() }
 
-        let now = Date()
         let meetingID = try await fix.store.createMeeting(
-            title: "Recent Zoom"
+            title: "Has Context"
+        )
+        try await fix.store.setSnapshot(
+            makeSnapshot(suffix: "opencal", title: "Team Sync"),
+            for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.showOpenInCalendar == true)
+    }
+
+    @Test("openInCalendar uses eventIdentifier URL when available")
+    @MainActor
+    func openInCalUsesEventIdentifier() async throws {
+        let fix = try makeCoreFixture(testName: "G3aOpenCal")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "ID Test"
+        )
+        try await fix.store.setSnapshot(
+            makeSnapshot(suffix: "idtest", title: "Design Review"),
+            for: meetingID
+        )
+
+        var openedURL: URL?
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() },
+            urlOpener: { openedURL = $0 }
+        )
+        await viewModel.load()
+
+        viewModel.openInCalendar()
+
+        #expect(openedURL != nil)
+        let urlString = try #require(openedURL?.absoluteString)
+        #expect(urlString.contains("ical://ekevent/ev-idtest"))
+        #expect(urlString.contains("method=show"))
+    }
+
+    @Test("openInCalendar falls back when eventIdentifier is nil")
+    @MainActor
+    func openInCalFallsBackWithoutIdentifier() async throws {
+        let fix = try makeCoreFixture(testName: "G3aOpenCal")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "No EID"
+        )
+        // Snapshot with no eventIdentifier
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: nil,
+            compositeKey: "key-noeid",
+            title: "Fallback Event",
+            startDate: Date()
+        )
+        try await fix.store.setSnapshot(snapshot, for: meetingID)
+
+        var openedURL: URL?
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() },
+            urlOpener: { openedURL = $0 }
+        )
+        await viewModel.load()
+
+        viewModel.openInCalendar()
+
+        #expect(openedURL != nil)
+        let urlString = try #require(openedURL?.absoluteString)
+        #expect(urlString.hasPrefix("ical://"))
+    }
+}
+
+// MARK: - Association refresh (Item 1)
+
+@Suite("MeetingDetailViewModel -- association refresh")
+struct MeetingDetailAssociationRefreshTests {
+    @Test(
+        "past meeting: eventsNear surfaces event that forward-only upcoming misses"
+    )
+    @MainActor
+    func pastMeetingFindsEventViaNearby() async throws {
+        // The event occurred at the same time as the meeting but is
+        // NOT in the forward 24h window (upcoming is empty).
+        let pastDate = Date()
+        let dto = makeEventDTO(
+            suffix: "past",
+            title: "Past Standup",
+            startDate: pastDate,
+            location: "https://zoom.us/j/past",
+            calendarTitle: "Team",
+            calendarColorHex: "#33CC33"
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "B2Past"
+        )
+        defer { fix.cleanup() }
+
+        // Do NOT call onLaunch -- upcoming stays empty, simulating
+        // a past recording where the forward window has no events.
+        let meetingID = try await fix.store.createMeeting(
+            title: "Past Recording"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        // upcoming is empty -- old code would show no events
+        #expect(fix.core.upcoming.isEmpty)
+        #expect(viewModel.availableEvents.isEmpty)
+
+        // loadNearbyEvents fetches events near the meeting's date
+        await viewModel.loadNearbyEvents()
+
+        #expect(viewModel.availableEvents.count == 1)
+        #expect(
+            viewModel.availableEvents.first?.title == "Past Standup"
+        )
+
+        // Associate using the nearby event key
+        guard let eventKey = viewModel.availableEvents.first?.id else {
+            Issue.record("Expected nearby event")
+            return
+        }
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        // Context appears with real fields, visible without relaunch
+        #expect(viewModel.calendarContext != nil)
+        #expect(viewModel.hasCalendarContext == true)
+        #expect(viewModel.calendarContext?.calendarTitle == "Team")
+        #expect(viewModel.calendarContext?.title == "Past Standup")
+        #expect(viewModel.editableTitle == "Past Standup")
+        #expect(viewModel.showOpenInCalendar == true)
+    }
+
+    @Test(
+        "failed snapshot lookup does NOT wipe existing association"
+    )
+    @MainActor
+    func failedLookupPreservesExisting() async throws {
+        // Set up a meeting with an existing calendar association
+        let fix = try makeCoreFixture(testName: "B2NonDestructive")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Linked Meeting"
         )
         try await fix.store.setSnapshot(
             makeSnapshot(
-                suffix: "join",
-                startDate: now.addingTimeInterval(-3600),
-                endDate: now.addingTimeInterval(-600),
-                conferenceURL: URL(string: "https://zoom.us/j/join"),
-                conferencePlatform: "Zoom"
+                suffix: "existing",
+                calendarTitle: "Work",
+                title: "Existing Event"
             ),
             for: meetingID
         )
 
         let viewModel = MeetingDetailViewModel(
-            core: fix.core, meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() },
-            currentDate: { now }
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
         )
         await viewModel.load()
 
-        #expect(viewModel.showJoinButton == true)
+        // Confirm existing association is present
+        #expect(viewModel.hasCalendarContext == true)
+        #expect(viewModel.calendarContext?.title == "Existing Event")
+        #expect(viewModel.calendarContext?.calendarTitle == "Work")
+
+        // Attempt to associate with a bogus key that cannot be resolved
+        // (FakeEventStore has no DTOs cached, so snapshot(forKey:) fails)
+        await viewModel.correctAssociation(eventKey: "bogus-key-999")
+
+        // Existing association must be PRESERVED (non-destructive)
+        #expect(viewModel.hasCalendarContext == true)
+        #expect(viewModel.calendarContext?.title == "Existing Event")
+        #expect(viewModel.calendarContext?.calendarTitle == "Work")
     }
 
-    @Test("showJoinButton false for meeting ended >30 min ago")
+    @Test(
+        "explicit unlink (nil eventKey) still clears association"
+    )
     @MainActor
-    func joinHiddenForOldMeeting() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func explicitUnlinkClearsContext() async throws {
+        let fix = try makeCoreFixture(testName: "B2Unlink")
         defer { fix.cleanup() }
 
-        let now = Date()
         let meetingID = try await fix.store.createMeeting(
-            title: "Old Zoom"
+            title: "Clear Test"
         )
         try await fix.store.setSnapshot(
-            makeSnapshot(
-                suffix: "old-join",
-                startDate: now.addingTimeInterval(-10800),
-                endDate: now.addingTimeInterval(-7200),
-                conferenceURL: URL(string: "https://zoom.us/j/old"),
-                conferencePlatform: "Zoom"
-            ),
+            makeSnapshot(suffix: "clear", title: "Old Event"),
             for: meetingID
         )
 
         let viewModel = MeetingDetailViewModel(
-            core: fix.core, meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() },
-            currentDate: { now }
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
         )
         await viewModel.load()
 
-        #expect(viewModel.showJoinButton == false)
-    }
+        #expect(viewModel.hasCalendarContext == true)
+        #expect(viewModel.showOpenInCalendar == true)
 
-    @Test("showJoinButton true for in-progress meeting")
+        await viewModel.removeAssociation()
+
+        #expect(viewModel.hasCalendarContext == false)
+        #expect(viewModel.calendarContext == nil)
+        #expect(viewModel.showOpenInCalendar == false)
+    }
+}
+
+// MARK: - Cache-eviction race guard (Item 1 follow-up)
+
+@Suite("CalendarService -- candidate cache survives refreshUpcoming")
+struct CalendarCandidateCacheRaceTests {
+    @Test(
+        "refreshUpcoming after eventsNear does not evict candidate; association still resolves"
+    )
     @MainActor
-    func joinShownForInProgressMeeting() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func raceRefreshDoesNotEvictCandidate() async throws {
+        let pastDate = Date()
+        let dto = makeEventDTO(
+            suffix: "race",
+            title: "Past Standup",
+            startDate: pastDate,
+            location: "https://zoom.us/j/race",
+            calendarTitle: "Team",
+            calendarColorHex: "#33CC33"
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "B2Race"
+        )
         defer { fix.cleanup() }
 
-        let now = Date()
         let meetingID = try await fix.store.createMeeting(
-            title: "In Progress"
-        )
-        try await fix.store.setSnapshot(
-            makeSnapshot(
-                suffix: "inprogress",
-                startDate: now.addingTimeInterval(-1800),
-                endDate: now.addingTimeInterval(1800),
-                conferenceURL: URL(string: "https://zoom.us/j/prog"),
-                conferencePlatform: "Zoom"
-            ),
-            for: meetingID
+            title: "Race Test"
         )
 
         let viewModel = MeetingDetailViewModel(
-            core: fix.core, meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() },
-            currentDate: { now }
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
         )
         await viewModel.load()
 
-        #expect(viewModel.showJoinButton == true)
-    }
+        // 1) Load nearby events -- populates candidateDTOs
+        await viewModel.loadNearbyEvents()
+        #expect(viewModel.availableEvents.count == 1)
+        let eventKey = try #require(
+            viewModel.availableEvents.first?.id
+        )
 
-    @Test("showJoinButton false without conference URL even with endDate")
+        // 2) Simulate EKEventStoreChanged: remove the past event from
+        //    the fake store's DTOs (it's outside the forward window) and
+        //    trigger refreshUpcoming. This replaces cachedDTOs entirely.
+        fix.fakeEventStore.eventDTOs = []
+        let now = Date()
+        await fix.calendarService.refreshUpcoming(
+            window: DateInterval(
+                start: now,
+                end: now.addingTimeInterval(24 * 60 * 60)
+            )
+        )
+
+        // upcoming is now empty -- cachedDTOs wiped
+        #expect(fix.core.upcoming.isEmpty)
+
+        // 3) Associate using the previously-fetched event key.
+        //    Before the fix, snapshot(forKey:) would return nil because
+        //    cachedDTOs was replaced. With candidateDTOs, it survives.
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        // Context must be present with real fields
+        #expect(viewModel.hasCalendarContext == true)
+        #expect(viewModel.calendarContext?.title == "Past Standup")
+        #expect(viewModel.calendarContext?.calendarTitle == "Team")
+        #expect(viewModel.showOpenInCalendar == true)
+    }
+}
+
+// MARK: - hasCalendarAccess for picker (Item 4)
+
+@Suite("MeetingDetailViewModel -- calendar access for picker")
+struct MeetingDetailCalendarAccessTests {
+    @Test("hasCalendarAccess true when authorized")
     @MainActor
-    func joinHiddenWithoutConferenceURL() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func accessTrueWhenAuthorized() async throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            testName: "B2Access"
+        )
         defer { fix.cleanup() }
 
-        let now = Date()
         let meetingID = try await fix.store.createMeeting(
-            title: "No Snapshot",
-            start: now.addingTimeInterval(-7200),
-            end: now.addingTimeInterval(-3600)
+            title: "Access Test"
         )
-
         let viewModel = MeetingDetailViewModel(
-            core: fix.core, meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() },
-            currentDate: { now }
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
         )
-        await viewModel.load()
 
-        #expect(viewModel.showJoinButton == false)
+        #expect(viewModel.hasCalendarAccess == true)
     }
 
-    @Test("showJoinButton at exactly 30-min boundary")
+    @Test("hasCalendarAccess false when denied")
     @MainActor
-    func joinAtExactBoundary() async throws {
-        let fix = try makeCoreFixture(testName: "G3aJoin")
+    func accessFalseWhenDenied() async throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            testName: "B2Access"
+        )
         defer { fix.cleanup() }
 
-        let now = Date()
-        let endTime = now.addingTimeInterval(-30 * 60)
         let meetingID = try await fix.store.createMeeting(
-            title: "Boundary"
+            title: "Denied Test"
         )
-        try await fix.store.setSnapshot(
-            makeSnapshot(
-                suffix: "boundary",
-                startDate: endTime.addingTimeInterval(-3600),
-                endDate: endTime,
-                conferenceURL: URL(string: "https://zoom.us/j/edge"),
-                conferencePlatform: "Zoom"
-            ),
-            for: meetingID
-        )
-
         let viewModel = MeetingDetailViewModel(
-            core: fix.core, meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() },
-            currentDate: { now }
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
         )
-        await viewModel.load()
 
-        // At exactly the boundary, now <= cutoff, so shown
-        #expect(viewModel.showJoinButton == true)
+        #expect(viewModel.hasCalendarAccess == false)
+    }
+
+    @Test("hasCalendarAccess false when notDetermined")
+    @MainActor
+    func accessFalseWhenNotDetermined() async throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .notDetermined,
+            testName: "B2Access"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Not Determined Test"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+
+        #expect(viewModel.hasCalendarAccess == false)
     }
 }
 

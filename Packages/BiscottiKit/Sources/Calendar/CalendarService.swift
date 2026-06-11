@@ -36,6 +36,13 @@ public final class CalendarService {
     /// Cached DTOs from the last `refreshUpcoming` for snapshot lookup.
     private var cachedDTOs: [String: EKEventDTO] = [:]
 
+    /// Separate cache for DTOs fetched by `eventsNear(_:)`. Replaced
+    /// (not merged) on each call -- bounded to the last picker fetch.
+    /// Kept independent from `cachedDTOs` so a concurrent
+    /// `refreshUpcoming` (e.g. from `.EKEventStoreChanged`) cannot
+    /// evict a past-event entry while the picker is open.
+    private var candidateDTOs: [String: EKEventDTO] = [:]
+
     /// Observation token for `.EKEventStoreChanged`.
     /// Wrapped in a class so deinit (nonisolated in Swift 6) can clean up
     /// without accessing MainActor-isolated storage.
@@ -81,40 +88,17 @@ public final class CalendarService {
 
     /// Re-fetch meeting-like events in the given window. Updates `upcoming`.
     public func refreshUpcoming(window: DateInterval) async {
-        await loadEnabledCalendarIDs()
-        let calendarIDs = enabledCalendarIDsForProvider()
-
-        let dtos = await Task.detached { [provider] in
-            provider.events(in: window, calendars: calendarIDs)
-        }.value
+        let dtos = await fetchDTOs(in: window)
 
         var events: [CalendarEvent] = []
         var dtoCache: [String: EKEventDTO] = [:]
 
         for dto in dtos {
-            // Compute conference match once; reuse for both meeting-like filter and event construction.
             let conference = conferenceResult(for: dto)
-            guard isMeetingLike(dto, conference: conference) else { continue }
-            let key = CompositeKey.make(
-                eventIdentifier: dto.eventIdentifier,
-                calendarItemIdentifier: dto.calendarItemIdentifier,
-                occurrenceStartDate: dto.occurrenceDate
-            )
-            let event = CalendarEvent(
-                id: key,
-                title: dto.title ?? "(No title)",
-                start: dto.startDate,
-                end: dto.endDate,
-                conferencePlatform: conference?.platform,
-                conferenceURL: conference?.url,
-                attendeeCount: dto.attendeeCount,
-                calendarTitle: dto.calendarTitle,
-                calendarColorHex: dto.calendarColorHex,
-                isMeetingLike: true,
-                organizer: dto.organizer.map { attendeeInfo(from: $0) },
-                attendees: dto.attendees.map { attendeeInfo(from: $0) },
-                notes: dto.notes,
-                location: dto.location
+            guard isMeetingLike(dto, conference: conference)
+            else { continue }
+            let (key, event) = mapDTOToEvent(
+                dto, conference: conference, meetingLike: true
             )
             events.append(event)
             dtoCache[key] = dto
@@ -128,6 +112,42 @@ public final class CalendarService {
     /// Look up a cached CalendarEvent by its composite key string.
     public func event(forKey key: String) -> CalendarEvent? {
         upcoming.first { $0.id == key }
+    }
+
+    /// Fetch calendar events in a window around `date` for association
+    /// correction on past meetings. Returns ALL non-all-day, non-birthday
+    /// events (not just meeting-like) so the user can link any event.
+    /// Also caches the underlying DTOs so `snapshot(forKey:)` can resolve
+    /// them later.
+    ///
+    /// Window: +/- 2 hours around `date`.
+    public func eventsNear(_ date: Date) async -> [CalendarEvent] {
+        let windowRadius: TimeInterval = 2 * 60 * 60 // 2 hours
+        let window = DateInterval(
+            start: date.addingTimeInterval(-windowRadius),
+            end: date.addingTimeInterval(windowRadius)
+        )
+        let dtos = await fetchDTOs(in: window)
+
+        var events: [CalendarEvent] = []
+        var newCandidates: [String: EKEventDTO] = [:]
+        for dto in dtos {
+            guard !dto.isAllDay else { continue }
+            guard dto.birthdayContactIdentifier == nil else { continue }
+            let conference = conferenceResult(for: dto)
+            let meetingLike = isMeetingLike(
+                dto, conference: conference
+            )
+            let (key, event) = mapDTOToEvent(
+                dto, conference: conference, meetingLike: meetingLike
+            )
+            events.append(event)
+            newCandidates[key] = dto
+        }
+
+        candidateDTOs = newCandidates
+        events.sort { $0.start < $1.start }
+        return events
     }
 
     /// Pick the best calendar event for auto-association at recording start.
@@ -166,8 +186,9 @@ public final class CalendarService {
     public func snapshot(
         forKey key: String
     ) async -> CalendarSnapshotInput? {
-        // Parse the key to get eventIdentifier and occurrenceStart
-        guard let cached = cachedDTOs[key] else { return nil }
+        // Resolve from upcoming cache first, then candidate (picker) cache.
+        guard let cached = cachedDTOs[key] ?? candidateDTOs[key]
+        else { return nil }
 
         let freshDTO = await Task.detached { [provider] in
             provider.refreshEvent(
@@ -244,7 +265,66 @@ public final class CalendarService {
         cachedEnabledIDs.map(Array.init)
     }
 
-    private func mapToSnapshotInput(
+    /// Shared fetch: load enabled calendar IDs, fetch DTOs from provider.
+    private func fetchDTOs(
+        in window: DateInterval
+    ) async -> [EKEventDTO] {
+        await loadEnabledCalendarIDs()
+        let calendarIDs = enabledCalendarIDsForProvider()
+        return await Task.detached { [provider] in
+            provider.events(in: window, calendars: calendarIDs)
+        }.value
+    }
+
+    /// Shared mapper: converts an EKEventDTO into a (compositeKey, CalendarEvent) pair.
+    private func mapDTOToEvent(
+        _ dto: EKEventDTO,
+        conference: (platform: String, url: URL)?,
+        meetingLike: Bool
+    ) -> (String, CalendarEvent) {
+        let key = CompositeKey.make(
+            eventIdentifier: dto.eventIdentifier,
+            calendarItemIdentifier: dto.calendarItemIdentifier,
+            occurrenceStartDate: dto.occurrenceDate
+        )
+        let event = CalendarEvent(
+            id: key,
+            title: dto.title ?? "(No title)",
+            start: dto.startDate,
+            end: dto.endDate,
+            conferencePlatform: conference?.platform,
+            conferenceURL: conference?.url,
+            attendeeCount: dto.attendeeCount,
+            calendarTitle: dto.calendarTitle,
+            calendarColorHex: dto.calendarColorHex,
+            isMeetingLike: meetingLike,
+            organizer: dto.organizer.map { attendeeInfo(from: $0) },
+            attendees: dto.attendees.map { attendeeInfo(from: $0) },
+            notes: dto.notes,
+            location: dto.location
+        )
+        return (key, event)
+    }
+}
+
+// MARK: - Store-change handling
+
+extension CalendarService {
+    private func handleStoreChanged() async {
+        // Re-fetch upcoming events with a 24h window
+        let now = Date()
+        let window = DateInterval(
+            start: now,
+            end: now.addingTimeInterval(24 * 60 * 60)
+        )
+        await refreshUpcoming(window: window)
+    }
+}
+
+// MARK: - Snapshot mapping
+
+private extension CalendarService {
+    func mapToSnapshotInput(
         _ dto: EKEventDTO
     ) -> CalendarSnapshotInput {
         let key = CompositeKey.make(
@@ -265,7 +345,8 @@ public final class CalendarService {
         return CalendarSnapshotInput(
             eventIdentifier: dto.eventIdentifier,
             calendarItemIdentifier: dto.calendarItemIdentifier,
-            calendarItemExternalIdentifier: dto.calendarItemExternalIdentifier,
+            calendarItemExternalIdentifier: dto
+                .calendarItemExternalIdentifier,
             occurrenceStartDate: dto.occurrenceDate,
             compositeKey: key,
             title: dto.title ?? "(No title)",
@@ -287,7 +368,7 @@ public final class CalendarService {
         )
     }
 
-    private func mapAttendee(_ dto: AttendeeDTO) -> AttendeeInput {
+    func mapAttendee(_ dto: AttendeeDTO) -> AttendeeInput {
         AttendeeInput(
             name: dto.name,
             email: EmailParser.email(from: dto.participantURL),
@@ -296,20 +377,6 @@ public final class CalendarService {
             status: dto.status,
             type: dto.type
         )
-    }
-}
-
-// MARK: - Store-change handling
-
-extension CalendarService {
-    private func handleStoreChanged() async {
-        // Re-fetch upcoming events with a 24h window
-        let now = Date()
-        let window = DateInterval(
-            start: now,
-            end: now.addingTimeInterval(24 * 60 * 60)
-        )
-        await refreshUpcoming(window: window)
     }
 }
 

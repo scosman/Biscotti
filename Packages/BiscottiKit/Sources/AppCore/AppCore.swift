@@ -390,30 +390,6 @@ public final class AppCore {
         await recording.probeSystemAudioAndInferState()
     }
 
-    // MARK: - Association correction
-
-    /// Corrects the calendar association for a meeting. Pass `nil` to
-    /// remove the association entirely.
-    public func correctAssociation(
-        meetingID: UUID,
-        eventKey: String?
-    ) async {
-        do {
-            try await store.clearSnapshot(for: meetingID)
-            try await store.setParticipants(
-                [], organizer: nil, for: meetingID
-            )
-
-            if let eventKey,
-               let input = await calendar.snapshot(forKey: eventKey)
-            {
-                try await persistSnapshot(input, for: meetingID)
-            }
-        } catch {
-            logger.error("Association correction failed: \(error)")
-        }
-    }
-
     // MARK: - Data refresh
 
     /// Reloads the sidebar summaries from the store.
@@ -665,6 +641,51 @@ extension AppCore {
 // MARK: - Association
 
 extension AppCore {
+    /// Fetches calendar events near a given date for the association
+    /// picker. Delegates to `CalendarService.eventsNear(_:)` which
+    /// uses a +/- 2h window and caches DTOs for snapshot resolution.
+    public func eventsNear(_ date: Date) async -> [CalendarEvent] {
+        await calendar.eventsNear(date)
+    }
+
+    /// Corrects the calendar association for a meeting. Pass `nil` to
+    /// remove the association entirely.
+    ///
+    /// Non-destructive: fetches/builds the new snapshot FIRST. Only
+    /// after success does it clear the old association and persist the
+    /// new one. A failed lookup leaves the existing association intact.
+    public func correctAssociation(
+        meetingID: UUID,
+        eventKey: String?
+    ) async {
+        do {
+            if let eventKey {
+                // Fetch the new snapshot BEFORE clearing the old one.
+                // If this fails, the existing association is preserved.
+                guard let input = await calendar.snapshot(forKey: eventKey)
+                else {
+                    logger.warning(
+                        "Association correction: snapshot lookup failed for key \(eventKey); existing association preserved"
+                    )
+                    return
+                }
+                try await store.clearSnapshot(for: meetingID)
+                try await store.setParticipants(
+                    [], organizer: nil, for: meetingID
+                )
+                try await persistSnapshot(input, for: meetingID)
+            } else {
+                // Explicit unlink: clear the association.
+                try await store.clearSnapshot(for: meetingID)
+                try await store.setParticipants(
+                    [], organizer: nil, for: meetingID
+                )
+            }
+        } catch {
+            logger.error("Association correction failed: \(error)")
+        }
+    }
+
     private func associateEvent(
         _ event: CalendarEvent,
         with meetingID: UUID

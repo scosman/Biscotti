@@ -25,16 +25,19 @@ public enum MeetingDetailState: Sendable, Equatable {
 ///
 /// Stage C additions: calendar context display, association correction,
 /// audio playback, transcript version switching, notes autosave,
-/// editable title, and Join-button time gating.
+/// editable title, and Open-in-Calendar deep link.
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
     private let meetingID: UUID
     private let makePlayer: () -> any AudioPlaybackProviding
 
-    /// Injectable "now" for deterministic testing of time-gated UI
-    /// (e.g. showJoinButton's 30-min cutoff).
+    /// Injectable "now" for deterministic testing of time-gated UI.
     private let currentDate: () -> Date
+
+    /// Injectable callback for opening URLs (mirrors EventPreviewViewModel).
+    /// Set by the app target to `NSWorkspace.shared.open`; tests inject a spy.
+    private let urlOpener: (URL) -> Void
 
     /// The meeting detail data loaded from the store.
     public private(set) var detail: MeetingDetailData?
@@ -104,6 +107,16 @@ public final class MeetingDetailViewModel {
     /// Debounce interval for notes autosave.
     private static let notesDebounceInterval: Duration = .seconds(1)
 
+    // MARK: - Association picker
+
+    /// Calendar events near this meeting's recording time, fetched on
+    /// demand when the picker opens. Replaces the forward-only
+    /// `core.upcoming` so past meetings can find their real events.
+    public private(set) var nearbyEvents: [CalendarEvent] = []
+
+    /// Whether nearby events are currently being fetched.
+    public private(set) var isLoadingNearbyEvents: Bool = false
+
     // MARK: - Phase 11: Editable title
 
     /// The user-editable title, two-way bound to the inline TextField.
@@ -114,12 +127,14 @@ public final class MeetingDetailViewModel {
         meetingID: UUID,
         makePlayer: @escaping () -> any AudioPlaybackProviding
             = { AVAudioPlayerWrapper() },
-        currentDate: @escaping () -> Date = { Date() }
+        currentDate: @escaping () -> Date = { Date() },
+        urlOpener: @escaping (URL) -> Void = { _ in }
     ) {
         self.core = core
         self.meetingID = meetingID
         self.makePlayer = makePlayer
         self.currentDate = currentDate
+        self.urlOpener = urlOpener
     }
 
     // MARK: - Derived state
@@ -193,23 +208,25 @@ public final class MeetingDetailViewModel {
         !hasCalendarContext
     }
 
-    /// Whether the Join button should be shown.
-    ///
-    /// Hidden when the meeting ended more than 30 minutes ago (the link
-    /// is no longer useful). Uses the meeting's `endDate`, falling back
-    /// to `date + duration` if `endDate` is nil, or `date` if duration
-    /// is also nil.
-    public var showJoinButton: Bool {
-        guard calendarContext?.conferenceURL != nil else { return false }
-        let meetingEnd = effectiveMeetingEnd
-        guard let meetingEnd else { return true }
-        let cutoff = meetingEnd.addingTimeInterval(30 * 60)
-        return currentDate() <= cutoff
+    /// Whether the "Open in Calendar" button should be shown.
+    /// Visible when there is an associated calendar event (i.e. calendar
+    /// context exists).
+    public var showOpenInCalendar: Bool {
+        calendarContext != nil
     }
 
-    /// The upcoming events available for association correction.
+    /// Calendar events available for association correction. Populated
+    /// by `loadNearbyEvents()` when the picker opens, using a +/- 2h
+    /// window around the meeting's recording time instead of the
+    /// forward-only `core.upcoming`.
     public var availableEvents: [CalendarEvent] {
-        core.upcoming
+        nearbyEvents
+    }
+
+    /// Whether calendar access has been granted. Used to decide between
+    /// "no events near this time" vs "grant calendar access" in the picker.
+    public var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
     }
 
     /// Whether audio playback is available.
@@ -271,11 +288,6 @@ public final class MeetingDetailViewModel {
     public func retry() async {
         await core.transcription.transcribe(meetingID: meetingID)
         await load()
-    }
-
-    /// Opens the event picker for association correction.
-    public func presentAssociationCorrection() {
-        showEventPicker = true
     }
 
     /// Corrects the association to a new event (or removes it if nil).
@@ -427,9 +439,52 @@ public final class MeetingDetailViewModel {
     }
 }
 
-// MARK: - Phase 11: Title save
+// MARK: - Calendar deep link, nearby events, title save
 
 public extension MeetingDetailViewModel {
+    /// Opens the event picker and fetches events near the meeting's
+    /// recording time so past events are available for association.
+    func presentAssociationCorrection() async {
+        showEventPicker = true
+        await loadNearbyEvents()
+    }
+
+    /// Fetches calendar events near the meeting's recording time
+    /// (startDate or createdAt). Called when the picker opens.
+    func loadNearbyEvents() async {
+        guard let referenceDate = detail?.date else { return }
+        isLoadingNearbyEvents = true
+        nearbyEvents = await core.eventsNear(referenceDate)
+        isLoadingNearbyEvents = false
+    }
+
+    /// Opens the associated calendar event in Calendar.app.
+    ///
+    /// Tries the `ical://` deep-link scheme with the snapshot's
+    /// `eventIdentifier` first. Falls back to opening Calendar.app at
+    /// the event's start date if the identifier is unavailable.
+    func openInCalendar() {
+        if let eventID = calendarContext?.eventIdentifier,
+           let url = URL(
+               string: "ical://ekevent/\(eventID)?method=show&options=more"
+           )
+        {
+            urlOpener(url)
+        } else if let startDate = calendarContext?.startDate {
+            // Fall back to opening Calendar.app at the event's date.
+            let interval = startDate.timeIntervalSinceReferenceDate
+            let calURL = URL(
+                string: "ical://\(interval)"
+            ) ?? URL(string: "ical://")!
+            urlOpener(calURL)
+        } else {
+            // Last resort: just open Calendar.app.
+            if let calURL = URL(string: "ical://") {
+                urlOpener(calURL)
+            }
+        }
+    }
+
     /// Saves the current `editableTitle` to the store. Called on submit
     /// (Enter key) and on blur (focus loss) to prevent losing edits.
     func saveTitle() async {
@@ -455,19 +510,6 @@ public extension MeetingDetailViewModel {
 // MARK: - Private helpers
 
 private extension MeetingDetailViewModel {
-    /// The effective end time of the meeting, used for Join-button gating.
-    /// Prefers the calendar event's endDate (when the scheduled meeting
-    /// ends), falls back to the recording's endDate, then date + duration.
-    /// Returns nil if none are available.
-    var effectiveMeetingEnd: Date? {
-        if let calEnd = calendarContext?.endDate { return calEnd }
-        if let end = detail?.endDate { return end }
-        if let dur = detail?.duration {
-            return detail?.date.addingTimeInterval(dur)
-        }
-        return nil
-    }
-
     func loadAudioPlayer() async {
         do {
             let refs = try await core.store.audioFileRefs(

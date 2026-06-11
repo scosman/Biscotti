@@ -552,13 +552,13 @@ struct MeetingDetailCalendarContextTests {
         let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
 
         #expect(detailVM.showEventPicker == false)
-        detailVM.presentAssociationCorrection()
+        await detailVM.presentAssociationCorrection()
         #expect(detailVM.showEventPicker == true)
     }
 
-    @Test("availableEvents reflects core.upcoming")
+    @Test("availableEvents reflects nearby events after loadNearbyEvents")
     @MainActor
-    func availableEventsReflectsUpcoming() async throws {
+    func availableEventsReflectsNearby() async throws {
         let now = Date()
         let dto = EKEventDTO(
             eventIdentifier: "ev-avail",
@@ -591,12 +591,14 @@ struct MeetingDetailCalendarContextTests {
         )
         defer { fix.cleanup() }
 
-        // Mark onboarding complete so onLaunch primes calendar upcoming
-        try await fix.store.updateSettings { $0.onboardingComplete = true }
-        await fix.core.onLaunch()
-
         let meetingID = try await fix.store.createMeeting(title: "Check Available")
         let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        // Events only appear after loading nearby events for the picker
+        #expect(detailVM.availableEvents.isEmpty)
+
+        await detailVM.loadNearbyEvents()
 
         #expect(detailVM.availableEvents.count == 1)
         #expect(detailVM.availableEvents.first?.title == "Available Event")

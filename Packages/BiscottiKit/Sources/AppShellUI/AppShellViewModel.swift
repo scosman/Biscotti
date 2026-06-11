@@ -74,7 +74,8 @@ public final class AppShellViewModel {
             return cached
         }
         let viewModel = MeetingDetailViewModel(
-            core: core, meetingID: meetingID
+            core: core, meetingID: meetingID,
+            urlOpener: { url in NSWorkspace.shared.open(url) }
         )
         cachedDetailMeetingID = meetingID
         cachedDetailViewModel = viewModel

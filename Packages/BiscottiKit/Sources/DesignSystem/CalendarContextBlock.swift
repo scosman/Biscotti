@@ -39,62 +39,69 @@ public struct CalendarContextBlock: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
-            // Top row: platform + calendar badge + actions
-            HStack {
-                if let platform {
-                    Text(platform)
-                        .font(.callout.weight(.medium))
-                }
+        HStack(alignment: .top, spacing: Tokens.spacingSM) {
+            Image(systemName: "calendar")
+                .foregroundStyle(Tokens.secondaryText)
+                .font(.callout)
+                .padding(.top, 2)
 
-                if let calendarTitle {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(calendarColor)
-                            .frame(width: 8, height: 8)
-                        Text(calendarTitle)
-                            .font(.caption)
-                            .foregroundStyle(Tokens.secondaryText)
+            VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+                // Top row: platform + calendar badge + actions
+                HStack {
+                    if let platform {
+                        Text(platform)
+                            .font(.callout.weight(.medium))
+                    }
+
+                    if let calendarTitle {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(calendarColor)
+                                .frame(width: 8, height: 8)
+                            Text(calendarTitle)
+                                .font(.caption)
+                                .foregroundStyle(Tokens.secondaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    if let onJoin, conferenceURL != nil {
+                        Button("Join") { onJoin() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+
+                    if let onChange {
+                        Button("Change\u{2026}") { onChange() }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
                     }
                 }
 
-                Spacer()
-
-                if let onJoin, conferenceURL != nil {
-                    Button("Join") { onJoin() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                // Location (if different from conference URL)
+                if let location, !location.isEmpty {
+                    Text(location)
+                        .font(.caption)
+                        .foregroundStyle(Tokens.secondaryText)
+                        .lineLimit(1)
                 }
 
-                if let onChange {
-                    Button("Change\u{2026}") { onChange() }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                }
-            }
-
-            // Location (if different from conference URL)
-            if let location, !location.isEmpty {
-                Text(location)
-                    .font(.caption)
+                // Participants
+                if organizer != nil || !attendees.isEmpty {
+                    HStack(spacing: Tokens.spacingXS) {
+                        if let organizer {
+                            Text("\(organizer) (organizer)")
+                                .font(.caption)
+                        }
+                        ForEach(attendees, id: \.self) { name in
+                            Text(name)
+                                .font(.caption)
+                        }
+                    }
                     .foregroundStyle(Tokens.secondaryText)
                     .lineLimit(1)
-            }
-
-            // Participants
-            if organizer != nil || !attendees.isEmpty {
-                HStack(spacing: Tokens.spacingXS) {
-                    if let organizer {
-                        Text("\(organizer) (organizer)")
-                            .font(.caption)
-                    }
-                    ForEach(attendees, id: \.self) { name in
-                        Text(name)
-                            .font(.caption)
-                    }
                 }
-                .foregroundStyle(Tokens.secondaryText)
-                .lineLimit(1)
             }
         }
         .padding(Tokens.spacingSM)

@@ -129,6 +129,8 @@ public struct CalendarContextData: Sendable, Equatable {
     public let location: String?
     public let organizer: PersonData?
     public let attendees: [PersonData]
+    /// The EventKit event identifier, used for "Open in Calendar" deep links.
+    public let eventIdentifier: String?
 
     public init(
         title: String? = nil,
@@ -140,7 +142,8 @@ public struct CalendarContextData: Sendable, Equatable {
         calendarColorHex: String? = nil,
         location: String? = nil,
         organizer: PersonData? = nil,
-        attendees: [PersonData] = []
+        attendees: [PersonData] = [],
+        eventIdentifier: String? = nil
     ) {
         self.title = title
         self.startDate = startDate
@@ -152,6 +155,7 @@ public struct CalendarContextData: Sendable, Equatable {
         self.location = location
         self.organizer = organizer
         self.attendees = attendees
+        self.eventIdentifier = eventIdentifier
     }
 }
 
@@ -384,7 +388,8 @@ public extension DataStore {
             calendarColorHex: snapshot.calendarColorHex,
             location: snapshot.location,
             organizer: organizerData,
-            attendees: attendeeData
+            attendees: attendeeData,
+            eventIdentifier: snapshot.eventIdentifier
         )
     }
 

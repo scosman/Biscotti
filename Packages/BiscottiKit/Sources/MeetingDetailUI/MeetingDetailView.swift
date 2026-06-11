@@ -1,5 +1,4 @@
 import AppCore
-import AppKit
 import Calendar
 import DataStore
 import DesignSystem
@@ -166,26 +165,42 @@ public struct MeetingDetailView: View {
     @ViewBuilder
     private var calendarSection: some View {
         if let ctx = viewModel.calendarContext {
-            CalendarContextBlock(
-                platform: ctx.conferencePlatform,
-                conferenceURL: ctx.conferenceURL,
-                calendarTitle: ctx.calendarTitle,
-                calendarColorHex: ctx.calendarColorHex,
-                location: ctx.location,
-                organizer: ctx.organizer?.name,
-                attendees: ctx.attendees.map(\.name),
-                onJoin: viewModel.showJoinButton
-                    ? { if let url = ctx.conferenceURL {
-                        NSWorkspace.shared.open(url)
-                    } }
-                    : nil,
-                onChange: {
-                    viewModel.presentAssociationCorrection()
+            VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+                CalendarContextBlock(
+                    platform: ctx.conferencePlatform,
+                    conferenceURL: ctx.conferenceURL,
+                    calendarTitle: ctx.calendarTitle,
+                    calendarColorHex: ctx.calendarColorHex,
+                    location: ctx.location,
+                    organizer: ctx.organizer?.name,
+                    attendees: ctx.attendees.map(\.name),
+                    onJoin: nil,
+                    onChange: {
+                        Task {
+                            await viewModel
+                                .presentAssociationCorrection()
+                        }
+                    }
+                )
+
+                if viewModel.showOpenInCalendar {
+                    Button {
+                        viewModel.openInCalendar()
+                    } label: {
+                        Label(
+                            "Open in Calendar",
+                            systemImage: "calendar"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-            )
+            }
         } else if viewModel.showLinkEventPrompt {
             Button("Link a calendar event\u{2026}") {
-                viewModel.presentAssociationCorrection()
+                Task {
+                    await viewModel.presentAssociationCorrection()
+                }
             }
             .font(.caption)
             .foregroundStyle(Tokens.secondaryText)
@@ -244,11 +259,13 @@ public struct MeetingDetailView: View {
             .scrollContentBackground(.hidden)
         }
     }
+}
 
-    // MARK: - State content
+// MARK: - State content
 
+private extension MeetingDetailView {
     @ViewBuilder
-    private var stateContent: some View {
+    var stateContent: some View {
         switch viewModel.displayState {
         case let .processing(message, subtitle):
             processingView(message: message, subtitle: subtitle)
@@ -261,7 +278,7 @@ public struct MeetingDetailView: View {
         }
     }
 
-    private func processingView(
+    func processingView(
         message: String,
         subtitle: String?
     ) -> some View {
@@ -274,7 +291,7 @@ public struct MeetingDetailView: View {
     }
 
     @ViewBuilder
-    private var transcriptView: some View {
+    var transcriptView: some View {
         if let transcript = viewModel.displayedTranscript,
            !transcript.segments.isEmpty
         {
@@ -294,7 +311,7 @@ public struct MeetingDetailView: View {
         }
     }
 
-    private func failedView(
+    func failedView(
         message: String,
         retriable: Bool
     ) -> some View {
@@ -331,9 +348,19 @@ struct EventPickerSheet: View {
                 .font(.headline)
 
             if viewModel.availableEvents.isEmpty {
-                Text("No upcoming events.")
+                if viewModel.hasCalendarAccess {
+                    Text(
+                        "No calendar events near this recording\u{2019}s time."
+                    )
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
+                } else {
+                    Text(
+                        "Calendar access is required to link events. Grant access in System Settings \u{2192} Privacy & Security \u{2192} Calendars."
+                    )
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {

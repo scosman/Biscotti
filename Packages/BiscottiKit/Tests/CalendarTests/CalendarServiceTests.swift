@@ -372,7 +372,7 @@ struct MeetingLikeFilterTests {
         )
         let service = try await serviceWithEvents([soloWithZoom])
         #expect(service.upcoming.count == 1)
-        #expect(service.upcoming.first?.conferencePlatform == "zoom")
+        #expect(service.upcoming.first?.conferencePlatform == "Zoom")
     }
 
     @Test("excludes birthday events")
@@ -403,7 +403,7 @@ struct ConferenceDetectionTests {
         )
         let service = try await serviceWithEvents([event])
         let found = try #require(service.upcoming.first)
-        #expect(found.conferencePlatform == "zoom")
+        #expect(found.conferencePlatform == "Zoom")
         #expect(found.conferenceURL?.absoluteString.contains("zoom.us") == true)
     }
 
@@ -418,7 +418,7 @@ struct ConferenceDetectionTests {
         )
         let service = try await serviceWithEvents([event])
         let found = try #require(service.upcoming.first)
-        #expect(found.conferencePlatform == "teams")
+        #expect(found.conferencePlatform == "Microsoft Teams")
     }
 
     @Test("nil when no match")
@@ -599,7 +599,7 @@ struct SnapshotCoreFieldTests {
         #expect(snap.availability == "busy")
         #expect(snap.calendarTitle == "Work")
         #expect(snap.calendarColorHex == "#00FF00")
-        #expect(snap.conferencePlatform == "zoom")
+        #expect(snap.conferencePlatform == "Zoom")
         #expect(snap.conferenceURL?.absoluteString.contains("zoom.us") == true)
     }
 

@@ -28,6 +28,27 @@ public struct CalendarInfo: Sendable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Attendee info (live event surface)
+
+/// A single attendee/organizer for a live calendar event.
+/// Lighter than `AttendeeInput` (snapshot-level) -- just name + email for display.
+public struct AttendeeInfo: Sendable, Equatable {
+    public let name: String?
+    public let email: String?
+
+    public init(name: String?, email: String?) {
+        self.name = name
+        self.email = email
+    }
+
+    /// Display-friendly label: name if available, otherwise email, otherwise "Unknown".
+    public var displayName: String {
+        if let name, !name.isEmpty { return name }
+        if let email, !email.isEmpty { return email }
+        return "Unknown"
+    }
+}
+
 // MARK: - Live event DTO
 
 /// A live, un-recorded calendar event. Never holds an EKEvent reference.
@@ -44,6 +65,14 @@ public struct CalendarEvent: Sendable, Identifiable, Equatable {
     public let calendarColorHex: String
     /// `conferenceURL != nil || attendeeCount >= 2`
     public var isMeetingLike: Bool
+    /// The event organizer, if known.
+    public let organizer: AttendeeInfo?
+    /// All attendees (excluding the organizer).
+    public let attendees: [AttendeeInfo]
+    /// The event's notes/description from the calendar.
+    public let notes: String?
+    /// The event's location string from the calendar.
+    public let location: String?
 
     public init(
         id: String,
@@ -55,7 +84,11 @@ public struct CalendarEvent: Sendable, Identifiable, Equatable {
         attendeeCount: Int,
         calendarTitle: String,
         calendarColorHex: String,
-        isMeetingLike: Bool
+        isMeetingLike: Bool,
+        organizer: AttendeeInfo? = nil,
+        attendees: [AttendeeInfo] = [],
+        notes: String? = nil,
+        location: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -67,5 +100,9 @@ public struct CalendarEvent: Sendable, Identifiable, Equatable {
         self.calendarTitle = calendarTitle
         self.calendarColorHex = calendarColorHex
         self.isMeetingLike = isMeetingLike
+        self.organizer = organizer
+        self.attendees = attendees
+        self.notes = notes
+        self.location = location
     }
 }

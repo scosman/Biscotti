@@ -26,7 +26,7 @@ struct SnapshotTests {
             calendarTitle: "Work",
             calendarColorHex: "#4285F4",
             conferenceURL: URL(string: "https://meet.google.com/abc"),
-            conferencePlatform: "meet"
+            conferencePlatform: "Google Meet"
         )
 
         try await store.setSnapshot(snapshot, for: meetingID)
@@ -40,7 +40,7 @@ struct SnapshotTests {
         #expect(snap?.isAllDay == false)
         #expect(snap?.location == "Room 42")
         #expect(snap?.conferenceURL == URL(string: "https://meet.google.com/abc"))
-        #expect(snap?.conferencePlatform == "meet")
+        #expect(snap?.conferencePlatform == "Google Meet")
         #expect(snap?.calendarTitle == "Work")
         #expect(snap?.calendarColorHex == "#4285F4")
         #expect(snap?.eventNotes == "Bring updates")

@@ -78,7 +78,7 @@ struct BundledMeetingCatalogTests {
     func conferenceZoom() throws {
         let url = try #require(URL(string: "https://us04web.zoom.us/j/12345678?pwd=abc"))
         let result = catalog.conferenceMatch(inURL: url, location: nil, notes: nil)
-        #expect(result?.platform == "zoom")
+        #expect(result?.platform == "Zoom")
         #expect(result?.url.absoluteString.contains("zoom.us") == true)
     }
 
@@ -89,7 +89,7 @@ struct BundledMeetingCatalogTests {
             location: "https://meet.google.com/abc-defg-hij",
             notes: nil
         )
-        #expect(result?.platform == "meet")
+        #expect(result?.platform == "Google Meet")
     }
 
     @Test("Detects Teams link in notes")
@@ -99,21 +99,21 @@ struct BundledMeetingCatalogTests {
             location: nil,
             notes: "Join here: https://teams.microsoft.com/l/meetup-join/abc123"
         )
-        #expect(result?.platform == "teams")
+        #expect(result?.platform == "Microsoft Teams")
     }
 
     @Test("Detects Webex link")
     func conferenceWebex() throws {
         let url = try #require(URL(string: "https://example.webex.com/meet/room1"))
         let result = catalog.conferenceMatch(inURL: url, location: nil, notes: nil)
-        #expect(result?.platform == "webex")
+        #expect(result?.platform == "Cisco Webex")
     }
 
     @Test("Detects Slack Huddle link")
     func conferenceSlack() throws {
         let url = try #require(URL(string: "https://app.slack.com/huddle/T123/C456"))
         let result = catalog.conferenceMatch(inURL: url, location: nil, notes: nil)
-        #expect(result?.platform == "slack")
+        #expect(result?.platform == "Slack Huddle")
     }
 
     @Test("URL takes priority over location and notes")
@@ -124,7 +124,7 @@ struct BundledMeetingCatalogTests {
             location: "https://meet.google.com/abc-defg-hij",
             notes: nil
         )
-        #expect(result?.platform == "zoom")
+        #expect(result?.platform == "Zoom")
     }
 
     @Test("Location takes priority over notes")
@@ -134,7 +134,7 @@ struct BundledMeetingCatalogTests {
             location: "https://meet.google.com/abc-defg-hij",
             notes: "Join here: https://teams.microsoft.com/l/meetup-join/abc123"
         )
-        #expect(result?.platform == "meet")
+        #expect(result?.platform == "Google Meet")
     }
 
     @Test("No conference link returns nil")

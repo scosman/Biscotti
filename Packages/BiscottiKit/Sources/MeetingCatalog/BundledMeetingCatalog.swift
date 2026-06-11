@@ -112,11 +112,11 @@ public struct BundledMeetingCatalog: MeetingCatalog {
 
     private static let compiledPatterns: [CompiledPattern] = {
         let patterns: [(String, String)] = [
-            ("zoom", #"https?://[\w.-]*zoom\.us/j/\d+[^\s]*"#),
-            ("meet", #"https?://meet\.google\.com/[a-z-]+"#),
-            ("teams", #"https?://teams\.microsoft\.com/l/meetup-join/[^\s]+"#),
-            ("webex", #"https?://[\w.-]*webex\.com/[^\s]+"#),
-            ("slack", #"https?://app\.slack\.com/huddle/[^\s]+"#)
+            ("Zoom", #"https?://[\w.-]*zoom\.us/j/\d+[^\s]*"#),
+            ("Google Meet", #"https?://meet\.google\.com/[a-z-]+"#),
+            ("Microsoft Teams", #"https?://teams\.microsoft\.com/l/meetup-join/[^\s]+"#),
+            ("Cisco Webex", #"https?://[\w.-]*webex\.com/[^\s]+"#),
+            ("Slack Huddle", #"https?://app\.slack\.com/huddle/[^\s]+"#)
         ]
         return patterns.compactMap { platform, pattern in
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {

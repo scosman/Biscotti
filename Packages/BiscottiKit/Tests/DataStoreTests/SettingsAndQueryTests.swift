@@ -133,7 +133,7 @@ struct CalendarContextTests {
             calendarTitle: "Work",
             calendarColorHex: "#FF0000",
             conferenceURL: URL(string: "https://zoom.us/j/123"),
-            conferencePlatform: "zoom"
+            conferencePlatform: "Zoom"
         )
         try await store.setSnapshot(snapshot, for: meetingID)
 
@@ -143,7 +143,7 @@ struct CalendarContextTests {
         #expect(ctx?.location == "Room 42")
         #expect(ctx?.calendarTitle == "Work")
         #expect(ctx?.calendarColorHex == "#FF0000")
-        #expect(ctx?.conferencePlatform == "zoom")
+        #expect(ctx?.conferencePlatform == "Zoom")
         #expect(ctx?.conferenceURL?.absoluteString == "https://zoom.us/j/123")
     }
 

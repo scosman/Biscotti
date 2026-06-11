@@ -46,7 +46,7 @@ public struct CalendarContextBlock: View {
             // Top row: platform + calendar badge + actions
             HStack {
                 if let platform {
-                    Text(platform.capitalized)
+                    Text(platform)
                         .font(.callout.weight(.medium))
                 }
 

@@ -1,4 +1,5 @@
 import AppCore
+import AppKit
 import Calendar
 import DesignSystem
 import Foundation
@@ -91,7 +92,9 @@ public final class AppShellViewModel {
             return cached
         }
         let viewModel = EventPreviewViewModel(
-            core: core, eventKey: eventKey
+            core: core,
+            eventKey: eventKey,
+            urlOpener: { url in NSWorkspace.shared.open(url) }
         )
         cachedEventPreviewKey = eventKey
         cachedEventPreviewViewModel = viewModel

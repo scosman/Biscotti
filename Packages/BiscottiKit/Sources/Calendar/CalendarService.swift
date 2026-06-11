@@ -110,7 +110,11 @@ public final class CalendarService {
                 attendeeCount: dto.attendeeCount,
                 calendarTitle: dto.calendarTitle,
                 calendarColorHex: dto.calendarColorHex,
-                isMeetingLike: true
+                isMeetingLike: true,
+                organizer: dto.organizer.map { attendeeInfo(from: $0) },
+                attendees: dto.attendees.map { attendeeInfo(from: $0) },
+                notes: dto.notes,
+                location: dto.location
             )
             events.append(event)
             dtoCache[key] = dto
@@ -216,6 +220,13 @@ public final class CalendarService {
     }
 
     // MARK: - Private
+
+    private func attendeeInfo(from dto: AttendeeDTO) -> AttendeeInfo {
+        AttendeeInfo(
+            name: dto.name,
+            email: EmailParser.email(from: dto.participantURL)
+        )
+    }
 
     private func loadEnabledCalendarIDs() async {
         do {

@@ -703,7 +703,7 @@ extension AppCore {
 extension AppCore {
     /// Fetches calendar events near a given date for the association
     /// picker. Delegates to `CalendarService.eventsNear(_:)` which
-    /// uses a +/- 2h window and caches DTOs for snapshot resolution.
+    /// uses a +/- 1.5h window and caches DTOs for snapshot resolution.
     public func eventsNear(_ date: Date) async -> [CalendarEvent] {
         await calendar.eventsNear(date)
     }

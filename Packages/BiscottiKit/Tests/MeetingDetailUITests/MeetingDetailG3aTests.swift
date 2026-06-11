@@ -837,6 +837,206 @@ struct MeetingDetailCalendarAccessTests {
     }
 }
 
+// MARK: - N3 regression: saveTitle must not spuriously set editedTitle
+
+@Suite("MeetingDetailViewModel -- saveTitle editedTitle guard (N3)")
+struct MeetingDetailSaveTitleGuardTests {
+    @Test(
+        "saveTitle with unchanged title does not set editedTitle -- auto-title still works"
+    )
+    @MainActor
+    func saveTitleUnchangedDoesNotFlagEdited() async throws {
+        let dto = makeEventDTO(
+            suffix: "n3-guard",
+            title: "Standup",
+            location: "https://zoom.us/j/n3",
+            calendarTitle: "Team"
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "N3Guard"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Untitled Meeting"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        // Associate a calendar event -- applies event title via
+        // applyEventTitle (editedTitle stays false).
+        await viewModel.loadNearbyEvents()
+        guard let eventKey = viewModel.availableEvents.first?.id else {
+            Issue.record("Expected at least one nearby event")
+            return
+        }
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        #expect(viewModel.detail?.title == "Standup")
+        #expect(viewModel.editableTitle == "Standup")
+
+        // editedTitle must still be false after association
+        let meetingBefore = try await fix.store.meeting(id: meetingID)
+        #expect(meetingBefore?.editedTitle == false)
+
+        // Simulate onDisappear: flushNotes calls saveTitle. The title
+        // hasn't changed, so editedTitle must NOT flip to true.
+        await viewModel.flushNotes()
+
+        let meetingAfter = try await fix.store.meeting(id: meetingID)
+        #expect(meetingAfter?.editedTitle == false)
+
+        // Because editedTitle is still false, a subsequent association
+        // must still be able to update the title via applyEventTitle.
+        try await fix.store.applyEventTitle(
+            "New Event Name", for: meetingID
+        )
+        let meetingFinal = try await fix.store.meeting(id: meetingID)
+        #expect(meetingFinal?.title == "New Event Name")
+    }
+
+    @Test(
+        "saveTitle with unchanged title via direct call also skips write"
+    )
+    @MainActor
+    func saveTitleDirectCallSkipsUnchanged() async throws {
+        let fix = try makeCoreFixture(testName: "N3Direct")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Original"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        // editableTitle == "Original", detail.title == "Original"
+        #expect(viewModel.editableTitle == "Original")
+
+        await viewModel.saveTitle()
+
+        // editedTitle must NOT be set
+        let meeting = try await fix.store.meeting(id: meetingID)
+        #expect(meeting?.editedTitle == false)
+    }
+
+    @Test(
+        "saveTitle with genuinely changed title persists and sets editedTitle"
+    )
+    @MainActor
+    func saveTitleChangedSetsFlagAndPersists() async throws {
+        let fix = try makeCoreFixture(testName: "N3Changed")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Original"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        viewModel.editableTitle = "User Renamed"
+        await viewModel.saveTitle()
+
+        // Title persisted
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "User Renamed")
+        #expect(viewModel.editableTitle == "User Renamed")
+
+        // editedTitle IS set for genuine edits
+        let meeting = try await fix.store.meeting(id: meetingID)
+        #expect(meeting?.editedTitle == true)
+
+        // applyEventTitle no longer overwrites (user edit wins)
+        try await fix.store.applyEventTitle(
+            "Calendar Title", for: meetingID
+        )
+        let meetingAfter = try await fix.store.meeting(id: meetingID)
+        #expect(meetingAfter?.title == "User Renamed")
+    }
+}
+
+// MARK: - N2 regression: sidebar refreshes after association correction
+
+@Suite(
+    "MeetingDetailViewModel -- sidebar refresh after association (N2)"
+)
+struct MeetingDetailSidebarRefreshTests {
+    @Test(
+        "correctAssociation refreshes sidebar summaries with new title"
+    )
+    @MainActor
+    func sidebarRefreshesAfterAssociation() async throws {
+        let dto = makeEventDTO(
+            suffix: "n2-side",
+            title: "Design Sync",
+            location: "https://zoom.us/j/n2",
+            calendarTitle: "Team"
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "N2Sidebar"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Untitled Meeting"
+        )
+        await fix.core.reloadSummaries()
+
+        // Sidebar starts with the original title
+        #expect(
+            fix.core.summaries.first(where: { $0.id == meetingID })?
+                .title == "Untitled Meeting"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { G3aFakePlayer() }
+        )
+        await viewModel.load()
+
+        // Associate the event
+        await viewModel.loadNearbyEvents()
+        guard let eventKey = viewModel.availableEvents.first?.id else {
+            Issue.record("Expected at least one nearby event")
+            return
+        }
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        // Detail shows the new title
+        #expect(viewModel.detail?.title == "Design Sync")
+
+        // Sidebar must also reflect the new title (N2 fix).
+        // NOTE: removeAssociation() delegates to correctAssociation(eventKey: nil),
+        // so the unlink path shares this same reloadSummaries call and is covered
+        // by delegation without a separate test.
+        #expect(
+            fix.core.summaries.first(where: { $0.id == meetingID })?
+                .title == "Design Sync"
+        )
+    }
+}
+
 // MARK: - G3aFakePlayer
 
 /// Minimal fake player for G3a tests. Uses a distinct name to avoid

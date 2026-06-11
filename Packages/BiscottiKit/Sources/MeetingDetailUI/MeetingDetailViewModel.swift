@@ -224,7 +224,7 @@ public final class MeetingDetailViewModel {
     }
 
     /// Calendar events available for association correction. Populated
-    /// by `loadNearbyEvents()` when the picker opens, using a +/- 2h
+    /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
     /// window around the meeting's recording time instead of the
     /// forward-only `core.upcoming`.
     public var availableEvents: [CalendarEvent] {
@@ -304,6 +304,7 @@ public final class MeetingDetailViewModel {
             meetingID: meetingID, eventKey: eventKey
         )
         await load()
+        await core.reloadSummaries()
         showEventPicker = false
         // TODO(re-transcribe-prompt): restore setting
         // showReTranscribeAfterCorrection = true when vocab support
@@ -495,6 +496,13 @@ public extension MeetingDetailViewModel {
 
     /// Saves the current `editableTitle` to the store. Called on submit
     /// (Enter key) and on blur (focus loss) to prevent losing edits.
+    ///
+    /// **Guard:** only persists (and flags `editedTitle`) when the trimmed
+    /// title differs from the currently-stored title. Without this guard,
+    /// `flushNotes()` (called unconditionally on every `onDisappear`) and
+    /// `.onSubmit` would set `editedTitle = true` on every viewed meeting,
+    /// permanently blocking `applyEventTitle` from updating the title when
+    /// the user links or re-links a calendar event.
     func saveTitle() async {
         let trimmed = editableTitle
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -503,6 +511,11 @@ public extension MeetingDetailViewModel {
             editableTitle = detail?.title ?? ""
             return
         }
+
+        // Skip the write if the title hasn't actually changed --
+        // avoids spuriously setting editedTitle on every navigation.
+        guard trimmed != detail?.title else { return }
+
         editableTitle = trimmed
         do {
             try await core.store.setTitle(trimmed, for: meetingID)

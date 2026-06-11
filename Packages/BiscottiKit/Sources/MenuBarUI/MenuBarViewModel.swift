@@ -14,8 +14,18 @@ import Foundation
 public final class MenuBarViewModel {
     private let core: AppCore
 
-    public init(core: AppCore) {
+    /// Closure that opens the main window and brings the app to the
+    /// front (switching activation policy to `.regular`). Injected by
+    /// the app target's `AppDelegate` at construction; the VM stays
+    /// AppKit-free beyond `NSApplication.shared.terminate`.
+    public let windowOpener: @MainActor () -> Void
+
+    public init(
+        core: AppCore,
+        windowOpener: @escaping @MainActor () -> Void = {}
+    ) {
         self.core = core
+        self.windowOpener = windowOpener
     }
 
     // MARK: - Icon state
@@ -84,24 +94,25 @@ public final class MenuBarViewModel {
         await core.stopRecording()
     }
 
+    /// Open the main window and navigate to an upcoming event's page.
+    /// Activates the app to bring it to front.
+    public func openEvent(_ key: String) {
+        core.selectEvent(key)
+        windowOpener()
+    }
+
     /// Open the main window and optionally navigate to a meeting.
-    /// Activates the app to bring it to front (NSApplication is
-    /// acceptable here since this is a macOS-only menu bar module).
+    /// Activates the app to bring it to front.
     public func openApp(meetingID: UUID? = nil) {
         if let meetingID {
             core.select(meetingID)
         } else {
             core.showHome()
         }
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowOpener()
     }
 
-    /// Open the main window showing all meetings.
-    /// Activates the app to bring the window to front.
-    public func seeAll() {
-        core.showHome()
-        NSApplication.shared.activate(ignoringOtherApps: true)
-    }
+    // TODO(see-all): add a 'See All' menu entry once a full upcoming/recent list page exists
 
     /// Quit the application. Called from the menu bar Quit button.
     /// The app target handles quit-while-recording via

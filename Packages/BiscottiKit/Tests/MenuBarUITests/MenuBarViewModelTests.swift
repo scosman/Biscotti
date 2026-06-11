@@ -200,6 +200,96 @@ struct MenuBarBodyTests {
     }
 }
 
+// MARK: - Navigation action tests
+
+@Suite("MenuBarViewModel -- navigation actions")
+struct MenuBarNavigationTests {
+    @Test("openEvent navigates to event route")
+    @MainActor
+    func openEventSetsRoute() async throws {
+        let now = Date()
+        let dtos = [
+            makeDTO(
+                eventIdentifier: "ev-1",
+                title: "Team Standup",
+                start: now.addingTimeInterval(600),
+                end: now.addingTimeInterval(4200)
+            )
+        ]
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "MenuBarNavTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        var windowOpened = false
+        let model = MenuBarViewModel(
+            core: fix.core,
+            windowOpener: { windowOpened = true }
+        )
+        // Grab the composite key from the loaded event
+        let eventKey = try #require(fix.core.upcoming.first?.id)
+
+        model.openEvent(eventKey)
+
+        #expect(fix.core.route == .event(eventKey))
+        #expect(windowOpened)
+    }
+
+    @Test("openApp with meetingID navigates to meeting route")
+    @MainActor
+    func openAppMeetingRoute() async throws {
+        let fix = try makeCoreFixture(
+            testName: "MenuBarNavTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Test"
+        )
+
+        var windowOpened = false
+        let model = MenuBarViewModel(
+            core: fix.core,
+            windowOpener: { windowOpened = true }
+        )
+
+        model.openApp(meetingID: meetingID)
+
+        #expect(fix.core.route == .meeting(meetingID))
+        #expect(windowOpened)
+    }
+
+    @Test("openApp without meetingID navigates to home")
+    @MainActor
+    func openAppHomeRoute() throws {
+        let fix = try makeCoreFixture(
+            testName: "MenuBarNavTests"
+        )
+        defer { fix.cleanup() }
+
+        // Set an initial non-home route
+        fix.core.showSettings()
+        #expect(fix.core.route == .settings)
+
+        var windowOpened = false
+        let model = MenuBarViewModel(
+            core: fix.core,
+            windowOpener: { windowOpened = true }
+        )
+
+        model.openApp()
+
+        #expect(fix.core.route == .home)
+        #expect(windowOpened)
+    }
+}
+
 // MARK: - Helpers
 
 private func makeDTO(

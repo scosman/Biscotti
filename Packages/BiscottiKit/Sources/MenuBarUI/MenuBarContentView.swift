@@ -4,10 +4,11 @@ import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The popover body content of the `MenuBarExtra`.
+/// The native-menu body content of the `MenuBarExtra`.
 ///
-/// Shows recording section (Start / elapsed+Stop), upcoming events,
-/// recent meetings, and Open/Quit actions.
+/// Uses `.menu`-style `MenuBarExtra`, so all content must be
+/// menu-compatible: `Button`, `Divider`, `Text` (disabled items).
+/// No custom views, no VStack layouts.
 public struct MenuBarContentView: View {
     @Bindable var viewModel: MenuBarViewModel
 
@@ -16,123 +17,78 @@ public struct MenuBarContentView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Recording section
-            if viewModel.isRecording {
-                recordingSection
-            } else {
-                Button("Start Recording") {
-                    Task { await viewModel.startRecording() }
-                }
-                .padding(.horizontal, Tokens.spacingSM)
-                .padding(.vertical, Tokens.spacingXS)
-            }
+        // Recording section
+        recordingSection
 
+        Divider()
+
+        // Upcoming
+        if !viewModel.upcomingEvents.isEmpty {
+            upcomingSection
             Divider()
-                .padding(.vertical, Tokens.spacingXS)
-
-            // Upcoming
-            if !viewModel.upcomingEvents.isEmpty {
-                upcomingSection
-                Divider()
-                    .padding(.vertical, Tokens.spacingXS)
-            }
-
-            // Recent
-            if !viewModel.recentMeetings.isEmpty {
-                recentSection
-                Divider()
-                    .padding(.vertical, Tokens.spacingXS)
-            }
-
-            // Footer
-            Button("Open Biscotti") {
-                viewModel.openApp()
-            }
-            .padding(.horizontal, Tokens.spacingSM)
-            .padding(.vertical, Tokens.spacingXS)
-
-            Button("Quit") {
-                viewModel.quit()
-            }
-            .padding(.horizontal, Tokens.spacingSM)
-            .padding(.vertical, Tokens.spacingXS)
         }
-        .frame(width: 260)
-        .padding(Tokens.spacingSM)
+
+        // Recent
+        if !viewModel.recentMeetings.isEmpty {
+            recentSection
+            Divider()
+        }
+
+        // Footer
+        Button("Open Biscotti") {
+            viewModel.openApp()
+        }
+
+        Button("Quit") {
+            viewModel.quit()
+        }
     }
 
     // MARK: - Sections
 
+    @ViewBuilder
     private var recordingSection: some View {
-        HStack {
-            Circle()
-                .fill(.red)
-                .frame(width: 8, height: 8)
-            Text(viewModel.elapsedText)
-                .monospacedDigit()
-            Spacer()
-            Button("Stop") {
+        if viewModel.isRecording {
+            Button("Stop Recording (\(viewModel.elapsedText))") {
                 Task { await viewModel.stopRecording() }
             }
+        } else {
+            Button("Start Recording") {
+                Task { await viewModel.startRecording() }
+            }
         }
-        .padding(.horizontal, Tokens.spacingSM)
-        .padding(.vertical, Tokens.spacingXS)
     }
 
+    @ViewBuilder
     private var upcomingSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Upcoming")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, Tokens.spacingSM)
+        Text("Upcoming")
 
-            ForEach(viewModel.upcomingEvents) { event in
-                UpcomingEventRow(
-                    title: event.title,
-                    timeText: MenuBarViewModel.relativeTimeText(
-                        event.start
-                    ),
-                    platformBadge: event.conferencePlatform
+        ForEach(viewModel.upcomingEvents) { event in
+            Button {
+                viewModel.openEvent(event.id)
+            } label: {
+                Text(
+                    "\(event.title) \u{2014} \(MenuBarViewModel.relativeTimeText(event.start))"
                 )
-                .padding(.horizontal, Tokens.spacingSM)
-                .padding(.vertical, 2)
             }
         }
     }
 
+    @ViewBuilder
     private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Recent")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, Tokens.spacingSM)
+        Text("Recent")
 
-            ForEach(viewModel.recentMeetings) { meeting in
-                Button {
-                    viewModel.openApp(meetingID: meeting.id)
-                } label: {
-                    HStack {
-                        Text(meeting.title)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(Self.relativeDate(meeting.date))
-                            .font(Tokens.metadataFont)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, Tokens.spacingSM)
-                .padding(.vertical, 2)
+        ForEach(viewModel.recentMeetings) { meeting in
+            Button {
+                viewModel.openApp(meetingID: meeting.id)
+            } label: {
+                Text(
+                    "\(meeting.title) \u{2014} \(Self.relativeDate(meeting.date))"
+                )
             }
-
-            Button("See all\u{2026}") {
-                viewModel.seeAll()
-            }
-            .font(Tokens.metadataFont)
-            .padding(.horizontal, Tokens.spacingSM)
-            .padding(.vertical, 2)
         }
+
+        // TODO(see-all): add a 'See All' menu entry once a full upcoming/recent list page exists
     }
 
     // MARK: - Formatting

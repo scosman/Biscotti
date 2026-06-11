@@ -98,6 +98,11 @@ public final class AppCore {
     /// De-dup suppression window for ad-hoc detections after calendar prompts.
     private let calendarSuppressionInterval: TimeInterval = 600 // 10 minutes
 
+    /// Whether `onLaunch()` has already executed. Guards against
+    /// double-firing when SwiftUI re-creates the window (and its
+    /// `.task` modifier) while the same AppCore instance persists.
+    private var hasLaunched = false
+
     private let logger = Logger(
         subsystem: "net.scosman.biscotti",
         category: "AppCore"
@@ -133,7 +138,13 @@ public final class AppCore {
 
     /// Called once at app launch. Recovers orphaned recordings, checks
     /// onboarding state, starts background services, and loads the sidebar.
+    /// Idempotent: subsequent calls are no-ops (guards against SwiftUI
+    /// re-creating the window and its `.task` modifier while the same
+    /// long-lived AppCore instance persists).
     public func onLaunch() async {
+        guard !hasLaunched else { return }
+        hasLaunched = true
+
         await recording.recoverOrphans()
 
         // Check onboarding gate

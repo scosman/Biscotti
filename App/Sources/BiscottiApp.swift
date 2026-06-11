@@ -13,6 +13,10 @@ import UserNotifications
 /// and presents the `AppShellView` in a `WindowGroup` plus a
 /// `MenuBarExtra` for background operation.
 ///
+/// **Ownership model:** `AppCore` lives in `AppDelegate` (process-lifetime).
+/// `BiscottiApp.body` reads the already-built core so it survives
+/// window close/reopen without losing state.
+///
 /// - TODO: License/attribution screen for argmax-oss-swift and model
 ///   licenses must be added before ship (Project 9).
 @main
@@ -20,18 +24,13 @@ struct BiscottiApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self)
     private var appDelegate
 
-    @State private var core: AppCore?
-    @State private var shellViewModel: AppShellViewModel?
-    @State private var menuBarViewModel: MenuBarViewModel?
-    @State private var launchError: String?
-
     var body: some Scene {
         WindowGroup {
             Group {
-                if let shellViewModel {
-                    AppShellView(viewModel: shellViewModel)
-                } else if let launchError {
-                    errorView(message: launchError)
+                if let shellVM = appDelegate.shellViewModel {
+                    AppShellView(viewModel: shellVM)
+                } else if let err = appDelegate.launchError {
+                    errorView(message: err)
                 } else {
                     ProgressView("Starting Biscotti\u{2026}")
                         .frame(
@@ -41,68 +40,37 @@ struct BiscottiApp: App {
                 }
             }
             .frame(minWidth: 640, minHeight: 400)
-            .task { buildCore() }
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSWindow.willCloseNotification
+            )) { notification in
+                // Filter to real content windows; ignore sheets, panels,
+                // alerts, and file dialogs that also post this notification.
+                guard let window = notification.object as? NSWindow,
+                      window.level == .normal
+                else { return }
+                // Schedule the policy switch for the next run loop so
+                // SwiftUI has finished tearing down the window.
+                Task { @MainActor in
+                    appDelegate.handleWindowClosed()
+                }
+            }
         }
 
-        // Menu bar extra (background operation)
+        // Menu bar extra (native menu style)
         MenuBarExtra {
-            if let menuBarViewModel {
-                MenuBarContentView(viewModel: menuBarViewModel)
+            if let menuBarVM = appDelegate.menuBarViewModel {
+                MenuBarContentView(viewModel: menuBarVM)
             } else {
                 Text("Starting\u{2026}")
             }
         } label: {
-            if let menuBarViewModel {
-                MenuBarLabelView(viewModel: menuBarViewModel)
+            if let menuBarVM = appDelegate.menuBarViewModel {
+                MenuBarLabelView(viewModel: menuBarVM)
             } else {
                 Image(systemName: "circle.dotted.circle")
             }
         }
-        .menuBarExtraStyle(.window)
-    }
-
-    private func buildCore() {
-        do {
-            let appSupport = try FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            let storageRoot = appSupport
-                .appendingPathComponent("Biscotti")
-            try FileManager.default.createDirectory(
-                at: storageRoot,
-                withIntermediateDirectories: true
-            )
-
-            let appCore = try AppCore.live(
-                storageRoot: storageRoot,
-                transcriberServiceName:
-                "net.scosman.biscotti.BiscottiTranscriber"
-            )
-            core = appCore
-            appDelegate.core = appCore
-            appDelegate.notificationService = appCore.notifications
-            shellViewModel = AppShellViewModel(core: appCore)
-            menuBarViewModel = MenuBarViewModel(core: appCore)
-
-            // Register launch-at-login (default ON)
-            registerLaunchAtLogin()
-        } catch {
-            launchError = error.localizedDescription
-        }
-    }
-
-    private func registerLaunchAtLogin() {
-        let service = SMAppService.mainApp
-        if service.status == .notRegistered {
-            do {
-                try service.register()
-            } catch {
-                // Non-fatal: user can enable from Settings later.
-            }
-        }
+        .menuBarExtraStyle(.menu)
     }
 
     private func errorView(message: String) -> some View {
@@ -125,26 +93,89 @@ struct BiscottiApp: App {
 // MARK: - AppDelegate
 
 /// Handles lifecycle events that require AppKit hooks:
+/// - Owns the single long-lived `AppCore` instance (process lifetime).
 /// - Don't quit on last window close (keeps menu bar alive).
 /// - Quit-while-recording: stop and save before terminating.
 /// - `UNUserNotificationCenterDelegate`: forward notification
 ///   responses into `NotificationService`.
+/// - Dock icon / activation-policy switching:
+///   `.regular` when a window is open, `.accessory` when no windows.
+/// - Window show/activate for menu-bar Open, dock click, and
+///   notification actions.
 final class AppDelegate: NSObject, NSApplicationDelegate,
     @preconcurrency UNUserNotificationCenterDelegate
 {
+    // MARK: - Core (process-lifetime, single instance)
+
     var core: AppCore?
     var notificationService: NotificationService?
+    var shellViewModel: AppShellViewModel?
+    var menuBarViewModel: MenuBarViewModel?
+    var launchError: String?
 
     func applicationDidFinishLaunching(_: Notification) {
         // Register as the notification center delegate for action handling.
         UNUserNotificationCenter.current().delegate = self
+
+        // Build the core once, at launch. It lives for the process lifetime.
+        // applicationDidFinishLaunching always runs on the main thread;
+        // assumeIsolated lets us call @MainActor code synchronously.
+        MainActor.assumeIsolated {
+            self.buildCore()
+        }
     }
+
+    // MARK: - Window lifecycle
 
     func applicationShouldTerminateAfterLastWindowClosed(
         _: NSApplication
     ) -> Bool {
         false // Keep running in the menu bar.
     }
+
+    /// Called when the user clicks the Dock icon while the app is running
+    /// (and optionally when no window is open).
+    func applicationShouldHandleReopen(
+        _: NSApplication, hasVisibleWindows: Bool
+    ) -> Bool {
+        if !hasVisibleWindows {
+            // applicationShouldHandleReopen runs on the main thread;
+            // use assumeIsolated to call @MainActor code synchronously.
+            MainActor.assumeIsolated {
+                self.showMainWindow()
+            }
+        }
+        return true
+    }
+
+    /// Called after a window closes. Switches to accessory mode
+    /// (hides Dock icon) when no windows remain.
+    @MainActor
+    func handleWindowClosed() {
+        let hasVisibleWindows = NSApp.windows.contains { window in
+            window.isVisible && window.canBecomeMain
+        }
+        if !hasVisibleWindows {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    /// Shows the main window and switches to regular app mode
+    /// (Dock icon visible). Called from menu bar "Open Biscotti",
+    /// Dock icon click, and notification actions.
+    @MainActor
+    func showMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+        // Activate the app (brings to front).
+        NSApp.activate()
+        // If a main-capable window exists, bring it forward; otherwise
+        // SwiftUI's WindowGroup will create one on activation.
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    // MARK: - Quit-while-recording
 
     func applicationShouldTerminate(
         _ sender: NSApplication
@@ -161,6 +192,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         }
 
         return .terminateNow
+    }
+
+    // MARK: - Build core (once, at launch)
+
+    @MainActor
+    private func buildCore() {
+        do {
+            let appSupport = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            let storageRoot = appSupport
+                .appendingPathComponent("Biscotti")
+            try FileManager.default.createDirectory(
+                at: storageRoot,
+                withIntermediateDirectories: true
+            )
+
+            let appCore = try AppCore.live(
+                storageRoot: storageRoot,
+                transcriberServiceName:
+                "net.scosman.biscotti.BiscottiTranscriber"
+            )
+            core = appCore
+            notificationService = appCore.notifications
+            shellViewModel = AppShellViewModel(core: appCore)
+            menuBarViewModel = MenuBarViewModel(
+                core: appCore,
+                windowOpener: { [weak self] in
+                    self?.showMainWindow()
+                }
+            )
+
+            // Register launch-at-login (default ON)
+            registerLaunchAtLogin()
+        } catch {
+            launchError = error.localizedDescription
+        }
+    }
+
+    private func registerLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        if service.status == .notRegistered {
+            do {
+                try service.register()
+            } catch {
+                // Non-fatal: user can enable from Settings later.
+            }
+        }
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -203,9 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         if actionID == "biscotti.action.open-and-record"
             || actionID == "biscotti.action.record"
         {
-            NSApplication.shared.activate(
-                ignoringOtherApps: true
-            )
+            showMainWindow()
         }
     }
 

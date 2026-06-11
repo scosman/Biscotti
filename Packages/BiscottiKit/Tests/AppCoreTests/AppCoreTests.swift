@@ -82,6 +82,48 @@ struct AppCoreLaunchTests {
         #expect(fix.core.summaries.isEmpty)
         #expect(fix.core.route == .home)
     }
+
+    @Test("onLaunch is idempotent: second call is a no-op")
+    @MainActor
+    func onLaunchIdempotent() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
+        // First launch: loads summaries and routes to home.
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .home)
+
+        // Add a meeting AFTER the first launch (simulates data that
+        // would appear if onLaunch ran again -- a fresh AppCore would
+        // reload summaries from a re-created store).
+        _ = try await fix.store.createMeeting(title: "Post-Launch")
+
+        // Navigate away from home so we can detect if route gets reset.
+        fix.core.showSettings()
+        #expect(fix.core.route == .settings)
+
+        // Second call should be a no-op: route stays .settings,
+        // summaries are NOT reloaded (so the new meeting doesn't appear).
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .settings)
+        #expect(
+            fix.core.summaries.isEmpty,
+            "Second onLaunch must not reload summaries"
+        )
+    }
+
+    @Test("onLaunch routes to onboarding when incomplete")
+    @MainActor
+    func onLaunchOnboardingGate() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        // Don't mark onboarding complete
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .onboarding)
+    }
 }
 
 // MARK: - Recording coordination tests

@@ -428,12 +428,28 @@ public extension DataStore {
 
     // MARK: - Title
 
-    /// Updates the user-editable title for a meeting.
+    /// Updates the user-editable title for a meeting and marks it as
+    /// user-edited so calendar association will not overwrite it.
     func setTitle(_ title: String, for meetingID: UUID) throws {
         guard let meeting = try meeting(id: meetingID) else {
             throw DataStoreError.notFound(meetingID)
         }
         meeting.title = title
+        meeting.editedTitle = true
+        try save()
+    }
+
+    /// Applies an event title from calendar association. Only updates the
+    /// title when `editedTitle` is `false` -- i.e. the user has NOT manually
+    /// renamed the meeting.
+    func applyEventTitle(
+        _ eventTitle: String, for meetingID: UUID
+    ) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        guard !meeting.editedTitle else { return }
+        meeting.title = eventTitle
         try save()
     }
 

@@ -92,7 +92,7 @@ struct RecordingViewModelTests {
 
         let viewModel = RecordingViewModel(core: fix.core)
         // The meeting title is set by RecordingController.autoTitle
-        #expect(viewModel.meetingTitle?.hasPrefix("Recording") == true)
+        #expect(viewModel.meetingTitle == "Untitled Meeting")
     }
 
     @Test("meetingTitle is nil when not recording")

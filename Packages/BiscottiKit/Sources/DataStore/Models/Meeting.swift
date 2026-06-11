@@ -15,6 +15,10 @@ import SwiftData
     /// Which transcript version is "current" (set via `setPreferredTranscript`).
     public var preferredTranscriptID: UUID?
 
+    /// Whether the user has manually edited the title. When `true`, calendar
+    /// association will NOT overwrite the title with the event name.
+    public var editedTitle: Bool = false
+
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []
 

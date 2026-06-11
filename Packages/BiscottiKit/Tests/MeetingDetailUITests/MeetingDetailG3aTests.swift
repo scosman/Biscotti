@@ -175,7 +175,7 @@ struct AutoTitleNoDateTests {
     @MainActor
     func autoTitleHasNoDate() {
         let title = RecordingController.autoTitle()
-        #expect(title == "Recording")
+        #expect(title == "Untitled Meeting")
         // Verify no date-like content
         #expect(!title.contains("/"))
         #expect(!title.contains(","))

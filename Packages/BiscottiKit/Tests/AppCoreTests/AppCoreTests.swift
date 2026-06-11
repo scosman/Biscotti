@@ -204,7 +204,7 @@ struct AppCoreRecordingTests {
 
         // The newly created meeting should appear in summaries
         #expect(fix.core.summaries.count == 1)
-        #expect(fix.core.summaries.first?.title.hasPrefix("Recording") == true)
+        #expect(fix.core.summaries.first?.title == "Untitled Meeting")
     }
 
     @Test("stopRecording auto-enqueues transcription")

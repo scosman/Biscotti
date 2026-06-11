@@ -244,11 +244,13 @@ public final class RecordingController {
 
     /// Generates an auto-title for a new recording.
     ///
-    /// The title is just "Recording" -- the date is already stored as
+    /// The title is just "Untitled Meeting" -- the date is already stored as
     /// `Meeting.startDate` / `Meeting.createdAt` and displayed separately
     /// in the UI, so embedding it in the title would cause duplication.
+    /// Calendar association will replace this with the event title unless
+    /// the user has manually edited the title.
     public static func autoTitle() -> String {
-        "Recording"
+        "Untitled Meeting"
     }
 
     /// Triggers the system-audio TCC prompt by briefly exercising the engine.

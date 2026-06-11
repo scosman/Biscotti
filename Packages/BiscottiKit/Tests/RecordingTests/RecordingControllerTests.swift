@@ -86,7 +86,7 @@ struct RecordingStartStopTests {
         let meetingID = try #require(fix.controller.state.meetingID)
         let meeting = try await fix.store.meeting(id: meetingID)
         #expect(meeting != nil)
-        #expect(try #require(meeting).title.hasPrefix("Recording"))
+        #expect(try #require(meeting).title == "Untitled Meeting")
 
         // Verify audio refs were attached
         let audioRefs = try await fix.store.fetchAllAudioRefs()
@@ -256,7 +256,7 @@ struct RecordingStartStopTests {
     @MainActor
     func autoTitleFormat() {
         let title = RecordingController.autoTitle()
-        #expect(title == "Recording")
+        #expect(title == "Untitled Meeting")
         // Date must NOT be embedded in the title -- it is shown
         // separately from MeetingDetailData.date metadata.
         #expect(!title.contains("\u{2014}")) // no em dash

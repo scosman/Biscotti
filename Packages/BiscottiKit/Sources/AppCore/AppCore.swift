@@ -738,5 +738,13 @@ extension AppCore {
             organizer: organizerID,
             for: meetingID
         )
+
+        // Apply the event title to the meeting (unless the user
+        // has manually edited the title).
+        if !input.title.isEmpty {
+            try await store.applyEventTitle(
+                input.title, for: meetingID
+            )
+        }
     }
 }

@@ -20,7 +20,7 @@ let store = ResultsStore(fileURL: url)
 do {
     let unrunIDs = try store.unrun(in: allScripts)
     if unrunIDs.isEmpty {
-        print("All \(store.allStepIDs(in: allScripts).count) manual test steps have been run.")
+        print("All \(store.recordableStepIDs(in: allScripts).count) manual test steps have been run.")
         exit(0)
     } else {
         print("\(unrunIDs.count) manual test step(s) not yet run:")

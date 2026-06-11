@@ -25,4 +25,18 @@ public enum TestStep: Sendable, Identifiable {
         case let .autoCheck(id, _, _): id
         }
     }
+
+    /// Whether this step yields a recordable pass/fail result.
+    ///
+    /// `.instruction` steps are passive text the human reads and follows — the
+    /// runner offers no control to mark them, so they never produce a
+    /// `TestResult`. They are therefore excluded from the results file and the
+    /// CI gate (they could only ever appear as `.notRun` and fail it forever).
+    /// All other step types are recorded.
+    public var isRecordable: Bool {
+        switch self {
+        case .instruction: false
+        case .action, .humanQuestion, .autoCheck: true
+        }
+    }
 }

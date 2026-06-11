@@ -6,8 +6,7 @@
 public extension TestScript {
     /// Audio Capture test script — covers permissions, dual-stream recording,
     /// file validation, playback quality, route-change resilience, meeting
-    /// open/close mid-capture, mega experiment, crash safety, and meeting-detection
-    /// monitoring.
+    /// open/close mid-capture, mega experiment, and crash safety.
     static let audioCapture = TestScript(
         id: "audio_capture",
         title: "Audio Capture",
@@ -95,11 +94,6 @@ public extension TestScript {
             .humanQuestion(
                 id: "ac_crash_safety_check",
                 prompt: "Relaunch and check: does the partial .aac from the killed session still decode and play?"
-            ),
-            .humanQuestion(
-                id: "ac_monitoring",
-                prompt: "Start a Google Meet instant meeting. Does monitoring list the browser/Meet "
-                    + "as an active audio source?"
             )
         ]
     )

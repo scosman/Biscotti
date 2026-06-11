@@ -57,17 +57,27 @@ public struct ResultsStore: Sendable {
 
     // MARK: - CI gate helpers
 
-    /// Collects every step ID from the given scripts.
+    /// Collects every step ID from the given scripts, including non-recordable
+    /// (`.instruction`) steps. Use `recordableStepIDs(in:)` for the results
+    /// file / CI gate, which only track steps that produce a pass/fail.
     public func allStepIDs(in scripts: [TestScript]) -> [String] {
         scripts.flatMap { $0.steps.map(\.id) }
     }
 
-    /// Returns step IDs that are either missing from the results file or marked `.notRun`.
-    /// The CI gate fails when this list is non-empty.
+    /// Collects the IDs of steps that produce a recordable result — i.e. every
+    /// step except `.instruction` (see `TestStep.isRecordable`). This is the
+    /// canonical set the results file is expected to cover and the CI gate
+    /// enforces; instruction steps are display-only and never recorded.
+    public func recordableStepIDs(in scripts: [TestScript]) -> [String] {
+        scripts.flatMap { $0.steps.filter(\.isRecordable).map(\.id) }
+    }
+
+    /// Returns recordable step IDs that are either missing from the results file
+    /// or marked `.notRun`. The CI gate fails when this list is non-empty.
+    /// Instruction steps are not recordable, so they are never reported here.
     public func unrun(in scripts: [TestScript]) throws -> [String] {
         let results = try load()
-        let allIDs = allStepIDs(in: scripts)
-        return allIDs.filter { id in
+        return recordableStepIDs(in: scripts).filter { id in
             guard let result = results[id] else { return true }
             return result.status == .notRun
         }

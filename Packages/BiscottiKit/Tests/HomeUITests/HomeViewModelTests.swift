@@ -89,19 +89,6 @@ struct HomeViewModelStateTests {
         #expect(viewModel.showConnectCalendar == false)
     }
 
-    @Test("startDisabled is true when recording in progress")
-    @MainActor
-    func homeStartDisabledWhileRecording() async throws {
-        let fix = try makeCoreFixture(testName: "HomeUITests")
-        defer { fix.cleanup() }
-
-        let viewModel = HomeViewModel(core: fix.core)
-        #expect(viewModel.startDisabled == false)
-
-        await fix.core.startRecording()
-        #expect(viewModel.startDisabled == true)
-    }
-
     @Test("showConnectCalendar is false when denied (still not authorized)")
     @MainActor
     func connectCalendarShownWhenDenied() throws {
@@ -301,17 +288,6 @@ struct HomeViewModelActionTests {
         let viewModel = HomeViewModel(core: fix.core)
         viewModel.selectEvent("event-key-42")
         #expect(fix.core.route == .event("event-key-42"))
-    }
-
-    @Test("startRecording delegates to core")
-    @MainActor
-    func startRecordingDelegates() async throws {
-        let fix = try makeCoreFixture(testName: "HomeUITests")
-        defer { fix.cleanup() }
-
-        let viewModel = HomeViewModel(core: fix.core)
-        await viewModel.startRecording()
-        #expect(fix.core.recording.state.isRecording)
     }
 
     @Test("showMeetings routes to .meetings (See all)")

@@ -9,9 +9,9 @@ import RecordingUI
 import SettingsUI
 import SwiftUI
 
-/// The main app window: a `NavigationSplitView` with a sidebar (recording
-/// indicator + Home + Past Meetings + Upcoming + Settings) and a detail
-/// pane routed by `AppCore.route`. The Record button lives in the toolbar.
+/// The main app window: a `NavigationSplitView` with a sidebar (Home +
+/// Past Meetings + Upcoming + Settings) and a detail pane routed by
+/// `AppCore.route`. The stateful Record button lives in the toolbar.
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
@@ -77,18 +77,34 @@ public struct AppShellView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .fixedSize()
 
-                        Button {
-                            Task { await viewModel.startRecording() }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "record.circle")
-                                Text("Record")
+                        if viewModel.isRecording {
+                            Button {
+                                viewModel.showRecording()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "record.circle")
+                                    Text(
+                                        "Recording\u{2026} \(viewModel.recordingElapsedText)"
+                                    )
+                                    .monospacedDigit()
+                                }
                             }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Tokens.recordingRed)
+                            .help("Go to recording")
+                        } else {
+                            Button {
+                                Task { await viewModel.startRecording() }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "record.circle")
+                                        .foregroundStyle(Tokens.recordingRed)
+                                    Text("Record")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .help("Start recording")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Tokens.recordingRed)
-                        .disabled(viewModel.recordButtonDisabled)
-                        .help("Record")
                     }
                 }
                 .onChange(of: searchText) { _, newValue in
@@ -110,14 +126,6 @@ public struct AppShellView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if viewModel.showRecordingIndicator {
-                recordingIndicator
-                    .padding(.horizontal, Tokens.spacingSM)
-
-                Divider()
-                    .padding(.vertical, Tokens.spacingSM)
-            }
-
             // Home row
             homeRow
                 .padding(.horizontal, Tokens.spacingSM)
@@ -147,30 +155,6 @@ public struct AppShellView: View {
                 .padding(.bottom, Tokens.spacingSM)
         }
         .frame(minWidth: 100, idealWidth: 110)
-    }
-
-    private var recordingIndicator: some View {
-        Button {
-            viewModel.showRecording()
-        } label: {
-            HStack(spacing: Tokens.spacingSM) {
-                Circle()
-                    .fill(Tokens.recordingRed)
-                    .frame(width: 8, height: 8)
-
-                Text("Recording\u{2026}")
-                    .font(.callout)
-
-                Spacer()
-
-                Text(viewModel.recordingElapsedText)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(Tokens.secondaryText)
-            }
-            .padding(.vertical, Tokens.spacingXS)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private var homeRow: some View {

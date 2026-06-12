@@ -7,53 +7,31 @@ import Testing
 
 // MARK: - Tests
 
-@Suite("AppShellViewModel -- sidebar state")
-struct AppShellSidebarTests {
-    @Test("recordButtonDisabled is false when not recording")
+@Suite("AppShellViewModel -- recording state")
+struct AppShellRecordingStateTests {
+    @Test("isRecording is false when idle")
     @MainActor
-    func recordButtonEnabledWhenIdle() throws {
+    func isRecordingFalseWhenIdle() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.recordButtonDisabled == false)
+        #expect(viewModel.isRecording == false)
     }
 
-    @Test("recordButtonDisabled is true when recording")
+    @Test("isRecording is true when recording")
     @MainActor
-    func recordButtonDisabledWhenRecording() async throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        await fix.core.startRecording()
-
-        let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.recordButtonDisabled == true)
-    }
-
-    @Test("showRecordingIndicator is false when not recording")
-    @MainActor
-    func recordingIndicatorHiddenWhenIdle() throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.showRecordingIndicator == false)
-    }
-
-    @Test("showRecordingIndicator is true when recording")
-    @MainActor
-    func recordingIndicatorShownWhenRecording() async throws {
+    func isRecordingTrueWhenRecording() async throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
 
         let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.showRecordingIndicator == true)
+        #expect(viewModel.isRecording == true)
     }
 
-    @Test("recordingElapsedText formats correctly at zero")
+    @Test("recordingElapsedText formats M:SS at zero")
     @MainActor
     func recordingElapsedTextZero() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
@@ -61,6 +39,20 @@ struct AppShellSidebarTests {
 
         let viewModel = AppShellViewModel(core: fix.core)
         #expect(viewModel.recordingElapsedText == "0:00")
+    }
+
+    @Test("formatElapsed handles minutes and seconds")
+    func formatElapsedMinutesSeconds() {
+        #expect(AppShellViewModel.formatElapsed(0) == "0:00")
+        #expect(AppShellViewModel.formatElapsed(5) == "0:05")
+        #expect(AppShellViewModel.formatElapsed(65) == "1:05")
+        #expect(AppShellViewModel.formatElapsed(113) == "1:53")
+    }
+
+    @Test("formatElapsed handles hours")
+    func formatElapsedHours() {
+        #expect(AppShellViewModel.formatElapsed(3661) == "1:01:01")
+        #expect(AppShellViewModel.formatElapsed(7200) == "2:00:00")
     }
 }
 

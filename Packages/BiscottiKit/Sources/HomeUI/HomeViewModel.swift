@@ -30,11 +30,6 @@ public final class HomeViewModel {
         Array(core.summaries.prefix(4))
     }
 
-    /// Whether the Start Recording button should be disabled.
-    public var startDisabled: Bool {
-        core.runState != .idle
-    }
-
     /// Calendar access state for empty/connect display.
     public var calendarAccess: CalendarAuthStatus {
         core.calendar.auth
@@ -57,11 +52,6 @@ public final class HomeViewModel {
     }
 
     // MARK: - Actions
-
-    /// Start a new recording session.
-    public func startRecording() async {
-        await core.startRecording()
-    }
 
     /// Request calendar access (from the "Connect" empty state).
     public func requestCalendarAccess() async {

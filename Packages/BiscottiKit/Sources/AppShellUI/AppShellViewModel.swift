@@ -12,8 +12,8 @@ import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
 ///
-/// Owns the sidebar state (Record button, recording indicator, upcoming,
-/// settings) and routes the detail pane based on `AppCore.route`.
+/// Owns the sidebar state (upcoming, settings), the toolbar recording
+/// button state, and routes the detail pane based on `AppCore.route`.
 ///
 /// Child view models are created once and cached so they survive SwiftUI
 /// re-evaluations.
@@ -99,24 +99,28 @@ public final class AppShellViewModel {
         core.route == .onboarding
     }
 
-    // MARK: - Sidebar state
+    // MARK: - Recording state (toolbar button)
 
-    /// Whether the Record button should be disabled (recording in progress).
-    public var recordButtonDisabled: Bool {
+    /// Whether a recording is currently in progress.
+    public var isRecording: Bool {
         core.recording.state.isRecording
     }
 
-    /// Whether to show the recording indicator in the sidebar.
-    public var showRecordingIndicator: Bool {
-        core.recording.state.isRecording
-    }
-
-    /// Formatted elapsed time for the sidebar recording indicator.
+    /// Formatted elapsed time for the toolbar recording button (e.g. "1:53"
+    /// or "1:02:14" for recordings over an hour).
     public var recordingElapsedText: String {
-        let elapsed = core.recording.state.elapsed
+        Self.formatElapsed(core.recording.state.elapsed)
+    }
+
+    /// Formats a time interval as "M:SS" (under an hour) or "H:MM:SS".
+    nonisolated static func formatElapsed(_ elapsed: TimeInterval) -> String {
         let totalSeconds = Int(elapsed)
+        let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
         return String(format: "%d:%02d", minutes, seconds)
     }
 
@@ -156,7 +160,7 @@ public final class AppShellViewModel {
         await core.startRecording()
     }
 
-    /// Navigates to the recording screen (when tapping the recording indicator).
+    /// Navigates to the recording screen (toolbar recording button tap).
     public func showRecording() {
         core.navigateToRecording()
     }

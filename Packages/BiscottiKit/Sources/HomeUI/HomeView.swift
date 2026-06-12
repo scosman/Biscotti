@@ -4,8 +4,8 @@ import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The Home screen: app title, a prominent Start Recording button,
-/// upcoming meeting previews, and recent meeting history.
+/// The Home screen: app title, upcoming meeting previews, and recent
+/// meeting history.
 public struct HomeView: View {
     @Bindable private var viewModel: HomeViewModel
 
@@ -18,13 +18,6 @@ public struct HomeView: View {
             VStack(alignment: .leading, spacing: Tokens.spacingLG) {
                 // Header
                 headerBlock
-
-                // Start Recording CTA
-                StartRecordingButton(
-                    isDisabled: viewModel.startDisabled
-                ) {
-                    Task { await viewModel.startRecording() }
-                }
 
                 // Upcoming section
                 upcomingSection

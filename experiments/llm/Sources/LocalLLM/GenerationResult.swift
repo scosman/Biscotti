@@ -1,5 +1,13 @@
 import Foundation
 
+/// A streaming event emitted during token-by-token generation.
+public enum StreamEvent: Sendable, Equatable {
+    /// A newly generated token (decoded text piece).
+    case token(String)
+    /// Generation is complete; carries the full result with stats.
+    case done(GenerationResult)
+}
+
 /// Why generation stopped.
 public enum FinishReason: Sendable, Equatable {
     /// Model emitted `<end_of_turn>`.

@@ -79,6 +79,9 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Template implementation: builtin (default) or gemma.")
     var template: TemplateChoice = .builtin
 
+    @Flag(name: .long, help: "Stream tokens to stdout as they are generated.")
+    var stream: Bool = false
+
     // MARK: - Run
 
     mutating func validate() throws {
@@ -166,35 +169,77 @@ struct RunCommand: AsyncParsableCommand {
         // --raw takes precedence: skip ALL templating regardless of --template.
         let useGemmaTemplate = template == .gemma && !raw
 
-        // Generate
-        logStderr("Generating...")
-        let result: GenerationResult
+        // Resolve effective prompt/system/options for the template choice
+        let effectivePrompt: String
+        let effectiveSystem: String?
+        var effectiveOptions = options
         if useGemmaTemplate {
             // Use the hand-rolled Gemma template: pass raw mode to the engine and
             // build the prompt ourselves using GemmaChatTemplate.
-            var gemmaOptions = options
-            gemmaOptions.applyChatTemplate = false
+            effectiveOptions.applyChatTemplate = false
             let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
-            let templatedPrompt = gemmaTemplate.render(
+            effectivePrompt = gemmaTemplate.render(
                 system: systemText, user: promptText, addGenerationPrompt: true
             )
-            result = try await engine.generate(
-                prompt: templatedPrompt, system: nil, options: gemmaOptions
+            effectiveSystem = nil
+        } else {
+            effectivePrompt = promptText
+            effectiveSystem = systemText
+        }
+
+        // Generate (streaming or buffered)
+        logStderr("Generating...")
+        let result: GenerationResult
+        if stream {
+            result = try await runStreaming(
+                engine: engine, prompt: effectivePrompt,
+                system: effectiveSystem, options: effectiveOptions
             )
         } else {
             result = try await engine.generate(
-                prompt: promptText, system: systemText, options: options
+                prompt: effectivePrompt, system: effectiveSystem, options: effectiveOptions
             )
+            // Print the model's message to stdout (clean, pipeable)
+            print(result.text)
         }
-
-        // Print the model's message to stdout (clean, pipeable)
-        print(result.text)
 
         // Print speed summary to stderr
         printSpeedSummary(result)
     }
 
     // MARK: - Helpers
+
+    /// Stream tokens to stdout as they arrive, returning the final result.
+    private func runStreaming(
+        engine: LLMEngine,
+        prompt: String,
+        system: String?,
+        options: GenerationOptions
+    ) async throws -> GenerationResult {
+        let stream = await engine.generateStreaming(
+            prompt: prompt, system: system, options: options
+        )
+
+        var finalResult: GenerationResult?
+        for try await event in stream {
+            switch event {
+            case let .token(piece):
+                // Print each token immediately without a trailing newline
+                print(piece, terminator: "")
+                fflush(stdout)
+            case let .done(result):
+                finalResult = result
+            }
+        }
+
+        // Ensure stdout ends with a newline after streaming
+        print("")
+
+        guard let result = finalResult else {
+            throw LocalLLMError.generationFailed("Stream ended without a .done event")
+        }
+        return result
+    }
 
     private func printSpeedSummary(_ result: GenerationResult) {
         let promptTokS = result.promptEvalDuration > 0

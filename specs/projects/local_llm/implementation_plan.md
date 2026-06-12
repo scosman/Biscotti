@@ -31,7 +31,7 @@ checklist. Each phase is one reviewable unit. Built/tested in `experiments/llm` 
   `Fixtures/sample_transcript.txt`; env-gated model-backed **integration test** (`LLM_RUN_AI=1`);
   `README.md` (build/download/run) + `VALIDATION.md` skeleton (manual run script + empty results).
 
-- [ ] **Phase 3 — Streaming (P2, final).**
+- [x] **Phase 3 — Streaming (P2, final).**
   `generateStreaming` (`AsyncThrowingStream<StreamEvent>`) with non-streaming buffering over the same
   loop; CLI `--stream`; streaming unit tests (event ordering, final result parity).
 

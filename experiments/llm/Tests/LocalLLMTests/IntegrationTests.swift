@@ -103,6 +103,67 @@ struct IntegrationTests {
         )
     }
 
+    @Test("Streaming and buffered generate produce identical results")
+    func streamingParityWithBufferedGenerate() async throws {
+        let engine = try await Self.engine()
+
+        let options = GenerationOptions(
+            maxTokens: 128,
+            temperature: 0, // greedy for determinism
+            seed: 42
+        )
+
+        let prompt = "What color is the sky on a clear day? Answer briefly."
+
+        // Buffered generate
+        let bufferedResult = try await engine.generate(
+            prompt: prompt, options: options
+        )
+
+        // Streaming generate -- collect all events
+        let stream = await engine.generateStreaming(
+            prompt: prompt, options: options
+        )
+        var streamedTokens: [String] = []
+        var streamResult: GenerationResult?
+        for try await event in stream {
+            switch event {
+            case let .token(piece):
+                streamedTokens.append(piece)
+            case let .done(result):
+                streamResult = result
+            }
+        }
+
+        let result = try #require(streamResult, "Stream must end with a .done event")
+
+        // Concatenated streamed tokens must equal the raw decoded text before
+        // post-processing. The final result.text is post-processed, so compare
+        // the headline fields that must match between both paths.
+        #expect(
+            result.text == bufferedResult.text,
+            "Streaming text must match buffered: '\(result.text)' vs '\(bufferedResult.text)'"
+        )
+        #expect(
+            result.generatedTokenCount == bufferedResult.generatedTokenCount,
+            "Token counts must match: \(result.generatedTokenCount) vs \(bufferedResult.generatedTokenCount)"
+        )
+        #expect(
+            result.finishReason == bufferedResult.finishReason,
+            "Finish reasons must match: \(result.finishReason) vs \(bufferedResult.finishReason)"
+        )
+        #expect(
+            result.promptTokenCount == bufferedResult.promptTokenCount,
+            "Prompt token counts must match"
+        )
+
+        // Streamed tokens should not be empty (we got generated tokens)
+        #expect(
+            streamedTokens.count == result.generatedTokenCount,
+            "Number of streamed .token events must equal generatedTokenCount"
+        )
+    }
+
     @Test("Built-in template produces sane tokenization")
     func builtinTemplateSanity() async throws {
         let engine = try await Self.engine()

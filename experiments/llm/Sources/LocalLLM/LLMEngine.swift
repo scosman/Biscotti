@@ -81,7 +81,10 @@ public actor LLMEngine {
         loadDuration = Self.durationSeconds(from: loadStart, to: loadEnd)
     }
 
-    /// Run a single-turn generation.
+    /// Run a single-turn generation (non-streaming).
+    ///
+    /// Internally buffers over the same decode loop as `generateStreaming`, so both paths
+    /// produce identical `GenerationResult`s.
     ///
     /// - Parameters:
     ///   - prompt: The user's message.
@@ -93,6 +96,66 @@ public actor LLMEngine {
         prompt: String,
         system: String? = nil,
         options: GenerationOptions = .default
+    ) async throws -> GenerationResult {
+        // Buffered: ignore per-token callbacks, just return the final result.
+        try await runGeneration(prompt: prompt, system: system, options: options, onToken: nil)
+    }
+
+    /// Run a single-turn generation with streaming.
+    ///
+    /// Returns an `AsyncThrowingStream` that yields `.token(String)` for each generated
+    /// piece and a final `.done(GenerationResult)` when complete. Uses the same decode loop
+    /// as `generate`, so the final `GenerationResult` is identical.
+    ///
+    /// - Parameters:
+    ///   - prompt: The user's message.
+    ///   - system: Optional system instruction.
+    ///   - options: Generation parameters (sampling, limits, thinking mode).
+    /// - Returns: A stream of `StreamEvent`s.
+    public func generateStreaming(
+        prompt: String,
+        system: String? = nil,
+        options: GenerationOptions = .default
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { [weak self] in
+                guard let self else {
+                    continuation.finish(
+                        throwing: LocalLLMError.generationFailed(
+                            "Engine was deallocated"
+                        )
+                    )
+                    return
+                }
+                do {
+                    let result = try await runGeneration(
+                        prompt: prompt, system: system, options: options
+                    ) { piece in
+                        continuation.yield(.token(piece))
+                    }
+                    continuation.yield(.done(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            // Propagate consumer cancellation to the decode loop. When the stream
+            // consumer stops iterating or its Task is cancelled, this cancels the
+            // inner Task so the decode loop's Task.isCancelled check fires promptly.
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
+    // MARK: - Unified decode loop
+
+    /// The single decode loop shared by `generate` (buffered) and `generateStreaming`.
+    ///
+    /// - Parameter onToken: Called with each decoded token piece. `nil` for buffered mode.
+    private func runGeneration(
+        prompt: String,
+        system: String?,
+        options: GenerationOptions,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> GenerationResult {
         guard let ctx = context, let vocab else {
             throw LocalLLMError.generationFailed("Engine not loaded or already unloaded")
@@ -143,7 +206,7 @@ public actor LLMEngine {
 
         // 5. Decode loop
         let genStart = ContinuousClock.now
-        var generatedTokens: [llama_token] = []
+        var generatedCount = 0
         var decodedText = ""
         var finishReason: FinishReason = .maxTokens
 
@@ -174,7 +237,13 @@ public actor LLMEngine {
             // Decode token to text
             let piece = tokenToPiece(token: token, vocab: vocab)
             decodedText += piece
-            generatedTokens.append(token)
+            generatedCount += 1
+
+            // Emit token to stream (if streaming). Called synchronously inside the
+            // actor-isolated loop -- consumer back-pressure has no effect (tokens buffer
+            // in the continuation). Acceptable for this experiment (bounded by maxTokens);
+            // consider a back-pressured channel when porting to Project 10.
+            onToken?(piece)
 
             // Check custom stop sequences
             if let matched = OutputParser.matchesStopSequence(
@@ -227,7 +296,7 @@ public actor LLMEngine {
             text: parsed.text,
             reasoning: parsed.reasoning,
             promptTokenCount: promptTokenCount,
-            generatedTokenCount: generatedTokens.count,
+            generatedTokenCount: generatedCount,
             finishReason: finishReason,
             loadDuration: capturedLoadDuration,
             promptEvalDuration: Self.durationSeconds(from: evalStart, to: evalEnd),

@@ -9,9 +9,9 @@ import RecordingUI
 import SettingsUI
 import SwiftUI
 
-/// The main app window: a `NavigationSplitView` with a sidebar (Home +
-/// Record indicator + Past Meetings + Upcoming + Settings) and a detail
-/// pane routed by `AppCore.route`.
+/// The main app window: a `NavigationSplitView` with a sidebar (recording
+/// indicator + Home + Past Meetings + Upcoming + Settings) and a detail
+/// pane routed by `AppCore.route`. The Record button lives in the toolbar.
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
@@ -45,11 +45,26 @@ public struct AppShellView: View {
                         }
                         .help("Home")
                     }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            Task { await viewModel.startRecording() }
+                        } label: {
+                            Label("Record", systemImage: "record.circle")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Tokens.recordingRed)
+                        .disabled(viewModel.recordButtonDisabled)
+                        .help("Record")
+                    }
                 }
+                // TODO(phase-6 follow-up): search field width not constrained to the requested ~60%.
+                // .searchable doesn't expose a width parameter; revisit on-device (Phase 4 human
+                // review) — may need a custom toolbar TextField or NSSearchField introspection
+                // to narrow it.
                 .searchable(
                     text: $searchText,
                     placement: .toolbar,
-                    prompt: "Search meetings\u{2026}"
+                    prompt: "Search"
                 )
                 .onChange(of: searchText) { _, newValue in
                     if newValue != viewModel.meetingsQuery {
@@ -70,16 +85,13 @@ public struct AppShellView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            recordSection
-                .padding(.horizontal, Tokens.spacingSM)
-
             if viewModel.showRecordingIndicator {
                 recordingIndicator
                     .padding(.horizontal, Tokens.spacingSM)
-            }
 
-            Divider()
-                .padding(.vertical, Tokens.spacingSM)
+                Divider()
+                    .padding(.vertical, Tokens.spacingSM)
+            }
 
             // Home row
             homeRow
@@ -110,12 +122,6 @@ public struct AppShellView: View {
                 .padding(.bottom, Tokens.spacingSM)
         }
         .frame(minWidth: 180, idealWidth: 220)
-    }
-
-    private var recordSection: some View {
-        RecordButton(isDisabled: viewModel.recordButtonDisabled) {
-            Task { await viewModel.startRecording() }
-        }
     }
 
     private var recordingIndicator: some View {

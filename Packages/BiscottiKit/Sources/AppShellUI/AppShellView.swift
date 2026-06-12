@@ -121,7 +121,7 @@ public struct AppShellView: View {
                 .padding(.horizontal, Tokens.spacingSM)
                 .padding(.bottom, Tokens.spacingSM)
         }
-        .frame(minWidth: 180, idealWidth: 220)
+        .frame(minWidth: 100, idealWidth: 110)
     }
 
     private var recordingIndicator: some View {
@@ -311,7 +311,7 @@ private struct MeetingsSplitView: View {
             MeetingListView(
                 viewModel: viewModel.meetingListViewModel
             )
-            .frame(minWidth: 220, idealWidth: 280, maxWidth: 420)
+            .frame(minWidth: 180, idealWidth: 220, maxWidth: 420)
 
             Group {
                 if let id = viewModel.meetingsSelection {
@@ -327,6 +327,7 @@ private struct MeetingsSplitView: View {
                             "Select a meeting to see its transcript and details."
                         )
                     )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(minWidth: 360, maxWidth: .infinity)

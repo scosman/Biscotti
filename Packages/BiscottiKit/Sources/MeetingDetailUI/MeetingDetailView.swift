@@ -62,12 +62,13 @@ public struct MeetingDetailView: View {
                 Divider()
                     .padding(.bottom, Tokens.spacingMD)
 
-                stateContent
+                deleteSection
+                    .padding(.bottom, Tokens.spacingMD)
 
                 Divider()
-                    .padding(.vertical, Tokens.spacingMD)
+                    .padding(.bottom, Tokens.spacingMD)
 
-                deleteSection
+                stateContent
             }
             .padding(Tokens.spacingLG)
         }

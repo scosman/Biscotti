@@ -76,11 +76,15 @@ struct BiscottiApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
-            // Add a Find command (Cmd+F) that focuses the toolbar search
-            // field. Uses `after: .textEditing` to ADD the item without
-            // removing standard Edit-menu entries (Select All, Find
-            // Next/Previous, Use Selection for Find).
-            CommandGroup(after: .textEditing) {
+            // Replace the `.textEditing` group (Find submenu, Spelling &
+            // Grammar, Substitutions, Transformations, Speech) with our
+            // single "Find..." item. This eliminates the system's Find
+            // (which has its own Cmd+F targeting a text-finder responder
+            // action that does nothing in this app) so our Cmd+F is the
+            // sole binding. Standard clipboard (Cut/Copy/Paste/Select All)
+            // and Undo/Redo live in `.pasteboard` and `.undoRedo`
+            // respectively and are NOT affected by this replacement.
+            CommandGroup(replacing: .textEditing) {
                 Button("Find\u{2026}") {
                     appDelegate.core?.focusSearch()
                 }

@@ -1,4 +1,5 @@
 import AppCore
+import AppKit
 import Calendar
 import DesignSystem
 import HomeUI
@@ -18,10 +19,6 @@ public struct AppShellView: View {
     /// Bound to the custom search `TextField` in the toolbar. Two-way synced
     /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
-
-    /// Focus state for the toolbar search field, driven by the Cmd+F
-    /// command via `viewModel.searchFocusToken`.
-    @FocusState private var isSearchFocused: Bool
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -65,7 +62,9 @@ public struct AppShellView: View {
                                 .textFieldStyle(.plain)
                                 .font(.body)
                                 .frame(width: 160)
-                                .focused($isSearchFocused)
+                                .background(SearchFieldFocuser(
+                                    token: viewModel.searchFocusToken
+                                ))
                             if !searchText.isEmpty {
                                 Button {
                                     searchText = ""
@@ -122,9 +121,6 @@ public struct AppShellView: View {
                     if newValue != searchText {
                         searchText = newValue
                     }
-                }
-                .onChange(of: viewModel.searchFocusToken) {
-                    isSearchFocused = true
                 }
             }
         }
@@ -359,6 +355,75 @@ private struct MeetingsSplitView: View {
                 }
             }
             .frame(minWidth: 360, maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Search field focus helper (AppKit first-responder)
+
+/// An invisible `NSViewRepresentable` placed as a `.background()` on the
+/// toolbar search `TextField`. When `token` changes (incremented by
+/// `AppCore.focusSearch()`), it walks up from its own `NSView` to find
+/// the hosting `NSTextField` and makes it the window's first responder.
+///
+/// SwiftUI's `@FocusState` is unreliable for `TextField`s hosted inside
+/// `ToolbarItemGroup` on macOS (the toolbar's NSToolbarItemViewer is in
+/// a separate hosting hierarchy). This uses AppKit's `makeFirstResponder`
+/// directly, which always works regardless of hosting context.
+private struct SearchFieldFocuser: NSViewRepresentable {
+    let token: UInt
+
+    func makeNSView(context _: Context) -> FocuserView {
+        FocuserView()
+    }
+
+    func updateNSView(_ nsView: FocuserView, context _: Context) {
+        guard token != nsView.lastToken else { return }
+        nsView.lastToken = token
+        // Skip the initial (token == 0) to avoid stealing focus on appear.
+        guard token > 0 else { return }
+        // Defer to the next run-loop pass so the view hierarchy is settled.
+        DispatchQueue.main.async {
+            nsView.focusNearestTextField()
+        }
+    }
+
+    final class FocuserView: NSView {
+        var lastToken: UInt = 0
+
+        /// Walks up the view hierarchy from this invisible view to find
+        /// the nearest `NSTextField` and makes it the first responder.
+        func focusNearestTextField() {
+            // Walk up a few levels looking for an editable NSTextField
+            // in the subtree. The SwiftUI TextField's backing NSTextField
+            // is typically a sibling or close ancestor-subtree peer.
+            var ancestor: NSView? = superview
+            for _ in 0 ..< 10 {
+                guard let current = ancestor else { break }
+                if let found = firstEditableTextField(in: current) {
+                    found.window?.makeFirstResponder(found)
+                    return
+                }
+                ancestor = current.superview
+            }
+        }
+
+        /// Depth-first search for the first editable `NSTextField` in
+        /// the given view's subtree.
+        private func firstEditableTextField(
+            in view: NSView
+        ) -> NSTextField? {
+            for subview in view.subviews {
+                if let textField = subview as? NSTextField,
+                   textField.isEditable
+                {
+                    return textField
+                }
+                if let found = firstEditableTextField(in: subview) {
+                    return found
+                }
+            }
+            return nil
         }
     }
 }

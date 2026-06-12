@@ -58,8 +58,9 @@ public final class AppCore {
     public private(set) var isSearchingMeetings = false
 
     /// Monotonically increasing token that signals the UI to focus the
-    /// search field. Incremented by `focusSearch()`, observed by the
-    /// view layer via `.onChange` to set `@FocusState`.
+    /// search field. Incremented by `focusSearch()`, observed by
+    /// `SearchFieldFocuser` (an `NSViewRepresentable`) which calls
+    /// `window.makeFirstResponder` on the toolbar's `NSTextField`.
     public private(set) var searchFocusToken: UInt = 0
 
     /// Meeting-like upcoming calendar events, mirrored from CalendarService.
@@ -380,8 +381,10 @@ public final class AppCore {
     }
 
     /// Requests focus on the search field. Increments the focus token
-    /// so the view layer's `.onChange` observer fires and sets
-    /// `@FocusState` to true. Called from the Cmd+F menu command.
+    /// so `SearchFieldFocuser` (an `NSViewRepresentable` on the toolbar
+    /// `TextField`) detects the change and calls
+    /// `window.makeFirstResponder` on the backing `NSTextField`.
+    /// Called from the Cmd+F menu command.
     public func focusSearch() {
         searchFocusToken &+= 1
     }

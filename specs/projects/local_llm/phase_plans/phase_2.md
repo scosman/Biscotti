@@ -1,5 +1,5 @@
 ---
-status: in_review
+status: complete
 ---
 
 # Phase 2: CLI + Validation Harness + Integration Test + Docs

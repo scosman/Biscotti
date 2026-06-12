@@ -25,7 +25,7 @@ checklist. Each phase is one reviewable unit. Built/tested in `experiments/llm` 
   `swift test`. Built-in paths primary, fallbacks present; live-model confirmation deferred to
   Phase 4.
 
-- [ ] **Phase 2 — CLI + validation harness + integration test + docs.**
+- [x] **Phase 2 — CLI + validation harness + integration test + docs.**
   `localllm` CLI (`download` + `run`, clean stdout/stderr, speed summary, sampling/`--raw`/
   `--thinking`/`--template` flags); `Prompts/{summarize,action_items,infer_speaker_names}.txt` +
   `Fixtures/sample_transcript.txt`; env-gated model-backed **integration test** (`LLM_RUN_AI=1`);

@@ -87,6 +87,36 @@ struct ModelDownloaderTests {
         #expect(temp.deletingPathExtension().lastPathComponent == "model.gguf")
     }
 
+    // MARK: - Default model path agreement (run + download single source of truth)
+
+    @Test("defaultModelDirectory is under ~/Library/Caches")
+    func defaultModelDirectory() {
+        let dir = ModelDownloader.defaultModelDirectory
+        #expect(dir.path.hasSuffix("Library/Caches/net.scosman.biscotti.localllm"))
+    }
+
+    /// Exercises the real `ModelDownloader.defaultModelPath` static and verifies it equals
+    /// `defaultModelDirectory` joined with `defaultModelURL.lastPathComponent`. Both CLI commands
+    /// (`run` and `download`) use these same library statics for their defaults.
+    @Test("defaultModelPath equals defaultModelDirectory + defaultModelURL filename")
+    func defaultModelPathAgreement() {
+        let actualPath = ModelDownloader.defaultModelPath
+
+        // Independently derive the expected value from the two constituent statics
+        let expectedPath = ModelDownloader.defaultModelDirectory
+            .appendingPathComponent(ModelDownloader.defaultModelURL.lastPathComponent)
+
+        #expect(actualPath == expectedPath)
+
+        // Lock the known filename so a URL change is caught
+        #expect(actualPath.lastPathComponent == "gemma-4-12b-it-UD-Q4_K_XL.gguf")
+
+        // Lock the expected full suffix
+        #expect(actualPath.path.hasSuffix(
+            "Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf"
+        ))
+    }
+
     @Test("Skip-if-present returns existing file without download")
     func skipIfPresent() async throws {
         let tmpDir = FileManager.default.temporaryDirectory

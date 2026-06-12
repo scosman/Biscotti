@@ -13,7 +13,7 @@ struct DownloadCommand: AsyncParsableCommand {
     var url: String = ModelDownloader.defaultModelURL.absoluteString
 
     @Option(name: .long, help: "Destination path (file or directory).")
-    var dest: String = defaultCacheDirectory()
+    var dest: String = ModelDownloader.defaultModelDirectory.path
 
     mutating func run() async throws {
         guard let sourceURL = URL(string: url) else {
@@ -80,13 +80,5 @@ struct DownloadCommand: AsyncParsableCommand {
             logStderr("")
             throw error
         }
-    }
-
-    /// Default cache directory under ~/Library/Caches/net.scosman.biscotti.localllm/
-    static func defaultCacheDirectory() -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home
-            .appendingPathComponent("Library/Caches/net.scosman.biscotti.localllm")
-            .path
     }
 }

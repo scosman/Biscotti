@@ -158,8 +158,9 @@ Experiment-quality. Built with `swift-argument-parser`. Subcommands:
     is replaced with the file's contents (how the validation prompt files compose with the shared
     sample transcript).
   - Optional `--system "<text>"` / `--system-file <path>`.
-- **Model:** `--model <path>` to a GGUF. If missing, error with a hint to run `download` (no
-  implicit 8 GB download inside `run`).
+- **Model:** `--model <path>` to a GGUF. Defaults to the download location
+  (`~/Library/Caches/net.scosman.biscotti.localllm/<model>.gguf`). If the file is missing, errors
+  with a hint to run `download` (no implicit 8 GB download inside `run`).
 - **Sampling overrides:** `--temp`, `--top-k`, `--top-p`, `--min-p`, `--max-tokens`, `--seed`,
   `--ctx-size`. `--raw` to skip the chat template.
 - **Speed summary** (printed to stderr at the end), e.g.:

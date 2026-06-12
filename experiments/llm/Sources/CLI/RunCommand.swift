@@ -39,8 +39,11 @@ struct RunCommand: AsyncParsableCommand {
 
     // MARK: - Model
 
-    @Option(name: .long, help: "Path to a GGUF model file. Run 'localllm download' to fetch one.")
-    var model: String
+    @Option(
+        name: .long,
+        help: "Path to a GGUF model file. Defaults to the localllm download cache. Run 'localllm download' to fetch one."
+    )
+    var model: String = ModelDownloader.defaultModelPath.path
 
     // MARK: - Sampling overrides
 

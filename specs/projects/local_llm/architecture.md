@@ -248,8 +248,9 @@ stderr = diagnostics + the speed summary** (clean, pipeable — matches the ArgM
   - Input (exactly one of): `--prompt "<text>"` | `--prompt-file <path>`. Optional
     `--transcript-file <path>` substituted into a `{{transcript}}` placeholder in the prompt.
     Optional `--system <text>` / `--system-file <path>`.
-  - `--model <path>` (required; error w/ hint to run `download` if missing — never an implicit 8 GB
-    fetch inside `run`).
+  - `--model <path>` (optional; defaults to the download location
+    `~/Library/Caches/net.scosman.biscotti.localllm/<model>.gguf`; errors w/ hint to run `download`
+    if absent — never an implicit 8 GB fetch inside `run`).
   - Overrides: `--temp --top-k --top-p --min-p --max-tokens --seed --ctx-size --repeat-penalty`,
     `--raw` (skip template), `--thinking off|auto` (default off), `--template builtin|gemma`
     (selects the §5 path for A/B). `--stream` (final phase).

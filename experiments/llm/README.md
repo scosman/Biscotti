@@ -34,13 +34,15 @@ Options:
 ## Run inference
 
 ```bash
-# Inline prompt
+# Simplest form — uses the default downloaded model
+swift run localllm run --prompt "What is the capital of France?"
+
+# Explicit model path (overrides the default)
 swift run localllm run --model ~/Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf \
   --prompt "What is the capital of France?"
 
 # Prompt from file with transcript substitution
-swift run localllm run --model <path-to-model> \
-  --prompt-file Prompts/summarize.txt \
+swift run localllm run --prompt-file Prompts/summarize.txt \
   --transcript-file Fixtures/sample_transcript.txt
 ```
 
@@ -50,7 +52,7 @@ The model's response prints to **stdout** (clean, pipeable). Diagnostics and the
 
 | Flag | Description |
 |---|---|
-| `--model <path>` | Path to a GGUF model file (required) |
+| `--model <path>` | Path to a GGUF model file (defaults to the download location; errors with a hint to run `localllm download` if absent) |
 | `--prompt <text>` | Inline prompt text |
 | `--prompt-file <path>` | Read the prompt from a file |
 | `--transcript-file <path>` | Substitute `{{transcript}}` in the prompt |
@@ -88,7 +90,7 @@ Three prompt templates in `Prompts/` exercise the model on a synthetic meeting t
 
 Run each with:
 ```bash
-swift run localllm run --model <path> --prompt-file Prompts/summarize.txt --transcript-file Fixtures/sample_transcript.txt
+swift run localllm run --prompt-file Prompts/summarize.txt --transcript-file Fixtures/sample_transcript.txt
 ```
 
 See `VALIDATION.md` for the full manual run script and findings.

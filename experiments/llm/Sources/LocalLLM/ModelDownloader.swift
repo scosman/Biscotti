@@ -11,6 +11,19 @@ public struct ModelDownloader: Sendable {
             "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/main/gemma-4-12b-it-UD-Q4_K_XL.gguf"
     )!
 
+    /// Default local cache directory for downloaded models.
+    public static let defaultModelDirectory: URL = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home.appendingPathComponent("Library/Caches/net.scosman.biscotti.localllm")
+    }()
+
+    /// Resolved default model file path -- the location `download` writes to and `run` reads from.
+    ///
+    /// Composed from ``defaultModelDirectory`` + ``defaultModelURL``'s filename so both CLI commands
+    /// always agree. Single source of truth.
+    public static let defaultModelPath: URL =
+        defaultModelDirectory.appendingPathComponent(defaultModelURL.lastPathComponent)
+
     public init() {}
 
     /// Download a model file.

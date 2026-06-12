@@ -8,6 +8,7 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
+import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
 ///
@@ -31,6 +32,9 @@ public final class AppShellViewModel {
     /// The home view model (created once, never replaced).
     public let homeViewModel: HomeViewModel
 
+    /// The settings view model (created once, never replaced).
+    public let settingsViewModel: SettingsViewModel
+
     /// The onboarding view model (created once, never replaced).
     public let onboardingViewModel: OnboardingViewModel
 
@@ -47,6 +51,7 @@ public final class AppShellViewModel {
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
         homeViewModel = HomeViewModel(core: core)
+        settingsViewModel = SettingsViewModel(core: core)
         onboardingViewModel = OnboardingViewModel(core: core)
     }
 
@@ -164,6 +169,11 @@ public final class AppShellViewModel {
     /// Routes to the Meetings screen (browse mode, keep selection).
     public func showMeetings() {
         core.showMeetings()
+    }
+
+    /// Routes to Settings.
+    public func showSettings() {
+        core.showSettings()
     }
 
     /// Routes to an upcoming event preview.

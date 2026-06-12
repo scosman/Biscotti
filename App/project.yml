@@ -52,8 +52,6 @@ targets:
         product: MenuBarUI
       - package: BiscottiKit
         product: Notifications
-      - package: BiscottiKit
-        product: SettingsUI
       - package: Transcription
         product: Transcription
       - package: AudioCapture

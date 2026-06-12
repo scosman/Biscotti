@@ -204,6 +204,18 @@ struct AppShellChildVMTests {
         let detailVM2 = viewModel.meetingDetailViewModel(for: id2)
         #expect(detailVM1 !== detailVM2)
     }
+
+    @Test("settingsViewModel is stable")
+    @MainActor
+    func settingsVMStable() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = AppShellViewModel(core: fix.core)
+        let settings1 = viewModel.settingsViewModel
+        let settings2 = viewModel.settingsViewModel
+        #expect(settings1 === settings2)
+    }
 }
 
 // MARK: - Upcoming and search tests
@@ -312,9 +324,20 @@ struct AppShellUpcomingSearchTests {
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        fix.core.selectEvent("ev") // change route first
+        fix.core.showSettings() // change route first
         shellVM.showHome()
         #expect(shellVM.route == .home)
+    }
+
+    @Test("showSettings routes to settings")
+    @MainActor
+    func showSettingsRoutesToSettings() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.showSettings()
+        #expect(shellVM.route == .settings)
     }
 
     @Test("selectEvent routes to event preview")

@@ -64,3 +64,10 @@ triggered — `manual_test_results.json` is untouched.
 - [x] **Phase 7 — Sidebar upcoming cells.** Full-width clickable cells; meeting-type badge right-aligned.
 - [x] **Phase 8 — Right pane & layout.** Default column widths (meetings-list column = sidebar's current width; sidebar = 50% of its current width); fix the empty-detail offset bug (right pane only ~20% tall when "No meeting selected"); move Delete-meeting button to above the transcript.
 - [x] **Phase 9 — Settings.** Standard macOS Settings… under the app-name menu (Cmd+,) launching a settings page (placeholder/stub content).
+
+## Round 3 — Review feedback
+
+- [x] **Phase 10 — Settings: restore in-window tab.** Revert the Phase-9 Settings-window change: settings render INSIDE the primary window again (restore Route.settings + showSettings(); sidebar row + detail render SettingsView in-window); remove the macOS `Settings` scene. P2: a custom Cmd+, menu command that navigates the main window to the settings tab.
+- [ ] **Phase 11 — App lifecycle: Cmd+Q + exit setting.** Cmd+Q and window-close close the window but keep the menu-bar/tray app alive; add persisted setting "Exit app on window close" (default false) controlling it; keep a real Quit in the tray menu.
+- [ ] **Phase 12 — Record button: stateful redesign.** Idle: "Record" with a red icon, click starts recording. Recording: "Recording… M:SS" live elapsed time, prominent red button with white text/icon, click opens the record page (does NOT stop). Remove the sidebar recording indicator and the big red start-recording button on Home (now app-wide in the top bar).
+- [ ] **Phase 13 — Top-bar & list polish.** Remove the "Biscotti" title from the bar; Cmd+F focuses the search field app-wide (custom Find command + focus state; P2 "Find" menu item); Home button disabled when on Home; "No results for X" block vertically centered.

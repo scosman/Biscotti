@@ -6,6 +6,7 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
+import SettingsUI
 import SwiftUI
 
 /// The main app window: a `NavigationSplitView` with a sidebar (recording
@@ -17,9 +18,6 @@ public struct AppShellView: View {
     /// Bound to the custom search `TextField` in the toolbar. Two-way synced
     /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
-
-    /// Opens the standard macOS Settings window (same window as Cmd+,).
-    @Environment(\.openSettings) private var openSettings
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -235,11 +233,15 @@ public struct AppShellView: View {
 
     private var settingsRow: some View {
         Button {
-            openSettings()
+            viewModel.showSettings()
         } label: {
             HStack(spacing: Tokens.spacingSM) {
                 Image(systemName: "gearshape")
-                    .foregroundStyle(Tokens.secondaryText)
+                    .foregroundStyle(
+                        viewModel.route == .settings
+                            ? Color.accentColor
+                            : Tokens.secondaryText
+                    )
                 Text("Settings")
                     .font(.body)
                 Spacer()
@@ -248,6 +250,12 @@ public struct AppShellView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .background(
+            viewModel.route == .settings
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
     }
 
     // MARK: - Detail pane
@@ -271,6 +279,9 @@ public struct AppShellView: View {
                 viewModel: viewModel.eventPreviewViewModel(for: key)
             )
             .id(key)
+
+        case .settings:
+            SettingsView(viewModel: viewModel.settingsViewModel)
 
         case .onboarding:
             // Handled by the full-window takeover above; should not reach here.

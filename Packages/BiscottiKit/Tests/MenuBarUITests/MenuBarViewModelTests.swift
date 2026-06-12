@@ -275,8 +275,8 @@ struct MenuBarNavigationTests {
         defer { fix.cleanup() }
 
         // Set an initial non-home route
-        fix.core.selectEvent("ev")
-        #expect(fix.core.route == .event("ev"))
+        fix.core.showSettings()
+        #expect(fix.core.route == .settings)
 
         var windowOpened = false
         let model = MenuBarViewModel(

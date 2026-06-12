@@ -56,3 +56,11 @@ triggered — `manual_test_results.json` is untouched.
   ↑/↓ keyboard nav drives the detail pane; search → auto-render top result; Past Meetings / See all /
   delete-select-next flows. Review the `review_for_human.md` autonomous-calls log; fix bugs.
   *(Depends on: Phase 3. **Human-run.**)*
+
+## Round 2 — Review feedback
+
+- [x] **Phase 5 — AppCore behavior.** Search auto-selects the TOP result on load (not the previously-seen selection); allow up to 6 upcoming meetings. + unit tests.
+- [ ] **Phase 6 — Top app bar & record relocation.** Remove app name from the bar; add a Record button on the right next to search; search field ~60% width with placeholder "Search"; remove the record button from the sidebar.
+- [ ] **Phase 7 — Sidebar upcoming cells.** Full-width clickable cells; meeting-type badge right-aligned.
+- [ ] **Phase 8 — Right pane & layout.** Default column widths (meetings-list column = sidebar's current width; sidebar = 50% of its current width); fix the empty-detail offset bug (right pane only ~20% tall when "No meeting selected"); move Delete-meeting button to above the transcript.
+- [ ] **Phase 9 — Settings.** Standard macOS Settings… under the app-name menu (Cmd+,) launching a settings page (placeholder/stub content).

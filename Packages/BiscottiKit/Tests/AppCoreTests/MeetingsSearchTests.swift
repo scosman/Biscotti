@@ -224,9 +224,44 @@ struct AutoSelectTopResultTests {
         #expect(fix.core.meetingsSelection == id1)
     }
 
-    @Test("search keeps current selection when it survives in results")
+    @Test("search always selects top result even when prior selection survives")
     @MainActor
-    func keepsCurrentSelectionInResults() async throws {
+    func searchAlwaysSelectsTopResult() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            testName: "MeetingsSearch"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        _ = try await fix.store.createMeeting(title: "Alpha One")
+        try await Task.sleep(for: .milliseconds(10))
+        let id2 = try await fix.store.createMeeting(title: "Alpha Two")
+        await fix.core.reloadSummaries()
+
+        // Pre-select id2 (not the top result for "Alpha")
+        fix.core.selectFromList(id2)
+        #expect(fix.core.meetingsSelection == id2)
+
+        // Search for "Alpha" -- both match; selection should jump to the
+        // top result, NOT stick to id2.
+        fix.core.setMeetingsQuery("Alpha")
+        try await pollUntil { fakeScheduler.pendingCount > 0 }
+        fakeScheduler.advance(by: .milliseconds(300))
+        try await pollUntil { fix.core.isSearchingMeetings == false }
+
+        #expect(fix.core.meetingsResults.count == 2)
+        let topResultID = fix.core.meetingsResults.first?.id
+        #expect(fix.core.meetingsSelection == topResultID)
+    }
+
+    @Test("search results change moves selection to new top result")
+    @MainActor
+    func searchResultsChangeSelectsNewTop() async throws {
         let fix = try makeCoreFixture(
             useFakeScheduler: true,
             testName: "MeetingsSearch"
@@ -239,23 +274,23 @@ struct AutoSelectTopResultTests {
         }
 
         let id1 = try await fix.store.createMeeting(title: "Alpha One")
-        let id2 = try await fix.store.createMeeting(title: "Alpha Two")
+        try await Task.sleep(for: .milliseconds(10))
+        _ = try await fix.store.createMeeting(title: "Alpha Two")
+        try await Task.sleep(for: .milliseconds(10))
+        _ = try await fix.store.createMeeting(title: "Beta Only")
         await fix.core.reloadSummaries()
 
-        // Pre-select id2
-        fix.core.selectFromList(id2)
-        #expect(fix.core.meetingsSelection == id2)
-
-        // Search for "Alpha" -- both match, selection should stick to id2
+        // First search: "Alpha" matches two meetings
         fix.core.setMeetingsQuery("Alpha")
         try await pollUntil { fakeScheduler.pendingCount > 0 }
         fakeScheduler.advance(by: .milliseconds(300))
         try await pollUntil { fix.core.isSearchingMeetings == false }
 
         #expect(fix.core.meetingsResults.count == 2)
-        #expect(fix.core.meetingsSelection == id2)
+        let firstTopID = fix.core.meetingsResults.first?.id
+        #expect(fix.core.meetingsSelection == firstTopID)
 
-        // Now search for "One" -- only id1 matches, selection should change
+        // Refine search: "One" matches only id1; selection moves to new top
         fix.core.setMeetingsQuery("One")
         try await pollUntil { fakeScheduler.pendingCount > 0 }
         fakeScheduler.advance(by: .milliseconds(300))
@@ -263,7 +298,6 @@ struct AutoSelectTopResultTests {
 
         #expect(fix.core.meetingsResults.count == 1)
         #expect(fix.core.meetingsSelection == id1)
-        _ = id1 // silence unused warnings
     }
 
     @Test("search with no results sets selection to nil")

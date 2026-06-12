@@ -11,11 +11,11 @@ import Testing
 
 @Suite("HomeViewModel -- state")
 struct HomeViewModelStateTests {
-    @Test("upcomingPreview returns first 5 events from core.displayedUpcoming")
+    @Test("upcomingPreview returns first 6 events from core.displayedUpcoming")
     @MainActor
     func homeShowsUpcomingPreview() async throws {
         let now = Date()
-        let dtos = (0 ..< 6).map { idx in
+        let dtos = (0 ..< 8).map { idx in
             EKEventDTO(
                 eventIdentifier: "ev-\(idx)",
                 calendarItemIdentifier: "ci-\(idx)",
@@ -52,9 +52,9 @@ struct HomeViewModelStateTests {
         await fix.core.onLaunch()
 
         let viewModel = HomeViewModel(core: fix.core)
-        #expect(viewModel.upcomingPreview.count == 5)
+        #expect(viewModel.upcomingPreview.count == 6)
         #expect(viewModel.upcomingPreview[0].title == "Event 0")
-        #expect(viewModel.upcomingPreview[4].title == "Event 4")
+        #expect(viewModel.upcomingPreview[5].title == "Event 5")
     }
 
     @Test("showConnectCalendar is true when calendar access not authorized")

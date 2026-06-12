@@ -445,11 +445,11 @@ struct AppShellUpcomingSearchTests {
 
 @Suite("AppShellViewModel -- upcoming display cap")
 struct AppShellUpcomingCapTests {
-    @Test("upcomingEvents capped at 5")
+    @Test("upcomingEvents capped at 6")
     @MainActor
-    func upcomingEventsCappedAt5() async throws {
+    func upcomingEventsCappedAt6() async throws {
         let now = Date()
-        let dtos = (0 ..< 8).map { idx in
+        let dtos = (0 ..< 9).map { idx in
             EKEventDTO(
                 eventIdentifier: "ev-cap-\(idx)",
                 calendarItemIdentifier: "ci-cap-\(idx)",
@@ -493,14 +493,14 @@ struct AppShellUpcomingCapTests {
         }
         await fix.core.onLaunch()
 
-        // Core should have more than 5 upcoming
-        #expect(fix.core.displayedUpcoming.count > 5)
+        // Core should have more than 6 upcoming
+        #expect(fix.core.displayedUpcoming.count > 6)
 
         let shellVM = AppShellViewModel(core: fix.core)
-        // Sidebar caps at 5
-        #expect(shellVM.upcomingEvents.count == 5)
-        // Preserves order (first 5)
+        // Sidebar caps at 6
+        #expect(shellVM.upcomingEvents.count == 6)
+        // Preserves order (first 6)
         #expect(shellVM.upcomingEvents.first?.title == "Cap Event 0")
-        #expect(shellVM.upcomingEvents.last?.title == "Cap Event 4")
+        #expect(shellVM.upcomingEvents.last?.title == "Cap Event 5")
     }
 }

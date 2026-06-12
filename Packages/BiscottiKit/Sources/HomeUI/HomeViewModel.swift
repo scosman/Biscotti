@@ -19,10 +19,10 @@ public final class HomeViewModel {
 
     // MARK: - State (derived from core)
 
-    /// The upcoming meeting-like events to show as a preview list (max 5).
+    /// The upcoming meeting-like events to show as a preview list (max 6).
     /// Uses `displayedUpcoming` which filters out ended events.
     public var upcomingPreview: [CalendarEvent] {
-        Array(core.displayedUpcoming.prefix(5))
+        Array(core.displayedUpcoming.prefix(6))
     }
 
     /// The most recent meetings (max 4, newest-first).

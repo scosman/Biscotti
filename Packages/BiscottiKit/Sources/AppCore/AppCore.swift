@@ -483,14 +483,10 @@ extension AppCore {
         }
     }
 
-    /// Keeps the current selection if it survived into the new results;
-    /// otherwise picks the top hit (or nil if no results).
+    /// Always selects the top search result (or nil if no results).
+    /// Ensures the user sees the first match after every search, rather
+    /// than a stale selection that might be below the fold.
     private func autoSelectTopResult() {
-        if let sel = meetingsSelection,
-           meetingsResults.contains(where: { $0.id == sel })
-        {
-            return
-        }
         meetingsSelection = meetingsResults.first?.id
     }
 

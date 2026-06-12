@@ -165,7 +165,6 @@ struct RunCommand: AsyncParsableCommand {
         // Load engine
         logStderr("Loading model...")
         let engine = try await LLMEngine(modelPath: modelURL, config: engineConfig)
-        defer { Task { await engine.unload() } }
 
         // Override the template choice if needed.
         // The --template flag selects builtin vs gemma for A/B comparison (Phase 4).
@@ -190,24 +189,49 @@ struct RunCommand: AsyncParsableCommand {
             effectiveSystem = systemText
         }
 
-        // Generate (streaming or buffered)
-        logStderr("Generating...")
-        let result: GenerationResult
-        if stream {
-            result = try await runStreaming(
-                engine: engine, prompt: effectivePrompt,
-                system: effectiveSystem, options: effectiveOptions
-            )
-        } else {
-            result = try await engine.generate(
-                prompt: effectivePrompt, system: effectiveSystem, options: effectiveOptions
-            )
-            // Print the model's message to stdout (clean, pipeable)
-            print(result.text)
+        // Generate (streaming or buffered). Wrapped in do/catch so that teardown
+        // (unload + backend shutdown) runs on BOTH success and error paths. Without
+        // this, a mid-generation error (decodeFailed, cancelled, etc.) would skip
+        // backend teardown and hit the same ggml-metal rsets assert on exit.
+        do {
+            logStderr("Generating...")
+            let result: GenerationResult
+            if stream {
+                result = try await runStreaming(
+                    engine: engine, prompt: effectivePrompt,
+                    system: effectiveSystem, options: effectiveOptions
+                )
+            } else {
+                result = try await engine.generate(
+                    prompt: effectivePrompt, system: effectiveSystem, options: effectiveOptions
+                )
+                // Print the model's message to stdout (clean, pipeable)
+                print(result.text)
+            }
+
+            // Print speed summary to stderr
+            printSpeedSummary(result)
+        } catch {
+            // Error path: free engine + backend cleanly, then re-throw so
+            // ArgumentParser prints the error and exits non-zero.
+            // Do NOT call _exit here — the error must surface normally.
+            await engine.unload()
+            LocalLLMRuntime.shutdown()
+            throw error
         }
 
-        // Print speed summary to stderr
-        printSpeedSummary(result)
+        // Success path: ordered teardown, then hard-exit to bypass static destructors.
+        await engine.unload()
+        LocalLLMRuntime.shutdown()
+        fflush(stdout)
+        fflush(stderr)
+
+        // Fallback: if the upstream ggml-metal rsets assert still fires despite correct
+        // teardown order (observed in some llama.cpp builds — see tobi/qmd#674), bypass
+        // the C++ static destructors entirely. This is CLI-only; never in the library.
+        // TODO: Remove once llama.cpp ships a fix for the rsets teardown assert
+        // (upstream: ggml-org/llama.cpp ggml-metal-device.m ggml_metal_rsets_free).
+        _exit(EXIT_SUCCESS)
     }
 
     // MARK: - Helpers

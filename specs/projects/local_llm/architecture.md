@@ -127,7 +127,7 @@ actor LLMEngine {
                          options: GenerationOptions = .default)
        -> AsyncThrowingStream<StreamEvent, Error>      // FINAL PHASE
   func unload()
-  deinit  // frees context + model + backend
+  deinit  // frees context + model (NOT backend — see LocalLLMRuntime)
 }
 ```
 
@@ -174,7 +174,10 @@ b9601 call) so calls don't bleed into each other.
 7. Assemble `GenerationResult` (counts, `finishReason`, durations, `loadDuration` only on first
    generate after load).
 
-`unload()`/`deinit` free context, model, and backend.
+`unload()`/`deinit` free context and model. The global backend is freed separately
+via `LocalLLMRuntime.shutdown()` — call it once at end-of-process, after all engines
+are unloaded. This prevents a ggml-metal static-destructor abort on exit (see
+`LocalLLMRuntime` doc comment for details).
 
 ### 4.3 Concurrency
 

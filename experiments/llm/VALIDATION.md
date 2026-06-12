@@ -60,6 +60,41 @@ swift run localllm run --model $MODEL --prompt "What is 15 * 23? Show your work.
 
 ---
 
+## Known issue: ggml-metal teardown crash on exit
+
+**Symptom:** After generation completes and output prints successfully, the process
+aborts at exit with:
+```
+GGML_ASSERT([rsets->data count] == 0) failed  (ggml-metal-device.m:622)
+```
+The assert fires inside `ggml_metal_rsets_free` -> `ggml_metal_device_free`, called
+from a C++ static destructor during `__cxa_finalize_ranges` at `exit()`.
+
+**Root cause:** `llama_backend_free()` was never called, so the global Metal device
+(with its GPU residency sets) was left to a static destructor that expects all
+residency sets to be empty — but they aren't because contexts/models weren't freed
+before the device.
+
+**Fix applied:** `LocalLLMRuntime.shutdown()` calls `llama_backend_free()` explicitly
+after `engine.unload()` frees the context/model. The CLI calls this on the success
+path. Additionally, `_exit(EXIT_SUCCESS)` is used as a belt-and-suspenders fallback
+to bypass C++ static destructors entirely, because the QMD project (tobi/qmd#368,
+tobi/qmd#674) found that some llama.cpp builds still fire the assert even with
+correct teardown order.
+
+**Upstream references:**
+- ggml-org/llama.cpp `ggml/src/ggml-metal/ggml-metal-device.m` — the assert says
+  "most likely you haven't deallocated all Metal resources before exiting"
+- tobi/qmd#368, tobi/qmd#674 — same crash in another llama.cpp consumer; `_exit()`
+  is the reliable workaround
+- ggml-org/llama.cpp#17869 — unrelated (macOS backtrace printing), but referenced in
+  the crash log's backtrace output
+
+**Status:** Fix builds and passes always-on tests. Needs hardware verification to
+confirm the crash is resolved.
+
+---
+
 ## Results
 
 _To be filled in during Phase 4 live validation._

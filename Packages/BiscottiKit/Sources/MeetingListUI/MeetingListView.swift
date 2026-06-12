@@ -16,30 +16,9 @@ public struct MeetingListView: View {
     }
 
     public var body: some View {
-        List(
-            selection: Binding(
-                get: { viewModel.selectedID },
-                set: { viewModel.select($0) }
-            )
-        ) {
-            switch viewModel.mode {
-            case .browse:
-                browseContent
-
-            case .search:
-                searchContent
-            }
-        }
-        .listStyle(.inset)
-    }
-
-    // MARK: - Browse mode (grouped by date)
-
-    @ViewBuilder
-    private var browseContent: some View {
-        if viewModel.groups.isEmpty {
-            // Per architecture spec: placed inside the List builder.
-            // Verify centering/sizing on device in Phase 4.
+        // Empty states render OUTSIDE the List so ContentUnavailableView
+        // centers vertically in the full pane instead of pinning to a row.
+        if viewModel.mode == .browse, viewModel.groups.isEmpty {
             ContentUnavailableView(
                 "No Recordings",
                 systemImage: "waveform",
@@ -47,13 +26,40 @@ public struct MeetingListView: View {
                     "Recorded meetings will appear here."
                 )
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewModel.mode == .search,
+                  !viewModel.isSearching, // still in-flight → fall through to List/spinner
+                  viewModel.results.isEmpty
+        {
+            ContentUnavailableView.search(text: viewModel.query)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ForEach(viewModel.groups) { group in
-                Section(group.title) {
-                    ForEach(group.meetings) { meeting in
-                        meetingRow(meeting)
-                            .tag(meeting.id)
-                    }
+            List(
+                selection: Binding(
+                    get: { viewModel.selectedID },
+                    set: { viewModel.select($0) }
+                )
+            ) {
+                switch viewModel.mode {
+                case .browse:
+                    browseContent
+
+                case .search:
+                    searchContent
+                }
+            }
+            .listStyle(.inset)
+        }
+    }
+
+    // MARK: - Browse mode (grouped by date)
+
+    private var browseContent: some View {
+        ForEach(viewModel.groups) { group in
+            Section(group.title) {
+                ForEach(group.meetings) { meeting in
+                    meetingRow(meeting)
+                        .tag(meeting.id)
                 }
             }
         }
@@ -70,10 +76,6 @@ public struct MeetingListView: View {
                 Spacer()
             }
             .padding(.vertical, Tokens.spacingLG)
-        } else if viewModel.results.isEmpty {
-            // Per architecture spec: placed inside the List builder.
-            // Verify centering/sizing on device in Phase 4.
-            ContentUnavailableView.search(text: viewModel.query)
         } else {
             ForEach(viewModel.results) { hit in
                 searchRow(hit)

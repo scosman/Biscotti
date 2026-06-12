@@ -433,6 +433,61 @@ struct AppShellUpcomingSearchTests {
     }
 }
 
+// MARK: - isHome and searchFocusToken tests
+
+@Suite("AppShellViewModel -- isHome")
+struct AppShellIsHomeTests {
+    @Test("isHome is true when route is .home")
+    @MainActor
+    func isHomeTrueOnHome() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.isHome == true)
+    }
+
+    @Test("isHome is false when route is not .home")
+    @MainActor
+    func isHomeFalseOnOtherRoutes() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        fix.core.showSettings()
+        #expect(shellVM.isHome == false)
+
+        fix.core.showMeetings()
+        #expect(shellVM.isHome == false)
+    }
+}
+
+@Suite("AppShellViewModel -- searchFocusToken")
+struct AppShellSearchFocusTests {
+    @Test("searchFocusToken starts at zero")
+    @MainActor
+    func tokenStartsAtZero() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.searchFocusToken == 0)
+    }
+
+    @Test("focusSearch increments searchFocusToken")
+    @MainActor
+    func focusSearchIncrementsToken() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.focusSearch()
+        #expect(shellVM.searchFocusToken == 1)
+        shellVM.focusSearch()
+        #expect(shellVM.searchFocusToken == 2)
+    }
+}
+
 // MARK: - Upcoming display cap tests
 
 @Suite("AppShellViewModel -- upcoming display cap")

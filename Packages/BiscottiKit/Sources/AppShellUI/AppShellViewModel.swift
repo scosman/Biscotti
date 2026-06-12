@@ -153,6 +153,17 @@ public final class AppShellViewModel {
         core.meetingsQuery
     }
 
+    /// Whether the current route is Home (used to disable the toolbar Home button).
+    public var isHome: Bool {
+        core.route == .home
+    }
+
+    /// Token that increments when the search field should gain focus
+    /// (e.g. Cmd+F). The view observes this via `.onChange`.
+    public var searchFocusToken: UInt {
+        core.searchFocusToken
+    }
+
     // MARK: - Actions
 
     /// Starts a new recording session.
@@ -178,6 +189,11 @@ public final class AppShellViewModel {
     /// Routes to Settings.
     public func showSettings() {
         core.showSettings()
+    }
+
+    /// Requests focus on the search field (Cmd+F).
+    public func focusSearch() {
+        core.focusSearch()
     }
 
     /// Routes to an upcoming event preview.

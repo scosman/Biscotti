@@ -45,7 +45,7 @@ struct BiscottiApp: App {
         // Single-instance Window (not WindowGroup) so `openWindow(id: "main")`
         // is idempotent — it reopens the one window, never spawns duplicates.
         // This is the right primitive for a single-main-window menu-bar app.
-        Window("Biscotti", id: "main") {
+        Window("", id: "main") {
             WindowRootView(launchState: appDelegate.launchState)
                 .frame(minWidth: 640, minHeight: 400)
                 .onReceive(NotificationCenter.default.publisher(
@@ -74,6 +74,17 @@ struct BiscottiApp: App {
                     appDelegate.core?.showSettings()
                 }
                 .keyboardShortcut(",", modifiers: .command)
+            }
+
+            // Add a Find command (Cmd+F) that focuses the toolbar search
+            // field. Uses `after: .textEditing` to ADD the item without
+            // removing standard Edit-menu entries (Select All, Find
+            // Next/Previous, Use Selection for Find).
+            CommandGroup(after: .textEditing) {
+                Button("Find\u{2026}") {
+                    appDelegate.core?.focusSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
             }
 
             // Replace the standard Quit (Cmd+Q) with a custom handler.
@@ -530,6 +541,7 @@ private struct WindowTitleHider: NSViewRepresentable {
     func updateNSView(_ nsView: TitleHiderView, context _: Context) {
         // Re-apply in case the window was recreated (e.g. reopen from Dock).
         nsView.window?.titleVisibility = .hidden
+        nsView.window?.title = ""
     }
 
     /// Custom NSView that hides the window title synchronously as soon
@@ -538,6 +550,7 @@ private struct WindowTitleHider: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             window?.titleVisibility = .hidden
+            window?.title = ""
         }
     }
 }

@@ -19,6 +19,10 @@ public struct AppShellView: View {
     /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
 
+    /// Focus state for the toolbar search field, driven by the Cmd+F
+    /// command via `viewModel.searchFocusToken`.
+    @FocusState private var isSearchFocused: Bool
+
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
     }
@@ -44,6 +48,7 @@ public struct AppShellView: View {
                             Image(systemName: "house")
                         }
                         .help("Home")
+                        .disabled(viewModel.isHome)
                     }
 
                     // Custom trailing group: search field + Record button.
@@ -60,6 +65,7 @@ public struct AppShellView: View {
                                 .textFieldStyle(.plain)
                                 .font(.body)
                                 .frame(width: 160)
+                                .focused($isSearchFocused)
                             if !searchText.isEmpty {
                                 Button {
                                     searchText = ""
@@ -116,6 +122,9 @@ public struct AppShellView: View {
                     if newValue != searchText {
                         searchText = newValue
                     }
+                }
+                .onChange(of: viewModel.searchFocusToken) {
+                    isSearchFocused = true
                 }
             }
         }

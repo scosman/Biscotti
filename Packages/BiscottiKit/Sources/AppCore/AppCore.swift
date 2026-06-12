@@ -57,6 +57,11 @@ public final class AppCore {
     /// Whether a search query is currently in flight.
     public private(set) var isSearchingMeetings = false
 
+    /// Monotonically increasing token that signals the UI to focus the
+    /// search field. Incremented by `focusSearch()`, observed by the
+    /// view layer via `.onChange` to set `@FocusState`.
+    public private(set) var searchFocusToken: UInt = 0
+
     /// Meeting-like upcoming calendar events, mirrored from CalendarService.
     public package(set) var upcoming: [CalendarEvent] = []
 
@@ -372,6 +377,13 @@ public final class AppCore {
     /// Routes to Onboarding (re-run from Settings).
     public func showOnboardingReplay() {
         route = .onboarding
+    }
+
+    /// Requests focus on the search field. Increments the focus token
+    /// so the view layer's `.onChange` observer fires and sets
+    /// `@FocusState` to true. Called from the Cmd+F menu command.
+    public func focusSearch() {
+        searchFocusToken &+= 1
     }
 
     /// Routes to the read-only preview for an upcoming calendar event.

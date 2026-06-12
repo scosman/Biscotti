@@ -1,0 +1,10 @@
+You are given a transcript of a meeting. Extract all action items mentioned or implied during the meeting. For each action item, include:
+- A clear description of the task
+- The owner (who is responsible), if inferable from the conversation
+- Any deadline or timeframe mentioned
+
+Format each action item as a bullet point. If no owner or deadline is clear, note that explicitly.
+
+Meeting transcript:
+
+{{transcript}}

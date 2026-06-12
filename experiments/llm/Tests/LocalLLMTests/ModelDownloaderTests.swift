@@ -23,21 +23,25 @@ struct ModelDownloaderTests {
         #expect(url.lastPathComponent == "gemma-4-12b-it-UD-Q4_K_XL.gguf")
     }
 
-    @Test("resolveDestination with file path returns as-is")
+    @Test("resolveDestination with file path (.gguf) returns as-is")
     func resolveDestinationFile() throws {
         let tmpDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("llm-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
+        // filePath does NOT exist on disk — this validates the non-existent-path +
+        // matching-extension branch (dest ext `.gguf` == source ext `.gguf` → file).
         let filePath = tmpDir.appendingPathComponent("model.gguf")
         let source = URL(string: "https://example.com/remote.gguf")!
         let result = ModelDownloader.resolveDestination(source: source, destination: filePath)
         #expect(result.lastPathComponent == "model.gguf")
+        // The file path is returned unchanged (not double-appended)
+        #expect(result == filePath)
     }
 
-    @Test("resolveDestination with directory appends source filename")
-    func resolveDestinationDirectory() throws {
+    @Test("resolveDestination with existing directory appends source filename")
+    func resolveDestinationExistingDirectory() throws {
         let tmpDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("llm-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -46,6 +50,34 @@ struct ModelDownloaderTests {
         let source = URL(string: "https://example.com/mymodel.gguf")!
         let result = ModelDownloader.resolveDestination(source: source, destination: tmpDir)
         #expect(result.lastPathComponent == "mymodel.gguf")
+        #expect(result == tmpDir.appendingPathComponent("mymodel.gguf"))
+    }
+
+    @Test(
+        "resolveDestination with non-existent directory (no trailing slash) appends source filename"
+    )
+    func resolveDestinationNonExistentDirectory() {
+        // Regression: a cache directory path like ~/Library/Caches/net.scosman.biscotti.localllm
+        // that does not exist yet and has no trailing slash must still be treated as a directory
+        // (its last component has no extension), NOT as a file path.
+        let nonExistent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("llm-test-\(UUID().uuidString)")
+            .appendingPathComponent("net.scosman.biscotti.localllm")
+        // Verify it truly does not exist
+        #expect(!FileManager.default.fileExists(atPath: nonExistent.path))
+
+        let source = URL(string: "https://example.com/gemma-4-12b.gguf")!
+        let result = ModelDownloader.resolveDestination(source: source, destination: nonExistent)
+        #expect(result.lastPathComponent == "gemma-4-12b.gguf")
+        #expect(result == nonExistent.appendingPathComponent("gemma-4-12b.gguf"))
+    }
+
+    @Test("resolveDestination with trailing-slash directory appends source filename")
+    func resolveDestinationTrailingSlash() {
+        let dest = URL(fileURLWithPath: "/tmp/some-cache-dir/")
+        let source = URL(string: "https://example.com/model.gguf")!
+        let result = ModelDownloader.resolveDestination(source: source, destination: dest)
+        #expect(result.lastPathComponent == "model.gguf")
     }
 
     @Test("fileExistsAndNonEmpty returns true for non-empty file")
@@ -77,6 +109,19 @@ struct ModelDownloaderTests {
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent("nonexistent-\(UUID().uuidString).bin")
         #expect(ModelDownloader.fileExistsAndNonEmpty(at: file) == false)
+    }
+
+    @Test("fileExistsAndNonEmpty returns false for a directory")
+    func fileExistsDirectory() throws {
+        // Regression: directories report a non-zero size on APFS/HFS+, so the check must
+        // verify the path is a regular file. Without this, a cache directory was mistaken
+        // for an already-downloaded model, causing a spurious "Already downloaded" skip.
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("llm-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        #expect(ModelDownloader.fileExistsAndNonEmpty(at: tmpDir) == false)
     }
 
     @Test("tempPath adds .partial extension")
@@ -115,6 +160,28 @@ struct ModelDownloaderTests {
         #expect(actualPath.path.hasSuffix(
             "Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf"
         ))
+    }
+
+    /// Regression: `DownloadCommand`'s default --dest is `defaultModelPath` (a .gguf file path).
+    /// `resolveDestination` must return it unchanged — so `download` writes to exactly the path
+    /// that `run` reads from. Also verify that passing `defaultModelDirectory` (the old default)
+    /// through `resolveDestination` ALSO yields `defaultModelPath`, so either form works.
+    @Test("resolveDestination with default paths yields defaultModelPath")
+    func resolveDestinationDefaultPaths() {
+        let source = ModelDownloader.defaultModelURL
+
+        // Case 1: default dest is the full file path (current DownloadCommand default)
+        let fromFilePath = ModelDownloader.resolveDestination(
+            source: source, destination: ModelDownloader.defaultModelPath
+        )
+        #expect(fromFilePath == ModelDownloader.defaultModelPath)
+
+        // Case 2: default dest is the directory (the old DownloadCommand default) — must also
+        // resolve to the same file because the directory's last component has no extension.
+        let fromDirPath = ModelDownloader.resolveDestination(
+            source: source, destination: ModelDownloader.defaultModelDirectory
+        )
+        #expect(fromDirPath == ModelDownloader.defaultModelPath)
     }
 
     @Test("Skip-if-present returns existing file without download")

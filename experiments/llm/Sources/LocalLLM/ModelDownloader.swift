@@ -81,8 +81,19 @@ public struct ModelDownloader: Sendable {
 
     // MARK: - Pure helpers (testable without network)
 
-    /// Resolve the destination: if it's a directory, append the filename from the URL.
+    /// Resolve the destination: if it's a directory (existing or intended), append the filename
+    /// from the URL; if it's already a file path, return as-is.
+    ///
+    /// Directory detection: an existing directory on disk, a trailing slash, OR a non-existent path
+    /// whose extension differs from the source URL's are all treated as directories. This prevents
+    /// the bug where a not-yet-created cache directory (no trailing slash) was mistaken for a file
+    /// path and the model bytes were written to a *file* with the directory's name.
+    ///
+    /// **Limitation:** a non-existent file path whose extension differs from the source's
+    /// (e.g. `/tmp/model.bin` for a `.gguf` source) is misclassified as a directory.
+    /// Acceptable for this experiment; revisit if porting to Project 10.
     public static func resolveDestination(source: URL, destination: URL) -> URL {
+        // 1. Already exists on disk as a directory → append filename.
         var isDir: ObjCBool = false
         let exists = FileManager.default.fileExists(
             atPath: destination.path, isDirectory: &isDir
@@ -90,11 +101,26 @@ public struct ModelDownloader: Sendable {
         if exists, isDir.boolValue {
             return destination.appendingPathComponent(source.lastPathComponent)
         }
-        // If it doesn't exist, check if it looks like a directory path (ends with /)
+
+        // 2. Trailing slash signals "this is a directory" even if it doesn't exist yet.
         if destination.path.hasSuffix("/") {
             return destination.appendingPathComponent(source.lastPathComponent)
         }
-        return destination
+
+        // 3. Non-existent path: use the source URL's extension to discriminate. If the
+        //    destination's extension matches the source file's extension (e.g. both `.gguf`),
+        //    it's a file path. Otherwise it's a directory — even if dots appear in the last
+        //    component (e.g. `net.scosman.biscotti.localllm` has "extension" `localllm`, which
+        //    does not match `gguf`).
+        let sourceExt = source.pathExtension.lowercased()
+        let destExt = destination.pathExtension.lowercased()
+        if !sourceExt.isEmpty, destExt == sourceExt {
+            // Looks like a file path with the same extension as the model → use as-is.
+            return destination
+        }
+
+        // Otherwise treat as a directory (create later) and append the source filename.
+        return destination.appendingPathComponent(source.lastPathComponent)
     }
 
     /// Derive the filename from a URL's last path component.
@@ -102,10 +128,16 @@ public struct ModelDownloader: Sendable {
         url.lastPathComponent
     }
 
-    /// Check if a file exists and is non-empty.
+    /// Check if a **regular file** (not a directory) exists and is non-empty.
+    ///
+    /// A directory at the same path reports a non-zero size on APFS/HFS+, so we explicitly verify
+    /// `.type == .typeRegular` to avoid a false-positive skip-if-present when a cache directory
+    /// exists but the model file inside it does not.
     public static func fileExistsAndNonEmpty(at url: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let fileType = attrs[.type] as? FileAttributeType,
+              fileType == .typeRegular,
               let size = attrs[.size] as? UInt64
         else { return false }
         return size > 0

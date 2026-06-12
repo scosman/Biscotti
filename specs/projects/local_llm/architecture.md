@@ -96,10 +96,11 @@ struct ModelDownloader {
 }
 ```
 
-- **Destination:** caller-provided. If `destination` is a directory, derive the filename from the
-  URL's last path component; if a file path, use it as-is.
-- **Skip-if-present:** if a non-empty file already exists at the resolved path, return it without
-  downloading (log a note).
+- **Destination:** caller-provided. If `destination` is a directory (existing on disk, trailing
+  slash, OR a non-existent path whose extension differs from the source URL's), derive the filename
+  from the URL's last path component; if a file path (extension matches the source), use it as-is.
+- **Skip-if-present:** if a non-empty **regular file** (not a directory) already exists at the
+  resolved path, return it without downloading (log a note).
 - **Mechanism:** `URLSession` bytes/download with a delegate (or `bytes(for:)`) to stream + report
   progress; `total` from `Content-Length` (nil if absent). Write to a **temp path
   (`<dest>.partial` or a tmp dir), then atomically move** to the final path on completion — a
@@ -241,9 +242,10 @@ protocol ChatTemplating { func render(system: String?, user: String, addGenerati
 `swift-argument-parser`, root `localllm` with two subcommands. **stdout = the model's message only;
 stderr = diagnostics + the speed summary** (clean, pipeable — matches the ArgMaxKit CLI).
 
-- **`localllm download`** — `--url` (default Gemma URL), `--dest <path>` (file or dir; default a
-  caches dir under `~/Library/Caches/net.scosman.biscotti.localllm/`). Live progress line on stderr;
-  prints the final model path on success.
+- **`localllm download`** — `--url` (default Gemma URL), `--dest <path>` (file or dir; defaults to
+  `ModelDownloader.defaultModelPath` — the full `.gguf` file path under
+  `~/Library/Caches/net.scosman.biscotti.localllm/`, same path `run` reads). Live progress line on
+  stderr; prints the final model path on success.
 - **`localllm run`** —
   - Input (exactly one of): `--prompt "<text>"` | `--prompt-file <path>`. Optional
     `--transcript-file <path>` substituted into a `{{transcript}}` placeholder in the prompt.

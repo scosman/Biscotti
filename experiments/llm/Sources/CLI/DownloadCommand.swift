@@ -13,7 +13,7 @@ struct DownloadCommand: AsyncParsableCommand {
     var url: String = ModelDownloader.defaultModelURL.absoluteString
 
     @Option(name: .long, help: "Destination path (file or directory).")
-    var dest: String = ModelDownloader.defaultModelDirectory.path
+    var dest: String = ModelDownloader.defaultModelPath.path
 
     mutating func run() async throws {
         guard let sourceURL = URL(string: url) else {

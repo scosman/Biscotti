@@ -130,19 +130,20 @@ public final class Permissions {
 
     /// Returns a URL that opens the correct System Settings pane for the given permission.
     public func settingsURL(for kind: PermissionKind) -> URL {
-        switch kind {
-        case .microphone:
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
-
-        case .systemAudio:
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
-
-        case .calendar:
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!
-
-        case .notifications:
-            // Notifications live under their own pane, not Privacy & Security.
-            URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
-        }
+        let string =
+            switch kind {
+            case .microphone:
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            case .systemAudio:
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            case .calendar:
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+            case .notifications:
+                // Notifications live under their own pane, not Privacy & Security.
+                "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+            }
+        // The strings above are static and always parse; the fallback only exists
+        // to keep this non-optional without a force unwrap (it opens Settings.app).
+        return URL(string: string) ?? URL(fileURLWithPath: "/System/Applications/System Settings.app")
     }
 }

@@ -489,18 +489,14 @@ public extension MeetingDetailViewModel {
            )
         {
             urlOpener(url)
-        } else if let startDate = calendarContext?.startDate {
+        } else if let startDate = calendarContext?.startDate,
+                  let calURL = URL(string: "ical://\(startDate.timeIntervalSinceReferenceDate)") ?? URL(string: "ical://")
+        {
             // Fall back to opening Calendar.app at the event's date.
-            let interval = startDate.timeIntervalSinceReferenceDate
-            let calURL = URL(
-                string: "ical://\(interval)"
-            ) ?? URL(string: "ical://")!
             urlOpener(calURL)
-        } else {
+        } else if let calURL = URL(string: "ical://") {
             // Last resort: just open Calendar.app.
-            if let calURL = URL(string: "ical://") {
-                urlOpener(calURL)
-            }
+            urlOpener(calURL)
         }
     }
 

@@ -183,7 +183,7 @@ struct HomeViewModelRecentTests {
         #expect(viewModel.showNoRecent == false)
     }
 
-    @Test("selectMeeting routes to .meeting(id)")
+    @Test("selectMeeting routes to .meetings and sets selection")
     @MainActor
     func selectMeetingRoutes() async throws {
         let fix = try makeCoreFixture(testName: "HomeUISelectMeeting")
@@ -194,7 +194,8 @@ struct HomeViewModelRecentTests {
 
         let viewModel = HomeViewModel(core: fix.core)
         viewModel.selectMeeting(meetingID)
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
     }
 }
 

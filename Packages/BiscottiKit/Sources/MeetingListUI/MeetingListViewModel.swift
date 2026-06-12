@@ -34,12 +34,9 @@ public final class MeetingListViewModel {
         Self.groupByEffectiveDate(meetings)
     }
 
-    /// The currently selected meeting ID (derived from the route).
+    /// The currently selected meeting ID (from AppCore's meetings state).
     public var selectedMeetingID: UUID? {
-        if case let .meeting(id) = core.route {
-            return id
-        }
-        return nil
+        core.meetingsSelection
     }
 
     public init(core: AppCore) {
@@ -47,8 +44,9 @@ public final class MeetingListViewModel {
     }
 
     /// Called when the user selects a meeting in the list.
-    public func select(_ meetingID: UUID) {
-        core.select(meetingID)
+    /// Uses `selectFromList` to preserve the current search mode.
+    public func select(_ meetingID: UUID?) {
+        core.selectFromList(meetingID)
     }
 
     // MARK: - Grouping (pure, testable)

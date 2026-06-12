@@ -246,9 +246,12 @@ public struct SearchHit: Sendable, Identifiable, Equatable {
 // MARK: - DataStore Query Methods
 
 public extension DataStore {
-    /// Returns summaries of recent meetings, sorted by effective date
+    /// Returns summaries of meetings, sorted by effective date
     /// (`startDate ?? createdAt`) descending.
-    func meetingSummaries(limit: Int) throws -> [MeetingSummary] {
+    ///
+    /// - Parameter limit: Maximum number of summaries to return.
+    ///   Pass `nil` (the default) to return all meetings.
+    func meetingSummaries(limit: Int? = nil) throws -> [MeetingSummary] {
         // Fetch all meetings and sort by effective date in-memory.
         // SwiftData predicates cannot express coalesce(startDate, createdAt).
         // TODO: consider a denormalized effectiveDate column for DB-level sort
@@ -260,7 +263,8 @@ public extension DataStore {
             let dateR = rhs.startDate ?? rhs.createdAt
             return dateL > dateR
         }
-        return Array(sorted.prefix(limit)).map { meeting in
+        let capped = limit.map { Array(sorted.prefix($0)) } ?? sorted
+        return capped.map { meeting in
             MeetingSummary(
                 id: meeting.id,
                 title: meeting.title,

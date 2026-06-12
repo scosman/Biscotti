@@ -175,28 +175,24 @@ struct SearchViewModelResultTests {
 
 @Suite("SearchViewModel -- navigation")
 struct SearchViewModelNavigationTests {
-    @Test("dismiss restores pre-search route")
+    @Test("dismiss routes to home")
     @MainActor
-    func searchBackRestoresRoute() throws {
+    func dismissRoutesToHome() throws {
         let fix = try makeCoreFixture(testName: "SearchUITests")
         defer { fix.cleanup() }
 
-        // Navigate to settings first
+        // Navigate somewhere first
         fix.core.showSettings()
         #expect(fix.core.route == .settings)
-
-        // Enter search
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
 
         let viewModel = SearchViewModel(core: fix.core)
         viewModel.dismiss()
 
-        // Route restored to settings
-        #expect(fix.core.route == .settings)
+        // Route restored to home
+        #expect(fix.core.route == .home)
     }
 
-    @Test("selectResult navigates to meeting detail")
+    @Test("selectResult navigates to meetings with selection")
     @MainActor
     func selectResultNavigates() throws {
         let fix = try makeCoreFixture(testName: "SearchUITests")
@@ -206,7 +202,8 @@ struct SearchViewModelNavigationTests {
         let meetingID = UUID()
         viewModel.selectResult(meetingID)
 
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
     }
 }
 
@@ -353,9 +350,9 @@ struct SearchViewModelClearTests {
 
 @Suite("SearchViewModel -- reactivation")
 struct SearchViewModelReactivationTests {
-    @Test("reactivateSearch with non-empty query re-activates takeover and produces results")
+    @Test("reactivateSearch with non-empty query routes to meetings and produces results")
     @MainActor
-    func reactivateSearchReactivatesTakeover() async throws {
+    func reactivateSearchRoutesToMeetings() async throws {
         let fix = try makeCoreFixture(testName: "SearchUITests")
         defer { fix.cleanup() }
 
@@ -364,26 +361,17 @@ struct SearchViewModelReactivationTests {
 
         let viewModel = SearchViewModel(core: fix.core)
 
-        // Simulate initial search: enter search mode, run query
-        fix.core.presentSearch()
+        // Set a query and run search
         viewModel.updateQuery("Budget")
         try await pollUntil {
             viewModel.isSearching == false
                 && !viewModel.results.isEmpty
         }
         #expect(viewModel.results.count == 1)
-        #expect(fix.core.route == .search)
 
-        // Simulate clicking a result: navigates away from search
-        try viewModel.selectResult(#require(viewModel.results.first?.id))
-        #expect(fix.core.route != .search)
-
-        // Query is still set but takeover is gone
-        #expect(viewModel.query == "Budget")
-
-        // Now reactivate (simulates Enter/submit or refocus)
+        // Now reactivate
         viewModel.reactivateSearch()
-        #expect(fix.core.route == .search)
+        #expect(fix.core.route == .meetings)
 
         // Wait for the immediate search to complete
         try await pollUntil {
@@ -408,92 +396,5 @@ struct SearchViewModelReactivationTests {
         viewModel.reactivateSearch()
         #expect(fix.core.route == .home)
         #expect(viewModel.results.isEmpty)
-    }
-
-    @Test("reactivateSearch when already in search mode refreshes results")
-    @MainActor
-    func reactivateSearchWhenAlreadyActive() async throws {
-        let fix = try makeCoreFixture(testName: "SearchUITests")
-        defer { fix.cleanup() }
-
-        _ = try await fix.store.createMeeting(title: "Alpha")
-        await fix.core.reloadSummaries()
-
-        let viewModel = SearchViewModel(core: fix.core)
-
-        fix.core.presentSearch()
-        viewModel.updateQuery("Alpha")
-        try await pollUntil {
-            viewModel.isSearching == false
-                && !viewModel.results.isEmpty
-        }
-        #expect(fix.core.route == .search)
-
-        // Re-activate while already in search mode -- should still work
-        viewModel.reactivateSearch()
-        #expect(fix.core.route == .search)
-
-        try await pollUntil {
-            viewModel.isSearching == false
-                && !viewModel.results.isEmpty
-        }
-        #expect(viewModel.results.count == 1)
-    }
-}
-
-// MARK: - Back button tests
-
-@Suite("SearchViewModel -- back button bug fix")
-struct SearchViewModelBackButtonTests {
-    @Test("enter search from meeting, Back returns to that meeting in one step")
-    @MainActor
-    func backFromMeetingRestoresRoute() throws {
-        let fix = try makeCoreFixture(testName: "SearchUITests")
-        defer { fix.cleanup() }
-
-        let meetingID = UUID()
-        fix.core.select(meetingID)
-        #expect(fix.core.route == .meeting(meetingID))
-
-        // Enter search (simulates typing in the search field)
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
-        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
-
-        // Simulate continued typing (more presentSearch calls)
-        fix.core.presentSearch()
-        fix.core.presentSearch()
-        // Return route should NOT have been overwritten to .search
-        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
-
-        // Tap Back
-        let viewModel = SearchViewModel(core: fix.core)
-        viewModel.dismiss()
-
-        // Route should be the meeting, not .home, in ONE tap
-        #expect(fix.core.route == .meeting(meetingID))
-    }
-
-    @Test("presentSearch is idempotent -- does not overwrite return route")
-    @MainActor
-    func presentSearchIdempotent() throws {
-        let fix = try makeCoreFixture(testName: "SearchUITests")
-        defer { fix.cleanup() }
-
-        // Start on an event page
-        fix.core.selectEvent("event-123")
-        #expect(fix.core.route == .event("event-123"))
-
-        // First presentSearch captures the return route
-        fix.core.presentSearch()
-        #expect(fix.core.searchReturnRoute == .event("event-123"))
-
-        // Subsequent calls do NOT overwrite
-        fix.core.presentSearch()
-        #expect(fix.core.searchReturnRoute == .event("event-123"))
-
-        // Dismiss returns to the event
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .event("event-123"))
     }
 }

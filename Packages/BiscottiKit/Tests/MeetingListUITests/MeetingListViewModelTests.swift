@@ -35,17 +35,20 @@ struct MeetingListViewModelTests {
         #expect(viewModel.meetings.isEmpty)
     }
 
-    @Test("select updates route to .meeting")
+    @Test("select sets meetingsSelection (in-list selection, preserves route)")
     @MainActor
-    func selectUpdatesRoute() throws {
+    func selectSetsSelection() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
+        // The list is shown inside .meetings; selectFromList only updates selection.
+        fix.core.showMeetings()
         let viewModel = MeetingListViewModel(core: fix.core)
         let meetingID = UUID()
         viewModel.select(meetingID)
 
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.route == .meetings) // unchanged
     }
 
     @Test("selectedMeetingID reflects current route")

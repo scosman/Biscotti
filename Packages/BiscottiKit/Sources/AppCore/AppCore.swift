@@ -26,8 +26,22 @@ public final class AppCore {
     /// The current navigation destination.
     public private(set) var route: Route = .home
 
-    /// The sidebar meeting list (newest first).
+    /// All meetings, newest first (uncapped — the Meetings list uses lazy rendering).
     public private(set) var summaries: [MeetingSummary] = []
+
+    // MARK: - Meetings screen state
+
+    /// The selected meeting shown in the detail pane, or nil (placeholder).
+    public private(set) var meetingsSelection: UUID?
+
+    /// The search query. Empty = browse mode, non-empty = search mode.
+    public private(set) var meetingsQuery: String = ""
+
+    /// The search results (flat, ranked). Empty when in browse mode.
+    public private(set) var meetingsResults: [SearchHit] = []
+
+    /// Whether a search query is currently in flight.
+    public private(set) var isSearchingMeetings = false
 
     /// Meeting-like upcoming calendar events, mirrored from CalendarService.
     public package(set) var upcoming: [CalendarEvent] = []
@@ -46,9 +60,6 @@ public final class AppCore {
 
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
-
-    /// Saved route for Search "Back" restoration.
-    public private(set) var searchReturnRoute: Route?
 
     // MARK: - Child services (publicly readable for the UI layer)
 
@@ -75,8 +86,8 @@ public final class AppCore {
 
     // MARK: - Private
 
-    private let summaryLimit: Int
     private let scheduler: any AppScheduler
+    private var meetingsSearchTask: Task<Void, Never>?
 
     /// Whether the active recording was started due to detection (vs manual).
     /// Determines whether auto-stop applies.
@@ -137,8 +148,7 @@ public final class AppCore {
         calendar: CalendarService,
         detector: MeetingDetector,
         notifications: NotificationService,
-        scheduler: any AppScheduler = LiveAppScheduler(),
-        summaryLimit: Int = 50
+        scheduler: any AppScheduler = LiveAppScheduler()
     ) {
         self.store = store
         self.permissions = permissions
@@ -148,7 +158,6 @@ public final class AppCore {
         self.detector = detector
         self.notifications = notifications
         self.scheduler = scheduler
-        self.summaryLimit = summaryLimit
     }
 
     // MARK: - Lifecycle
@@ -285,7 +294,7 @@ public final class AppCore {
 
         await reloadSummaries()
         runState = .idle
-        route = .meeting(meetingID)
+        select(meetingID)
 
         pendingTranscriptionTask = Task { @MainActor [transcription] in
             await transcription.transcribe(meetingID: meetingID)
@@ -303,9 +312,31 @@ public final class AppCore {
 
     // MARK: - Navigation
 
-    /// Selects a meeting in the sidebar and routes to its detail.
+    /// Opens a specific meeting from OUTSIDE the list (menu bar, Home recent,
+    /// stopRecording, "open this meeting"). Clears any active search, sets
+    /// selection, and routes to the Meetings screen.
     public func select(_ meetingID: UUID) {
-        route = .meeting(meetingID)
+        cancelMeetingsSearch()
+        meetingsQuery = ""
+        meetingsResults = []
+        meetingsSelection = meetingID
+        route = .meetings
+    }
+
+    /// Row selection from WITHIN the list (`List(selection:)` setter).
+    /// Preserves the current mode (keeps the query if searching).
+    /// nil = placeholder (no selection).
+    public func selectFromList(_ meetingID: UUID?) {
+        meetingsSelection = meetingID
+    }
+
+    /// "Past Meetings" (sidebar) and "See all" (Home): browse mode,
+    /// KEEP selection (D4).
+    public func showMeetings() {
+        cancelMeetingsSearch()
+        meetingsQuery = ""
+        meetingsResults = []
+        route = .meetings
     }
 
     /// Routes to the recording screen (sidebar recording indicator tap).
@@ -332,22 +363,6 @@ public final class AppCore {
     /// Routes to the read-only preview for an upcoming calendar event.
     public func selectEvent(_ key: String) {
         route = .event(key)
-    }
-
-    /// Enters search mode, saving the current route for Back restoration.
-    /// Idempotent: if already in search mode, does not overwrite the saved
-    /// return route (fixes the bug where each keystroke reset the route to
-    /// `.search`, making Back require two taps and land on Home).
-    public func presentSearch() {
-        guard route != .search else { return }
-        searchReturnRoute = route
-        route = .search
-    }
-
-    /// Exits search mode, restoring the saved route.
-    public func dismissSearch() {
-        route = searchReturnRoute ?? .home
-        searchReturnRoute = nil
     }
 
     /// Marks onboarding complete and transitions to Home.
@@ -410,12 +425,10 @@ public final class AppCore {
 
     // MARK: - Data refresh
 
-    /// Reloads the sidebar summaries from the store.
+    /// Reloads all meeting summaries from the store (uncapped).
     public func reloadSummaries() async {
         do {
-            summaries = try await store.meetingSummaries(
-                limit: summaryLimit
-            )
+            summaries = try await store.meetingSummaries()
         } catch {
             summaries = []
         }
@@ -428,6 +441,76 @@ public final class AppCore {
     package func awaitPendingTranscription() async {
         await pendingTranscriptionTask?.value
         pendingTranscriptionTask = nil
+    }
+}
+
+// MARK: - Meetings search
+
+extension AppCore {
+    /// Called when the toolbar query changes (bound from AppShellViewModel).
+    /// Debounces 300ms via the `scheduler` seam before running the search.
+    public func setMeetingsQuery(_ query: String) {
+        meetingsQuery = query
+        cancelMeetingsSearch()
+        guard !query.isEmpty else {
+            meetingsResults = []
+            isSearchingMeetings = false
+            return
+        }
+        route = .meetings
+        isSearchingMeetings = true
+        meetingsResults = []
+        let sched = scheduler
+        let currentStore = store
+        meetingsSearchTask = Task { [weak self] in
+            do {
+                try await sched.sleep(for: .milliseconds(300))
+            } catch {
+                return // cancelled
+            }
+            guard let self,
+                  !Task.isCancelled,
+                  meetingsQuery == query
+            else { return }
+            let hits = await (try? currentStore.searchHits(
+                query, limit: 50
+            )) ?? []
+            guard !Task.isCancelled, meetingsQuery == query
+            else { return }
+            meetingsResults = hits
+            isSearchingMeetings = false
+            autoSelectTopResult()
+        }
+    }
+
+    /// Keeps the current selection if it survived into the new results;
+    /// otherwise picks the top hit (or nil if no results).
+    private func autoSelectTopResult() {
+        if let sel = meetingsSelection,
+           meetingsResults.contains(where: { $0.id == sel })
+        {
+            return
+        }
+        meetingsSelection = meetingsResults.first?.id
+    }
+
+    private func cancelMeetingsSearch() {
+        meetingsSearchTask?.cancel()
+        meetingsSearchTask = nil
+        isSearchingMeetings = false
+    }
+
+    /// Non-debounced search for the current query. Used after delete
+    /// to refresh results immediately.
+    private func rerunMeetingsSearchNow() async {
+        let currentQuery = meetingsQuery
+        guard !currentQuery.isEmpty else { return }
+        let hits = await (try? store.searchHits(
+            currentQuery, limit: 50
+        )) ?? []
+        guard meetingsQuery == currentQuery else { return }
+        meetingsResults = hits
+        isSearchingMeetings = false
     }
 }
 
@@ -842,8 +925,9 @@ extension AppCore {
     /// (DB deleted, files orphaned) is unrecoverable without a separate
     /// storage scan.
     ///
-    /// After deletion, reloads summaries and routes Home so the user
-    /// is not left viewing a dead detail screen.
+    /// After deletion, reloads summaries, computes the nearest neighbor
+    /// in the active order (browse or search), and selects it so the
+    /// user sees the next meeting instead of a dead detail pane.
     public func deleteMeeting(meetingID: UUID) async {
         // Guard: refuse to delete a meeting that is actively recording.
         // Deleting files mid-write would corrupt the recording. Callers
@@ -883,9 +967,40 @@ extension AppCore {
             )
         }
 
-        // 4. Refresh UI.
+        // 4. Compute neighbor before refresh.
+        let activeOrder: [UUID] = meetingsQuery.isEmpty
+            ? summaries.map(\.id)
+            : meetingsResults.map(\.id)
+        let neighbor = Self.neighborID(
+            in: activeOrder, removing: meetingID
+        )
+
+        // 5. Refresh UI.
         await reloadSummaries()
-        route = .home
+        if !meetingsQuery.isEmpty {
+            await rerunMeetingsSearchNow()
+        }
+
+        // 6. Validate neighbor still exists, else nil (placeholder).
+        let refreshed: [UUID] = meetingsQuery.isEmpty
+            ? summaries.map(\.id)
+            : meetingsResults.map(\.id)
+        meetingsSelection = neighbor.flatMap {
+            refreshed.contains($0) ? $0 : nil
+        }
+        route = .meetings
+    }
+
+    /// The element AFTER `id` (next/older), or the one BEFORE if `id`
+    /// was last, or nil if `id` was the only element / not found.
+    /// Pure and unit-tested.
+    static func neighborID(
+        in ordered: [UUID], removing id: UUID
+    ) -> UUID? {
+        guard let idx = ordered.firstIndex(of: id) else { return nil }
+        if idx + 1 < ordered.count { return ordered[idx + 1] }
+        if idx - 1 >= 0 { return ordered[idx - 1] }
+        return nil
     }
 
     /// Best-effort removal of audio files and their per-meeting directory.

@@ -1,7 +1,6 @@
 import BiscottiTestSupport
 import Calendar
 import Foundation
-import SearchUI
 import Testing
 @testable import AppCore
 @testable import AppShellUI
@@ -88,16 +87,17 @@ struct AppShellRoutingTests {
         #expect(viewModel.route == .recording)
     }
 
-    @Test("route is .meeting after selecting a meeting")
+    @Test("route is .meetings after selecting a meeting")
     @MainActor
-    func routeMeetingAfterSelect() throws {
+    func routeMeetingsAfterSelect() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
         let meetingID = UUID()
         fix.core.select(meetingID)
-        #expect(viewModel.route == .meeting(meetingID))
+        #expect(viewModel.route == .meetings)
+        #expect(viewModel.meetingsSelection == meetingID)
     }
 
     @Test("showRecording navigates back to recording screen")
@@ -292,38 +292,29 @@ struct AppShellUpcomingSearchTests {
         #expect(shellVM.hasCalendarAccess == false)
     }
 
-    @Test("search text triggers presentSearch and dismissSearch")
+    @Test("setMeetingsQuery forwards to core and routes to meetings")
     @MainActor
-    func searchTextTriggersPresentSearch() throws {
+    func setMeetingsQueryForwards() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-
-        // Non-empty text triggers search
-        shellVM.onSearchTextChange("meeting")
-        #expect(fix.core.route == .search)
-
-        // Empty text dismisses search
-        shellVM.onSearchTextChange("")
-        #expect(fix.core.route != .search)
+        shellVM.setMeetingsQuery("meeting")
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsQuery == "meeting")
     }
 
-    @Test("clearSearch resets text and route")
+    @Test("setMeetingsQuery empty clears search state")
     @MainActor
-    func clearSearchResetsTextAndRoute() throws {
+    func setMeetingsQueryEmptyClears() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-
-        shellVM.searchText = "hello"
-        shellVM.onSearchTextChange("hello")
-        #expect(fix.core.route == .search)
-
-        shellVM.clearSearch()
-        #expect(shellVM.searchText == "")
-        #expect(fix.core.route != .search)
+        shellVM.setMeetingsQuery("hello")
+        shellVM.setMeetingsQuery("")
+        #expect(fix.core.meetingsQuery == "")
+        #expect(fix.core.meetingsResults.isEmpty)
     }
 
     @Test("showHome routes to home")
@@ -415,32 +406,15 @@ struct AppShellUpcomingSearchTests {
         #expect(text == "now")
     }
 
-    @Test("search text updates searchViewModel query")
+    @Test("meetingsQuery passthrough reflects core state")
     @MainActor
-    func searchTextUpdatesSearchVM() throws {
+    func meetingsQueryPassthrough() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        shellVM.onSearchTextChange("meeting")
-
-        #expect(shellVM.searchViewModel.query == "meeting")
-        #expect(fix.core.route == .search)
-    }
-
-    @Test("clearSearch resets searchViewModel query")
-    @MainActor
-    func clearSearchResetsSearchVM() throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        let shellVM = AppShellViewModel(core: fix.core)
-        shellVM.onSearchTextChange("hello")
-        #expect(shellVM.searchViewModel.query == "hello")
-
-        shellVM.clearSearch()
-        #expect(shellVM.searchViewModel.query == "")
-        #expect(shellVM.searchText == "")
+        shellVM.setMeetingsQuery("hello")
+        #expect(shellVM.meetingsQuery == "hello")
     }
 
     @Test("homeViewModel is stable across accesses")
@@ -455,42 +429,15 @@ struct AppShellUpcomingSearchTests {
         #expect(home1 === home2)
     }
 
-    @Test("searchViewModel is stable across accesses")
+    @Test("showMeetings routes to meetings")
     @MainActor
-    func searchVMStable() throws {
+    func showMeetingsRoutes() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        let search1 = shellVM.searchViewModel
-        let search2 = shellVM.searchViewModel
-        #expect(search1 === search2)
-    }
-
-    @Test("back from search returns to the page user was on, not .home")
-    @MainActor
-    func backFromSearchReturnsToOriginalPage() throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        let shellVM = AppShellViewModel(core: fix.core)
-        let meetingID = UUID()
-
-        // Navigate to a meeting
-        fix.core.select(meetingID)
-        #expect(shellVM.route == .meeting(meetingID))
-
-        // Enter search via typing (multiple keystrokes)
-        shellVM.onSearchTextChange("m")
-        shellVM.onSearchTextChange("me")
-        shellVM.onSearchTextChange("meeting")
-        #expect(shellVM.route == .search)
-
-        // Clear search (simulates tapping Back)
-        shellVM.clearSearch()
-
-        // Should return to the meeting, not .home
-        #expect(shellVM.route == .meeting(meetingID))
+        shellVM.showMeetings()
+        #expect(shellVM.route == .meetings)
     }
 }
 

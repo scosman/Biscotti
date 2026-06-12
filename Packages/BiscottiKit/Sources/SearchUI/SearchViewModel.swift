@@ -4,8 +4,9 @@ import Foundation
 
 /// View model for the search results screen.
 ///
-/// Provides live-filtered search with debounce, ranked results from
-/// `DataStore.searchHits`, and back-restore via `AppCore.dismissSearch`.
+/// **Deprecated** -- Phase 2 removes this module. Search is now handled
+/// by `AppCore.setMeetingsQuery` and lives inside the Meetings screen.
+/// This VM is kept only so the SearchUI module compiles until removal.
 @MainActor @Observable
 public final class SearchViewModel {
     private let core: AppCore
@@ -52,14 +53,11 @@ public final class SearchViewModel {
     }
 
     /// Re-activates the search takeover for the current query without
-    /// requiring a text change. Used when the user presses Enter/submit
-    /// or re-focuses the search field after navigating away from results.
-    ///
-    /// Does nothing if the query is empty. If the search pane is already
-    /// active, refreshes results for the current query.
+    /// requiring a text change. Routes to the Meetings screen and runs
+    /// the query.
     public func reactivateSearch() {
         guard !query.isEmpty else { return }
-        core.presentSearch()
+        core.setMeetingsQuery(query)
         searchImmediately()
     }
 
@@ -69,10 +67,10 @@ public final class SearchViewModel {
         core.select(meetingID)
     }
 
-    /// Called when the user taps Back. Restores the pre-search route.
+    /// Called when the user taps Back. Routes to Home.
     public func dismiss() {
         dismissFocusCount += 1
-        core.dismissSearch()
+        core.showHome()
     }
 
     /// Called when the user taps the search page background (non-interactive area).

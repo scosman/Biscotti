@@ -6,19 +6,18 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
-import SearchUI
 import SettingsUI
 import SwiftUI
 
 /// The main app window: a `NavigationSplitView` with a sidebar (Home +
-/// Record indicator + Upcoming + Past grouped + Settings) and a detail
+/// Record indicator + Past Meetings + Upcoming + Settings) and a detail
 /// pane routed by `AppCore.route`.
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
-    /// Bound to the `.searchable` field via `.searchFocused`. Setting this
-    /// to `false` programmatically dismisses the search field's focus/caret.
-    @FocusState private var isSearchFieldFocused: Bool
+    /// Bound to the `.searchable` field. Two-way synced with AppCore's
+    /// `meetingsQuery` via `.onChange` to avoid feedback loops.
+    @State private var searchText = ""
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -38,26 +37,19 @@ public struct AppShellView: View {
                     detailContent
                 }
                 .searchable(
-                    text: $viewModel.searchText,
+                    text: $searchText,
                     placement: .toolbar,
                     prompt: "Search meetings\u{2026}"
                 )
-                .searchFocused($isSearchFieldFocused)
-                .onSubmit(of: .search) {
-                    viewModel.onSearchSubmit()
-                }
-                .onChange(of: viewModel.searchText) { _, newValue in
-                    viewModel.onSearchTextChange(newValue)
-                }
-                .onChange(of: isSearchFieldFocused) { _, focused in
-                    if focused {
-                        viewModel.onSearchFieldFocused()
+                .onChange(of: searchText) { _, newValue in
+                    if newValue != viewModel.meetingsQuery {
+                        viewModel.setMeetingsQuery(newValue)
                     }
                 }
-                .onChange(
-                    of: viewModel.searchViewModel.dismissFocusCount
-                ) {
-                    isSearchFieldFocused = false
+                .onChange(of: viewModel.meetingsQuery) { _, newValue in
+                    if newValue != searchText {
+                        searchText = newValue
+                    }
                 }
             }
         }
@@ -83,6 +75,10 @@ public struct AppShellView: View {
             homeRow
                 .padding(.horizontal, Tokens.spacingSM)
 
+            // Past Meetings row
+            pastMeetingsRow
+                .padding(.horizontal, Tokens.spacingSM)
+
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
 
@@ -91,19 +87,6 @@ public struct AppShellView: View {
                !viewModel.upcomingEvents.isEmpty
             {
                 upcomingSection
-            }
-
-            // Past section
-            Text("PAST")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
-                .padding(.horizontal, Tokens.spacingMD)
-                .padding(.bottom, Tokens.spacingXS)
-
-            ScrollView {
-                MeetingListView(
-                    viewModel: viewModel.meetingListViewModel
-                )
             }
 
             Spacer()
@@ -170,6 +153,33 @@ public struct AppShellView: View {
         .buttonStyle(.plain)
         .background(
             viewModel.route == .home
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+    }
+
+    private var pastMeetingsRow: some View {
+        Button {
+            viewModel.showMeetings()
+        } label: {
+            HStack(spacing: Tokens.spacingSM) {
+                Image(systemName: "clock")
+                    .foregroundStyle(
+                        viewModel.route == .meetings
+                            ? Color.accentColor
+                            : Tokens.secondaryText
+                    )
+                Text("Past Meetings")
+                    .font(.body)
+                Spacer()
+            }
+            .padding(.vertical, Tokens.spacingXS)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            viewModel.route == .meetings
                 ? Color.accentColor.opacity(0.15)
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 4)
@@ -251,20 +261,14 @@ public struct AppShellView: View {
                 viewModel: viewModel.recordingViewModel
             )
 
-        case let .meeting(meetingID):
-            MeetingDetailView(
-                viewModel: viewModel.meetingDetailViewModel(for: meetingID)
-            )
-            .id(meetingID)
+        case .meetings:
+            meetingsSplit
 
         case let .event(key):
             EventPreviewView(
                 viewModel: viewModel.eventPreviewViewModel(for: key)
             )
             .id(key)
-
-        case .search:
-            SearchView(viewModel: viewModel.searchViewModel)
 
         case .settings:
             SettingsView(viewModel: viewModel.settingsViewModel)
@@ -275,16 +279,35 @@ public struct AppShellView: View {
         }
     }
 
-    private var emptyPlaceholder: some View {
-        VStack(spacing: Tokens.spacingSM) {
-            Image(systemName: "waveform")
-                .font(.largeTitle)
-                .foregroundStyle(Tokens.secondaryText)
-            Text("Select a meeting, or tap Record")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
+    /// Interim two-pane for Phase 1: meeting list + detail or placeholder.
+    /// Phase 2 finalizes this with native List, date grouping, etc.
+    private var meetingsSplit: some View {
+        HSplitView {
+            ScrollView {
+                MeetingListView(
+                    viewModel: viewModel.meetingListViewModel
+                )
+            }
+            .frame(minWidth: 220, idealWidth: 280, maxWidth: 420)
+
+            Group {
+                if let id = viewModel.meetingsSelection {
+                    MeetingDetailView(
+                        viewModel: viewModel.meetingDetailViewModel(for: id)
+                    )
+                    .id(id)
+                } else {
+                    ContentUnavailableView(
+                        "No Meeting Selected",
+                        systemImage: "quote.bubble",
+                        description: Text(
+                            "Select a meeting to see its transcript and details."
+                        )
+                    )
+                }
+            }
+            .frame(minWidth: 360, maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

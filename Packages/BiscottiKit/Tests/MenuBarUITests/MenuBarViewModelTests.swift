@@ -261,7 +261,8 @@ struct MenuBarNavigationTests {
 
         model.openApp(meetingID: meetingID)
 
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
         #expect(windowOpened)
     }
 

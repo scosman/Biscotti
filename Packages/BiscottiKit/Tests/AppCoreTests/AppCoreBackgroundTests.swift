@@ -822,50 +822,27 @@ struct AppCoreOnboardingGateTests {
 
 @Suite("AppCore -- search return route")
 struct AppCoreSearchReturnRouteTests {
-    @Test("search return route saves and restores")
+    @Test("setMeetingsQuery non-empty routes to .meetings")
     @MainActor
-    func searchReturnRouteRestores() throws {
+    func setMeetingsQueryRoutesToMeetings() throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
-        let meetingID = UUID()
-        fix.core.select(meetingID)
-        #expect(fix.core.route == .meeting(meetingID))
-
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
-        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
-
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .meeting(meetingID))
-        #expect(fix.core.searchReturnRoute == nil)
+        fix.core.setMeetingsQuery("test")
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsQuery == "test")
     }
 
-    @Test("dismissSearch defaults to home when no saved route")
+    @Test("setMeetingsQuery empty clears results")
     @MainActor
-    func searchReturnRouteDefaultsToHome() throws {
+    func setMeetingsQueryEmptyClearsResults() throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .home)
-    }
-
-    @Test("search preserves settings route")
-    @MainActor
-    func searchPreservesSettingsRoute() throws {
-        let fix = try makeCoreFixture(testName: "BackgroundTests")
-        defer { fix.cleanup() }
-
-        fix.core.showSettings()
-        #expect(fix.core.route == .settings)
-
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
-        #expect(fix.core.searchReturnRoute == .settings)
-
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .settings)
+        fix.core.setMeetingsQuery("test")
+        fix.core.setMeetingsQuery("")
+        #expect(fix.core.meetingsResults.isEmpty)
+        #expect(fix.core.isSearchingMeetings == false)
     }
 }
 
@@ -927,15 +904,16 @@ struct AppCoreRecordingRunStateTests {
         #expect(fix.core.summaries.count == 1)
     }
 
-    @Test("stopRecording routes to meeting detail")
+    @Test("stopRecording routes to meetings with selection")
     @MainActor
-    func stopRecordingRoutesToMeetingDetail() async throws {
+    func stopRecordingRoutesToMeetings() async throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
         let meetingID = await fix.core.stopRecording()
-        #expect(try fix.core.route == .meeting(#require(meetingID)))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
     }
 
     @Test("stopRecording enqueues transcription")

@@ -8,7 +8,6 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
-import SearchUI
 import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
@@ -24,7 +23,7 @@ public final class AppShellViewModel {
 
     // MARK: - Stable child view models
 
-    /// The sidebar meeting-list view model (created once, never replaced).
+    /// The meeting-list view model (created once, never replaced).
     public let meetingListViewModel: MeetingListViewModel
 
     /// The recording-screen view model (created once, never replaced).
@@ -32,9 +31,6 @@ public final class AppShellViewModel {
 
     /// The home view model (created once, never replaced).
     public let homeViewModel: HomeViewModel
-
-    /// The search view model (created once, never replaced).
-    public let searchViewModel: SearchViewModel
 
     /// The settings view model (created once, never replaced).
     public let settingsViewModel: SettingsViewModel
@@ -50,15 +46,11 @@ public final class AppShellViewModel {
     private var cachedEventPreviewKey: String?
     private var cachedEventPreviewViewModel: EventPreviewViewModel?
 
-    /// The toolbar search text.
-    public var searchText: String = ""
-
     public init(core: AppCore) {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
         homeViewModel = HomeViewModel(core: core)
-        searchViewModel = SearchViewModel(core: core)
         settingsViewModel = SettingsViewModel(core: core)
         onboardingViewModel = OnboardingViewModel(core: core)
     }
@@ -147,6 +139,16 @@ public final class AppShellViewModel {
         core.route
     }
 
+    /// The currently selected meeting (for Meetings screen detail pane).
+    public var meetingsSelection: UUID? {
+        core.meetingsSelection
+    }
+
+    /// The current meetings search query (for two-way sync with toolbar).
+    public var meetingsQuery: String {
+        core.meetingsQuery
+    }
+
     // MARK: - Actions
 
     /// Starts a new recording session.
@@ -164,6 +166,11 @@ public final class AppShellViewModel {
         core.showHome()
     }
 
+    /// Routes to the Meetings screen (browse mode, keep selection).
+    public func showMeetings() {
+        core.showMeetings()
+    }
+
     /// Routes to Settings.
     public func showSettings() {
         core.showSettings()
@@ -174,36 +181,9 @@ public final class AppShellViewModel {
         core.selectEvent(key)
     }
 
-    /// Called when the toolbar search text changes.
-    public func onSearchTextChange(_ text: String) {
-        if !text.isEmpty {
-            core.presentSearch()
-            searchViewModel.updateQuery(text)
-        } else if core.route == .search {
-            searchViewModel.updateQuery("")
-            core.dismissSearch()
-        }
-    }
-
-    /// Called when the user submits (presses Enter) in the search field.
-    /// Re-activates the search takeover if the field has a non-empty query.
-    public func onSearchSubmit() {
-        searchViewModel.reactivateSearch()
-    }
-
-    /// Called when the search field gains focus with a non-empty query
-    /// and the search pane is not currently displayed. Re-activates the
-    /// search takeover so the user sees their previous results.
-    public func onSearchFieldFocused() {
-        guard !searchText.isEmpty, core.route != .search else { return }
-        searchViewModel.reactivateSearch()
-    }
-
-    /// Clears the search and restores the previous route.
-    public func clearSearch() {
-        searchText = ""
-        searchViewModel.updateQuery("")
-        core.dismissSearch()
+    /// Forwards toolbar search text to AppCore's meetings search.
+    public func setMeetingsQuery(_ query: String) {
+        core.setMeetingsQuery(query)
     }
 
     /// Called on app launch to run recovery and load data.

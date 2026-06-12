@@ -64,6 +64,7 @@ struct BiscottiApp: App {
                     }
                 }
         }
+        .defaultSize(width: 1000, height: 640)
 
         // Standard macOS Settings window (Biscotti > Settings..., Cmd+,).
         // Declaring a Settings scene adds the menu item automatically.
@@ -461,19 +462,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
 /// An `NSViewRepresentable` that hides the hosting window's title text
 /// while preserving the toolbar, traffic lights, and draggable title bar.
 /// Placed as a `.background` on `WindowRootView` so it fires once the
-/// view is installed in a window. Verified on device in Phase 4.
+/// view is installed in a window.
+///
+/// Uses a custom `NSView` subclass that sets `titleVisibility`
+/// synchronously in `viewDidMoveToWindow()` — the earliest point the
+/// view has a window reference. Do NOT defer this via
+/// `DispatchQueue.main.async` — a post-layout titlebar mutation causes
+/// the toolbar to lay out at stale geometry on first paint (trailing
+/// items bunch left, overflow menu appears) until the next relayout.
 private struct WindowTitleHider: NSViewRepresentable {
-    func makeNSView(context _: Context) -> NSView {
-        let view = NSView()
-        // Defer to the next run-loop tick so the view is attached to a window.
-        DispatchQueue.main.async {
-            view.window?.titleVisibility = .hidden
-        }
-        return view
+    func makeNSView(context _: Context) -> TitleHiderView {
+        TitleHiderView()
     }
 
-    func updateNSView(_ nsView: NSView, context _: Context) {
+    func updateNSView(_ nsView: TitleHiderView, context _: Context) {
         // Re-apply in case the window was recreated (e.g. reopen from Dock).
         nsView.window?.titleVisibility = .hidden
+    }
+
+    /// Custom NSView that hides the window title synchronously as soon
+    /// as it is added to a window, avoiding a deferred layout stutter.
+    final class TitleHiderView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.titleVisibility = .hidden
+        }
     }
 }

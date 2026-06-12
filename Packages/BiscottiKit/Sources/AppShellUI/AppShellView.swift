@@ -14,8 +14,8 @@ import SwiftUI
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
-    /// Bound to the `.searchable` field. Two-way synced with AppCore's
-    /// `meetingsQuery` via `.onChange` to avoid feedback loops.
+    /// Bound to the custom search `TextField` in the toolbar. Two-way synced
+    /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
 
     /// Opens the standard macOS Settings window (same window as Cmd+,).
@@ -47,11 +47,45 @@ public struct AppShellView: View {
                         }
                         .help("Home")
                     }
-                    ToolbarItem(placement: .primaryAction) {
+
+                    // Custom trailing group: search field + Record button.
+                    // Native `.searchable` always anchors to the trailing edge,
+                    // making it impossible to place a button to its right. We use
+                    // a custom TextField styled as a search field so the Record
+                    // button can sit to its right at the toolbar's trailing edge.
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                                .font(.body)
+                            TextField("Search", text: $searchText)
+                                .textFieldStyle(.plain)
+                                .font(.body)
+                                .frame(width: 160)
+                            if !searchText.isEmpty {
+                                Button {
+                                    searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(.quinary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .fixedSize()
+
                         Button {
                             Task { await viewModel.startRecording() }
                         } label: {
-                            Label("Record", systemImage: "record.circle")
+                            HStack(spacing: 4) {
+                                Image(systemName: "record.circle")
+                                Text("Record")
+                            }
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Tokens.recordingRed)
@@ -59,15 +93,6 @@ public struct AppShellView: View {
                         .help("Record")
                     }
                 }
-                // TODO(phase-6 follow-up): search field width not constrained to the requested ~60%.
-                // .searchable doesn't expose a width parameter; revisit on-device (Phase 4 human
-                // review) — may need a custom toolbar TextField or NSSearchField introspection
-                // to narrow it.
-                .searchable(
-                    text: $searchText,
-                    placement: .toolbar,
-                    prompt: "Search"
-                )
                 .onChange(of: searchText) { _, newValue in
                     if newValue != viewModel.meetingsQuery {
                         viewModel.setMeetingsQuery(newValue)
@@ -205,38 +230,7 @@ public struct AppShellView: View {
     }
 
     private var upcomingSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("UPCOMING")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
-                .padding(.horizontal, Tokens.spacingMD)
-                .padding(.bottom, Tokens.spacingXS)
-
-            ForEach(viewModel.upcomingEvents) { event in
-                Button {
-                    viewModel.selectEvent(event.id)
-                } label: {
-                    UpcomingEventRow(
-                        title: event.title,
-                        timeText: viewModel.tickTimeText(for: event),
-                        platformBadge: event.conferencePlatform,
-                        twoLine: true
-                    )
-                    .padding(.vertical, Tokens.spacingXS)
-                    .padding(.horizontal, Tokens.spacingSM)
-                }
-                .buttonStyle(.plain)
-                .background(
-                    viewModel.route == .event(event.id)
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 4)
-                )
-            }
-
-            Divider()
-                .padding(.vertical, Tokens.spacingSM)
-        }
+        UpcomingSidebarSection(viewModel: viewModel)
     }
 
     private var settingsRow: some View {
@@ -287,6 +281,47 @@ public struct AppShellView: View {
     /// The Meetings two-pane: native list + detail or placeholder.
     private var meetingsSplit: some View {
         MeetingsSplitView(viewModel: viewModel)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// The upcoming-events sidebar section.
+private struct UpcomingSidebarSection: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("UPCOMING")
+                .font(Tokens.sectionHeaderFont)
+                .foregroundStyle(Tokens.secondaryText)
+                .padding(.horizontal, Tokens.spacingMD)
+                .padding(.bottom, Tokens.spacingXS)
+
+            ForEach(viewModel.upcomingEvents) { event in
+                Button {
+                    viewModel.selectEvent(event.id)
+                } label: {
+                    UpcomingEventRow(
+                        title: event.title,
+                        timeText: viewModel.tickTimeText(for: event),
+                        platformBadge: event.conferencePlatform,
+                        twoLine: true
+                    )
+                    .padding(.vertical, Tokens.spacingXS)
+                    .padding(.horizontal, Tokens.spacingSM)
+                }
+                .buttonStyle(.plain)
+                .background(
+                    viewModel.route == .event(event.id)
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
+            }
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
+        }
     }
 }
 

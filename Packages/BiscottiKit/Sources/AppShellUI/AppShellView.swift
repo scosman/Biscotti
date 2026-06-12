@@ -279,15 +279,12 @@ public struct AppShellView: View {
         }
     }
 
-    /// Interim two-pane for Phase 1: meeting list + detail or placeholder.
-    /// Phase 2 finalizes this with native List, date grouping, etc.
+    /// The Meetings two-pane: native list + detail or placeholder.
     private var meetingsSplit: some View {
         HSplitView {
-            ScrollView {
-                MeetingListView(
-                    viewModel: viewModel.meetingListViewModel
-                )
-            }
+            MeetingListView(
+                viewModel: viewModel.meetingListViewModel
+            )
             .frame(minWidth: 220, idealWidth: 280, maxWidth: 420)
 
             Group {

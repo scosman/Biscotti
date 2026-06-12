@@ -23,7 +23,6 @@ let package = Package(
         .library(name: "SettingsUI", targets: ["SettingsUI"]),
         .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
         .library(name: "HomeUI", targets: ["HomeUI"]),
-        .library(name: "SearchUI", targets: ["SearchUI"]),
         .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"])
     ],
@@ -274,32 +273,6 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
-            name: "SearchUI",
-            dependencies: [
-                "AppCore",
-                "DataStore",
-                "DesignSystem"
-            ],
-            swiftSettings: warningsAsErrors
-        ),
-        .testTarget(
-            name: "SearchUITests",
-            dependencies: [
-                "SearchUI",
-                "AppCore",
-                "BiscottiTestSupport",
-                "Calendar",
-                "DataStore",
-                "MeetingCatalog",
-                "Permissions",
-                "Recording",
-                "TranscriptionService",
-                .product(name: "AudioCapture", package: "AudioCapture"),
-                .product(name: "Transcription", package: "Transcription")
-            ],
-            swiftSettings: warningsAsErrors
-        ),
-        .target(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
@@ -310,7 +283,6 @@ let package = Package(
                 "MeetingDetailUI",
                 "OnboardingUI",
                 "RecordingUI",
-                "SearchUI",
                 "SettingsUI"
             ],
             swiftSettings: warningsAsErrors
@@ -327,7 +299,6 @@ let package = Package(
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
-                "SearchUI",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")

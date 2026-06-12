@@ -31,7 +31,7 @@ triggered — `manual_test_results.json` is untouched.
   left unreferenced (removed in Phase 2). → `architecture.md` §1–§3, §2.
   *(Depends on: nothing.)*
 
-- [ ] **Phase 2 — Meetings two-pane UI: native `List`, date grouping, search mode; remove `SearchUI`.**
+- [x] **Phase 2 — Meetings two-pane UI: native `List`, date grouping, search mode; remove `SearchUI`.**
   Convert `MeetingListView` to native `List(selection:)` with pinned `Section` headers; add the
   6-bucket `groupByDateBuckets` (+ boundary/order-invariant tests) replacing the 4-bucket grouping;
   render search mode (flat results) and the `ContentUnavailableView` placeholder / empty / no-results

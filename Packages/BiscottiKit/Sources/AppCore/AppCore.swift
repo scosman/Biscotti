@@ -27,7 +27,7 @@ public final class AppCore {
     public private(set) var route: Route = .home
 
     /// All meetings, newest first (uncapped — the Meetings list uses lazy rendering).
-    public private(set) var summaries: [MeetingSummary] = []
+    public package(set) var summaries: [MeetingSummary] = []
 
     // MARK: - Meetings screen state
 

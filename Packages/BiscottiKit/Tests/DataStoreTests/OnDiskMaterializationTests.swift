@@ -73,10 +73,12 @@ struct OnDiskMaterializationTests {
         // Read: open a fresh DataStore on the same URL, fetch and verify.
         do {
             let store2 = try DataStore(storage: .onDisk(dir))
-            let meeting = try await store2.meeting(id: meetingID)
-            let transcript = meeting?.transcripts.first
-            #expect(transcript != nil, "transcript should exist on disk")
-            #expect(transcript?.vocabularyUsed == vocab)
+            try await store2.read { store in
+                let meeting = try store.meeting(id: meetingID)
+                let transcript = meeting?.transcripts.first
+                #expect(transcript != nil, "transcript should exist on disk")
+                #expect(transcript?.vocabularyUsed == vocab)
+            }
         }
     }
 
@@ -100,10 +102,12 @@ struct OnDiskMaterializationTests {
 
         do {
             let store2 = try DataStore(storage: .onDisk(dir))
-            let meeting = try await store2.meeting(id: meetingID)
-            let transcript = meeting?.transcripts.first
-            #expect(transcript != nil)
-            #expect(transcript?.vocabularyUsed == [])
+            try await store2.read { store in
+                let meeting = try store.meeting(id: meetingID)
+                let transcript = meeting?.transcripts.first
+                #expect(transcript != nil)
+                #expect(transcript?.vocabularyUsed == [])
+            }
         }
     }
 
@@ -126,10 +130,12 @@ struct OnDiskMaterializationTests {
         // Read: open a fresh DataStore, fetch AppSettings back.
         do {
             let store2 = try DataStore(storage: .onDisk(dir))
-            let fetched = try await store2.fetchAllSettings().first
-            #expect(fetched != nil, "AppSettings should exist on disk")
-            #expect(fetched?.customVocabulary == vocab)
-            #expect(fetched?.launchAtLogin == true)
+            try await store2.read { store in
+                let fetched = try store.fetchAllSettings().first
+                #expect(fetched != nil, "AppSettings should exist on disk")
+                #expect(fetched?.customVocabulary == vocab)
+                #expect(fetched?.launchAtLogin == true)
+            }
         }
     }
 
@@ -146,9 +152,11 @@ struct OnDiskMaterializationTests {
 
         do {
             let store2 = try DataStore(storage: .onDisk(dir))
-            let fetched = try await store2.fetchAllSettings().first
-            #expect(fetched != nil)
-            #expect(fetched?.customVocabulary == [])
+            try await store2.read { store in
+                let fetched = try store.fetchAllSettings().first
+                #expect(fetched != nil)
+                #expect(fetched?.customVocabulary == [])
+            }
         }
     }
 

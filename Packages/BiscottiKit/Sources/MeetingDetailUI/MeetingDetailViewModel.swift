@@ -1,4 +1,5 @@
 import AppCore
+import Calendar
 import DataStore
 import Foundation
 import TranscriptionService
@@ -21,10 +22,22 @@ public enum MeetingDetailState: Sendable, Equatable {
 /// Loads the meeting's detail data from `DataStore`, observes
 /// `TranscriptionService.jobs[meetingID]` for live status, and
 /// surfaces one of three states: processing, transcript, or failed.
+///
+/// Stage C additions: calendar context display, association correction,
+/// audio playback, transcript version switching, notes autosave,
+/// editable title, and Open-in-Calendar deep link.
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
     private let meetingID: UUID
+    private let makePlayer: () -> any AudioPlaybackProviding
+
+    /// Injectable "now" for deterministic testing of time-gated UI.
+    private let currentDate: () -> Date
+
+    /// Injectable callback for opening URLs (mirrors EventPreviewViewModel).
+    /// Set by the app target to `NSWorkspace.shared.open`; tests inject a spy.
+    private let urlOpener: (URL) -> Void
 
     /// The meeting detail data loaded from the store.
     public private(set) var detail: MeetingDetailData?
@@ -32,21 +45,117 @@ public final class MeetingDetailViewModel {
     /// The loading flag for the initial data fetch.
     public private(set) var isLoading: Bool = true
 
-    public init(core: AppCore, meetingID: UUID) {
+    /// Calendar context loaded from the store's snapshot.
+    public private(set) var calendarContext: CalendarContextData?
+
+    /// Whether to show the event picker sheet for association correction.
+    public var showEventPicker: Bool = false
+
+    // TODO(re-transcribe-prompt): restore the "calendar changed -- re-transcribe"
+    // prompt once vocab support (Phase 9) lands. The underlying flag and plumbing
+    // remain; only the UI is suppressed.
+
+    /// Whether to show a re-transcribe prompt after association correction.
+    /// Currently always false -- suppressed until vocabulary support lands.
+    public private(set) var showReTranscribeAfterCorrection: Bool = false
+
+    // MARK: - Phase 8: Audio playback
+
+    /// The audio player instance, nil if no audio file is available.
+    public private(set) var audioPlayer: (any AudioPlaybackProviding)?
+
+    /// Whether audio files are present for this meeting.
+    public private(set) var isAudioAvailable: Bool = false
+
+    /// Stored playback state, updated by a periodic ticker so SwiftUI
+    /// observes changes (the underlying player is non-`@Observable`).
+    public private(set) var isPlaying: Bool = false
+
+    /// Stored playback position, updated by the ticker ~4x/s while playing.
+    public private(set) var playbackCurrentTime: TimeInterval = 0
+
+    /// Stored total duration of the loaded audio.
+    public private(set) var playbackDuration: TimeInterval = 0
+
+    /// The periodic ticker task that syncs player state into stored
+    /// `@Observable` properties. Runs while playing; cancelled on
+    /// pause, stop, end-of-playback, flush, or dealloc.
+    private var playbackTickerTask: Task<Void, Never>?
+
+    /// Ticker interval (250ms = ~4 updates/sec for smooth scrubbing).
+    private static let tickerInterval: Duration = .milliseconds(250)
+
+    // MARK: - Phase 8: Transcript versions
+
+    /// All transcript versions for the meeting.
+    public private(set) var versions: [TranscriptVersionData] = []
+
+    /// The ID of the explicitly selected version, nil = use preferred.
+    public var selectedVersionID: UUID?
+
+    /// The loaded transcript for the selected (non-preferred) version.
+    public private(set) var selectedTranscript: TranscriptData?
+
+    // MARK: - Phase 8: Notes
+
+    /// The user-editable notes, two-way bound to the text editor.
+    public var notes: String = ""
+
+    /// Debounce handle for notes autosave.
+    private var notesAutosaveTask: Task<Void, Never>?
+
+    /// Debounce interval for notes autosave.
+    private static let notesDebounceInterval: Duration = .seconds(1)
+
+    // MARK: - Association picker
+
+    /// Calendar events near this meeting's recording time, fetched on
+    /// demand when the picker opens. Replaces the forward-only
+    /// `core.upcoming` so past meetings can find their real events.
+    public private(set) var nearbyEvents: [CalendarEvent] = []
+
+    /// Whether nearby events are currently being fetched.
+    public private(set) var isLoadingNearbyEvents: Bool = false
+
+    // MARK: - Phase 11: Editable title
+
+    /// The user-editable title, two-way bound to the inline TextField.
+    public var editableTitle: String = ""
+
+    // MARK: - Phase 11: Delete meeting
+
+    /// Whether the delete confirmation dialog is presented.
+    public var showDeleteConfirmation: Bool = false
+
+    /// Whether a delete operation is in progress.
+    public private(set) var isDeleting: Bool = false
+
+    public init(
+        core: AppCore,
+        meetingID: UUID,
+        makePlayer: @escaping () -> any AudioPlaybackProviding
+            = { AVAudioPlayerWrapper() },
+        currentDate: @escaping () -> Date = { Date() },
+        urlOpener: @escaping (URL) -> Void = { _ in }
+    ) {
         self.core = core
         self.meetingID = meetingID
+        self.makePlayer = makePlayer
+        self.currentDate = currentDate
+        self.urlOpener = urlOpener
     }
 
     // MARK: - Derived state
 
-    /// The current display state, combining the transcription job status
-    /// and the persisted meeting detail.
+    /// The current display state.
     public var displayState: MeetingDetailState {
         let jobStatus = core.transcription.jobs[meetingID]
 
         switch jobStatus {
         case let .downloadingModel(message):
-            return .processing(message: "Transcribing\u{2026}", subtitle: message)
+            return .processing(
+                message: "Transcribing\u{2026}", subtitle: message
+            )
 
         case .transcribing:
             return .processing(message: "Transcribing\u{2026}")
@@ -61,24 +170,19 @@ public final class MeetingDetailViewModel {
             if isLoading {
                 return .processing(message: "Loading\u{2026}")
             }
-            // No transcript yet and no active job -- show the detail as-is
-            // (e.g. a meeting that was recorded but never transcribed).
             if let detail {
                 return .transcript(detail)
             }
-            // Load completed but no detail found (meeting deleted or not found).
             return .failed(message: "Meeting not found.", retriable: false)
         }
     }
 
-    /// The current transcription job status for this meeting. Used by the view
-    /// to observe changes and trigger `onJobStatusChange(_:)`.
+    /// The current transcription job status for this meeting.
     public var currentJobStatus: JobStatus? {
         core.transcription.jobs[meetingID]
     }
 
     /// Whether the Re-transcribe action should be enabled.
-    /// Available when the meeting has audio and no job is actively running.
     public var canReTranscribe: Bool {
         guard let detail, detail.hasAudio else { return false }
         let jobStatus = core.transcription.jobs[meetingID]
@@ -88,11 +192,6 @@ public final class MeetingDetailViewModel {
         default:
             return true
         }
-    }
-
-    /// The meeting title for the header.
-    public var title: String {
-        detail?.title ?? ""
     }
 
     /// Formatted date for display.
@@ -107,6 +206,52 @@ public final class MeetingDetailViewModel {
         return Self.formatDuration(duration)
     }
 
+    /// Whether the meeting has calendar context.
+    public var hasCalendarContext: Bool {
+        calendarContext != nil
+    }
+
+    /// Whether to show the quiet "Link a calendar event..." prompt.
+    public var showLinkEventPrompt: Bool {
+        !hasCalendarContext
+    }
+
+    /// Whether the "Open in Calendar" button should be shown.
+    /// Visible when there is an associated calendar event (i.e. calendar
+    /// context exists).
+    public var showOpenInCalendar: Bool {
+        calendarContext != nil
+    }
+
+    /// Calendar events available for association correction. Populated
+    /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
+    /// window around the meeting's recording time instead of the
+    /// forward-only `core.upcoming`.
+    public var availableEvents: [CalendarEvent] {
+        nearbyEvents
+    }
+
+    /// Whether calendar access has been granted. Used to decide between
+    /// "no events near this time" vs "grant calendar access" in the picker.
+    public var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
+    }
+
+    /// Whether audio playback is available.
+    public var canPlay: Bool {
+        isAudioAvailable && audioPlayer != nil
+    }
+
+    /// The active version ID: explicit selection or the preferred version.
+    public var activeVersionID: UUID? {
+        selectedVersionID ?? detail?.preferredTranscript?.id
+    }
+
+    /// The transcript to display: selected version or preferred.
+    public var displayedTranscript: TranscriptData? {
+        selectedTranscript ?? detail?.preferredTranscript
+    }
+
     // MARK: - Actions
 
     /// Loads the meeting detail from the store.
@@ -114,24 +259,28 @@ public final class MeetingDetailViewModel {
         isLoading = true
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
+            calendarContext = detail?.calendar
+            editableTitle = detail?.title ?? ""
+            notes = detail?.notes ?? ""
+            versions = detail?.versions ?? []
+            await loadAudioPlayer()
         } catch {
             detail = nil
+            calendarContext = nil
         }
         isLoading = false
     }
 
     /// Called when the transcription job status changes for this meeting.
-    /// Reloads the detail from the store when the job completes so the
-    /// transcript appears immediately without manual re-navigation.
-    /// Also reloads the sidebar summaries so the has-transcript indicator
-    /// updates.
     public func onJobStatusChange(_ newStatus: JobStatus?) async {
         if newStatus == .completed {
             do {
                 detail = try await core.store.meetingDetail(id: meetingID)
+                versions = detail?.versions ?? []
+                selectedVersionID = nil
+                selectedTranscript = nil
             } catch {
-                // Non-fatal: displayState will fall through to the existing
-                // detail (which may be stale but not worse than before).
+                // Non-fatal.
             }
             await core.reloadSummaries()
         }
@@ -149,8 +298,292 @@ public final class MeetingDetailViewModel {
         await load()
     }
 
-    // MARK: - Formatting
+    /// Corrects the association to a new event (or removes it if nil).
+    public func correctAssociation(eventKey: String?) async {
+        await core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+        await load()
+        await core.reloadSummaries()
+        showEventPicker = false
+        // TODO(re-transcribe-prompt): restore setting
+        // showReTranscribeAfterCorrection = true when vocab support
+        // (Phase 9) lands. Suppressed because re-transcription without
+        // vocabulary changes has no user-visible benefit.
+    }
 
+    /// Removes the calendar association.
+    public func removeAssociation() async {
+        await correctAssociation(eventKey: nil)
+        showReTranscribeAfterCorrection = false
+    }
+
+    /// Dismisses the re-transcribe prompt.
+    public func dismissReTranscribePrompt() {
+        showReTranscribeAfterCorrection = false
+    }
+
+    // MARK: - Phase 8: Audio playback actions
+
+    /// Toggles play/pause on the audio player and starts/stops the
+    /// periodic ticker that keeps the stored playback state in sync.
+    public func playPause() {
+        guard let player = audioPlayer else { return }
+        if player.isPlaying {
+            player.pause()
+            stopPlaybackTicker()
+            syncPlaybackState()
+        } else {
+            player.play()
+            startPlaybackTicker()
+            syncPlaybackState()
+        }
+    }
+
+    /// Seeks the audio player to the specified time.
+    public func seek(to time: TimeInterval) {
+        audioPlayer?.currentTime = time
+        syncPlaybackState()
+    }
+
+    /// Stops the playback ticker and cleans up. Called on disappear/flush.
+    public func stopPlayback() {
+        audioPlayer?.pause()
+        stopPlaybackTicker()
+        syncPlaybackState()
+    }
+
+    /// Reads the current player state into stored `@Observable` properties.
+    ///
+    /// Uses the meeting's stored `recordingDuration` as the authoritative
+    /// total when available — ADTS AAC files have no container-level
+    /// duration, so `AVAudioPlayer.duration` is a size/bitrate guess that
+    /// is often very wrong. The player-derived value is the fallback for
+    /// legacy recordings that pre-date the stored field.
+    private func syncPlaybackState() {
+        isPlaying = audioPlayer?.isPlaying ?? false
+        playbackCurrentTime = audioPlayer?.currentTime ?? 0
+        if let recDur = detail?.recordingDuration, recDur > 0 {
+            playbackDuration = recDur
+        } else {
+            playbackDuration = audioPlayer?.duration ?? 0
+        }
+    }
+
+    /// Starts the periodic ticker that polls the player ~4x/sec.
+    private func startPlaybackTicker() {
+        stopPlaybackTicker()
+        playbackTickerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: Self.tickerInterval)
+                } catch {
+                    break
+                }
+                guard let self, !Task.isCancelled else { break }
+                syncPlaybackState()
+                // Stop the ticker if the player reached the end
+                if !(audioPlayer?.isPlaying ?? false) {
+                    break
+                }
+            }
+        }
+    }
+
+    /// Cancels the periodic ticker.
+    private func stopPlaybackTicker() {
+        playbackTickerTask?.cancel()
+        playbackTickerTask = nil
+    }
+
+    // MARK: - Phase 8: Transcript version actions
+
+    /// Selects and loads a specific transcript version.
+    public func selectVersion(_ versionID: UUID) async {
+        selectedVersionID = versionID
+
+        // If selecting the preferred version, clear the override
+        if versionID == detail?.preferredTranscript?.id {
+            selectedTranscript = nil
+            return
+        }
+
+        do {
+            selectedTranscript = try await core.store.transcript(
+                id: versionID
+            )
+        } catch {
+            selectedTranscript = nil
+        }
+    }
+
+    // MARK: - Phase 8: Notes autosave
+
+    /// Updates notes and debounces autosave to the store.
+    ///
+    /// Uses `[weak self]` for the short debounce window. If the VM
+    /// deallocs mid-debounce, `flushNotes()` (called in `onDisappear`)
+    /// is the guarantee that pending edits are persisted before teardown.
+    public func updateNotes(_ text: String) {
+        notes = text
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.notesDebounceInterval)
+            } catch {
+                return // cancelled
+            }
+            guard let self, !Task.isCancelled else { return }
+            await saveNotes()
+        }
+    }
+
+    /// Flushes any pending notes and title changes immediately and stops
+    /// playback. Called on navigation away (onDisappear) to prevent
+    /// leaked timers and lost edits.
+    public func flushNotes() async {
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        stopPlayback()
+        await saveNotes()
+        await saveTitle()
+    }
+
+    // MARK: - Phase 8: Re-transcribe after correction
+
+    /// Dismisses the re-transcribe prompt and triggers re-transcription.
+    public func reTranscribeAfterCorrection() async {
+        showReTranscribeAfterCorrection = false
+        await reTranscribe()
+    }
+}
+
+// MARK: - Calendar deep link, nearby events, title save
+
+public extension MeetingDetailViewModel {
+    /// Opens the event picker and fetches events near the meeting's
+    /// recording time so past events are available for association.
+    func presentAssociationCorrection() async {
+        showEventPicker = true
+        await loadNearbyEvents()
+    }
+
+    /// Fetches calendar events near the meeting's recording time
+    /// (startDate or createdAt). Called when the picker opens.
+    func loadNearbyEvents() async {
+        guard let referenceDate = detail?.date else { return }
+        isLoadingNearbyEvents = true
+        nearbyEvents = await core.eventsNear(referenceDate)
+        isLoadingNearbyEvents = false
+    }
+
+    /// Opens the associated calendar event in Calendar.app.
+    ///
+    /// Tries the `ical://` deep-link scheme with the snapshot's
+    /// `eventIdentifier` first. Falls back to opening Calendar.app at
+    /// the event's start date if the identifier is unavailable.
+    func openInCalendar() {
+        if let eventID = calendarContext?.eventIdentifier,
+           let url = URL(
+               string: "ical://ekevent/\(eventID)?method=show&options=more"
+           )
+        {
+            urlOpener(url)
+        } else if let startDate = calendarContext?.startDate,
+                  let calURL = URL(string: "ical://\(startDate.timeIntervalSinceReferenceDate)") ?? URL(string: "ical://")
+        {
+            // Fall back to opening Calendar.app at the event's date.
+            urlOpener(calURL)
+        } else if let calURL = URL(string: "ical://") {
+            // Last resort: just open Calendar.app.
+            urlOpener(calURL)
+        }
+    }
+
+    /// Saves the current `editableTitle` to the store. Called on submit
+    /// (Enter key) and on blur (focus loss) to prevent losing edits.
+    ///
+    /// **Guard:** only persists (and flags `editedTitle`) when the trimmed
+    /// title differs from the currently-stored title. Without this guard,
+    /// `flushNotes()` (called unconditionally on every `onDisappear`) and
+    /// `.onSubmit` would set `editedTitle = true` on every viewed meeting,
+    /// permanently blocking `applyEventTitle` from updating the title when
+    /// the user links or re-links a calendar event.
+    func saveTitle() async {
+        let trimmed = editableTitle
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            // Revert to the stored title if the user blanked it out
+            editableTitle = detail?.title ?? ""
+            return
+        }
+
+        // Skip the write if the title hasn't actually changed --
+        // avoids spuriously setting editedTitle on every navigation.
+        guard trimmed != detail?.title else { return }
+
+        editableTitle = trimmed
+        do {
+            try await core.store.setTitle(trimmed, for: meetingID)
+            // Refresh the detail snapshot so `title` stays consistent
+            detail = try await core.store.meetingDetail(id: meetingID)
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal; title will be retried on next edit.
+        }
+    }
+}
+
+// MARK: - Private helpers
+
+private extension MeetingDetailViewModel {
+    func loadAudioPlayer() async {
+        do {
+            let refs = try await core.store.audioFileRefs(
+                meetingID: meetingID
+            )
+            isAudioAvailable = refs.present
+
+            guard refs.present else {
+                audioPlayer = nil
+                syncPlaybackState()
+                return
+            }
+
+            // Collect whichever audio files exist (mic, system, or both).
+            var urls: [URL] = []
+            if let mic = refs.mic { urls.append(mic) }
+            if let sys = refs.system { urls.append(sys) }
+
+            guard !urls.isEmpty else {
+                audioPlayer = nil
+                syncPlaybackState()
+                return
+            }
+
+            let player = makePlayer()
+            try player.load(urls: urls)
+            audioPlayer = player
+            syncPlaybackState()
+        } catch {
+            audioPlayer = nil
+            isAudioAvailable = false
+            syncPlaybackState()
+        }
+    }
+
+    func saveNotes() async {
+        do {
+            try await core.store.setNotes(notes, for: meetingID)
+        } catch {
+            // Non-fatal; notes will be retried on next edit.
+        }
+    }
+}
+
+// MARK: - Formatting
+
+extension MeetingDetailViewModel {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -175,5 +608,24 @@ public final class MeetingDetailViewModel {
             return "\(minutes)m \(seconds)s"
         }
         return "\(seconds)s"
+    }
+}
+
+// MARK: - Delete meeting
+
+public extension MeetingDetailViewModel {
+    /// Presents the delete confirmation dialog.
+    func requestDelete() {
+        showDeleteConfirmation = true
+    }
+
+    /// Confirms deletion: stops playback, deletes files + DB row, navigates away.
+    func confirmDelete() async {
+        isDeleting = true
+        stopPlayback()
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        await core.deleteMeeting(meetingID: meetingID)
+        isDeleting = false
     }
 }

@@ -84,15 +84,21 @@ struct RecordingStartStopTests {
 
         // Verify meeting was created in the store
         let meetingID = try #require(fix.controller.state.meetingID)
-        let meeting = try await fix.store.meeting(id: meetingID)
-        #expect(meeting != nil)
-        #expect(try #require(meeting).title.hasPrefix("Recording"))
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Untitled Meeting")
+        }
 
         // Verify audio refs were attached
-        let audioRefs = try await fix.store.fetchAllAudioRefs()
-        #expect(audioRefs.count == 2)
-        #expect(audioRefs.contains(where: { $0.role == .mic }))
-        #expect(audioRefs.contains(where: { $0.role == .system }))
+        try await fix.store.read { store in
+            let audioRefs = try store.fetchAllAudioRefs()
+            let count = audioRefs.count
+            let hasMic = audioRefs.contains(where: { $0.role == .mic })
+            let hasSystem = audioRefs.contains(where: { $0.role == .system })
+            #expect(count == 2)
+            #expect(hasMic)
+            #expect(hasSystem)
+        }
     }
 
     @Test("Start requests mic permission when not determined")
@@ -252,13 +258,14 @@ struct RecordingStartStopTests {
         #expect(fix.controller.state.meetingID == nil)
     }
 
-    @Test("Auto-title format")
+    @Test("Auto-title is date-free")
     @MainActor
     func autoTitleFormat() {
-        let date = Date(timeIntervalSince1970: 1_717_955_400)
-        let title = RecordingController.autoTitle(date: date)
-        #expect(title.hasPrefix("Recording"))
-        #expect(title.contains("\u{2014}")) // em dash
+        let title = RecordingController.autoTitle()
+        #expect(title == "Untitled Meeting")
+        // Date must NOT be embedded in the title -- it is shown
+        // separately from MeetingDetailData.date metadata.
+        #expect(!title.contains("\u{2014}")) // no em dash
     }
 }
 
@@ -323,13 +330,15 @@ struct RecordingStateRecoveryTests {
 
         #expect(!FileManager.default.fileExists(atPath: markerURL.path))
 
-        let audioRefs = try await fix.store.fetchAllAudioRefs()
-        let micRefAfter = audioRefs.first(where: { $0.role == .mic })
-        let sysRefAfter = audioRefs.first(where: { $0.role == .system })
-        #expect(micRefAfter?.isPresent == true)
-        #expect(micRefAfter?.byteSize == 128)
-        #expect(sysRefAfter?.isPresent == true)
-        #expect(sysRefAfter?.byteSize == 256)
+        try await fix.store.read { store in
+            let audioRefs = try store.fetchAllAudioRefs()
+            let micRefAfter = audioRefs.first(where: { $0.role == .mic })
+            let sysRefAfter = audioRefs.first(where: { $0.role == .system })
+            #expect(micRefAfter?.isPresent == true)
+            #expect(micRefAfter?.byteSize == 128)
+            #expect(sysRefAfter?.isPresent == true)
+            #expect(sysRefAfter?.byteSize == 256)
+        }
     }
 
     @Test("Recover orphans is no-op when no markers exist")
@@ -353,10 +362,6 @@ struct RecordingStateRecoveryTests {
         await fix.controller.start()
         let meetingID = try #require(fix.controller.state.meetingID)
 
-        let audioRefs = try await fix.store.fetchAllAudioRefs()
-        let micRef = try #require(audioRefs.first(where: { $0.role == .mic }))
-        let sysRef = try #require(audioRefs.first(where: { $0.role == .system }))
-
         let expectedMic = fix.storageRoot
             .appendingPathComponent(meetingID.uuidString)
             .appendingPathComponent("mic.aac")
@@ -364,8 +369,15 @@ struct RecordingStateRecoveryTests {
             .appendingPathComponent(meetingID.uuidString)
             .appendingPathComponent("system.aac")
 
-        #expect(micRef.path == expectedMic.path)
-        #expect(sysRef.path == expectedSys.path)
+        try await fix.store.read { store in
+            let audioRefs = try store.fetchAllAudioRefs()
+            let micRef = audioRefs.first(where: { $0.role == .mic })
+            let sysRef = audioRefs.first(where: { $0.role == .system })
+            let micPath = try #require(micRef?.path)
+            let sysPath = try #require(sysRef?.path)
+            #expect(micPath == expectedMic.path)
+            #expect(sysPath == expectedSys.path)
+        }
     }
 
     @Test("Elapsed time pumps from engine state stream")

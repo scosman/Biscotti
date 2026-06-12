@@ -19,9 +19,11 @@ struct AssociationTests {
             compositeKey: "Standup|2025-06-01"
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
-        #expect(meeting?.calendarSnapshot?.compositeKey == "Standup|2025-06-01")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
+            #expect(meeting?.calendarSnapshot?.compositeKey == "Standup|2025-06-01")
+        }
     }
 
     @Test("associate with same event identifier is idempotent")
@@ -41,9 +43,11 @@ struct AssociationTests {
             compositeKey: "key1-updated"
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
-        #expect(meeting?.calendarSnapshot?.compositeKey == "key1-updated")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
+            #expect(meeting?.calendarSnapshot?.compositeKey == "key1-updated")
+        }
     }
 
     @Test("associate with different event identifier throws associationConflict")
@@ -87,9 +91,11 @@ struct AssociationTests {
             compositeKey: "new-key"
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-new")
-        #expect(meeting?.calendarSnapshot?.compositeKey == "new-key")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-new")
+            #expect(meeting?.calendarSnapshot?.compositeKey == "new-key")
+        }
     }
 
     @Test("correctAssociation creates snapshot when none exists")
@@ -103,8 +109,10 @@ struct AssociationTests {
             compositeKey: "key1"
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.calendarSnapshot?.eventIdentifier == "ek-1")
+        }
     }
 
     @Test("associate on non-existent meeting throws notFound")

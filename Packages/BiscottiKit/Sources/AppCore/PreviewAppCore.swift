@@ -1,11 +1,16 @@
 #if DEBUG
     import AudioCapture
+    import Calendar
     import DataStore
     import Foundation
+    import MeetingCatalog
+    import MeetingDetection
+    import Notifications
     import Permissions
     import Recording
     import Transcription
     import TranscriptionService
+    import UserNotifications
 
     /// Lightweight factory for building an `AppCore` suitable for SwiftUI previews.
     ///
@@ -32,11 +37,30 @@
                 engine: PreviewTranscriber()
             )
 
+            let catalog = BundledMeetingCatalog()
+            let calendar = CalendarService(
+                store: store,
+                catalog: catalog,
+                provider: PreviewEventStore()
+            )
+
+            let detector = MeetingDetector(
+                catalog: catalog,
+                source: PreviewActivitySource()
+            )
+
+            let notifications = NotificationService(
+                provider: PreviewNotificationCenter()
+            )
+
             return AppCore(
                 store: store,
                 permissions: permissions,
                 recording: recording,
-                transcription: transcription
+                transcription: transcription,
+                calendar: calendar,
+                detector: detector,
+                notifications: notifications
             )
         }
     }
@@ -89,5 +113,54 @@
         }
 
         func shutdown() async {}
+    }
+
+    /// No-op EventStore for previews: authorized, no calendars/events.
+    struct PreviewEventStore: EventStoreProviding {
+        func authorizationStatus() -> CalendarAuthStatus {
+            .authorized
+        }
+
+        func requestAccess() async throws -> Bool {
+            true
+        }
+
+        func calendars() -> [CalendarInfo] {
+            []
+        }
+
+        func events(in _: DateInterval, calendars _: [String]?) -> [EKEventDTO] {
+            []
+        }
+
+        func refreshEvent(eventIdentifier _: String, occurrenceStart _: Date) -> EKEventDTO? {
+            nil
+        }
+    }
+
+    /// No-op ActivitySource for previews.
+    private struct PreviewActivitySource: ActivitySource {
+        func activityStream() -> AsyncStream<[AudioProcess]> {
+            AsyncStream { $0.finish() }
+        }
+    }
+
+    /// No-op NotificationCenter for previews.
+    private struct PreviewNotificationCenter: NotificationCenterProviding {
+        func requestAuthorization() async throws -> Bool {
+            true
+        }
+
+        func authorizationStatus() async -> UNAuthorizationStatus {
+            .authorized
+        }
+
+        func add(_: UNNotificationRequest) async throws {}
+
+        func removePendingRequests(withIdentifiers _: [String]) {}
+
+        func removeDeliveredNotifications(withIdentifiers _: [String]) {}
+
+        func setCategories(_: Set<UNNotificationCategory>) {}
     }
 #endif

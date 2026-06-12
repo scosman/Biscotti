@@ -12,7 +12,7 @@ public enum AudioRole: String, Codable, Sendable {
 // MARK: - AudioFileRef
 
 /// A reference to a recorded audio file on disk. Two per meeting (mic + system).
-@Model public final class AudioFileRef: @unchecked Sendable {
+@Model public final class AudioFileRef {
     public var id = UUID()
     public var role = AudioRole.mic
     /// Security-scoped bookmark for sandbox-safe access.

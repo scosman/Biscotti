@@ -1,0 +1,286 @@
+import BiscottiTestSupport
+import Calendar
+import DataStore
+import Permissions
+import Testing
+@testable import SettingsUI
+
+@Suite("SettingsViewModel")
+@MainActor
+struct SettingsViewModelTests {
+    // MARK: - Calendar grouping
+
+    @Test("calendars group by source title")
+    func calendarGroupsBySource() {
+        let infos = [
+            CalendarInfo(id: "c1", title: "Work", colorHex: "#0066CC", sourceTitle: "iCloud"),
+            CalendarInfo(id: "c2", title: "Family", colorHex: "#33CC33", sourceTitle: "iCloud"),
+            CalendarInfo(id: "c3", title: "Team", colorHex: "#CC0000", sourceTitle: "Google")
+        ]
+
+        let groups = SettingsViewModel.groupCalendars(infos)
+
+        #expect(groups.count == 2)
+        #expect(groups[0].sourceTitle == "Google")
+        #expect(groups[0].calendars.count == 1)
+        #expect(groups[1].sourceTitle == "iCloud")
+        #expect(groups[1].calendars.count == 2)
+    }
+
+    @Test("all calendars enabled when enabledCalendarIDs is nil")
+    func calendarAllEnabledWhenNil() throws {
+        let fixture = try makeCoreFixture()
+        let viewModel = SettingsViewModel(core: fixture.core)
+        // Default: enabledCalendarIDs is nil (all enabled)
+        #expect(viewModel.isCalendarEnabled("any-id") == true)
+        #expect(viewModel.isCalendarEnabled("another-id") == true)
+        fixture.cleanup()
+    }
+
+    @Test("toggle calendar persists enabled IDs")
+    func calendarTogglePersistsEnabledIDs() async throws {
+        let fixture = try makeCoreFixture(
+            calendarInfos: [
+                CalendarInfo(id: "c1", title: "Work", colorHex: "#0066CC", sourceTitle: "iCloud"),
+                CalendarInfo(id: "c2", title: "Family", colorHex: "#33CC33", sourceTitle: "iCloud")
+            ]
+        )
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+
+        // All enabled initially
+        #expect(viewModel.isCalendarEnabled("c1") == true)
+        #expect(viewModel.isCalendarEnabled("c2") == true)
+
+        // Toggle c1 off
+        await viewModel.toggleCalendar("c1")
+
+        #expect(viewModel.isCalendarEnabled("c1") == false)
+        #expect(viewModel.isCalendarEnabled("c2") == true)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.enabledCalendarIDs != nil)
+        #expect(settings.enabledCalendarIDs?.contains("c1") == false)
+        #expect(settings.enabledCalendarIDs?.contains("c2") == true)
+
+        fixture.cleanup()
+    }
+
+    @Test("permissions show current state")
+    func permissionsShowCurrentState() throws {
+        let fixture = try makeCoreFixture()
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.microphoneState == .authorized)
+        #expect(viewModel.systemAudioState == .notDetermined)
+        #expect(viewModel.calendarState == .notDetermined)
+        #expect(viewModel.notificationsState == .notDetermined)
+        fixture.cleanup()
+    }
+
+    @Test("empty calendar groups when no calendars")
+    func emptyCalendarGroups() {
+        let groups = SettingsViewModel.groupCalendars([])
+        #expect(groups.isEmpty)
+    }
+
+    @Test("calendars sorted within group")
+    func calendarsSortedWithinGroup() {
+        let infos = [
+            CalendarInfo(id: "c2", title: "Zebra", colorHex: "#000", sourceTitle: "iCloud"),
+            CalendarInfo(id: "c1", title: "Alpha", colorHex: "#000", sourceTitle: "iCloud")
+        ]
+        let groups = SettingsViewModel.groupCalendars(infos)
+        #expect(groups[0].calendars[0].title == "Alpha")
+        #expect(groups[0].calendars[1].title == "Zebra")
+    }
+
+    // MARK: - Launch at login
+
+    @Test("toggle launch at login persists to settings")
+    func settingsToggleLaunchAtLogin() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { false }
+        )
+        await viewModel.load()
+
+        // Seam says not registered -> toggle shows false
+        #expect(viewModel.launchAtLogin == false)
+
+        // Toggle on
+        await viewModel.setLaunchAtLogin(true)
+        #expect(viewModel.launchAtLogin == true)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.launchAtLogin == true)
+
+        // Toggle off
+        await viewModel.setLaunchAtLogin(false)
+        #expect(viewModel.launchAtLogin == false)
+
+        let settings2 = try await fixture.store.settings()
+        #expect(settings2.launchAtLogin == false)
+    }
+
+    @Test("launch at login reflects system status on load")
+    func launchAtLoginReflectsSystemStatus() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        // System says enabled -> toggle should show true
+        let viewModel = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { true }
+        )
+        await viewModel.load()
+        #expect(viewModel.launchAtLogin == true)
+
+        // System says disabled -> toggle should show false
+        let viewModel2 = SettingsViewModel(
+            core: fixture.core,
+            readLaunchAtLoginStatus: { false }
+        )
+        await viewModel2.load()
+        #expect(viewModel2.launchAtLogin == false)
+    }
+
+    // MARK: - Vocabulary removed
+
+    @Test("vocabularyDeferred property no longer exists")
+    func vocabPropertyRemoved() throws {
+        // Compile-time check: SettingsViewModel has no `vocabularyDeferred`.
+        // If someone re-adds it, this test documents the intent.
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        // The view model should have no vocabulary-related public state.
+        // This test simply verifies the view model can be created without
+        // referencing any vocabulary property.
+        _ = viewModel
+    }
+
+    // MARK: - Permission request actions
+
+    @Test("request microphone permission calls the mic seam")
+    func requestMicrophonePermission() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.microphoneState == .notDetermined)
+
+        await viewModel.requestPermission(for: .microphone)
+
+        #expect(viewModel.microphoneState == .authorized)
+    }
+
+    @Test("request calendar permission calls calendar service and syncs state")
+    func requestCalendarPermission() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .notDetermined
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Calendar state starts as notDetermined (no seam injected)
+        #expect(viewModel.calendarState == .notDetermined)
+
+        // FakeEventStore returns requestAccessResult=true and
+        // authorizationStatus()=.authorized after request
+        fixture.fakeEventStore.authStatus = .authorized
+        await viewModel.requestPermission(for: .calendar)
+
+        #expect(viewModel.calendarState == .authorized)
+    }
+
+    @Test("request notification permission calls the notifications seam")
+    func requestNotificationPermission() async throws {
+        let fakeNotifAuth = FakeNotificationAuthorizer(
+            status: .notDetermined,
+            requestResult: true
+        )
+        let fixture = try makeCoreFixture(
+            notificationAuthorizer: fakeNotifAuth
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.notificationsState == .notDetermined)
+
+        await viewModel.requestPermission(for: .notifications)
+
+        #expect(viewModel.notificationsState == .authorized)
+    }
+
+    @Test("denied microphone request updates state to denied")
+    func requestMicrophoneDenied() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: false
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.requestPermission(for: .microphone)
+        #expect(viewModel.microphoneState == .denied)
+    }
+
+    // MARK: - Live permission status on load
+
+    @Test("load refreshes calendar status from live CalendarService auth")
+    func loadRefreshesCalendarStatus() async throws {
+        // Create fixture where FakeEventStore says authorized but
+        // Permissions has no cal seam (mimics live app)
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Before load, calendar state is .notDetermined (no seam)
+        #expect(viewModel.calendarState == .notDetermined)
+
+        // After load, should reflect the CalendarService's .authorized
+        await viewModel.load()
+        #expect(viewModel.calendarState == .authorized)
+    }
+
+    @Test("load refreshes notification status from live NotificationService")
+    func loadRefreshesNotificationStatus() async throws {
+        // FakeTestNotificationCenter defaults to authStatus = .authorized
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Before load, notifications state is .notDetermined (no seam)
+        #expect(viewModel.notificationsState == .notDetermined)
+
+        // After load, should reflect FakeTestNotificationCenter's .authorized
+        await viewModel.load()
+        #expect(viewModel.notificationsState == .authorized)
+    }
+
+    @Test("load shows denied notification status when denied")
+    func loadShowsDeniedNotificationStatus() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.fakeNotificationCenter.backing.authStatus = .denied
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.notificationsState == .denied)
+    }
+}

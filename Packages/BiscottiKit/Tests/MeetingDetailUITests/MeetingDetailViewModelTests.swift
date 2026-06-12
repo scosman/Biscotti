@@ -1,4 +1,5 @@
 import BiscottiTestSupport
+import Calendar
 import DataStore
 import Foundation
 import Testing
@@ -218,7 +219,7 @@ struct MeetingDetailActionsTests {
         let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
         await viewModel.load()
 
-        #expect(viewModel.title == "My Meeting")
+        #expect(viewModel.editableTitle == "My Meeting")
     }
 
     @Test("formattedDate is non-empty after load")
@@ -436,5 +437,318 @@ struct MeetingDetailAutoReloadTests {
         await viewModel.onJobStatusChange(.transcribing)
 
         #expect(viewModel.displayState == .processing(message: "Transcribing\u{2026}"))
+    }
+}
+
+// MARK: - Calendar context tests
+
+@Suite("MeetingDetailViewModel -- calendar context")
+struct MeetingDetailCalendarContextTests {
+    @Test("load populates calendarContext when snapshot exists")
+    @MainActor
+    func detailShowsCalendarContext() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Cal Test")
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-ctx",
+            calendarItemIdentifier: "ci-ctx",
+            calendarItemExternalIdentifier: "ext-ctx",
+            occurrenceStartDate: Date(),
+            compositeKey: "key-ctx",
+            title: "Design Review",
+            startDate: Date(),
+            endDate: Date().addingTimeInterval(3600),
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            eventNotes: "",
+            status: nil,
+            availability: nil,
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            conferenceURL: URL(string: "https://zoom.us/j/123"),
+            conferencePlatform: "Zoom"
+        )
+        try await fix.store.setSnapshot(snapshot, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        #expect(detailVM.hasCalendarContext == true)
+        #expect(detailVM.showLinkEventPrompt == false)
+        #expect(detailVM.calendarContext?.title == "Design Review")
+        #expect(detailVM.calendarContext?.conferencePlatform == "Zoom")
+        #expect(detailVM.calendarContext?.calendarTitle == "Work")
+    }
+
+    @Test("load shows link prompt when no snapshot")
+    @MainActor
+    func detailShowsLinkPromptWithoutContext() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "No Cal")
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        #expect(detailVM.hasCalendarContext == false)
+        #expect(detailVM.showLinkEventPrompt == true)
+        #expect(detailVM.calendarContext == nil)
+    }
+
+    @Test("association correction clears context and reloads")
+    @MainActor
+    func associationCorrectionClearsAndReloads() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Correction Test")
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-old",
+            calendarItemIdentifier: "ci-old",
+            calendarItemExternalIdentifier: "ext-old",
+            occurrenceStartDate: Date(),
+            compositeKey: "key-old",
+            title: "Old Meeting",
+            startDate: Date(),
+            endDate: Date().addingTimeInterval(3600),
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            eventNotes: "",
+            status: nil,
+            availability: nil,
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            conferenceURL: nil,
+            conferencePlatform: nil
+        )
+        try await fix.store.setSnapshot(snapshot, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+        #expect(detailVM.hasCalendarContext == true)
+
+        // Remove the association
+        await detailVM.removeAssociation()
+
+        #expect(detailVM.hasCalendarContext == false)
+        #expect(detailVM.calendarContext == nil)
+        #expect(detailVM.showReTranscribeAfterCorrection == false)
+    }
+
+    @Test("presentAssociationCorrection shows event picker")
+    @MainActor
+    func presentAssociationCorrectionShowsPicker() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Picker Test")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+
+        #expect(detailVM.showEventPicker == false)
+        await detailVM.presentAssociationCorrection()
+        #expect(detailVM.showEventPicker == true)
+    }
+
+    @Test("availableEvents reflects nearby events after loadNearbyEvents")
+    @MainActor
+    func availableEventsReflectsNearby() async throws {
+        let now = Date()
+        let dto = EKEventDTO(
+            eventIdentifier: "ev-avail",
+            calendarItemIdentifier: "ci-avail",
+            calendarItemExternalIdentifier: "ext-avail",
+            occurrenceDate: now,
+            title: "Available Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: "https://zoom.us/j/456",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 3,
+            attendees: [],
+            organizer: nil
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            testName: "MeetingDetailUITests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Check Available")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        // Events only appear after loading nearby events for the picker
+        #expect(detailVM.availableEvents.isEmpty)
+
+        await detailVM.loadNearbyEvents()
+
+        #expect(detailVM.availableEvents.count == 1)
+        #expect(detailVM.availableEvents.first?.title == "Available Event")
+    }
+
+    @Test("dismissReTranscribePrompt clears flag")
+    @MainActor
+    func dismissReTranscribePromptClearsFlag() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Dismiss Test")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+
+        detailVM.dismissReTranscribePrompt()
+        #expect(detailVM.showReTranscribeAfterCorrection == false)
+    }
+}
+
+// MARK: - Delete meeting tests
+
+@Suite("MeetingDetailViewModel -- delete meeting")
+struct MeetingDetailDeleteTests {
+    @Test("requestDelete sets showDeleteConfirmation to true")
+    @MainActor
+    func requestDeleteShowsConfirmation() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Delete Test")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+
+        #expect(detailVM.showDeleteConfirmation == false)
+        detailVM.requestDelete()
+        #expect(detailVM.showDeleteConfirmation == true)
+    }
+
+    @Test("confirmDelete calls core delete and navigates to Home")
+    @MainActor
+    func confirmDeleteNavigatesHome() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Confirm Delete")
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        // Route to the meeting
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        // Confirm delete
+        await detailVM.confirmDelete()
+
+        // Route should be Home
+        #expect(fix.core.route == .home)
+
+        // Meeting should be deleted from the store
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
+    }
+
+    @Test("confirmDelete removes meeting from summaries")
+    @MainActor
+    func confirmDeleteRemovesFromSummaries() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Summary Delete"
+        )
+        await fix.core.reloadSummaries()
+        #expect(fix.core.summaries.count == 1)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.confirmDelete()
+
+        #expect(fix.core.summaries.isEmpty)
+    }
+}
+
+// MARK: - EventPreviewViewModel tests
+
+@Suite("EventPreviewViewModel")
+struct EventPreviewViewModelTests {
+    @Test("event returns nil when key not in upcoming")
+    @MainActor
+    func eventReturnsNilWhenMissing() throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let epVM = EventPreviewViewModel(core: fix.core, eventKey: "nonexistent")
+        #expect(epVM.event == nil)
+    }
+
+    @Test("event returns event when key matches upcoming")
+    @MainActor
+    func eventReturnsMatchingEvent() async throws {
+        let now = Date()
+        let dto = EKEventDTO(
+            eventIdentifier: "ev-preview",
+            calendarItemIdentifier: "ci-preview",
+            calendarItemExternalIdentifier: "ext-preview",
+            occurrenceDate: now,
+            title: "Preview Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: "https://zoom.us/j/100",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 3,
+            attendees: [],
+            organizer: nil
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            testName: "MeetingDetailUITests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+
+        let eventKey = fix.core.upcoming.first?.id
+        let epVM = EventPreviewViewModel(
+            core: fix.core, eventKey: eventKey ?? "missing"
+        )
+        #expect(epVM.event != nil)
+        #expect(epVM.event?.title == "Preview Event")
+    }
+
+    @Test("recordDisabled reflects recording state")
+    @MainActor
+    func recordDisabledReflectsState() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let epVM = EventPreviewViewModel(core: fix.core, eventKey: "key")
+        #expect(epVM.recordDisabled == false)
+
+        await fix.core.startRecording()
+        #expect(epVM.recordDisabled == true)
     }
 }

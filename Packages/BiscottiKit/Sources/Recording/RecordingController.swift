@@ -159,6 +159,16 @@ public final class RecordingController {
             Self.logger.warning("markAudioPresence failed for \(meetingID): \(error.localizedDescription)")
         }
 
+        // Persist recording duration (capture before resetting state)
+        let elapsed = state.elapsed
+        if elapsed > 0 {
+            do {
+                try await store.setRecordingDuration(elapsed, for: meetingID)
+            } catch {
+                Self.logger.warning("setRecordingDuration failed for \(meetingID): \(error.localizedDescription)")
+            }
+        }
+
         // Reset state
         recorder = nil
         state = .idle
@@ -209,6 +219,28 @@ public final class RecordingController {
         }
     }
 
+    // MARK: - Onboarding support
+
+    /// Probes for system-audio permission and infers the state.
+    ///
+    /// Triggers the macOS system-audio prompt (if not already decided)
+    /// by exercising the capture engine briefly, then checks the
+    /// `probableSystemAudioDenied` heuristic to update `Permissions`.
+    public func probeSystemAudioAndInferState() async {
+        let probeRecorder = makeRecorder()
+        await probeSystemAudioPermission(recorder: probeRecorder)
+
+        // Brief delay for the system to settle the TCC state
+        try? await Task.sleep(for: .milliseconds(500))
+
+        let denied = await probeRecorder.probableSystemAudioDenied()
+        if denied {
+            permissions.noteSystemAudio(.denied)
+        } else {
+            permissions.noteSystemAudio(.authorized)
+        }
+    }
+
     // MARK: - Private types
 
     /// Captures the artefacts created by `setupMeetingStorage()`.
@@ -220,16 +252,15 @@ public final class RecordingController {
 
     // MARK: - Private helpers
 
-    /// Generates an auto-title like "Recording -- Jun 9, 2:30 PM".
+    /// Generates an auto-title for a new recording.
     ///
-    /// - TODO: the hardcoded `"MMM d, h:mm a"` format ignores the user's locale
-    ///   (12h vs 24h, date-component ordering). Before ship, migrate to
-    ///   `Date.FormatStyle` or `DateFormatter.dateFormat(fromTemplate:locale:)`
-    ///   for locale-aware formatting. Deferred past MVP.
-    public static func autoTitle(date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
-        return "Recording \u{2014} \(formatter.string(from: date))"
+    /// The title is just "Untitled Meeting" -- the date is already stored as
+    /// `Meeting.startDate` / `Meeting.createdAt` and displayed separately
+    /// in the UI, so embedding it in the title would cause duplication.
+    /// Calendar association will replace this with the event title unless
+    /// the user has manually edited the title.
+    public static func autoTitle() -> String {
+        "Untitled Meeting"
     }
 
     /// Triggers the system-audio TCC prompt by briefly exercising the engine.
@@ -250,7 +281,7 @@ public final class RecordingController {
     /// `lastError` already set). Eagerly cleans up partial state on failure
     /// so the meeting doesn't become an invisible orphan.
     private func setupMeetingStorage() async -> MeetingSetup? {
-        let title = Self.autoTitle(date: Date())
+        let title = Self.autoTitle()
         let meetingID: UUID
         do {
             meetingID = try await store.createMeeting(title: title)

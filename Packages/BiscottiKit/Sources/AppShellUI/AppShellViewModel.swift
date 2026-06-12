@@ -1,18 +1,23 @@
 import AppCore
+import AppKit
+import Calendar
+import DesignSystem
 import Foundation
+import HomeUI
 import MeetingDetailUI
 import MeetingListUI
+import OnboardingUI
 import RecordingUI
+import SearchUI
+import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
 ///
-/// Owns the sidebar state (Record button, recording indicator) and routes
-/// the detail pane based on `AppCore.route`.
+/// Owns the sidebar state (Record button, recording indicator, upcoming,
+/// settings) and routes the detail pane based on `AppCore.route`.
 ///
-/// Child view models (`meetingListViewModel`, `recordingViewModel`,
-/// `meetingDetailViewModel(for:)`) are created once and cached so they
-/// survive SwiftUI re-evaluations. This prevents `@State` resets in
-/// child views (e.g. the recording dot-blink animation).
+/// Child view models are created once and cached so they survive SwiftUI
+/// re-evaluations.
 @MainActor @Observable
 public final class AppShellViewModel {
     private let core: AppCore
@@ -25,32 +30,81 @@ public final class AppShellViewModel {
     /// The recording-screen view model (created once, never replaced).
     public let recordingViewModel: RecordingViewModel
 
+    /// The home view model (created once, never replaced).
+    public let homeViewModel: HomeViewModel
+
+    /// The search view model (created once, never replaced).
+    public let searchViewModel: SearchViewModel
+
+    /// The settings view model (created once, never replaced).
+    public let settingsViewModel: SettingsViewModel
+
+    /// The onboarding view model (created once, never replaced).
+    public let onboardingViewModel: OnboardingViewModel
+
     /// Cached meeting-detail view model, keyed by meeting ID.
-    /// Replaced only when the selected meeting changes.
     private var cachedDetailMeetingID: UUID?
     private var cachedDetailViewModel: MeetingDetailViewModel?
+
+    /// Cached event-preview view model, keyed by event composite key.
+    private var cachedEventPreviewKey: String?
+    private var cachedEventPreviewViewModel: EventPreviewViewModel?
+
+    /// The toolbar search text.
+    public var searchText: String = ""
 
     public init(core: AppCore) {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
+        homeViewModel = HomeViewModel(core: core)
+        searchViewModel = SearchViewModel(core: core)
+        settingsViewModel = SettingsViewModel(core: core)
+        onboardingViewModel = OnboardingViewModel(core: core)
     }
 
     /// Returns a stable `MeetingDetailViewModel` for the given meeting ID.
     /// Re-creates only when the ID changes.
-    public func meetingDetailViewModel(for meetingID: UUID) -> MeetingDetailViewModel {
-        if let cached = cachedDetailViewModel, cachedDetailMeetingID == meetingID {
+    public func meetingDetailViewModel(
+        for meetingID: UUID
+    ) -> MeetingDetailViewModel {
+        if let cached = cachedDetailViewModel,
+           cachedDetailMeetingID == meetingID
+        {
             return cached
         }
-        let viewModel = MeetingDetailViewModel(core: core, meetingID: meetingID)
+        let viewModel = MeetingDetailViewModel(
+            core: core, meetingID: meetingID,
+            urlOpener: { url in NSWorkspace.shared.open(url) }
+        )
         cachedDetailMeetingID = meetingID
         cachedDetailViewModel = viewModel
         return viewModel
     }
 
-    /// The underlying AppCore for child view models to consume.
-    public var appCore: AppCore {
-        core
+    /// Returns a stable `EventPreviewViewModel` for the given event key.
+    /// Re-creates only when the key changes.
+    public func eventPreviewViewModel(
+        for eventKey: String
+    ) -> EventPreviewViewModel {
+        if let cached = cachedEventPreviewViewModel,
+           cachedEventPreviewKey == eventKey
+        {
+            return cached
+        }
+        let viewModel = EventPreviewViewModel(
+            core: core,
+            eventKey: eventKey,
+            urlOpener: { url in NSWorkspace.shared.open(url) }
+        )
+        cachedEventPreviewKey = eventKey
+        cachedEventPreviewViewModel = viewModel
+        return viewModel
+    }
+
+    /// Whether the onboarding wizard is active (full-window takeover).
+    public var showOnboarding: Bool {
+        core.route == .onboarding
     }
 
     // MARK: - Sidebar state
@@ -74,6 +128,18 @@ public final class AppShellViewModel {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    /// Upcoming meeting-like calendar events for the sidebar (capped at 5).
+    /// Uses `displayedUpcoming` which filters out ended events and
+    /// refreshes every minute via the minute-tick.
+    public var upcomingEvents: [CalendarEvent] {
+        Array(core.displayedUpcoming.prefix(5))
+    }
+
+    /// Whether the calendar has been authorized (shows/hides upcoming section).
+    public var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
+    }
+
     // MARK: - Detail routing
 
     /// The current route determining which detail view to show.
@@ -93,8 +159,74 @@ public final class AppShellViewModel {
         core.navigateToRecording()
     }
 
+    /// Routes to Home.
+    public func showHome() {
+        core.showHome()
+    }
+
+    /// Routes to Settings.
+    public func showSettings() {
+        core.showSettings()
+    }
+
+    /// Routes to an upcoming event preview.
+    public func selectEvent(_ key: String) {
+        core.selectEvent(key)
+    }
+
+    /// Called when the toolbar search text changes.
+    public func onSearchTextChange(_ text: String) {
+        if !text.isEmpty {
+            core.presentSearch()
+            searchViewModel.updateQuery(text)
+        } else if core.route == .search {
+            searchViewModel.updateQuery("")
+            core.dismissSearch()
+        }
+    }
+
+    /// Called when the user submits (presses Enter) in the search field.
+    /// Re-activates the search takeover if the field has a non-empty query.
+    public func onSearchSubmit() {
+        searchViewModel.reactivateSearch()
+    }
+
+    /// Called when the search field gains focus with a non-empty query
+    /// and the search pane is not currently displayed. Re-activates the
+    /// search takeover so the user sees their previous results.
+    public func onSearchFieldFocused() {
+        guard !searchText.isEmpty, core.route != .search else { return }
+        searchViewModel.reactivateSearch()
+    }
+
+    /// Clears the search and restores the previous route.
+    public func clearSearch() {
+        searchText = ""
+        searchViewModel.updateQuery("")
+        core.dismissSearch()
+    }
+
     /// Called on app launch to run recovery and load data.
     public func onLaunch() async {
         await core.onLaunch()
+    }
+
+    // MARK: - Time formatting for upcoming events
+
+    /// Formats a CalendarEvent's start time as relative text.
+    /// Delegates to `TimeFormatting.relativeTimeText` (shared helper).
+    public static func timeText(
+        for event: CalendarEvent,
+        relativeTo now: Date = Date()
+    ) -> String {
+        TimeFormatting.relativeTimeText(event.start, relativeTo: now)
+    }
+
+    /// Formats a CalendarEvent's start time relative to the
+    /// minute-tick, ensuring the label refreshes every minute.
+    public func tickTimeText(for event: CalendarEvent) -> String {
+        TimeFormatting.relativeTimeText(
+            event.start, relativeTo: core.minuteTick
+        )
     }
 }

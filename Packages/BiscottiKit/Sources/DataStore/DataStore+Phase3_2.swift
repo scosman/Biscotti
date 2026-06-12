@@ -267,6 +267,18 @@ public extension DataStore {
 // MARK: - Test Helpers
 
 public extension DataStore {
+    /// Runs `body` against the live models **on the store's actor**, returning a
+    /// `Sendable` result. This lets callers (notably tests) read non-`Sendable`
+    /// `@Model` objects without the models themselves crossing the actor
+    /// boundary — the read happens on-actor and only a `Sendable` value escapes.
+    ///
+    /// ```swift
+    /// let title = try await store.read { try $0.meeting(id: id)?.title }
+    /// ```
+    func read<T: Sendable>(_ body: @Sendable (isolated DataStore) throws -> T) async rethrows -> T {
+        try body(self)
+    }
+
     /// Fetches all `CalendarSnapshot` rows in the store (for verification in tests).
     func fetchAllSnapshots() throws -> [CalendarSnapshot] {
         try context.fetch(FetchDescriptor<CalendarSnapshot>())

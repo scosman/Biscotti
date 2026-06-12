@@ -48,6 +48,10 @@ targets:
         product: AppCore
       - package: BiscottiKit
         product: DataStore
+      - package: BiscottiKit
+        product: MenuBarUI
+      - package: BiscottiKit
+        product: Notifications
       - package: Transcription
         product: Transcription
       - package: AudioCapture

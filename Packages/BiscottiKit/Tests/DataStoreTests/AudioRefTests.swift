@@ -18,12 +18,14 @@ struct AudioRefTests {
 
         try await store.attachAudio([mic, system], to: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.audioFiles.count == 2)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.audioFiles.count == 2)
 
-        let roles = Set(meeting?.audioFiles.map(\.role) ?? [])
-        #expect(roles.contains(.mic))
-        #expect(roles.contains(.system))
+            let roles = Set((meeting?.audioFiles ?? []).map(\.role))
+            #expect(roles.contains(.mic))
+            #expect(roles.contains(.system))
+        }
     }
 
     @Test("markAudioPresence detects missing files")
@@ -42,10 +44,12 @@ struct AudioRefTests {
 
         try await store.markAudioPresence(meetingID: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        let audioRef = meeting?.audioFiles.first
-        #expect(audioRef?.isPresent == false)
-        #expect(audioRef?.byteSize == 0)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let audioRef = meeting?.audioFiles.first
+            #expect(audioRef?.isPresent == false)
+            #expect(audioRef?.byteSize == 0)
+        }
     }
 
     @Test("markAudioPresence detects existing files and updates byteSize")
@@ -70,18 +74,20 @@ struct AudioRefTests {
 
         try await store.markAudioPresence(meetingID: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        let audioRef = meeting?.audioFiles.first
-        #expect(audioRef?.isPresent == true)
-        #expect(audioRef?.byteSize == 512)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let audioRef = meeting?.audioFiles.first
+            #expect(audioRef?.isPresent == true)
+            #expect(audioRef?.byteSize == 512)
+        }
     }
 
     @Test("attachAudio to non-existent meeting throws notFound")
     func attachToMissing() async throws {
         let store = try makeStore()
         let bogus = UUID()
-        let ref = AudioFileRef(role: .mic, path: "/tmp/test.aac", byteSize: 100)
         await #expect(throws: DataStoreError.notFound(bogus)) {
+            let ref = AudioFileRef(role: .mic, path: "/tmp/test.aac", byteSize: 100)
             try await store.attachAudio([ref], to: bogus)
         }
     }
@@ -106,7 +112,9 @@ struct AudioRefTests {
         let system = AudioFileRef(role: .system, path: "/tmp/sys.aac", byteSize: 200)
         try await store.attachAudio([system], to: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.audioFiles.count == 2)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.audioFiles.count == 2)
+        }
     }
 }

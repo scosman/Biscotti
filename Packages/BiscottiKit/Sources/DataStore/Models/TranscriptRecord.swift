@@ -5,7 +5,7 @@ import SwiftData
 
 /// A versioned transcript: many per Meeting. Records the inputs that produced it
 /// (method, vocabulary, mapped event) so staleness can be detected.
-@Model public final class TranscriptRecord: @unchecked Sendable {
+@Model public final class TranscriptRecord {
     public var id = UUID()
     public var createdAt = Date()
 

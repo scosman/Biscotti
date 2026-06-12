@@ -133,6 +133,34 @@ struct ReadModelTests {
         #expect(detail?.duration == nil)
     }
 
+    @Test("meetingDetail maps recordingDuration independently of calendar duration")
+    func meetingDetailRecordingDuration() async throws {
+        let store = try makeStore()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let end = Date(timeIntervalSince1970: 1_700_003_600) // 1h calendar window
+        let id = try await store.createMeeting(title: "Duration Test", start: start, end: end)
+
+        // Set a recording duration different from the calendar window
+        try await store.setRecordingDuration(1800, for: id) // 30 min
+
+        let detail = try await store.meetingDetail(id: id)
+        #expect(detail != nil)
+        // Calendar-window duration stays at 1h
+        #expect(detail?.duration == 3600)
+        // Recording duration is the stored 30 min
+        #expect(detail?.recordingDuration == 1800)
+    }
+
+    @Test("meetingDetail recordingDuration is nil when not set")
+    func meetingDetailRecordingDurationNil() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "No Rec Duration")
+
+        let detail = try await store.meetingDetail(id: id)
+        #expect(detail != nil)
+        #expect(detail?.recordingDuration == nil)
+    }
+
     @Test("meetingDetail returns nil for unknown ID")
     func meetingDetailNotFound() async throws {
         let store = try makeStore()

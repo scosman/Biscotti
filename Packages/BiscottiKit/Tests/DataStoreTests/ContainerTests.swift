@@ -8,9 +8,11 @@ struct ContainerTests {
         let store = try DataStore(storage: .inMemory)
         // If we got here, init succeeded — verify a round-trip works.
         let id = try await store.createMeeting(title: "Init check")
-        let fetched = try await store.meeting(id: id)
-        #expect(fetched != nil)
-        #expect(fetched?.title == "Init check")
+        try await store.read { store in
+            let fetched = try store.meeting(id: id)
+            #expect(fetched != nil)
+            #expect(fetched?.title == "Init check")
+        }
     }
 
     @Test("Two in-memory stores operate independently")
@@ -21,13 +23,14 @@ struct ContainerTests {
         let idA = try await storeA.createMeeting(title: "Only in A")
 
         // storeB should not see storeA's meeting
-        let fetchedFromB = try await storeB.meeting(id: idA)
-        #expect(fetchedFromB == nil)
+        #expect(try await storeB.meetingExists(id: idA) == false)
 
         // storeA should still see its own meeting
-        let fetchedFromA = try await storeA.meeting(id: idA)
-        #expect(fetchedFromA != nil)
-        #expect(fetchedFromA?.title == "Only in A")
+        try await storeA.read { store in
+            let fetchedFromA = try store.meeting(id: idA)
+            #expect(fetchedFromA != nil)
+            #expect(fetchedFromA?.title == "Only in A")
+        }
     }
 
     @Test("CloudKit-off configuration does not throw")
@@ -35,6 +38,6 @@ struct ContainerTests {
         // cloudKit defaults to false; explicit false should also work.
         let store = try DataStore(storage: .inMemory, cloudKit: false)
         let id = try await store.createMeeting(title: "CK off")
-        #expect(try await store.meeting(id: id) != nil)
+        #expect(try await store.meetingExists(id: id))
     }
 }

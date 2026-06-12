@@ -1,6 +1,11 @@
 import AudioCapture
+import Calendar
 import DataStore
 import Foundation
+import MeetingCatalog
+import MeetingDetection
+import Notifications
+import os
 import Permissions
 import Recording
 import Transcription
@@ -23,10 +28,19 @@ public extension AppCore {
         storageRoot: URL,
         transcriberServiceName: String
     ) throws -> AppCore {
+        let logger = Logger(
+            subsystem: "net.scosman.biscotti",
+            category: "startup"
+        )
+
+        logger.info("AppCore.live: DataStore init starting")
         let store = try DataStore(storage: .onDisk(storageRoot))
+        logger.info("AppCore.live: DataStore init done")
+
         let permissions = Permissions()
         let recordingsRoot = storageRoot.appendingPathComponent("Recordings")
 
+        logger.info("AppCore.live: RecordingController init")
         let recording = RecordingController(
             store: store,
             permissions: permissions,
@@ -36,28 +50,47 @@ public extension AppCore {
             }
         )
 
+        logger.info("AppCore.live: TranscriptionService init")
         let transcriber = Transcriber(backend: .hosted(serviceName: transcriberServiceName))
         let engine = LiveTranscriberAdapter(transcriber: transcriber)
         let transcription = TranscriptionService(store: store, engine: engine)
 
-        return AppCore(
+        logger.info("AppCore.live: CalendarService init")
+        let catalog = BundledMeetingCatalog()
+        let calendar = CalendarService(store: store, catalog: catalog)
+
+        logger.info("AppCore.live: MeetingDetector init")
+        let detector = MeetingDetector(catalog: catalog)
+
+        logger.info("AppCore.live: NotificationService init")
+        let notifications = NotificationService()
+
+        // Wire the live notification authorizer into Permissions so
+        // that requestNotifications() actually calls
+        // UNUserNotificationCenter.requestAuthorization(options:).
+        let notifAuth = LiveNotificationAuthorizerAdapter(
+            service: notifications
+        )
+        permissions.setNotificationAuthorizer(notifAuth)
+
+        logger.info("AppCore.live: constructing AppCore")
+        let core = AppCore(
             store: store,
             permissions: permissions,
             recording: recording,
-            transcription: transcription
+            transcription: transcription,
+            calendar: calendar,
+            detector: detector,
+            notifications: notifications
         )
+        logger.info("AppCore.live: done")
+        return core
     }
 }
 
 // MARK: - AudioRecorder adapter
 
 /// Bridges `AudioCapture.AudioRecorder` to the `RecorderControlling` protocol.
-///
-/// `AudioRecorder` is an actor, so its `stateStream()` is isolated and
-/// requires `await`. The `RecorderControlling` protocol declares
-/// `stateStream()` as synchronous so tests can return scripted streams
-/// without async overhead. This adapter bridges the gap by relaying
-/// through an intermediate `AsyncStream` that spawns the actor call.
 private struct LiveRecorderAdapter: RecorderControlling {
     let recorder: AudioRecorder
 
@@ -92,6 +125,32 @@ private struct LiveRecorderAdapter: RecorderControlling {
 
     func probableSystemAudioDenied() async -> Bool {
         await recorder.probableSystemAudioDenied()
+    }
+}
+
+// MARK: - Notification authorizer adapter
+
+/// Bridges `NotificationService` to the `NotificationAuthorizing` protocol
+/// so that `Permissions.requestNotifications()` actually fires the real
+/// `UNUserNotificationCenter.requestAuthorization(options:)` call.
+///
+/// `@MainActor` because `NotificationService` is `@MainActor`-isolated.
+private struct LiveNotificationAuthorizerAdapter: NotificationAuthorizing,
+    @unchecked Sendable
+{
+    let service: NotificationService
+
+    func status() async -> PermissionState {
+        let authorized = await service.isCurrentlyAuthorized()
+        if authorized {
+            return .authorized
+        }
+        let denied = await service.isDenied()
+        return denied ? .denied : .notDetermined
+    }
+
+    func request() async -> Bool {
+        await service.requestAuthorization()
     }
 }
 

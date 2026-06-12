@@ -1,5 +1,6 @@
 import AudioCapture
 import BiscottiTestSupport
+import Calendar
 import DataStore
 import Foundation
 import Permissions
@@ -19,6 +20,9 @@ struct AppCoreLaunchTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
+        // Mark onboarding complete so onLaunch proceeds past the gate
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
         // Pre-populate a meeting so the sidebar has content
         _ = try await fix.store.createMeeting(title: "Previous Meeting")
 
@@ -26,7 +30,7 @@ struct AppCoreLaunchTests {
 
         #expect(fix.core.summaries.count == 1)
         #expect(fix.core.summaries.first?.title == "Previous Meeting")
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
     }
 
     @Test("onLaunch with orphaned recording reconciles and loads")
@@ -34,6 +38,9 @@ struct AppCoreLaunchTests {
     func onLaunchOrphanRecovery() async throws {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
+
+        // Mark onboarding complete so onLaunch proceeds past the gate
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
 
         // Simulate a crashed recording: create meeting + marker file
         let meetingID = try await fix.store.createMeeting(title: "Crashed Recording")
@@ -67,10 +74,55 @@ struct AppCoreLaunchTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
+        // Mark onboarding complete so onLaunch proceeds past the gate
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
         await fix.core.onLaunch()
 
         #expect(fix.core.summaries.isEmpty)
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("onLaunch is idempotent: second call is a no-op")
+    @MainActor
+    func onLaunchIdempotent() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
+        // First launch: loads summaries and routes to home.
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .home)
+
+        // Add a meeting AFTER the first launch (simulates data that
+        // would appear if onLaunch ran again -- a fresh AppCore would
+        // reload summaries from a re-created store).
+        _ = try await fix.store.createMeeting(title: "Post-Launch")
+
+        // Navigate away from home so we can detect if route gets reset.
+        fix.core.showSettings()
+        #expect(fix.core.route == .settings)
+
+        // Second call should be a no-op: route stays .settings,
+        // summaries are NOT reloaded (so the new meeting doesn't appear).
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .settings)
+        #expect(
+            fix.core.summaries.isEmpty,
+            "Second onLaunch must not reload summaries"
+        )
+    }
+
+    @Test("onLaunch routes to onboarding when incomplete")
+    @MainActor
+    func onLaunchOnboardingGate() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        // Don't mark onboarding complete
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .onboarding)
     }
 }
 
@@ -103,7 +155,7 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.recording.state.isRecording == false)
         #expect(fix.core.recording.lastError == .permissionDenied(.microphone))
     }
@@ -119,7 +171,7 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.recording.state.isRecording == false)
     }
 
@@ -152,7 +204,7 @@ struct AppCoreRecordingTests {
 
         // The newly created meeting should appear in summaries
         #expect(fix.core.summaries.count == 1)
-        #expect(fix.core.summaries.first?.title.hasPrefix("Recording") == true)
+        #expect(fix.core.summaries.first?.title == "Untitled Meeting")
     }
 
     @Test("stopRecording auto-enqueues transcription")
@@ -184,7 +236,7 @@ struct AppCoreRecordingTests {
         let result = await fix.core.stopRecording()
 
         #expect(result == nil)
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
     }
 }
 
@@ -226,7 +278,7 @@ struct AppCoreNavigationTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
 
         await fix.core.startRecording()
         #expect(fix.core.route == .recording)
@@ -313,9 +365,12 @@ struct AppCoreFlowTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
+        // Mark onboarding complete so onLaunch proceeds past the gate
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
         // Launch
         await fix.core.onLaunch()
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.summaries.isEmpty)
 
         // Start recording
@@ -342,6 +397,7 @@ struct AppCoreFlowTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
         await fix.core.onLaunch()
 
         // First recording
@@ -363,6 +419,7 @@ struct AppCoreFlowTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
         let existingID = try await fix.store.createMeeting(title: "Earlier")
         await fix.core.onLaunch()
 
@@ -381,7 +438,494 @@ struct AppCoreFlowTests {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
-        #expect(fix.core.route == .empty)
+        #expect(fix.core.route == .home)
         #expect(fix.core.summaries.isEmpty)
+    }
+}
+
+// MARK: - Delete meeting tests
+
+@Suite("AppCore -- delete meeting")
+struct AppCoreDeleteMeetingTests {
+    @Test("deleteMeeting removes on-disk files and DB row, routes Home")
+    @MainActor
+    func deleteMeetingRemovesFilesAndRow() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        // Create a meeting with on-disk audio files
+        let meetingID = try await fix.store.createMeeting(title: "Delete Me")
+        let meetingDir = fix.storageRoot
+            .appendingPathComponent(meetingID.uuidString)
+        try FileManager.default.createDirectory(
+            at: meetingDir, withIntermediateDirectories: true
+        )
+        let micPath = meetingDir.appendingPathComponent("mic.aac")
+        let sysPath = meetingDir.appendingPathComponent("system.aac")
+        try Data(repeating: 0xFF, count: 64).write(to: micPath)
+        try Data(repeating: 0xAA, count: 64).write(to: sysPath)
+
+        let micRef = AudioFileRef(
+            role: .mic, path: micPath.path, byteSize: 64, isPresent: true
+        )
+        let sysRef = AudioFileRef(
+            role: .system, path: sysPath.path, byteSize: 64, isPresent: true
+        )
+        try await fix.store.attachAudio([micRef, sysRef], to: meetingID)
+
+        // Load summaries so the meeting appears
+        await fix.core.reloadSummaries()
+        #expect(fix.core.summaries.count == 1)
+
+        // Navigate to the meeting's detail
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        // Delete
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Files should be gone
+        #expect(!FileManager.default.fileExists(atPath: micPath.path))
+        #expect(!FileManager.default.fileExists(atPath: sysPath.path))
+
+        // Directory should be gone (was emptied)
+        #expect(!FileManager.default.fileExists(atPath: meetingDir.path))
+
+        // DB row should be gone
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
+
+        // Summaries refreshed
+        #expect(fix.core.summaries.isEmpty)
+
+        // Route should be Home
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("deleteMeeting with missing files does not throw")
+    @MainActor
+    func deleteMeetingMissingFilesNoThrow() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Already Gone"
+        )
+
+        // Attach audio refs pointing to non-existent files
+        let micRef = AudioFileRef(
+            role: .mic,
+            path: "/tmp/nonexistent-\(UUID())/mic.aac",
+            byteSize: 0,
+            isPresent: false
+        )
+        try await fix.store.attachAudio([micRef], to: meetingID)
+
+        // Should not throw
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Row still deleted
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("deleteMeeting refuses to delete the actively-recording meeting")
+    @MainActor
+    func deleteMeetingRefusedWhileRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreDeleteTests")
+        defer { fix.cleanup() }
+
+        // Start a recording so a meeting is created
+        await fix.core.startRecording()
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        // The fake recorder doesn't write real audio files, so create
+        // them manually (mirrors how the real engine would populate
+        // the directory that RecordingController.setupMeetingStorage
+        // already created).
+        let meetingDir = fix.storageRoot
+            .appendingPathComponent(meetingID.uuidString)
+        let micPath = meetingDir.appendingPathComponent("mic.aac")
+        let sysPath = meetingDir.appendingPathComponent("system.aac")
+        try Data(repeating: 0xFF, count: 64).write(to: micPath)
+        try Data(repeating: 0xAA, count: 64).write(to: sysPath)
+
+        // Attempt to delete the actively-recording meeting
+        await fix.core.deleteMeeting(meetingID: meetingID)
+
+        // Meeting row must still exist
+        #expect(try await fix.store.meetingExists(id: meetingID))
+
+        // Files must still exist (not deleted mid-write)
+        #expect(FileManager.default.fileExists(atPath: micPath.path))
+        #expect(FileManager.default.fileExists(atPath: sysPath.path))
+
+        // Route must NOT have changed to .home (still .recording)
+        #expect(fix.core.route == .recording)
+
+        // Recording must still be active
+        #expect(fix.core.recording.state.isRecording == true)
+    }
+}
+
+// MARK: - Calendar auto-association tests (C4)
+
+@Suite("AppCore -- calendar auto-association")
+struct AppCoreCalendarAssociationTests {
+    /// Helper to build a meeting-like EKEventDTO that CalendarService will
+    /// accept as "meeting-like" (has attendees >= 2).
+    private static func makeMeetingDTO(
+        eventIdentifier: String = "ev-1",
+        title: String = "Standup",
+        start: Date,
+        end: Date,
+        attendeeCount: Int = 3,
+        calendarTitle: String = "Work",
+        location: String? = "https://zoom.us/j/123"
+    ) -> EKEventDTO {
+        EKEventDTO(
+            eventIdentifier: eventIdentifier,
+            calendarItemIdentifier: "ci-\(eventIdentifier)",
+            calendarItemExternalIdentifier: "ext-\(eventIdentifier)",
+            occurrenceDate: start,
+            title: title,
+            startDate: start,
+            endDate: end,
+            isAllDay: false,
+            location: location,
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: calendarTitle,
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: attendeeCount,
+            attendees: [],
+            organizer: nil
+        )
+    }
+
+    @Test("startRecording auto-associates best match event")
+    @MainActor
+    func startRecordingAutoAssociatesBestMatch() async throws {
+        let now = Date()
+        let dto = Self.makeMeetingDTO(
+            title: "Team Standup",
+            start: now.addingTimeInterval(-300), // started 5 min ago
+            end: now.addingTimeInterval(1500) // ends in 25 min
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        // Mark onboarding complete so onLaunch primes calendar
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+
+        // Verify upcoming has our event
+        #expect(fix.core.upcoming.count == 1)
+
+        await fix.core.startRecording()
+
+        // Should have created a meeting and associated
+        guard let meetingID = fix.core.recording.state.meetingID else {
+            Issue.record("Expected a meeting ID after start")
+            return
+        }
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar != nil)
+        #expect(detail?.calendar?.title == "Team Standup")
+    }
+
+    @Test("startRecording with explicit key overrides best match")
+    @MainActor
+    func startRecordingExplicitKeyOverridesBestMatch() async throws {
+        let now = Date()
+        // Two events: one in-progress, one not yet started
+        let dto1 = Self.makeMeetingDTO(
+            eventIdentifier: "ev-inprogress",
+            title: "In Progress Meeting",
+            start: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(1500)
+        )
+        let dto2 = Self.makeMeetingDTO(
+            eventIdentifier: "ev-upcoming",
+            title: "Upcoming Meeting",
+            start: now.addingTimeInterval(600), // 10 min from now (within bestMatch window)
+            end: now.addingTimeInterval(4200)
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto1, dto2],
+            calendarRefreshResult: dto2, // refresh returns dto2 for snapshot
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        // Mark onboarding complete so onLaunch primes calendar
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+
+        // Find the key for the upcoming meeting
+        let upcomingEvent = fix.core.upcoming.first { $0.title == "Upcoming Meeting" }
+        #expect(upcomingEvent != nil)
+
+        // Start recording with explicit key for the upcoming meeting
+        await fix.core.startRecording(eventKey: upcomingEvent?.id)
+
+        guard let meetingID = fix.core.recording.state.meetingID else {
+            Issue.record("Expected a meeting ID after start")
+            return
+        }
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        // Should be associated with the explicitly-chosen event
+        #expect(detail?.calendar != nil)
+        #expect(detail?.calendar?.title == "Upcoming Meeting")
+    }
+
+    @Test("startRecording with no match proceeds unlinked")
+    @MainActor
+    func startRecordingNoMatchProceedsUnlinked() async throws {
+        // No events at all
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+
+        guard let meetingID = fix.core.recording.state.meetingID else {
+            Issue.record("Expected a meeting ID after start")
+            return
+        }
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar == nil)
+    }
+}
+
+// MARK: - Calendar navigation tests
+
+@Suite("AppCore -- calendar navigation")
+struct AppCoreCalendarNavigationTests {
+    @Test("selectEvent routes to event preview")
+    @MainActor
+    func selectEventRoutesToEventPreview() throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        fix.core.selectEvent("some-event-key")
+        #expect(fix.core.route == .event("some-event-key"))
+    }
+
+    @Test("searchReturnRoute saves and restores")
+    @MainActor
+    func searchReturnRouteRestores() throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        let meetingID = UUID()
+        fix.core.select(meetingID)
+        #expect(fix.core.route == .meeting(meetingID))
+
+        fix.core.presentSearch()
+        #expect(fix.core.route == .search)
+        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
+
+        fix.core.dismissSearch()
+        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.searchReturnRoute == nil)
+    }
+
+    @Test("showHome and showSettings change route")
+    @MainActor
+    func showHomeShowSettingsRouting() throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        fix.core.showSettings()
+        #expect(fix.core.route == .settings)
+
+        fix.core.showHome()
+        #expect(fix.core.route == .home)
+
+        fix.core.showOnboardingReplay()
+        #expect(fix.core.route == .onboarding)
+    }
+
+    @Test("onLaunch with onboarding incomplete routes to onboarding")
+    @MainActor
+    func onLaunchOnboardingIncomplete() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        // Default settings: onboardingComplete == false
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .onboarding)
+    }
+
+    @Test("completeOnboarding transitions to home and starts calendar")
+    @MainActor
+    func completeOnboardingTransitionsToHome() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        // Launch with onboarding incomplete -> routes to .onboarding
+        await fix.core.onLaunch()
+        #expect(fix.core.route == .onboarding)
+
+        await fix.core.completeOnboarding()
+
+        #expect(fix.core.route == .home)
+
+        // Verify onboarding flag was persisted
+        let settings = try await fix.store.settings()
+        #expect(settings.onboardingComplete == true)
+    }
+}
+
+// MARK: - Association correction tests
+
+@Suite("AppCore -- association correction")
+struct AppCoreAssociationCorrectionTests {
+    @Test("correctAssociation with nil removes association")
+    @MainActor
+    func correctAssociationRemovesAssociation() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Test")
+
+        // Set up a snapshot and participants
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-1",
+            calendarItemIdentifier: "ci-1",
+            calendarItemExternalIdentifier: "ext-1",
+            occurrenceStartDate: Date(),
+            compositeKey: "key-1",
+            title: "Old Event",
+            startDate: Date(),
+            endDate: Date().addingTimeInterval(3600),
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            eventNotes: "",
+            status: nil,
+            availability: nil,
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            conferenceURL: nil,
+            conferencePlatform: nil
+        )
+        try await fix.store.setSnapshot(snapshot, for: meetingID)
+
+        // Verify it's there
+        let detailBefore = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detailBefore?.calendar != nil)
+
+        // Remove association
+        await fix.core.correctAssociation(meetingID: meetingID, eventKey: nil)
+
+        // Verify it's gone
+        let detailAfter = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detailAfter?.calendar == nil)
+    }
+
+    @Test("correctAssociation with non-nil key replaces snapshot")
+    @MainActor
+    func correctAssociationReplacesSnapshot() async throws {
+        let now = Date()
+        let newDTO = Self.makeReplacementDTO(at: now)
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [newDTO],
+            calendarRefreshResult: newDTO,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        // Create a meeting with an existing snapshot
+        let meetingID = try await fix.store.createMeeting(title: "Replace Test")
+        let oldSnapshot = Self.makeOldSnapshot(at: now)
+        try await fix.store.setSnapshot(oldSnapshot, for: meetingID)
+
+        // Prime calendar with the new event
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+        #expect(fix.core.upcoming.count == 1)
+
+        let newEventKey = try #require(fix.core.upcoming.first?.id)
+
+        // Correct the association to the new event
+        await fix.core.correctAssociation(
+            meetingID: meetingID, eventKey: newEventKey
+        )
+
+        // Verify snapshot was replaced with the new event's data
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar != nil)
+        #expect(detail?.calendar?.title == "New Event")
+    }
+
+    // MARK: - Helpers
+
+    private static func makeReplacementDTO(at now: Date) -> EKEventDTO {
+        EKEventDTO(
+            eventIdentifier: "ev-new",
+            calendarItemIdentifier: "ci-new",
+            calendarItemExternalIdentifier: "ext-new",
+            occurrenceDate: now,
+            title: "New Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: "https://zoom.us/j/999",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 3,
+            attendees: [],
+            organizer: nil
+        )
+    }
+
+    private static func makeOldSnapshot(at now: Date) -> CalendarSnapshot {
+        CalendarSnapshot(
+            eventIdentifier: "ev-old",
+            calendarItemIdentifier: "ci-old",
+            calendarItemExternalIdentifier: "ext-old",
+            occurrenceStartDate: now,
+            compositeKey: "key-old",
+            title: "Old Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            eventNotes: "",
+            status: nil,
+            availability: nil,
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            conferenceURL: nil,
+            conferencePlatform: nil
+        )
     }
 }

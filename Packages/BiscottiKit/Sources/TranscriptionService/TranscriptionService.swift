@@ -65,6 +65,28 @@ public final class TranscriptionService {
         await runJob(meetingID: meetingID)
     }
 
+    // MARK: - Model readiness (for onboarding)
+
+    /// Downloads/compiles models if needed, forwarding status messages.
+    /// Standalone entry point for the onboarding download step (no
+    /// transcription job involved).
+    public func ensureModelsReady(
+        status: @escaping @Sendable (String) -> Void
+    ) async throws {
+        try await engine.ensureModelsDownloaded(status: status)
+    }
+
+    /// Returns `true` when models are already downloaded and ready.
+    /// Attempts a dry-run download (no-op if cached) to determine readiness.
+    public func modelsReady() async -> Bool {
+        do {
+            try await engine.ensureModelsDownloaded(status: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private
 
     private func runJob(meetingID: UUID) async {
@@ -116,7 +138,7 @@ public final class TranscriptionService {
     private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL)? {
         do {
             guard let resolved = try await store.audioPaths(meetingID: meetingID) else {
-                let meetingExists = try await store.meeting(id: meetingID) != nil
+                let meetingExists = try await store.meetingExists(id: meetingID)
                 if meetingExists {
                     jobs[meetingID] = .failed(
                         message: "No audio files available for this meeting.",

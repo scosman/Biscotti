@@ -15,10 +15,12 @@ struct MeetingCRUDTests {
     func createAndFetch() async throws {
         let store = try makeStore()
         let id = try await store.createMeeting(title: "Standup")
-        let meeting = try await store.meeting(id: id)
-        #expect(meeting != nil)
-        #expect(meeting?.title == "Standup")
-        #expect(meeting?.id == id)
+        try await store.read { store in
+            let meeting = try store.meeting(id: id)
+            #expect(meeting != nil)
+            #expect(meeting?.title == "Standup")
+            #expect(meeting?.id == id)
+        }
     }
 
     @Test("Meeting with start/end dates round-trips correctly")
@@ -27,16 +29,17 @@ struct MeetingCRUDTests {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
         let end = Date(timeIntervalSince1970: 1_700_003_600)
         let id = try await store.createMeeting(title: "With dates", start: start, end: end)
-        let meeting = try await store.meeting(id: id)
-        #expect(meeting?.startDate == start)
-        #expect(meeting?.endDate == end)
+        try await store.read { store in
+            let meeting = try store.meeting(id: id)
+            #expect(meeting?.startDate == start)
+            #expect(meeting?.endDate == end)
+        }
     }
 
     @Test("Fetching a non-existent ID returns nil")
     func fetchMissing() async throws {
         let store = try makeStore()
-        let result = try await store.meeting(id: UUID())
-        #expect(result == nil)
+        #expect(try await store.meetingExists(id: UUID()) == false)
     }
 
     // MARK: - Delete
@@ -46,7 +49,7 @@ struct MeetingCRUDTests {
         let store = try makeStore()
         let id = try await store.createMeeting(title: "Ephemeral")
         try await store.delete(meetingID: id)
-        #expect(try await store.meeting(id: id) == nil)
+        #expect(try await store.meetingExists(id: id) == false)
     }
 
     @Test("Delete non-existent meeting throws notFound")
@@ -73,20 +76,22 @@ struct MeetingCRUDTests {
             )
         }
 
-        let recent = try await store.recentMeetings(limit: 3)
-        #expect(recent.count == 3)
-        // Most-recent createdAt first — the last inserted should be first.
-        #expect(recent[0].title == "Meeting 4")
-        #expect(recent[1].title == "Meeting 3")
-        #expect(recent[2].title == "Meeting 2")
+        try await store.read { store in
+            let recent = try store.recentMeetings(limit: 3)
+            #expect(recent.count == 3)
+            // Most-recent createdAt first — the last inserted should be first.
+            #expect(recent[0].title == "Meeting 4")
+            #expect(recent[1].title == "Meeting 3")
+            #expect(recent[2].title == "Meeting 2")
+        }
     }
 
     @Test("recentMeetings with limit larger than data returns all")
     func recentLimitOverflow() async throws {
         let store = try makeStore()
         try await store.createMeeting(title: "Only one")
-        let recent = try await store.recentMeetings(limit: 100)
-        #expect(recent.count == 1)
+        let count = try await store.read { try $0.recentMeetings(limit: 100).count }
+        #expect(count == 1)
     }
 
     // MARK: - Upcoming meetings
@@ -113,10 +118,12 @@ struct MeetingCRUDTests {
         // No start date — should be excluded
         try await store.createMeeting(title: "No date")
 
-        let upcoming = try await store.upcomingMeetings(now: now, limit: 10)
-        #expect(upcoming.count == 2)
-        #expect(upcoming[0].id == futureID1)
-        #expect(upcoming[1].id == futureID2)
+        try await store.read { store in
+            let upcoming = try store.upcomingMeetings(now: now, limit: 10)
+            #expect(upcoming.count == 2)
+            #expect(upcoming[0].id == futureID1)
+            #expect(upcoming[1].id == futureID2)
+        }
     }
 
     @Test("upcomingMeetings respects limit")
@@ -129,7 +136,7 @@ struct MeetingCRUDTests {
                 start: now.addingTimeInterval(Double(idx) * 60)
             )
         }
-        let upcoming = try await store.upcomingMeetings(now: now, limit: 2)
-        #expect(upcoming.count == 2)
+        let count = try await store.read { try $0.upcomingMeetings(now: now, limit: 2).count }
+        #expect(count == 2)
     }
 }

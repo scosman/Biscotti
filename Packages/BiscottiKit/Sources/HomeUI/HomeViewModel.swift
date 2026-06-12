@@ -78,6 +78,11 @@ public final class HomeViewModel {
         core.select(id)
     }
 
+    /// Navigate to the Meetings screen (browse mode) -- the "See all" action.
+    public func showMeetings() {
+        core.showMeetings()
+    }
+
     // MARK: - Formatting
 
     /// Formats a CalendarEvent's start time as relative ("in 12m") or "now".

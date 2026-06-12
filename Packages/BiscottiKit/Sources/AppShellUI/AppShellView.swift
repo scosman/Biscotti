@@ -36,6 +36,16 @@ public struct AppShellView: View {
                 } detail: {
                     detailContent
                 }
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            viewModel.showHome()
+                        } label: {
+                            Image(systemName: "house")
+                        }
+                        .help("Home")
+                    }
+                }
                 .searchable(
                     text: $searchText,
                     placement: .toolbar,
@@ -281,6 +291,16 @@ public struct AppShellView: View {
 
     /// The Meetings two-pane: native list + detail or placeholder.
     private var meetingsSplit: some View {
+        MeetingsSplitView(viewModel: viewModel)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// The Meetings two-pane: native list + detail or placeholder.
+private struct MeetingsSplitView: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
         HSplitView {
             MeetingListView(
                 viewModel: viewModel.meetingListViewModel

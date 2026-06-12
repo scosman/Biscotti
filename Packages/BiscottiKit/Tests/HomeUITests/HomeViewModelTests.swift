@@ -313,4 +313,36 @@ struct HomeViewModelActionTests {
         await viewModel.startRecording()
         #expect(fix.core.recording.state.isRecording)
     }
+
+    @Test("showMeetings routes to .meetings (See all)")
+    @MainActor
+    func showMeetingsRoutes() throws {
+        let fix = try makeCoreFixture(testName: "HomeUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = HomeViewModel(core: fix.core)
+        // Start from home
+        #expect(fix.core.route == .home)
+
+        viewModel.showMeetings()
+        #expect(fix.core.route == .meetings)
+    }
+
+    @Test("showMeetings keeps existing selection (D4)")
+    @MainActor
+    func showMeetingsKeepsSelection() throws {
+        let fix = try makeCoreFixture(testName: "HomeUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = UUID()
+        fix.core.select(meetingID)
+        #expect(fix.core.meetingsSelection == meetingID)
+
+        // Navigate away then use "See all"
+        fix.core.showHome()
+        let viewModel = HomeViewModel(core: fix.core)
+        viewModel.showMeetings()
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
+    }
 }

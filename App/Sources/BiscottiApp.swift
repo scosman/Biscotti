@@ -108,6 +108,7 @@ private struct WindowRootView: View {
                 captured(id: "main")
             }
         }
+        .background(WindowTitleHider())
     }
 
     private func errorView(message: String) -> some View {
@@ -425,5 +426,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         notificationService?.foregroundPresentationOptions(
             for: notification
         ) ?? [.banner, .sound]
+    }
+}
+
+// MARK: - Window title hider
+
+/// An `NSViewRepresentable` that hides the hosting window's title text
+/// while preserving the toolbar, traffic lights, and draggable title bar.
+/// Placed as a `.background` on `WindowRootView` so it fires once the
+/// view is installed in a window. Verified on device in Phase 4.
+private struct WindowTitleHider: NSViewRepresentable {
+    func makeNSView(context _: Context) -> NSView {
+        let view = NSView()
+        // Defer to the next run-loop tick so the view is attached to a window.
+        DispatchQueue.main.async {
+            view.window?.titleVisibility = .hidden
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        // Re-apply in case the window was recreated (e.g. reopen from Dock).
+        nsView.window?.titleVisibility = .hidden
     }
 }

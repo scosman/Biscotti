@@ -135,8 +135,30 @@ public struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                Divider()
+
+                seeAllRow
             }
         }
+    }
+
+    private var seeAllRow: some View {
+        Button {
+            viewModel.showMeetings()
+        } label: {
+            HStack {
+                Text("See all")
+                    .font(.body)
+                    .foregroundStyle(Tokens.secondaryText)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func recentMeetingRow(

@@ -114,6 +114,10 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
 public struct AppSettingsData: Sendable, Equatable {
     public var customVocabulary: [String]
     public var launchAtLogin: Bool
+    /// When true, closing the last window or pressing Cmd+Q terminates the app.
+    /// When false (the default), those actions just hide the window and the app
+    /// stays alive in the menu bar.
+    public var exitOnWindowClose: Bool
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
@@ -121,11 +125,13 @@ public struct AppSettingsData: Sendable, Equatable {
     public init(
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
+        exitOnWindowClose: Bool = false,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
+        self.exitOnWindowClose = exitOnWindowClose
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
     }
@@ -352,6 +358,7 @@ public extension DataStore {
             return AppSettingsData(
                 customVocabulary: existing.customVocabulary,
                 launchAtLogin: existing.launchAtLogin,
+                exitOnWindowClose: existing.exitOnWindowClose,
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs
             )
@@ -378,6 +385,7 @@ public extension DataStore {
         var dto = AppSettingsData(
             customVocabulary: model.customVocabulary,
             launchAtLogin: model.launchAtLogin,
+            exitOnWindowClose: model.exitOnWindowClose,
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs
         )
@@ -385,6 +393,7 @@ public extension DataStore {
 
         model.customVocabulary = dto.customVocabulary
         model.launchAtLogin = dto.launchAtLogin
+        model.exitOnWindowClose = dto.exitOnWindowClose
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         try save()

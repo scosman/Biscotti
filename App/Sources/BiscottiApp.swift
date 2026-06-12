@@ -75,6 +75,22 @@ struct BiscottiApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+
+            // Replace the standard Quit (Cmd+Q) with a custom handler.
+            // When "Exit app on window close" is OFF (default), Cmd+Q
+            // hides the window but keeps the menu-bar app alive. When
+            // ON, it terminates normally. The tray menu always has a
+            // real "Quit Biscotti" that terminates regardless.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Biscotti") {
+                    if appDelegate.launchState.exitOnWindowClose {
+                        NSApplication.shared.terminate(nil)
+                    } else {
+                        appDelegate.closeMainWindow()
+                    }
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
         }
 
         // Menu bar extra (native menu style)
@@ -184,6 +200,12 @@ final class LaunchState: @unchecked Sendable {
     var menuBarViewModel: MenuBarViewModel?
     var launchError: String?
 
+    /// Cached "exit app on window close" setting. Read by
+    /// `applicationShouldTerminateAfterLastWindowClosed` and the
+    /// custom Cmd+Q handler. Updated from the store at launch and
+    /// whenever the user toggles the setting in preferences.
+    var exitOnWindowClose: Bool = false
+
     /// Closure that calls `openWindow(id: "main")`. Captured from
     /// `WindowRootView`'s `@Environment(\.openWindow)` on appear and
     /// shared with `AppDelegate.showMainWindow()` so it can create the
@@ -240,6 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         // assumeIsolated lets us call @MainActor code synchronously.
         MainActor.assumeIsolated {
             self.buildCore()
+            self.observeExitOnWindowCloseSetting()
         }
     }
 
@@ -248,7 +271,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     func applicationShouldTerminateAfterLastWindowClosed(
         _: NSApplication
     ) -> Bool {
-        false // Keep running in the menu bar.
+        // When the user has opted in to "Exit app on window close",
+        // closing the last window terminates. Otherwise the app stays
+        // alive in the menu bar (the default).
+        launchState.exitOnWindowClose
     }
 
     /// Called when the user clicks the Dock icon while the app is running
@@ -369,11 +395,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             // Register launch-at-login (default ON)
             registerLaunchAtLogin()
             logger.info("buildCore: registerLaunchAtLogin done")
+
+            // Load the cached "exit on window close" setting so the
+            // synchronous applicationShouldTerminateAfterLastWindowClosed
+            // and the Cmd+Q handler can read it without an async hop.
+            loadExitOnWindowCloseSetting(from: appCore)
         } catch {
             logger.error("buildCore: FAILED — \(error)")
             launchState.launchError = error.localizedDescription
         }
         logger.info("buildCore: done")
+    }
+
+    /// Reads the "exit on window close" setting from the store and
+    /// caches it on `launchState` for synchronous access.
+    @MainActor
+    private func loadExitOnWindowCloseSetting(from appCore: AppCore) {
+        Task { @MainActor in
+            let settings = try? await appCore.store.settings()
+            launchState.exitOnWindowClose = settings?.exitOnWindowClose ?? false
+        }
+    }
+
+    /// Observes `exitOnWindowCloseDidChange` notifications and refreshes
+    /// the cached setting. Uses `Task { @MainActor }` to avoid the
+    /// `#selector`/`assumeIsolated` concurrency pitfall.
+    @MainActor
+    private func observeExitOnWindowCloseSetting() {
+        Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .exitOnWindowCloseDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await core?.store.settings()
+                launchState.exitOnWindowClose = settings?.exitOnWindowClose ?? false
+            }
+        }
+    }
+
+    /// Closes the main window (if one exists). Used by the custom Cmd+Q
+    /// handler when the "exit on window close" setting is off.
+    @MainActor
+    func closeMainWindow() {
+        // Close all closable main-capable windows.
+        for window in NSApp.windows where window.canBecomeMain && window.isVisible {
+            window.close()
+        }
     }
 
     private func registerLaunchAtLogin() {

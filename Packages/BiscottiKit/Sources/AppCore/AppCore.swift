@@ -9,6 +9,20 @@ import Permissions
 import Recording
 import TranscriptionService
 
+// MARK: - Cross-module notification names
+
+public extension Notification.Name {
+    /// Posted after the "exit app on window close" setting is persisted.
+    /// The app delegate observes this to refresh its cached lifecycle
+    /// policy for the synchronous
+    /// `applicationShouldTerminateAfterLastWindowClosed` callback.
+    /// Defined here (not in SettingsUI) so the app target can observe it
+    /// without importing SettingsUI directly.
+    static let exitOnWindowCloseDidChange = Notification.Name(
+        "net.scosman.biscotti.exitOnWindowCloseDidChange"
+    )
+}
+
 /// Thin MVP coordinator that wires Recording, TranscriptionService,
 /// CalendarService, MeetingDetector, NotificationService, Permissions,
 /// and DataStore into a single observable surface for the UI.

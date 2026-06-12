@@ -41,6 +41,11 @@ public final class SettingsViewModel {
     /// as the source of truth, reconciled on `load()`.
     public private(set) var launchAtLogin: Bool = true
 
+    /// When true, closing the last window or pressing Cmd+Q terminates the
+    /// app. When false (default), those actions just hide the window and the
+    /// app stays alive in the menu bar.
+    public private(set) var exitOnWindowClose: Bool = false
+
     // MARK: - Calendar state
 
     /// All calendars grouped by source, for the include/exclude toggles.
@@ -108,6 +113,25 @@ public final class SettingsViewModel {
         #if canImport(ServiceManagement)
             updateLaunchAtLoginService(enabled)
         #endif
+    }
+
+    /// Toggles the "exit app on window close" setting. Persists to the store
+    /// and posts `.exitOnWindowCloseDidChange` (defined in AppCore) so the
+    /// app delegate can refresh its cached lifecycle policy.
+    public func setExitOnWindowClose(_ enabled: Bool) async {
+        exitOnWindowClose = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.exitOnWindowClose = enabled
+            }
+            NotificationCenter.default.post(
+                name: .exitOnWindowCloseDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            exitOnWindowClose = !enabled
+        }
     }
 
     #if canImport(ServiceManagement)
@@ -229,6 +253,7 @@ public final class SettingsViewModel {
         do {
             let settings = try await core.store.settings()
             enabledCalendarIDs = settings.enabledCalendarIDs
+            exitOnWindowClose = settings.exitOnWindowClose
         } catch {
             enabledCalendarIDs = nil
         }

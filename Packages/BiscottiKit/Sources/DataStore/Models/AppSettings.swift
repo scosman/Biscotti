@@ -17,6 +17,11 @@ import SwiftData
 
     public var launchAtLogin: Bool = false
 
+    /// When true, closing the last window or pressing Cmd+Q terminates the app.
+    /// When false (the default), those actions just hide the window and the app
+    /// stays alive in the menu bar.
+    public var exitOnWindowClose: Bool = false
+
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
@@ -47,11 +52,13 @@ import SwiftData
     public init(
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
+        exitOnWindowClose: Bool = false,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
+        self.exitOnWindowClose = exitOnWindowClose
         self.onboardingComplete = onboardingComplete
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()

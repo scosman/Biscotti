@@ -5,8 +5,9 @@ import DesignSystem
 import Permissions
 import SwiftUI
 
-/// In-window settings screen. General preferences, permissions overview
-/// with inline request/grant actions, and calendar include/exclude.
+/// Settings screen. Hosted in the standard macOS Settings window (Cmd+,).
+/// General preferences, permissions overview with inline request/grant
+/// actions, and calendar include/exclude.
 public struct SettingsView: View {
     @Bindable private var viewModel: SettingsViewModel
 

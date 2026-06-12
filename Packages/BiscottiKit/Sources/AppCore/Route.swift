@@ -15,9 +15,6 @@ public enum Route: Sendable, Equatable {
     /// An un-recorded upcoming calendar event (read-only preview), keyed by composite key.
     case event(String)
 
-    /// In-window settings.
-    case settings
-
     /// First-run onboarding (full-window takeover).
     case onboarding
 }

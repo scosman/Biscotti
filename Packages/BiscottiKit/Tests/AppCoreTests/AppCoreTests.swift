@@ -101,13 +101,13 @@ struct AppCoreLaunchTests {
         _ = try await fix.store.createMeeting(title: "Post-Launch")
 
         // Navigate away from home so we can detect if route gets reset.
-        fix.core.showSettings()
-        #expect(fix.core.route == .settings)
+        fix.core.selectEvent("some-event")
+        #expect(fix.core.route == .event("some-event"))
 
-        // Second call should be a no-op: route stays .settings,
+        // Second call should be a no-op: route stays on event preview,
         // summaries are NOT reloaded (so the new meeting doesn't appear).
         await fix.core.onLaunch()
-        #expect(fix.core.route == .settings)
+        #expect(fix.core.route == .event("some-event"))
         #expect(
             fix.core.summaries.isEmpty,
             "Second onLaunch must not reload summaries"
@@ -795,14 +795,14 @@ struct AppCoreCalendarNavigationTests {
         #expect(fix.core.route == .event("some-event-key"))
     }
 
-    @Test("showHome and showSettings change route")
+    @Test("showHome and showOnboardingReplay change route")
     @MainActor
-    func showHomeShowSettingsRouting() throws {
+    func showHomeAndOnboardingRouting() throws {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
-        fix.core.showSettings()
-        #expect(fix.core.route == .settings)
+        fix.core.selectEvent("ev")
+        #expect(fix.core.route == .event("ev"))
 
         fix.core.showHome()
         #expect(fix.core.route == .home)

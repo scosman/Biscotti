@@ -282,8 +282,7 @@ let package = Package(
                 "MeetingListUI",
                 "MeetingDetailUI",
                 "OnboardingUI",
-                "RecordingUI",
-                "SettingsUI"
+                "RecordingUI"
             ],
             swiftSettings: warningsAsErrors
         ),

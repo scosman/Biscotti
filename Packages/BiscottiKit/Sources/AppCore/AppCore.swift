@@ -350,11 +350,6 @@ public final class AppCore {
         route = .home
     }
 
-    /// Routes to in-window Settings.
-    public func showSettings() {
-        route = .settings
-    }
-
     /// Routes to Onboarding (re-run from Settings).
     public func showOnboardingReplay() {
         route = .onboarding

@@ -4,6 +4,7 @@ import MenuBarUI
 import Notifications
 import os
 import ServiceManagement
+import SettingsUI
 import SwiftUI
 import UserNotifications
 
@@ -62,6 +63,12 @@ struct BiscottiApp: App {
                         appDelegate.handleWindowClosed()
                     }
                 }
+        }
+
+        // Standard macOS Settings window (Biscotti > Settings..., Cmd+,).
+        // Declaring a Settings scene adds the menu item automatically.
+        Settings {
+            SettingsRootView(launchState: appDelegate.launchState)
         }
 
         // Menu bar extra (native menu style)
@@ -128,6 +135,24 @@ private struct WindowRootView: View {
     }
 }
 
+/// Root content for the `Settings` scene. Reads `LaunchState` inside
+/// `body` for reliable Observation tracking (Scene closures do not),
+/// and hosts the package-provided `SettingsView`.
+private struct SettingsRootView: View {
+    let launchState: LaunchState
+
+    var body: some View {
+        Group {
+            if let settingsVM = launchState.settingsViewModel {
+                SettingsView(viewModel: settingsVM)
+            } else {
+                ProgressView("Loading\u{2026}")
+                    .frame(width: 480, height: 300)
+            }
+        }
+    }
+}
+
 /// Root content for the `MenuBarExtra` menu body. Reads `LaunchState`
 /// inside `body` so the nil-to-set transition of `menuBarViewModel`
 /// reliably triggers a SwiftUI re-render.
@@ -169,6 +194,7 @@ private struct MenuBarRootLabel: View {
 final class LaunchState: @unchecked Sendable {
     var shellViewModel: AppShellViewModel?
     var menuBarViewModel: MenuBarViewModel?
+    var settingsViewModel: SettingsViewModel?
     var launchError: String?
 
     /// Closure that calls `openWindow(id: "main")`. Captured from
@@ -341,6 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             notificationService = appCore.notifications
 
             launchState.shellViewModel = AppShellViewModel(core: appCore)
+            launchState.settingsViewModel = SettingsViewModel(core: appCore)
             launchState.menuBarViewModel = MenuBarViewModel(
                 core: appCore,
                 windowOpener: { [weak self] in

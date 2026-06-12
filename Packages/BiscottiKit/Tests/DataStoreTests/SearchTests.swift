@@ -15,9 +15,11 @@ struct SearchTests {
         _ = try await store.createMeeting(title: "Sprint Planning")
         _ = try await store.createMeeting(title: "Daily Standup")
 
-        let results = try await store.search("Sprint")
-        #expect(results.count == 1)
-        #expect(results.first?.title == "Sprint Planning")
+        try await store.read { store in
+            let results = try store.search("Sprint")
+            #expect(results.count == 1)
+            #expect(results.first?.title == "Sprint Planning")
+        }
     }
 
     @Test("Search is case-insensitive on title")
@@ -25,9 +27,11 @@ struct SearchTests {
         let store = try makeStore()
         _ = try await store.createMeeting(title: "Sprint Planning")
 
-        let results = try await store.search("sprint planning")
-        #expect(results.count == 1)
-        #expect(results.first?.title == "Sprint Planning")
+        try await store.read { store in
+            let results = try store.search("sprint planning")
+            #expect(results.count == 1)
+            #expect(results.first?.title == "Sprint Planning")
+        }
     }
 
     @Test("Search matches on participant names")
@@ -37,9 +41,11 @@ struct SearchTests {
         let alice = try await store.findOrCreatePerson(name: "Alice Johnson", email: "alice@x.com")
         try await store.setParticipants([alice], organizer: nil, for: meetingID)
 
-        let results = try await store.search("Alice")
-        #expect(results.count == 1)
-        #expect(results.first?.title == "Generic Meeting")
+        try await store.read { store in
+            let results = try store.search("Alice")
+            #expect(results.count == 1)
+            #expect(results.first?.title == "Generic Meeting")
+        }
     }
 
     @Test("Search is case-insensitive on participant names")
@@ -49,8 +55,8 @@ struct SearchTests {
         let bob = try await store.findOrCreatePerson(name: "Bob Smith", email: "bob@x.com")
         try await store.setParticipants([bob], organizer: nil, for: meetingID)
 
-        let results = try await store.search("bob smith")
-        #expect(results.count == 1)
+        let count = try await store.read { try $0.search("bob smith").count }
+        #expect(count == 1)
     }
 
     @Test("Search with no match returns empty")
@@ -58,8 +64,8 @@ struct SearchTests {
         let store = try makeStore()
         _ = try await store.createMeeting(title: "Sprint Planning")
 
-        let results = try await store.search("Nonexistent")
-        #expect(results.isEmpty)
+        let isEmpty = try await store.read { try $0.search("Nonexistent").isEmpty }
+        #expect(isEmpty)
     }
 
     @Test("Search matches partial title")
@@ -67,8 +73,8 @@ struct SearchTests {
         let store = try makeStore()
         _ = try await store.createMeeting(title: "Weekly Sprint Planning Review")
 
-        let results = try await store.search("Sprint")
-        #expect(results.count == 1)
+        let count = try await store.read { try $0.search("Sprint").count }
+        #expect(count == 1)
     }
 
     @Test("Search returns multiple matching meetings")
@@ -78,8 +84,8 @@ struct SearchTests {
         _ = try await store.createMeeting(title: "Sprint Review")
         _ = try await store.createMeeting(title: "Retro")
 
-        let results = try await store.search("Sprint")
-        #expect(results.count == 2)
+        let count = try await store.read { try $0.search("Sprint").count }
+        #expect(count == 2)
     }
 
     @Test("Search matches via participant even when title doesn't match")
@@ -90,9 +96,11 @@ struct SearchTests {
         try await store.setParticipants([alice], organizer: nil, for: meetingID)
 
         // "Zara" doesn't appear in the title
-        let results = try await store.search("Zara")
-        #expect(results.count == 1)
-        #expect(results.first?.title == "Standup")
+        try await store.read { store in
+            let results = try store.search("Zara")
+            #expect(results.count == 1)
+            #expect(results.first?.title == "Standup")
+        }
     }
 }
 

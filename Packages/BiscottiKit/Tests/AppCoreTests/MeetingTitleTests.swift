@@ -22,10 +22,11 @@ struct MeetingTitleSystemTests {
         await fix.core.startRecording()
 
         let meetingID = try #require(fix.core.recording.state.meetingID)
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
-
-        #expect(meeting.title == "Untitled Meeting")
-        #expect(meeting.editedTitle == false)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Untitled Meeting")
+            #expect(meeting.editedTitle == false)
+        }
     }
 
     // MARK: - Association applies event title
@@ -53,11 +54,12 @@ struct MeetingTitleSystemTests {
         await fix.core.startRecording()
 
         let meetingID = try #require(fix.core.recording.state.meetingID)
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
-
         // The event title should have been applied to the meeting
-        #expect(meeting.title == "Team Standup")
-        #expect(meeting.editedTitle == false)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Team Standup")
+            #expect(meeting.editedTitle == false)
+        }
     }
 
     // MARK: - Manual edit sets editedTitle
@@ -82,9 +84,11 @@ struct MeetingTitleSystemTests {
         viewModel.editableTitle = "My Custom Title"
         await viewModel.saveTitle()
 
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
-        #expect(meeting.title == "My Custom Title")
-        #expect(meeting.editedTitle == true)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "My Custom Title")
+            #expect(meeting.editedTitle == true)
+        }
     }
 
     // MARK: - Association does NOT overwrite user-edited title
@@ -119,10 +123,10 @@ struct MeetingTitleSystemTests {
         )
 
         // Verify editedTitle is set
-        let meetingBefore = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingBefore.editedTitle == true)
+        try await fix.store.read { store in
+            let meetingBefore = try #require(try store.meeting(id: meetingID))
+            #expect(meetingBefore.editedTitle == true)
+        }
 
         // Now associate with an event
         let eventKey = try #require(fix.core.upcoming.first?.id)
@@ -131,11 +135,11 @@ struct MeetingTitleSystemTests {
         )
 
         // Title should NOT have changed
-        let meetingAfter = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingAfter.title == "My Custom Title")
-        #expect(meetingAfter.editedTitle == true)
+        try await fix.store.read { store in
+            let meetingAfter = try #require(try store.meeting(id: meetingID))
+            #expect(meetingAfter.title == "My Custom Title")
+            #expect(meetingAfter.editedTitle == true)
+        }
     }
 
     // MARK: - Re-association applies new event title when not edited
@@ -181,11 +185,11 @@ struct MeetingTitleSystemTests {
             meetingID: meetingID, eventKey: firstEventKey
         )
 
-        let meetingAfterFirst = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingAfterFirst.title == "First Event")
-        #expect(meetingAfterFirst.editedTitle == false)
+        try await fix.store.read { store in
+            let meetingAfterFirst = try #require(try store.meeting(id: meetingID))
+            #expect(meetingAfterFirst.title == "First Event")
+            #expect(meetingAfterFirst.editedTitle == false)
+        }
 
         // Now re-associate with the second event
         fix.fakeEventStore.refreshResult = dto2
@@ -196,11 +200,11 @@ struct MeetingTitleSystemTests {
             meetingID: meetingID, eventKey: secondEventKey
         )
 
-        let meetingAfterSecond = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingAfterSecond.title == "Second Event")
-        #expect(meetingAfterSecond.editedTitle == false)
+        try await fix.store.read { store in
+            let meetingAfterSecond = try #require(try store.meeting(id: meetingID))
+            #expect(meetingAfterSecond.title == "Second Event")
+            #expect(meetingAfterSecond.editedTitle == false)
+        }
     }
 
     // MARK: - Migration: existing meetings default editedTitle to false
@@ -213,10 +217,12 @@ struct MeetingTitleSystemTests {
 
         // Create a meeting the "old" way (without explicitly setting editedTitle)
         let meetingID = try await fix.store.createMeeting(title: "Legacy Meeting")
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
 
         // editedTitle should default to false (additive property with default)
-        #expect(meeting.editedTitle == false)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.editedTitle == false)
+        }
     }
 
     // MARK: - Join-button bug fix verification
@@ -249,11 +255,13 @@ struct MeetingTitleSystemTests {
         await fix.core.startRecording(eventKey: eventKey)
 
         let meetingID = try #require(fix.core.recording.state.meetingID)
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
 
         // The title should be the event title, NOT "Untitled Meeting"
-        #expect(meeting.title == "Weekly Sync")
-        #expect(meeting.editedTitle == false)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Weekly Sync")
+            #expect(meeting.editedTitle == false)
+        }
 
         // Verify via the detail DTO as well
         let detail = try await fix.store.meetingDetail(id: meetingID)
@@ -275,8 +283,10 @@ struct MeetingTitleSystemTests {
             "Design Review", for: meetingID
         )
 
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
-        #expect(meeting.title == "Design Review")
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Design Review")
+        }
     }
 
     @Test("applyEventTitle is no-op when editedTitle is true")
@@ -296,9 +306,11 @@ struct MeetingTitleSystemTests {
             "Sprint Planning", for: meetingID
         )
 
-        let meeting = try #require(try await fix.store.meeting(id: meetingID))
-        #expect(meeting.title == "Custom Name")
-        #expect(meeting.editedTitle == true)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Custom Name")
+            #expect(meeting.editedTitle == true)
+        }
     }
 
     @Test("setTitle sets editedTitle to true")
@@ -310,18 +322,18 @@ struct MeetingTitleSystemTests {
         let meetingID = try await fix.store.createMeeting(
             title: "Untitled Meeting"
         )
-        let meetingBefore = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingBefore.editedTitle == false)
+        try await fix.store.read { store in
+            let meetingBefore = try #require(try store.meeting(id: meetingID))
+            #expect(meetingBefore.editedTitle == false)
+        }
 
         try await fix.store.setTitle("My Title", for: meetingID)
 
-        let meetingAfter = try #require(
-            try await fix.store.meeting(id: meetingID)
-        )
-        #expect(meetingAfter.title == "My Title")
-        #expect(meetingAfter.editedTitle == true)
+        try await fix.store.read { store in
+            let meetingAfter = try #require(try store.meeting(id: meetingID))
+            #expect(meetingAfter.title == "My Title")
+            #expect(meetingAfter.editedTitle == true)
+        }
     }
 }
 

@@ -884,23 +884,29 @@ struct MeetingDetailSaveTitleGuardTests {
         #expect(viewModel.editableTitle == "Standup")
 
         // editedTitle must still be false after association
-        let meetingBefore = try await fix.store.meeting(id: meetingID)
-        #expect(meetingBefore?.editedTitle == false)
+        try await fix.store.read { store in
+            let meetingBefore = try store.meeting(id: meetingID)
+            #expect(meetingBefore?.editedTitle == false)
+        }
 
         // Simulate onDisappear: flushNotes calls saveTitle. The title
         // hasn't changed, so editedTitle must NOT flip to true.
         await viewModel.flushNotes()
 
-        let meetingAfter = try await fix.store.meeting(id: meetingID)
-        #expect(meetingAfter?.editedTitle == false)
+        try await fix.store.read { store in
+            let meetingAfter = try store.meeting(id: meetingID)
+            #expect(meetingAfter?.editedTitle == false)
+        }
 
         // Because editedTitle is still false, a subsequent association
         // must still be able to update the title via applyEventTitle.
         try await fix.store.applyEventTitle(
             "New Event Name", for: meetingID
         )
-        let meetingFinal = try await fix.store.meeting(id: meetingID)
-        #expect(meetingFinal?.title == "New Event Name")
+        try await fix.store.read { store in
+            let meetingFinal = try store.meeting(id: meetingID)
+            #expect(meetingFinal?.title == "New Event Name")
+        }
     }
 
     @Test(
@@ -928,8 +934,10 @@ struct MeetingDetailSaveTitleGuardTests {
         await viewModel.saveTitle()
 
         // editedTitle must NOT be set
-        let meeting = try await fix.store.meeting(id: meetingID)
-        #expect(meeting?.editedTitle == false)
+        try await fix.store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.editedTitle == false)
+        }
     }
 
     @Test(
@@ -960,15 +968,19 @@ struct MeetingDetailSaveTitleGuardTests {
         #expect(viewModel.editableTitle == "User Renamed")
 
         // editedTitle IS set for genuine edits
-        let meeting = try await fix.store.meeting(id: meetingID)
-        #expect(meeting?.editedTitle == true)
+        try await fix.store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.editedTitle == true)
+        }
 
         // applyEventTitle no longer overwrites (user edit wins)
         try await fix.store.applyEventTitle(
             "Calendar Title", for: meetingID
         )
-        let meetingAfter = try await fix.store.meeting(id: meetingID)
-        #expect(meetingAfter?.title == "User Renamed")
+        try await fix.store.read { store in
+            let meetingAfter = try store.meeting(id: meetingID)
+            #expect(meetingAfter?.title == "User Renamed")
+        }
     }
 }
 

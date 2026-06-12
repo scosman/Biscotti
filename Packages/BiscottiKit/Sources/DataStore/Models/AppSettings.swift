@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - AppSettings
 
 /// Singleton-ish application settings stored in SwiftData.
-@Model public final class AppSettings: @unchecked Sendable {
+@Model public final class AppSettings {
     /// JSON-encoded backing store for `customVocabulary`. SwiftData cannot materialize
     /// generic `Array<String>` from on-disk stores in SPM modules; `Data` works reliably.
     private var customVocabularyData = Data()

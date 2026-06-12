@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Meeting
 
 /// A recorded (or upcoming) meeting — the central aggregate in the data model.
-@Model public final class Meeting: @unchecked Sendable {
+@Model public final class Meeting {
     public var id = UUID()
     public var title: String = ""
     public var startDate: Date?

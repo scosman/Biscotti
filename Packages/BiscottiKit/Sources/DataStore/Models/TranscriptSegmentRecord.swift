@@ -5,7 +5,7 @@ import SwiftData
 
 /// A modeled SwiftData entity for a transcript segment -- queryable and relational,
 /// not a JSON blob. `index` gives stable ordering (SwiftData relationships are unordered).
-@Model public final class TranscriptSegmentRecord: @unchecked Sendable {
+@Model public final class TranscriptSegmentRecord {
     public var id = UUID()
     /// Stable ordering within the transcript.
     public var index: Int = 0

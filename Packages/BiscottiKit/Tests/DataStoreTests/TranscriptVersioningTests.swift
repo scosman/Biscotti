@@ -50,12 +50,14 @@ struct TranscriptVersioningTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.transcripts.count == 2)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.transcripts.count == 2)
 
-        let ids = meeting?.transcripts.map(\.id) ?? []
-        #expect(ids.contains(id1))
-        #expect(ids.contains(id2))
+            let ids = meeting?.transcripts.map(\.id) ?? []
+            #expect(ids.contains(id1))
+            #expect(ids.contains(id2))
+        }
     }
 
     @Test("Adding a new version never drops prior versions")
@@ -79,8 +81,10 @@ struct TranscriptVersioningTests {
         )
 
         // First should still be there
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.transcripts.contains(where: { $0.id == first }) == true)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.transcripts.contains(where: { $0.id == first }) == true)
+        }
     }
 
     @Test("setPreferredTranscript updates preferredTranscriptID")
@@ -102,12 +106,16 @@ struct TranscriptVersioningTests {
         )
 
         try await store.setPreferredTranscript(id1, for: meetingID)
-        var meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.preferredTranscriptID == id1)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.preferredTranscriptID == id1)
+        }
 
         try await store.setPreferredTranscript(id2, for: meetingID)
-        meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.preferredTranscriptID == id2)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.preferredTranscriptID == id2)
+        }
     }
 
     @Test("addTranscript to non-existent meeting throws notFound")

@@ -492,8 +492,7 @@ struct AppCoreDeleteMeetingTests {
         #expect(!FileManager.default.fileExists(atPath: meetingDir.path))
 
         // DB row should be gone
-        let fetched = try await fix.store.meeting(id: meetingID)
-        #expect(fetched == nil)
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
 
         // Summaries refreshed
         #expect(fix.core.summaries.isEmpty)
@@ -525,8 +524,7 @@ struct AppCoreDeleteMeetingTests {
         await fix.core.deleteMeeting(meetingID: meetingID)
 
         // Row still deleted
-        let fetched = try await fix.store.meeting(id: meetingID)
-        #expect(fetched == nil)
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
         #expect(fix.core.route == .home)
     }
 
@@ -556,8 +554,7 @@ struct AppCoreDeleteMeetingTests {
         await fix.core.deleteMeeting(meetingID: meetingID)
 
         // Meeting row must still exist
-        let fetched = try await fix.store.meeting(id: meetingID)
-        #expect(fetched != nil)
+        #expect(try await fix.store.meetingExists(id: meetingID))
 
         // Files must still exist (not deleted mid-write)
         #expect(FileManager.default.fileExists(atPath: micPath.path))

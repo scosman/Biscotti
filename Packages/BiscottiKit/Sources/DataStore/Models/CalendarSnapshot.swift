@@ -6,7 +6,7 @@ import SwiftData
 /// A frozen copy of calendar event metadata, clearable in one operation.
 /// Participants + organizer are `Person` relationships on `Meeting` (dedup + voiceprints),
 /// NOT frozen here.
-@Model public final class CalendarSnapshot: @unchecked Sendable {
+@Model public final class CalendarSnapshot {
     public var id = UUID()
 
     // MARK: Link keys (recurring-event-robust re-sync)

@@ -138,8 +138,10 @@ struct TranscriptionSuccessTests {
         #expect(secondDetail?.preferredTranscript?.segments.count == 1)
 
         // Both transcripts should exist in the store
-        let allTranscripts = try await fix.store.fetchAllTranscripts()
-        #expect(allTranscripts.count == 2)
+        try await fix.store.read { store in
+            let allTranscripts = try store.fetchAllTranscripts()
+            #expect(allTranscripts.count == 2)
+        }
     }
 
     @Test("Shutdown is called after successful transcription to release XPC worker")

@@ -53,28 +53,30 @@ struct SegmentMappingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        let segments = transcript?.segments.sorted(by: { $0.index < $1.index }) ?? []
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            let segments = transcript?.segments.sorted(by: { $0.index < $1.index }) ?? []
 
-        #expect(segments.count == 2)
+            #expect(segments.count == 2)
 
-        // First segment
-        #expect(segments[0].index == 0)
-        #expect(segments[0].speakerID == 0)
-        #expect(segments[0].speakerLabel == "Speaker 0")
-        #expect(segments[0].startTime == 0.0)
-        #expect(segments[0].endTime == 3.5)
-        #expect(segments[0].text == "Hello world")
-        #expect(segments[0].noSpeechProbability == 0.01)
+            // First segment
+            #expect(segments[0].index == 0)
+            #expect(segments[0].speakerID == 0)
+            #expect(segments[0].speakerLabel == "Speaker 0")
+            #expect(segments[0].startTime == 0.0)
+            #expect(segments[0].endTime == 3.5)
+            #expect(segments[0].text == "Hello world")
+            #expect(segments[0].noSpeechProbability == 0.01)
 
-        // Second segment
-        #expect(segments[1].index == 1)
-        #expect(segments[1].speakerID == 1)
-        #expect(segments[1].speakerLabel == "Speaker 1")
-        #expect(segments[1].startTime == 3.5)
-        #expect(segments[1].endTime == 7.0)
-        #expect(segments[1].text == "Hi there")
+            // Second segment
+            #expect(segments[1].index == 1)
+            #expect(segments[1].speakerID == 1)
+            #expect(segments[1].speakerLabel == "Speaker 1")
+            #expect(segments[1].startTime == 3.5)
+            #expect(segments[1].endTime == 7.0)
+            #expect(segments[1].text == "Hi there")
+        }
     }
 
     @Test("Words are mapped with correct index ordering and fields")
@@ -115,27 +117,27 @@ struct SegmentMappingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        let segment = transcript?.segments.first
-        let mappedWords = segment?.words.sorted(by: { $0.index < $1.index }) ?? []
+        try await store.read { store in
+            let transcript = try store.meeting(id: meetingID)?.transcripts.first(where: { $0.id == transcriptID })
+            let mappedWords = transcript?.segments.first?.words.sorted(by: { $0.index < $1.index }) ?? []
 
-        #expect(mappedWords.count == 3)
+            #expect(mappedWords.count == 3)
 
-        #expect(mappedWords[0].index == 0)
-        #expect(mappedWords[0].word == "Hello")
-        #expect(mappedWords[0].startTime == 0.0)
-        #expect(mappedWords[0].endTime == 0.5)
-        #expect(mappedWords[0].probability == 0.95)
-        #expect(mappedWords[0].speakerID == 0)
+            #expect(mappedWords[0].index == 0)
+            #expect(mappedWords[0].word == "Hello")
+            #expect(mappedWords[0].startTime == 0.0)
+            #expect(mappedWords[0].endTime == 0.5)
+            #expect(mappedWords[0].probability == 0.95)
+            #expect(mappedWords[0].speakerID == 0)
 
-        #expect(mappedWords[1].index == 1)
-        #expect(mappedWords[1].word == "world")
-        #expect(mappedWords[1].probability == 0.88)
+            #expect(mappedWords[1].index == 1)
+            #expect(mappedWords[1].word == "world")
+            #expect(mappedWords[1].probability == 0.88)
 
-        #expect(mappedWords[2].index == 2)
-        #expect(mappedWords[2].word == "test")
-        #expect(mappedWords[2].speakerID == nil)
+            #expect(mappedWords[2].index == 2)
+            #expect(mappedWords[2].word == "test")
+            #expect(mappedWords[2].speakerID == nil)
+        }
     }
 
     @Test("Segment with nil speakerID is preserved")
@@ -170,11 +172,13 @@ struct SegmentMappingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        let segment = transcript?.segments.first
-        #expect(segment?.speakerID == nil)
-        #expect(segment?.speakerLabel == "Unknown")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            let segment = transcript?.segments.first
+            #expect(segment?.speakerID == nil)
+            #expect(segment?.speakerLabel == "Unknown")
+        }
     }
 
     @Test("Segment with no words results in empty words array")
@@ -209,10 +213,12 @@ struct SegmentMappingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        let segment = transcript?.segments.first
-        #expect(segment?.words.isEmpty == true)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            let segment = transcript?.segments.first
+            #expect(segment?.words.isEmpty == true)
+        }
     }
 
     @Test("Transcript output fields (language, speakerCount) round-trip correctly")
@@ -236,9 +242,11 @@ struct SegmentMappingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        #expect(transcript?.language == "fr")
-        #expect(transcript?.speakerCount == 3)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            #expect(transcript?.language == "fr")
+            #expect(transcript?.speakerCount == 3)
+        }
     }
 }

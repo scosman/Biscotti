@@ -657,8 +657,7 @@ struct MeetingDetailDeleteTests {
         #expect(fix.core.route == .home)
 
         // Meeting should be deleted from the store
-        let fetched = try await fix.store.meeting(id: meetingID)
-        #expect(fetched == nil)
+        #expect(try await fix.store.meetingExists(id: meetingID) == false)
     }
 
     @Test("confirmDelete removes meeting from summaries")

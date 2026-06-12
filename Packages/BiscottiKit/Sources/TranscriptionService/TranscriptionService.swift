@@ -138,7 +138,7 @@ public final class TranscriptionService {
     private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL)? {
         do {
             guard let resolved = try await store.audioPaths(meetingID: meetingID) else {
-                let meetingExists = try await store.meeting(id: meetingID) != nil
+                let meetingExists = try await store.meetingExists(id: meetingID)
                 if meetingExists {
                     jobs[meetingID] = .failed(
                         message: "No audio files available for this meeting.",

@@ -2,8 +2,13 @@ import Foundation
 
 /// A streaming event emitted during token-by-token generation.
 public enum StreamEvent: Sendable, Equatable {
-    /// A newly generated token (decoded text piece).
+    /// A final-content token (decoded text piece). Never contains thinking content
+    /// or channel markers — those are routed to `.reasoningToken` (or suppressed).
     case token(String)
+    /// A thinking/reasoning token, separately consumable. Emitted only in
+    /// ThinkingMode.auto when the model produces a thinking channel. Consumers may
+    /// ignore these events. Never contains channel markers.
+    case reasoningToken(String)
     /// Generation is complete; carries the full result with stats.
     case done(GenerationResult)
 }

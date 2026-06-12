@@ -58,6 +58,23 @@ swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the q
 swift run localllm run --model $MODEL --prompt "What is 15 * 23? Show your work." --thinking auto --seed 42 --temp 0
 ```
 
+### 6. Streaming channel-awareness test
+
+```bash
+# Streaming with thinking auto — the full structured block goes to stdout:
+#   === thinking === / reasoning / === response === / final answer.
+# stderr carries only diagnostics (Loading model..., Generating...) + speed summary
+# (and backend logs if --verbose is passed; suppressed by default).
+# Redirect stderr to /dev/null to see the clean stdout block:
+swift run localllm run --model $MODEL --prompt "What is 15 * 23? Show your work." --thinking auto --stream --seed 42 --temp 0 2>/dev/null > /tmp/stream_out.txt
+cat /tmp/stream_out.txt  # should contain the full structured block: headers + thinking + response
+
+# Streaming with thinking off — headers still appear on stdout; thinking section shows [none].
+swift run localllm run --model $MODEL --prompt "What is 15 * 23? Show your work." --thinking off --stream --seed 42 --temp 0 2>/dev/null
+# Expected stdout: "=== thinking ===" then "[none]" then "=== response ===" then the final answer.
+# Expected stderr (without 2>/dev/null): diagnostics + speed summary only.
+```
+
 ---
 
 ## Known issue: ggml-metal teardown crash on exit
@@ -125,6 +142,47 @@ _To be filled in during Phase 4 live validation._
 - [ ] Double-BOS: only one BOS token present
 - [ ] Thinking-mode tokens: confirmed markers
 - [ ] b9601 API specifics: confirmed KV-cache-clear call
+
+### Channel marker streaming fix
+
+**Observation:** Gemma 4's reasoning-channel markers (`<|channel>thought\n` ...
+`<channel|>`) were confirmed on real hardware during `--thinking auto` runs (validates
+Phase-1 item #4 — thinking-mode tokens). In the original `--stream` mode, these markers
+leaked raw into stdout because the decode loop emitted tokens live while `OutputParser`
+only cleaned the buffered final text.
+
+**Fix:** `StreamingChannelSplitter` — an incremental channel splitter wired into
+`generateStreaming` — now classifies raw token pieces into `.token` (final content)
+and `.reasoningToken` (thinking content) in real time. Markers that span multiple
+tokens are handled via a tail buffer (withheld until a marker is matched or ruled
+out). The final `.done(GenerationResult)` matches what buffered `generate()` returns
+for the same input.
+
+**CLI routing:** The full structured result — both section headers, thinking content
+(or `[none]`), and the final message — all go to **stdout**. Only diagnostics
+(`Loading model...`, `Generating...`) and the speed summary stay on **stderr**. This
+split is intentional: the llama.cpp/ggml backend emits noisy Metal kernel-compile
+logs to stderr, so filtering stderr also kills any headers routed there; keeping
+the structured block on stdout keeps it visible and clean. Backend log noise is
+suppressed by default (no-op callback on both `llama_log_set` and `ggml_log_set`);
+pass `--verbose` to restore it for debugging.
+
+**CLI headers (unconditional):** Both `=== thinking ===` and `=== response ===`
+section headers are ALWAYS printed to stdout, regardless of `--thinking` mode or
+whether any reasoning was produced. When no reasoning is present, `[none]` appears
+under the thinking header. Each header is preceded by a blank line for visual
+separation. This makes the thinking section always visible so the user can tell at a
+glance whether the model is reasoning. In streaming mode, the thinking header prints
+at generation start; `[none]` is emitted before the response header if no
+`.reasoningToken` events arrived. In non-streaming mode, the pattern is:
+`=== thinking ===` then reasoning or `[none]`, then `=== response ===`, then the
+message — all on stdout.
+
+**Status:** Build green + 132 always-on tests pass (including 19 splitter unit tests
+covering: marker splitting across tokens, one-char-at-a-time feeding, off-mode
+suppression, auto-mode routing, unclosed thinking blocks, no-leak assertions,
+concatenation parity with `OutputParser.parse`, edge cases). Live streaming UX
+pending hardware verification.
 
 ### Prompt quality
 

@@ -133,7 +133,20 @@ actor LLMEngine {
 
 Held state (C handles via `import LlamaSwift`): `OpaquePointer` for `llama_model`, the `llama_vocab`
 (from `llama_model_get_vocab`), and a reusable `llama_context` sized to `contextSize`.
-`StreamEvent = .token(String) | .done(GenerationResult)`.
+`StreamEvent = .token(String) | .reasoningToken(String) | .done(GenerationResult)`.
+
+**Channel-aware streaming:** `generateStreaming` routes raw tokens through a
+`StreamingChannelSplitter` that detects `OutputParser.thinkingOpenTag` /
+`.thinkingCloseTag` markers (which may span multiple tokens) and classifies output
+into `.token` (final content) and `.reasoningToken` (thinking content). Markers
+themselves are stripped from both outputs. In `ThinkingMode.off`, reasoning tokens
+are silently suppressed (no `.reasoningToken` events emitted); in `.auto`, both
+channels stream live. The splitter withholds a small tail buffer (>= longest marker
+length) until a marker is matched or definitively ruled out, then releases. A
+`finish()` call at stream end flushes any withheld buffer. `generatedTokenCount` in
+the result is the TOTAL tokens generated (reasoning is a routing of the same token
+stream, not a separate count). The buffered `generate()` path is unaffected (it
+already runs `OutputParser.parse` on the full text).
 
 ### 4.1 Load (`init`)
 
@@ -237,13 +250,25 @@ protocol ChatTemplating { func render(system: String?, user: String, addGenerati
   (b) defensively strip any block that still appears. The exact marker tokens are pinned in Phase 1
   from observed output; the parser is written table-driven so updating markers is a one-line change.
 - All operations are string→string and tested without the model.
+- **Streaming relationship:** `StreamingChannelSplitter` reuses `OutputParser.thinkingOpenTag` /
+  `.thinkingCloseTag` as the single source of truth for marker strings. The splitter performs
+  incremental (token-by-token) channel detection for the live stream, while `OutputParser.parse`
+  performs the same extraction on the complete buffered text for the final `GenerationResult`.
+  Both paths must agree **modulo leading/trailing whitespace trimming**: concatenated
+  `.token` events equal `result.text` after trimming, and concatenated `.reasoningToken`
+  events equal `result.reasoning` after trimming. The stream emits raw, untrimmed
+  token pieces as they arrive; the buffered path trims via `OutputParser.parse`
+  (`.trimmingCharacters(in: .whitespacesAndNewlines)`). Perfect byte-level parity is
+  fundamentally at odds with streaming raw-as-you-go vs trimming a finished buffer.
 
 ---
 
 ## 8. CLI — `localllm`
 
-`swift-argument-parser`, root `localllm` with two subcommands. **stdout = the model's message only;
-stderr = diagnostics + the speed summary** (clean, pipeable — matches the ArgMaxKit CLI).
+`swift-argument-parser`, root `localllm` with two subcommands. **stdout = the full structured
+result** (section headers, thinking content/`[none]`, response message); **stderr = diagnostics +
+speed summary only**. The llama.cpp/ggml backend emits noisy Metal kernel logs to stderr, so
+headers and content stay on stdout to remain visible when stderr is filtered.
 
 - **`localllm download`** — `--url` (default Gemma URL), `--dest <path>` (file or dir; defaults to
   `ModelDownloader.defaultModelPath` — the full `.gguf` file path under
@@ -258,8 +283,25 @@ stderr = diagnostics + the speed summary** (clean, pipeable — matches the ArgM
     if absent — never an implicit 8 GB fetch inside `run`).
   - Overrides: `--temp --top-k --top-p --min-p --max-tokens --seed --ctx-size --repeat-penalty`,
     `--raw` (skip template), `--thinking off|auto` (default off), `--template builtin|gemma`
-    (selects the §5 path for A/B). `--stream` (final phase).
-  - Output: message to stdout; **speed summary to stderr** at the end:
+    (selects the §5 path for A/B). `--stream` (final phase). `--verbose` (restore backend
+    stderr logging for debugging; default quiet — see §11).
+  - Output: the full structured result (headers, thinking content or `[none]`, response) goes
+    to **stdout**. Only diagnostics (`Loading model...`, `Generating...`) and the speed summary
+    stay on **stderr**. This split is intentional: the llama.cpp/ggml backend emits noisy Metal
+    kernel-compile logs to stderr, so filtering stderr also kills any headers routed there;
+    keeping the structured block on stdout keeps it visible and clean. Note: stdout is **not**
+    message-only — it carries the full thinking+response block with headers.
+    Both `=== thinking ===` and `=== response ===` headers are **always** printed
+    (unconditional), regardless of `--thinking` mode or whether reasoning was produced.
+    Each header is preceded by a blank line for visual separation.
+    When no reasoning is present, `[none]` appears under the thinking header.
+    - **Streaming (`--stream`):** `=== thinking ===` prints to stdout at generation start;
+      `.reasoningToken` events stream to stdout live; on the first `.token`, if no reasoning
+      arrived, `[none]` is printed, then `=== response ===`; `.token` events continue on
+      stdout. If the stream ends with no content tokens, both headers are still emitted.
+    - **Non-streaming:** `=== thinking ===` then reasoning (or `[none]`), then
+      `=== response ===`, then the message — all to stdout.
+    - Speed summary to stderr at the end:
     ```
     --- speed ---
     prompt:    412 tok in 0.83s (496 tok/s)
@@ -317,8 +359,15 @@ In `experiments/llm` only; the experiment's own `swift test`. Framework: **Swift
 
 - All failures surface as `LocalLLMError` with actionable messages; C null/non-zero returns mapped
   at the boundary. `generate` prefers `contextOverflow` over silent truncation.
-- Library logging is minimal/opt-in (no noisy prints); diagnostics belong to the CLI (stderr). Set
-  llama.cpp log level low/quiet in the library; CLI may raise verbosity with a `--verbose` flag.
+- **Backend log suppression:** by default, a no-op `@convention(c)` callback is installed on
+  **both** `llama_log_set` and `ggml_log_set` at backend-init time (before any model/context
+  creation). This silences Metal kernel-compile spam, buffer dumps, `~llama_context` teardown
+  lines, and other ggml noise that would otherwise pollute stderr. Passing `NULL` to these APIs
+  resets to the default stderr logger — it does **not** suppress — so a real callback is required.
+  `LocalLLMRuntime.verbose` (a `Mutex<Bool>`, default `false`) controls this: set it to `true`
+  before the first `LLMEngine` init to restore backend logging for debugging.
+- **CLI `--verbose` flag:** `localllm run --verbose` sets `LocalLLMRuntime.verbose` before engine
+  creation, restoring the backend's stderr logging. Default is quiet.
 
 ---
 

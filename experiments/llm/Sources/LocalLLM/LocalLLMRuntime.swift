@@ -26,6 +26,15 @@ public enum LocalLLMRuntime {
     /// Whether `shutdown()` has been called.
     private static let hasShutDown = Mutex(false)
 
+    /// When `true`, the llama.cpp and ggml backend loggers are left at their
+    /// defaults (stderr). When `false` (the default), a no-op callback is
+    /// installed to silence Metal kernel-compile spam and other backend noise.
+    ///
+    /// **Must be set before the first `LLMEngine` is created** — the backend
+    /// init runs lazily on the first engine and reads this flag once. Changing
+    /// it after that has no effect.
+    public static let verbose = Mutex(false)
+
     /// Tear down the llama.cpp backend (ggml, Metal device, residency sets).
     ///
     /// - **Precondition:** all `LLMEngine` instances must have been unloaded or

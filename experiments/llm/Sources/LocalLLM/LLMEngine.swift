@@ -1,11 +1,44 @@
 import Foundation
 import LlamaSwift
 
+/// Reference-type wrapper around `StreamingChannelSplitter` so an `@Sendable`
+/// closure can capture and mutate it. The splitter runs synchronously inside
+/// the actor-isolated decode loop, so there is no actual data race; this wrapper
+/// exists solely to satisfy Swift's Sendable capture rules.
+private final class SplitterBox: @unchecked Sendable {
+    private var splitter: StreamingChannelSplitter
+
+    init(suppressReasoning: Bool) {
+        splitter = StreamingChannelSplitter(suppressReasoning: suppressReasoning)
+    }
+
+    func feed(_ token: String) -> [StreamingChannelSplitter.Piece] {
+        splitter.feed(token)
+    }
+
+    func finish() -> [StreamingChannelSplitter.Piece] {
+        splitter.finish()
+    }
+}
+
 /// Ensure llama_backend_init is called exactly once per process.
 private let backendInitOnce: Void = {
     llama_backend_init()
-    // Suppress llama.cpp's internal logging. The library stays quiet; CLI handles diagnostics.
-    llama_log_set(nil, nil)
+
+    // Suppress llama.cpp and ggml backend logging unless verbose mode is on.
+    // Both loggers must be silenced: llama's for its own diagnostics, and ggml's
+    // for Metal kernel-compile spam, buffer dumps, and other GPU noise.
+    //
+    // Passing NULL/nil resets to the DEFAULT logger (which prints to stderr) —
+    // it does NOT suppress. We install a no-op @convention(c) callback instead.
+    let isVerbose = LocalLLMRuntime.verbose.withLock { $0 }
+    if !isVerbose {
+        let silentLog: @convention(c) (
+            ggml_log_level, UnsafePointer<CChar>?, UnsafeMutableRawPointer?
+        ) -> Void = { _, _, _ in }
+        llama_log_set(silentLog, nil)
+        ggml_log_set(silentLog, nil)
+    }
 }()
 
 /// A single-model LLM engine backed by llama.cpp.
@@ -103,9 +136,14 @@ public actor LLMEngine {
 
     /// Run a single-turn generation with streaming.
     ///
-    /// Returns an `AsyncThrowingStream` that yields `.token(String)` for each generated
-    /// piece and a final `.done(GenerationResult)` when complete. Uses the same decode loop
+    /// Returns an `AsyncThrowingStream` that yields `.token(String)` for final content,
+    /// `.reasoningToken(String)` for thinking/reasoning content (ThinkingMode.auto only),
+    /// and a final `.done(GenerationResult)` when complete. Uses the same decode loop
     /// as `generate`, so the final `GenerationResult` is identical.
+    ///
+    /// Channel markers (`<|channel>thought\n` / `<channel|>`) are stripped from both
+    /// outputs. `generatedTokenCount` in the result is the TOTAL tokens generated
+    /// (reasoning is a routing of the same token stream, not a separate count).
     ///
     /// - Parameters:
     ///   - prompt: The user's message.
@@ -128,11 +166,39 @@ public actor LLMEngine {
                     return
                 }
                 do {
+                    // Create a channel splitter to classify raw tokens. Wrapped in
+                    // a reference-type box so the @Sendable onToken closure can
+                    // mutate it (the closure runs synchronously inside the actor's
+                    // decode loop, so there is no actual data race).
+                    let splitterBox = SplitterBox(
+                        suppressReasoning: options.thinking == .off
+                    )
+
                     let result = try await runGeneration(
                         prompt: prompt, system: system, options: options
                     ) { piece in
-                        continuation.yield(.token(piece))
+                        let classified = splitterBox.feed(piece)
+                        for item in classified {
+                            switch item {
+                            case let .content(text):
+                                continuation.yield(.token(text))
+                            case let .reasoning(text):
+                                continuation.yield(.reasoningToken(text))
+                            }
+                        }
                     }
+
+                    // Flush any withheld buffer at stream end.
+                    let remaining = splitterBox.finish()
+                    for item in remaining {
+                        switch item {
+                        case let .content(text):
+                            continuation.yield(.token(text))
+                        case let .reasoning(text):
+                            continuation.yield(.reasoningToken(text))
+                        }
+                    }
+
                     continuation.yield(.done(result))
                     continuation.finish()
                 } catch {

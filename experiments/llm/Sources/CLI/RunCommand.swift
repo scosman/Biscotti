@@ -85,6 +85,9 @@ struct RunCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Stream tokens to stdout as they are generated.")
     var stream: Bool = false
 
+    @Flag(name: .long, help: "Show llama.cpp/ggml backend logs (Metal, context, etc.) on stderr. Default: quiet.")
+    var verbose: Bool = false
+
     // MARK: - Run
 
     mutating func validate() throws {
@@ -162,6 +165,11 @@ struct RunCommand: AsyncParsableCommand {
         options.applyChatTemplate = !raw
         options.thinking = thinking == .auto ? .auto : .off
 
+        // Set verbose mode before engine init (backend init reads this flag once).
+        if verbose {
+            LocalLLMRuntime.verbose.withLock { $0 = true }
+        }
+
         // Load engine
         logStderr("Loading model...")
         let engine = try await LLMEngine(modelPath: modelURL, config: engineConfig)
@@ -205,7 +213,19 @@ struct RunCommand: AsyncParsableCommand {
                 result = try await engine.generate(
                     prompt: effectivePrompt, system: effectiveSystem, options: effectiveOptions
                 )
-                // Print the model's message to stdout (clean, pipeable)
+
+                // Always print both section headers (unconditional) to stdout.
+                // Blank line before each header so it stands out from prior stderr diagnostics.
+                // Thinking section: reasoning content or [none].
+                print("\n=== thinking ===")
+                if let reasoning = result.reasoning {
+                    print(reasoning)
+                } else {
+                    print("[none]")
+                }
+
+                // Response section: header + message, all on stdout.
+                print("\n=== response ===")
                 print(result.text)
             }
 
@@ -237,6 +257,29 @@ struct RunCommand: AsyncParsableCommand {
     // MARK: - Helpers
 
     /// Stream tokens to stdout as they arrive, returning the final result.
+    ///
+    /// **Routing:** the full structured result (headers, thinking content, response)
+    /// goes to **stdout**; only diagnostics (`Loading model...`, `Generating...`,
+    /// speed summary) stay on stderr. This is intentional: the llama.cpp/ggml backend
+    /// emits noisy Metal kernel-compile logs to stderr, so filtering stderr also kills
+    /// any headers routed there. Putting the structured block on stdout keeps it
+    /// visible and clean.
+    ///
+    /// **Always-on headers** (unconditional, matches the non-streaming path):
+    /// both `=== thinking ===` and `=== response ===` are printed for every run,
+    /// regardless of `--thinking` mode or whether reasoning was produced. Each header
+    /// is preceded by a blank line for visual separation.
+    ///
+    /// Streaming order:
+    /// 1. Print a blank line + `=== thinking ===` to stdout before the event loop.
+    /// 2. Stream each `.reasoningToken` to stdout (set `sawReasoning`).
+    /// 3. Before the FIRST `.token`: if no reasoning was seen, print `[none]`;
+    ///    else end the reasoning with a newline. Then print a blank line +
+    ///    `=== response ===` (tracked by `responseHeaderPrinted`).
+    ///    Stream content tokens to stdout.
+    /// 4. After the loop, if `responseHeaderPrinted` is still false (reasoning-only
+    ///    or empty output), print the missing `[none]`/newline + blank line +
+    ///    `=== response ===` so both headers always appear.
     private func runStreaming(
         engine: LLMEngine,
         prompt: String,
@@ -248,19 +291,62 @@ struct RunCommand: AsyncParsableCommand {
         )
 
         var finalResult: GenerationResult?
+        var sawReasoning = false
+        var sawContent = false
+        var responseHeaderPrinted = false
+
+        // 1. Always print the thinking header up front to stdout.
+        // Blank line before the header so it stands out from prior stderr diagnostics.
+        print("\n=== thinking ===")
+        fflush(stdout)
+
         for try await event in stream {
             switch event {
-            case let .token(piece):
-                // Print each token immediately without a trailing newline
+            case let .reasoningToken(piece):
+                // 2. Stream reasoning to stdout.
+                sawReasoning = true
                 print(piece, terminator: "")
                 fflush(stdout)
+
+            case let .token(piece):
+                // 3. Before the first content token, emit the response header.
+                if !responseHeaderPrinted {
+                    if !sawReasoning {
+                        print("[none]")
+                    } else {
+                        print("")
+                    }
+                    // Blank line before the response header for visual separation.
+                    print("\n=== response ===")
+                    responseHeaderPrinted = true
+                }
+                sawContent = true
+                print(piece, terminator: "")
+                fflush(stdout)
+
             case let .done(result):
                 finalResult = result
             }
         }
 
-        // Ensure stdout ends with a newline after streaming
-        print("")
+        // 4. Ensure both headers were emitted even if no content tokens arrived.
+        if !responseHeaderPrinted {
+            if !sawReasoning {
+                print("[none]")
+            } else {
+                print("")
+            }
+            // Blank line before the response header for visual separation.
+            print("\n=== response ===")
+        }
+
+        // Ensure stdout ends with a newline after streaming content tokens.
+        // print(piece, terminator: "") doesn't add one, so we need it for the
+        // final line. Only emit if we wrote content (don't add a bare newline
+        // when the stream was reasoning-only or empty).
+        if sawContent {
+            print("")
+        }
 
         guard let result = finalResult else {
             throw LocalLLMError.generationFailed("Stream ended without a .done event")

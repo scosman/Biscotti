@@ -124,12 +124,15 @@ struct IntegrationTests {
         let stream = await engine.generateStreaming(
             prompt: prompt, options: options
         )
-        var streamedTokens: [String] = []
+        var streamedContentTokens: [String] = []
+        var streamedReasoningTokens: [String] = []
         var streamResult: GenerationResult?
         for try await event in stream {
             switch event {
             case let .token(piece):
-                streamedTokens.append(piece)
+                streamedContentTokens.append(piece)
+            case let .reasoningToken(piece):
+                streamedReasoningTokens.append(piece)
             case let .done(result):
                 streamResult = result
             }
@@ -137,9 +140,7 @@ struct IntegrationTests {
 
         let result = try #require(streamResult, "Stream must end with a .done event")
 
-        // Concatenated streamed tokens must equal the raw decoded text before
-        // post-processing. The final result.text is post-processed, so compare
-        // the headline fields that must match between both paths.
+        // The final result from streaming must match the buffered result.
         #expect(
             result.text == bufferedResult.text,
             "Streaming text must match buffered: '\(result.text)' vs '\(bufferedResult.text)'"
@@ -157,10 +158,25 @@ struct IntegrationTests {
             "Prompt token counts must match"
         )
 
-        // Streamed tokens should not be empty (we got generated tokens)
+        // Concatenated content tokens must match the result text modulo leading/trailing
+        // whitespace trimming. The stream emits raw untrimmed tokens; OutputParser.parse
+        // trims the finished buffer. This modulo-whitespace agreement is the intended
+        // invariant — not a workaround.
+        let concatenatedContent = streamedContentTokens.joined()
         #expect(
-            streamedTokens.count == result.generatedTokenCount,
-            "Number of streamed .token events must equal generatedTokenCount"
+            concatenatedContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                == result.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            "Concatenated .token events must equal result.text (modulo whitespace trimming)"
+        )
+
+        // Concatenated reasoning tokens must match result.reasoning modulo whitespace
+        // (same trimming invariant as above).
+        let concatenatedReasoning = streamedReasoningTokens.joined()
+        let expectedReasoning = (result.reasoning ?? "")
+        #expect(
+            concatenatedReasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+                == expectedReasoning.trimmingCharacters(in: .whitespacesAndNewlines),
+            "Concatenated .reasoningToken events must equal result.reasoning (modulo whitespace trimming)"
         )
     }
 

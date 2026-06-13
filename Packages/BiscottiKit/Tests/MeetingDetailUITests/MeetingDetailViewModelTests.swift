@@ -636,9 +636,9 @@ struct MeetingDetailDeleteTests {
         #expect(detailVM.showDeleteConfirmation == true)
     }
 
-    @Test("confirmDelete calls core delete and navigates to Home")
+    @Test("confirmDelete calls core delete and routes to meetings")
     @MainActor
-    func confirmDeleteNavigatesHome() async throws {
+    func confirmDeleteRoutesToMeetings() async throws {
         let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
         defer { fix.cleanup() }
 
@@ -648,13 +648,14 @@ struct MeetingDetailDeleteTests {
 
         // Route to the meeting
         fix.core.select(meetingID)
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
 
         // Confirm delete
         await detailVM.confirmDelete()
 
-        // Route should be Home
-        #expect(fix.core.route == .home)
+        // Route should stay on meetings (with neighbor or nil selection)
+        #expect(fix.core.route == .meetings)
 
         // Meeting should be deleted from the store
         #expect(try await fix.store.meetingExists(id: meetingID) == false)

@@ -39,7 +39,7 @@ public struct MenuBarContentView: View {
             viewModel.openApp()
         }
 
-        Button("Quit") {
+        Button("Quit Biscotti") {
             viewModel.quit()
         }
     }

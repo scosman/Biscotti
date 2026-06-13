@@ -52,7 +52,7 @@ build: ## Build all SPM packages
 test: ## GATING: run package tests
 	@for pkg in $(PACKAGES); do \
 	  echo "==> Testing $$pkg"; \
-	  swift test --package-path $$pkg 2>&1 \
+	  swift test --no-parallel --package-path $$pkg 2>&1 \
 	    | grep -E 'recorded an issue|with [0-9]+ issue|Test run with [0-9]|Executed [0-9]+ test|: error:|error generated|no such module|cannot find|Build complete!' ; \
 	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
 	done

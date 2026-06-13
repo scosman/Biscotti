@@ -282,8 +282,11 @@ struct RecordingStateRecoveryTests {
         await fix.controller.start()
         #expect(fix.controller.state.isRecording == true)
 
-        // Wait for the denial check task (50 ms + margin)
-        try await Task.sleep(for: .milliseconds(200))
+        // Poll until the denial check task completes and sets the warning.
+        for _ in 0 ..< 200 {
+            if fix.controller.systemAudioWarning == true { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         #expect(fix.controller.systemAudioWarning == true)
         #expect(fix.permissions.systemAudio == .denied)
@@ -296,7 +299,12 @@ struct RecordingStateRecoveryTests {
         defer { fix.cleanup() }
 
         await fix.controller.start()
-        try await Task.sleep(for: .milliseconds(200))
+
+        // Poll until the denial check task completes and reports authorized.
+        for _ in 0 ..< 200 {
+            if fix.permissions.systemAudio == .authorized { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         #expect(fix.controller.systemAudioWarning == false)
         #expect(fix.permissions.systemAudio == .authorized)
@@ -394,7 +402,12 @@ struct RecordingStateRecoveryTests {
         defer { fix.cleanup() }
 
         await fix.controller.start()
-        try await Task.sleep(for: .milliseconds(100))
+
+        // Poll until the state-stream consumer pumps the elapsed value.
+        for _ in 0 ..< 200 {
+            if fix.controller.state.elapsed == 42.5 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         #expect(fix.controller.state.elapsed == 42.5)
     }

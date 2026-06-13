@@ -886,13 +886,12 @@ struct ObservationTests {
 
         NotificationCenter.default.post(name: .EKEventStoreChanged, object: nil)
 
-        // Poll until the notification handler's Task runs, rather than
-        // relying on a fixed sleep (the handler enqueues a MainActor Task
-        // that needs cooperative scheduling to execute).
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while provider.eventsCallCount <= countBefore,
-              ContinuousClock.now < deadline
-        {
+        // Poll until the notification handler's Task runs. Use an
+        // iteration-based bound (not a wall-clock deadline) so CI runners
+        // under MainActor starvation can't trip a real-time timeout before
+        // the enqueued handler executes.
+        for _ in 0 ..< 200 {
+            if provider.eventsCallCount > countBefore { break }
             try await Task.sleep(for: .milliseconds(10))
         }
 

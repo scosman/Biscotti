@@ -57,9 +57,12 @@ public struct UpcomingEventRow: View {
             HStack(spacing: Tokens.spacingSM) {
                 timeLabel
 
+                Spacer()
+
                 badgeLabel
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 

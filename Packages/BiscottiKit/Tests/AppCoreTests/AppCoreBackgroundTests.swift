@@ -123,9 +123,12 @@ struct AppCoreDetectionPipelineTests {
         }
         await fix.core.onLaunch()
 
-        // Fire the calendar-start timer
+        // Fire the calendar-start timer and poll until the MainActor
+        // task that posts the calendar notification runs.
         fakeScheduler.advance(by: .seconds(2))
-        try await Task.sleep(for: .milliseconds(100))
+        try await pollUntil {
+            !fix.fakeNotificationCenter.addedRequests.isEmpty
+        }
 
         let requestsAfterCal = fix.fakeNotificationCenter
             .addedRequests.count
@@ -529,7 +532,14 @@ struct AppCoreNotificationActionTests {
             return
         }
 
-        let detail = try await fix.store.meetingDetail(id: meetingID)
+        // The calendar association is persisted asynchronously after
+        // isRecording flips true; poll until it lands.
+        var detail: MeetingDetailData?
+        for _ in 0 ..< 40 {
+            try await Task.sleep(for: .milliseconds(50))
+            detail = try await fix.store.meetingDetail(id: meetingID)
+            if detail?.calendar != nil { break }
+        }
         #expect(detail?.calendar?.title == "Design Review")
     }
 
@@ -822,50 +832,27 @@ struct AppCoreOnboardingGateTests {
 
 @Suite("AppCore -- search return route")
 struct AppCoreSearchReturnRouteTests {
-    @Test("search return route saves and restores")
+    @Test("setMeetingsQuery non-empty routes to .meetings")
     @MainActor
-    func searchReturnRouteRestores() throws {
+    func setMeetingsQueryRoutesToMeetings() throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
-        let meetingID = UUID()
-        fix.core.select(meetingID)
-        #expect(fix.core.route == .meeting(meetingID))
-
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
-        #expect(fix.core.searchReturnRoute == .meeting(meetingID))
-
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .meeting(meetingID))
-        #expect(fix.core.searchReturnRoute == nil)
+        fix.core.setMeetingsQuery("test")
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsQuery == "test")
     }
 
-    @Test("dismissSearch defaults to home when no saved route")
+    @Test("setMeetingsQuery empty clears results")
     @MainActor
-    func searchReturnRouteDefaultsToHome() throws {
+    func setMeetingsQueryEmptyClearsResults() throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .home)
-    }
-
-    @Test("search preserves settings route")
-    @MainActor
-    func searchPreservesSettingsRoute() throws {
-        let fix = try makeCoreFixture(testName: "BackgroundTests")
-        defer { fix.cleanup() }
-
-        fix.core.showSettings()
-        #expect(fix.core.route == .settings)
-
-        fix.core.presentSearch()
-        #expect(fix.core.route == .search)
-        #expect(fix.core.searchReturnRoute == .settings)
-
-        fix.core.dismissSearch()
-        #expect(fix.core.route == .settings)
+        fix.core.setMeetingsQuery("test")
+        fix.core.setMeetingsQuery("")
+        #expect(fix.core.meetingsResults.isEmpty)
+        #expect(fix.core.isSearchingMeetings == false)
     }
 }
 
@@ -927,15 +914,16 @@ struct AppCoreRecordingRunStateTests {
         #expect(fix.core.summaries.count == 1)
     }
 
-    @Test("stopRecording routes to meeting detail")
+    @Test("stopRecording routes to meetings with selection")
     @MainActor
-    func stopRecordingRoutesToMeetingDetail() async throws {
+    func stopRecordingRoutesToMeetings() async throws {
         let fix = try makeCoreFixture(testName: "BackgroundTests")
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
         let meetingID = await fix.core.stopRecording()
-        #expect(try fix.core.route == .meeting(#require(meetingID)))
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsSelection == meetingID)
     }
 
     @Test("stopRecording enqueues transcription")

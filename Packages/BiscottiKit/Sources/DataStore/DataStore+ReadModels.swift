@@ -13,19 +13,27 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
     public let hasTranscript: Bool
     /// The recording's wall-clock duration in seconds, or `nil` if unknown.
     public let recordingDuration: TimeInterval?
+    /// Organizer-first, deduped participants (capped at 5 for display).
+    public let participants: [PersonData]
+    /// Total distinct participant count (drives the "+N" badge).
+    public let participantCount: Int
 
     public init(
         id: UUID,
         title: String,
         date: Date,
         hasTranscript: Bool,
-        recordingDuration: TimeInterval? = nil
+        recordingDuration: TimeInterval? = nil,
+        participants: [PersonData] = [],
+        participantCount: Int = 0
     ) {
         self.id = id
         self.title = title
         self.date = date
         self.hasTranscript = hasTranscript
         self.recordingDuration = recordingDuration
+        self.participants = participants
+        self.participantCount = participantCount
     }
 }
 
@@ -114,6 +122,10 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
 public struct AppSettingsData: Sendable, Equatable {
     public var customVocabulary: [String]
     public var launchAtLogin: Bool
+    /// When true, closing the last window or pressing Cmd+Q terminates the app.
+    /// When false (the default), those actions just hide the window and the app
+    /// stays alive in the menu bar.
+    public var exitOnWindowClose: Bool
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
@@ -121,11 +133,13 @@ public struct AppSettingsData: Sendable, Equatable {
     public init(
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
+        exitOnWindowClose: Bool = false,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
+        self.exitOnWindowClose = exitOnWindowClose
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
     }
@@ -246,9 +260,12 @@ public struct SearchHit: Sendable, Identifiable, Equatable {
 // MARK: - DataStore Query Methods
 
 public extension DataStore {
-    /// Returns summaries of recent meetings, sorted by effective date
+    /// Returns summaries of meetings, sorted by effective date
     /// (`startDate ?? createdAt`) descending.
-    func meetingSummaries(limit: Int) throws -> [MeetingSummary] {
+    ///
+    /// - Parameter limit: Maximum number of summaries to return.
+    ///   Pass `nil` (the default) to return all meetings.
+    func meetingSummaries(limit: Int? = nil) throws -> [MeetingSummary] {
         // Fetch all meetings and sort by effective date in-memory.
         // SwiftData predicates cannot express coalesce(startDate, createdAt).
         // TODO: consider a denormalized effectiveDate column for DB-level sort
@@ -260,13 +277,27 @@ public extension DataStore {
             let dateR = rhs.startDate ?? rhs.createdAt
             return dateL > dateR
         }
-        return Array(sorted.prefix(limit)).map { meeting in
-            MeetingSummary(
+        let capped = limit.map { Array(sorted.prefix($0)) } ?? sorted
+        return capped.map { meeting in
+            // Build organizer-first, deduped participant list (capped at 5)
+            let allPeople: [Person] = ([meeting.organizer].compactMap(\.self) + meeting.participants)
+            var deduped: [Person] = []
+            var seenIDs: Set<UUID> = []
+            for person in allPeople where seenIDs.insert(person.id).inserted {
+                deduped.append(person)
+            }
+            let mappedParticipants = deduped.prefix(5).map {
+                PersonData(id: $0.id, name: $0.name, email: $0.email)
+            }
+
+            return MeetingSummary(
                 id: meeting.id,
                 title: meeting.title,
                 date: meeting.startDate ?? meeting.createdAt,
                 hasTranscript: meeting.preferredTranscriptID != nil,
-                recordingDuration: meeting.recordingDuration
+                recordingDuration: meeting.recordingDuration,
+                participants: mappedParticipants,
+                participantCount: deduped.count
             )
         }
     }
@@ -348,6 +379,7 @@ public extension DataStore {
             return AppSettingsData(
                 customVocabulary: existing.customVocabulary,
                 launchAtLogin: existing.launchAtLogin,
+                exitOnWindowClose: existing.exitOnWindowClose,
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs
             )
@@ -374,6 +406,7 @@ public extension DataStore {
         var dto = AppSettingsData(
             customVocabulary: model.customVocabulary,
             launchAtLogin: model.launchAtLogin,
+            exitOnWindowClose: model.exitOnWindowClose,
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs
         )
@@ -381,6 +414,7 @@ public extension DataStore {
 
         model.customVocabulary = dto.customVocabulary
         model.launchAtLogin = dto.launchAtLogin
+        model.exitOnWindowClose = dto.exitOnWindowClose
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         try save()

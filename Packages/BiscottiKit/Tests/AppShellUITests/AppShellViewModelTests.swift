@@ -1,60 +1,37 @@
 import BiscottiTestSupport
 import Calendar
 import Foundation
-import SearchUI
 import Testing
 @testable import AppCore
 @testable import AppShellUI
 
 // MARK: - Tests
 
-@Suite("AppShellViewModel -- sidebar state")
-struct AppShellSidebarTests {
-    @Test("recordButtonDisabled is false when not recording")
+@Suite("AppShellViewModel -- recording state")
+struct AppShellRecordingStateTests {
+    @Test("isRecording is false when idle")
     @MainActor
-    func recordButtonEnabledWhenIdle() throws {
+    func isRecordingFalseWhenIdle() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.recordButtonDisabled == false)
+        #expect(viewModel.isRecording == false)
     }
 
-    @Test("recordButtonDisabled is true when recording")
+    @Test("isRecording is true when recording")
     @MainActor
-    func recordButtonDisabledWhenRecording() async throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        await fix.core.startRecording()
-
-        let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.recordButtonDisabled == true)
-    }
-
-    @Test("showRecordingIndicator is false when not recording")
-    @MainActor
-    func recordingIndicatorHiddenWhenIdle() throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.showRecordingIndicator == false)
-    }
-
-    @Test("showRecordingIndicator is true when recording")
-    @MainActor
-    func recordingIndicatorShownWhenRecording() async throws {
+    func isRecordingTrueWhenRecording() async throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
 
         let viewModel = AppShellViewModel(core: fix.core)
-        #expect(viewModel.showRecordingIndicator == true)
+        #expect(viewModel.isRecording == true)
     }
 
-    @Test("recordingElapsedText formats correctly at zero")
+    @Test("recordingElapsedText formats M:SS at zero")
     @MainActor
     func recordingElapsedTextZero() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
@@ -62,6 +39,20 @@ struct AppShellSidebarTests {
 
         let viewModel = AppShellViewModel(core: fix.core)
         #expect(viewModel.recordingElapsedText == "0:00")
+    }
+
+    @Test("formatElapsed handles minutes and seconds")
+    func formatElapsedMinutesSeconds() {
+        #expect(AppShellViewModel.formatElapsed(0) == "0:00")
+        #expect(AppShellViewModel.formatElapsed(5) == "0:05")
+        #expect(AppShellViewModel.formatElapsed(65) == "1:05")
+        #expect(AppShellViewModel.formatElapsed(113) == "1:53")
+    }
+
+    @Test("formatElapsed handles hours")
+    func formatElapsedHours() {
+        #expect(AppShellViewModel.formatElapsed(3661) == "1:01:01")
+        #expect(AppShellViewModel.formatElapsed(7200) == "2:00:00")
     }
 }
 
@@ -88,16 +79,17 @@ struct AppShellRoutingTests {
         #expect(viewModel.route == .recording)
     }
 
-    @Test("route is .meeting after selecting a meeting")
+    @Test("route is .meetings after selecting a meeting")
     @MainActor
-    func routeMeetingAfterSelect() throws {
+    func routeMeetingsAfterSelect() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let viewModel = AppShellViewModel(core: fix.core)
         let meetingID = UUID()
         fix.core.select(meetingID)
-        #expect(viewModel.route == .meeting(meetingID))
+        #expect(viewModel.route == .meetings)
+        #expect(viewModel.meetingsSelection == meetingID)
     }
 
     @Test("showRecording navigates back to recording screen")
@@ -292,38 +284,29 @@ struct AppShellUpcomingSearchTests {
         #expect(shellVM.hasCalendarAccess == false)
     }
 
-    @Test("search text triggers presentSearch and dismissSearch")
+    @Test("setMeetingsQuery forwards to core and routes to meetings")
     @MainActor
-    func searchTextTriggersPresentSearch() throws {
+    func setMeetingsQueryForwards() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-
-        // Non-empty text triggers search
-        shellVM.onSearchTextChange("meeting")
-        #expect(fix.core.route == .search)
-
-        // Empty text dismisses search
-        shellVM.onSearchTextChange("")
-        #expect(fix.core.route != .search)
+        shellVM.setMeetingsQuery("meeting")
+        #expect(fix.core.route == .meetings)
+        #expect(fix.core.meetingsQuery == "meeting")
     }
 
-    @Test("clearSearch resets text and route")
+    @Test("setMeetingsQuery empty clears search state")
     @MainActor
-    func clearSearchResetsTextAndRoute() throws {
+    func setMeetingsQueryEmptyClears() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-
-        shellVM.searchText = "hello"
-        shellVM.onSearchTextChange("hello")
-        #expect(fix.core.route == .search)
-
-        shellVM.clearSearch()
-        #expect(shellVM.searchText == "")
-        #expect(fix.core.route != .search)
+        shellVM.setMeetingsQuery("hello")
+        shellVM.setMeetingsQuery("")
+        #expect(fix.core.meetingsQuery == "")
+        #expect(fix.core.meetingsResults.isEmpty)
     }
 
     @Test("showHome routes to home")
@@ -395,6 +378,44 @@ struct AppShellUpcomingSearchTests {
         #expect(text2 == "in 1h 30m")
     }
 
+    @Test("timeText uses coarse formatting for distant events")
+    @MainActor
+    func timeTextCoarseTiers() {
+        let now = Date()
+
+        // 6 hours in the future (>3h tier: hours only, no minutes)
+        let event3 = CalendarEvent(
+            id: "e3",
+            title: "T3",
+            start: now.addingTimeInterval(6 * 3600 + 1200), // 6h 20m
+            end: now.addingTimeInterval(6 * 3600 + 4800),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text3 = AppShellViewModel.timeText(for: event3, relativeTo: now)
+        #expect(text3 == "in 6h")
+
+        // 3 days in the future (>=1 day tier: days only)
+        let event4 = CalendarEvent(
+            id: "e4",
+            title: "T4",
+            start: now.addingTimeInterval(3 * 86400),
+            end: now.addingTimeInterval(3 * 86400 + 3600),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text4 = AppShellViewModel.timeText(for: event4, relativeTo: now)
+        #expect(text4 == "in 3 days")
+    }
+
     @Test("timeText returns 'now' for past events")
     @MainActor
     func timeTextPast() {
@@ -415,32 +436,15 @@ struct AppShellUpcomingSearchTests {
         #expect(text == "now")
     }
 
-    @Test("search text updates searchViewModel query")
+    @Test("meetingsQuery passthrough reflects core state")
     @MainActor
-    func searchTextUpdatesSearchVM() throws {
+    func meetingsQueryPassthrough() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        shellVM.onSearchTextChange("meeting")
-
-        #expect(shellVM.searchViewModel.query == "meeting")
-        #expect(fix.core.route == .search)
-    }
-
-    @Test("clearSearch resets searchViewModel query")
-    @MainActor
-    func clearSearchResetsSearchVM() throws {
-        let fix = try makeCoreFixture(testName: "AppShellUITests")
-        defer { fix.cleanup() }
-
-        let shellVM = AppShellViewModel(core: fix.core)
-        shellVM.onSearchTextChange("hello")
-        #expect(shellVM.searchViewModel.query == "hello")
-
-        shellVM.clearSearch()
-        #expect(shellVM.searchViewModel.query == "")
-        #expect(shellVM.searchText == "")
+        shellVM.setMeetingsQuery("hello")
+        #expect(shellVM.meetingsQuery == "hello")
     }
 
     @Test("homeViewModel is stable across accesses")
@@ -455,42 +459,70 @@ struct AppShellUpcomingSearchTests {
         #expect(home1 === home2)
     }
 
-    @Test("searchViewModel is stable across accesses")
+    @Test("showMeetings routes to meetings")
     @MainActor
-    func searchVMStable() throws {
+    func showMeetingsRoutes() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        let search1 = shellVM.searchViewModel
-        let search2 = shellVM.searchViewModel
-        #expect(search1 === search2)
+        shellVM.showMeetings()
+        #expect(shellVM.route == .meetings)
+    }
+}
+
+// MARK: - isHome and searchFocusToken tests
+
+@Suite("AppShellViewModel -- isHome")
+struct AppShellIsHomeTests {
+    @Test("isHome is true when route is .home")
+    @MainActor
+    func isHomeTrueOnHome() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.isHome == true)
     }
 
-    @Test("back from search returns to the page user was on, not .home")
+    @Test("isHome is false when route is not .home")
     @MainActor
-    func backFromSearchReturnsToOriginalPage() throws {
+    func isHomeFalseOnOtherRoutes() throws {
         let fix = try makeCoreFixture(testName: "AppShellUITests")
         defer { fix.cleanup() }
 
         let shellVM = AppShellViewModel(core: fix.core)
-        let meetingID = UUID()
+        fix.core.showSettings()
+        #expect(shellVM.isHome == false)
 
-        // Navigate to a meeting
-        fix.core.select(meetingID)
-        #expect(shellVM.route == .meeting(meetingID))
+        fix.core.showMeetings()
+        #expect(shellVM.isHome == false)
+    }
+}
 
-        // Enter search via typing (multiple keystrokes)
-        shellVM.onSearchTextChange("m")
-        shellVM.onSearchTextChange("me")
-        shellVM.onSearchTextChange("meeting")
-        #expect(shellVM.route == .search)
+@Suite("AppShellViewModel -- searchFocusToken")
+struct AppShellSearchFocusTests {
+    @Test("searchFocusToken starts at zero")
+    @MainActor
+    func tokenStartsAtZero() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
 
-        // Clear search (simulates tapping Back)
-        shellVM.clearSearch()
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.searchFocusToken == 0)
+    }
 
-        // Should return to the meeting, not .home
-        #expect(shellVM.route == .meeting(meetingID))
+    @Test("focusSearch increments searchFocusToken")
+    @MainActor
+    func focusSearchIncrementsToken() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.focusSearch()
+        #expect(shellVM.searchFocusToken == 1)
+        shellVM.focusSearch()
+        #expect(shellVM.searchFocusToken == 2)
     }
 }
 
@@ -498,11 +530,11 @@ struct AppShellUpcomingSearchTests {
 
 @Suite("AppShellViewModel -- upcoming display cap")
 struct AppShellUpcomingCapTests {
-    @Test("upcomingEvents capped at 5")
+    @Test("upcomingEvents capped at 6")
     @MainActor
-    func upcomingEventsCappedAt5() async throws {
+    func upcomingEventsCappedAt6() async throws {
         let now = Date()
-        let dtos = (0 ..< 8).map { idx in
+        let dtos = (0 ..< 9).map { idx in
             EKEventDTO(
                 eventIdentifier: "ev-cap-\(idx)",
                 calendarItemIdentifier: "ci-cap-\(idx)",
@@ -546,14 +578,14 @@ struct AppShellUpcomingCapTests {
         }
         await fix.core.onLaunch()
 
-        // Core should have more than 5 upcoming
-        #expect(fix.core.displayedUpcoming.count > 5)
+        // Core should have more than 6 upcoming
+        #expect(fix.core.displayedUpcoming.count > 6)
 
         let shellVM = AppShellViewModel(core: fix.core)
-        // Sidebar caps at 5
-        #expect(shellVM.upcomingEvents.count == 5)
-        // Preserves order (first 5)
+        // Sidebar caps at 6
+        #expect(shellVM.upcomingEvents.count == 6)
+        // Preserves order (first 6)
         #expect(shellVM.upcomingEvents.first?.title == "Cap Event 0")
-        #expect(shellVM.upcomingEvents.last?.title == "Cap Event 4")
+        #expect(shellVM.upcomingEvents.last?.title == "Cap Event 5")
     }
 }

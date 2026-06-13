@@ -375,8 +375,11 @@ struct TranscriptionConcurrencyTests {
             await service.transcribe(meetingID: meetingID1)
         }
 
-        // Give the first job time to set inFlightMeetingID
-        try await Task.sleep(for: .milliseconds(50))
+        // Poll until the first job has started (observable via its status).
+        for _ in 0 ..< 200 {
+            if service.jobs[meetingID1] != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         // Try to start a second job while the first is in-flight
         await service.transcribe(meetingID: meetingID2)

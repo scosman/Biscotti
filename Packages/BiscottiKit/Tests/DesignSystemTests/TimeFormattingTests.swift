@@ -107,3 +107,107 @@ struct RelativeTimeTextTests {
         #expect(text(59 * 60 + 30) == "in 1h")
     }
 }
+
+// MARK: - coarseRelativeTimeText
+
+@Suite("TimeFormatting -- coarseRelativeTimeText")
+struct CoarseRelativeTimeTextTests {
+    private func coarse(_ interval: TimeInterval) -> String {
+        let now = Date()
+        let future = now.addingTimeInterval(interval)
+        return TimeFormatting.coarseRelativeTimeText(future, relativeTo: now)
+    }
+
+    // MARK: - Day tier (>= 1 day)
+
+    @Test("multi-day: 3 days shows in 3 days")
+    func threeDays() {
+        #expect(coarse(3 * 24 * 3600) == "in 3 days")
+    }
+
+    @Test("1 day singular: exactly 24h shows in 1 day")
+    func oneDayExact() {
+        #expect(coarse(24 * 3600) == "in 1 day")
+    }
+
+    @Test("1 day singular: 25h still shows in 1 day")
+    func twentyFiveHours() {
+        #expect(coarse(25 * 3600) == "in 1 day")
+    }
+
+    @Test("just under 2 days shows in 1 day")
+    func justUnderTwoDays() {
+        // 47h 59m = 2879 minutes, which is 1 day (2879/1440 = 1)
+        #expect(coarse(47 * 3600 + 59 * 60) == "in 1 day")
+    }
+
+    // MARK: - Hours-only tier (> 3h and < 1 day)
+
+    @Test("> 3h but < 1 day: 5h shows in 5h with no minutes")
+    func fiveHours() {
+        #expect(coarse(5 * 3600) == "in 5h")
+    }
+
+    @Test("> 3h: 5h 30m shows in 5h (minutes dropped)")
+    func fiveAndHalfHours() {
+        #expect(coarse(5 * 3600 + 30 * 60) == "in 5h")
+    }
+
+    @Test("> 3h: 4h shows in 4h")
+    func fourHours() {
+        #expect(coarse(4 * 3600) == "in 4h")
+    }
+
+    @Test("> 3h boundary: 3h 1m shows in 3h (hours-only tier)")
+    func threeHoursOneMinute() {
+        // 181 minutes > 180 -> hours-only tier, totalHours = 3
+        #expect(coarse(3 * 3600 + 60) == "in 3h")
+    }
+
+    @Test("> 3h boundary: 3h 31m shows hours-only")
+    func threeHoursThirtyOneMinutes() {
+        // 211 minutes > 180 -> hours-only tier, totalHours = 3
+        #expect(coarse(3 * 3600 + 31 * 60) == "in 3h")
+    }
+
+    @Test("> 3h boundary: 3h 59m shows hours-only")
+    func threeHoursFiftyNineMinutes() {
+        // 239 minutes > 180 -> hours-only tier, totalHours = 3
+        #expect(coarse(3 * 3600 + 59 * 60) == "in 3h")
+    }
+
+    @Test("> 3h boundary: 4h 0m 1s rounds to 4h 1m in full but shows in 4h")
+    func fourHoursOneSecond() {
+        // totalMinutes = ceil(14401/60) = 241, totalHours = 4 -> > 3 -> "in 4h"
+        #expect(coarse(4 * 3600 + 1) == "in 4h")
+    }
+
+    // MARK: - Full precision tier (<= 3h)
+
+    @Test("<= 3h: 2h 15m shows full precision")
+    func twoHoursFifteenMinutes() {
+        #expect(coarse(2 * 3600 + 15 * 60) == "in 2h 15m")
+    }
+
+    @Test("<= 3h: 45m shows minutes")
+    func fortyFiveMinutes() {
+        #expect(coarse(45 * 60) == "in 45m")
+    }
+
+    @Test("<= 3h: exactly 3h shows in 3h")
+    func threeHoursExact() {
+        #expect(coarse(3 * 3600) == "in 3h")
+    }
+
+    // MARK: - Edge cases
+
+    @Test("past returns now")
+    func pastReturnsNow() {
+        #expect(coarse(-60) == "now")
+    }
+
+    @Test("zero returns now")
+    func zeroReturnsNow() {
+        #expect(coarse(0) == "now")
+    }
+}

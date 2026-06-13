@@ -337,7 +337,6 @@ public func makeCoreFixture(
     startError: (any Error)? = nil,
     probableDenied: Bool = false,
     stateValues: [CaptureState] = [],
-    summaryLimit: Int = 50,
     denialCheckDelay: Duration = .seconds(60),
     calendarAuthStatus: CalendarAuthStatus = .authorized,
     calendarInfos: [CalendarInfo] = [],
@@ -430,8 +429,7 @@ public func makeCoreFixture(
         calendar: calendarService,
         detector: detector,
         notifications: notificationService,
-        scheduler: scheduler,
-        summaryLimit: summaryLimit
+        scheduler: scheduler
     )
 
     return CoreFixture(

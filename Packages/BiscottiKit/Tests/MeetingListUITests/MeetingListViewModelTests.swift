@@ -5,7 +5,7 @@ import Testing
 @testable import AppCore
 @testable import MeetingListUI
 
-// MARK: - Tests
+// MARK: - Core projection tests
 
 @Suite("MeetingListViewModel")
 struct MeetingListViewModelTests {
@@ -35,229 +35,146 @@ struct MeetingListViewModelTests {
         #expect(viewModel.meetings.isEmpty)
     }
 
-    @Test("select updates route to .meeting")
+    @Test("select sets meetingsSelection (in-list selection, preserves route)")
     @MainActor
-    func selectUpdatesRoute() throws {
+    func selectSetsSelection() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
+        fix.core.showMeetings()
         let viewModel = MeetingListViewModel(core: fix.core)
         let meetingID = UUID()
         viewModel.select(meetingID)
 
-        #expect(fix.core.route == .meeting(meetingID))
+        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.route == .meetings)
     }
 
-    @Test("selectedMeetingID reflects current route")
+    @Test("selectedID reflects current meetingsSelection")
     @MainActor
-    func selectedMeetingIDReflectsRoute() throws {
+    func selectedIDReflectsSelection() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
         let viewModel = MeetingListViewModel(core: fix.core)
 
-        #expect(viewModel.selectedMeetingID == nil)
+        #expect(viewModel.selectedID == nil)
 
         let meetingID = UUID()
         fix.core.select(meetingID)
-        #expect(viewModel.selectedMeetingID == meetingID)
+        #expect(viewModel.selectedID == meetingID)
     }
 
-    @Test("selectedMeetingID is nil when route is .home")
+    @Test("selectedID is nil when route is .home")
     @MainActor
-    func selectedMeetingIDNilWhenHome() throws {
+    func selectedIDNilWhenHome() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
         let viewModel = MeetingListViewModel(core: fix.core)
-        #expect(viewModel.selectedMeetingID == nil)
+        #expect(viewModel.selectedID == nil)
     }
 
-    @Test("selectedMeetingID is nil when route is .recording")
+    @Test("selectedID is nil when route is .recording")
     @MainActor
-    func selectedMeetingIDNilWhenRecording() async throws {
+    func selectedIDNilWhenRecording() async throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
         let viewModel = MeetingListViewModel(core: fix.core)
-        #expect(viewModel.selectedMeetingID == nil)
-    }
-
-    @Test("relativeDate produces non-empty string")
-    @MainActor
-    func relativeDateFormatsCorrectly() {
-        let oneHourAgo = Date().addingTimeInterval(-3600)
-        let result = MeetingListViewModel.relativeDate(oneHourAgo)
-        #expect(!result.isEmpty)
+        #expect(viewModel.selectedID == nil)
     }
 }
 
-// MARK: - Grouping tests
+// MARK: - Mode tests
 
-@Suite("MeetingListViewModel -- groupByEffectiveDate")
-struct MeetingListGroupingTests {
-    /// Creates a MeetingSummary with a specific date.
-    private static func makeSummary(
-        title: String,
-        date: Date,
-        id: UUID = UUID()
-    ) -> MeetingSummary {
-        MeetingSummary(
-            id: id,
-            title: title,
-            date: date,
-            hasTranscript: false
-        )
-    }
-
-    @Test("groups meetings into Today, Yesterday, This Week, Earlier")
+@Suite("MeetingListViewModel -- mode")
+struct MeetingListModeTests {
+    @Test("mode is .browse when query is empty")
     @MainActor
-    func pastListGroupsByEffectiveDate() {
-        let cal = Foundation.Calendar.current
-        let now = Date()
-        let startOfToday = cal.startOfDay(for: now)
-
-        let todayMeeting = Self.makeSummary(
-            title: "Today",
-            date: startOfToday.addingTimeInterval(3600) // 1am today
-        )
-        let yesterdayMeeting = Self.makeSummary(
-            title: "Yesterday",
-            date: startOfToday.addingTimeInterval(-3600) // yesterday 11pm
-        )
-        let earlierMeeting = Self.makeSummary(
-            title: "Last Month",
-            date: startOfToday.addingTimeInterval(-30 * 24 * 3600)
-        )
-
-        let groups = MeetingListViewModel.groupByEffectiveDate(
-            [todayMeeting, yesterdayMeeting, earlierMeeting],
-            relativeTo: now,
-            calendar: cal
-        )
-
-        // Should have at least 2 groups (Today, Yesterday or Earlier depending on week)
-        #expect(groups.count >= 2)
-        #expect(groups.first?.title == "Today")
-        #expect(groups.first?.meetings.count == 1)
-        #expect(groups.first?.meetings.first?.title == "Today")
-    }
-
-    @Test("omits empty groups")
-    @MainActor
-    func pastListOmitsEmptyGroups() {
-        let cal = Foundation.Calendar.current
-        let now = Date()
-        let startOfToday = cal.startOfDay(for: now)
-
-        // Only one meeting from today -> only one group
-        let todayMeeting = Self.makeSummary(
-            title: "Today Only",
-            date: startOfToday.addingTimeInterval(100)
-        )
-
-        let groups = MeetingListViewModel.groupByEffectiveDate(
-            [todayMeeting],
-            relativeTo: now,
-            calendar: cal
-        )
-
-        #expect(groups.count == 1)
-        #expect(groups.first?.title == "Today")
-    }
-
-    @Test("sorts newest first within group")
-    @MainActor
-    func pastListSortsNewestFirst() {
-        let cal = Foundation.Calendar.current
-        let now = Date()
-        let startOfToday = cal.startOfDay(for: now)
-
-        let earlier = Self.makeSummary(
-            title: "Morning",
-            date: startOfToday.addingTimeInterval(100)
-        )
-        let later = Self.makeSummary(
-            title: "Afternoon",
-            date: startOfToday.addingTimeInterval(50000)
-        )
-
-        let groups = MeetingListViewModel.groupByEffectiveDate(
-            [earlier, later],
-            relativeTo: now.addingTimeInterval(86400), // "now" is tomorrow so both are "yesterday" or "today"
-            calendar: cal
-        )
-
-        // Within each group, newest first
-        if let first = groups.first {
-            if first.meetings.count >= 2 {
-                #expect(first.meetings[0].date > first.meetings[1].date)
-            }
-        }
-    }
-
-    @Test("empty input produces empty groups")
-    @MainActor
-    func groupingEmptyInput() {
-        let groups = MeetingListViewModel.groupByEffectiveDate([])
-        #expect(groups.isEmpty)
-    }
-
-    @Test("grouping uses effective date (startDate when present, else createdAt)")
-    @MainActor
-    func groupingUsesEffectiveDate() {
-        let cal = Foundation.Calendar.current
-        let now = Date()
-        let startOfToday = cal.startOfDay(for: now)
-
-        // Simulate a meeting whose effective date (= startDate) is yesterday,
-        // even though we construct it "now". The MeetingSummary.date field
-        // IS the effective date -- DataStore resolves startDate vs createdAt
-        // before populating the DTO. This test verifies groupByEffectiveDate
-        // sorts on that resolved date, not on some other timestamp.
-        let yesterdayEffective = Self.makeSummary(
-            title: "Started Yesterday",
-            date: startOfToday.addingTimeInterval(-7200) // 2 hours before today
-        )
-        let todayEffective = Self.makeSummary(
-            title: "Started Today",
-            date: startOfToday.addingTimeInterval(3600) // 1 hour into today
-        )
-
-        let groups = MeetingListViewModel.groupByEffectiveDate(
-            [yesterdayEffective, todayEffective],
-            relativeTo: now,
-            calendar: cal
-        )
-
-        // Should split into Today and Yesterday based on the effective date
-        #expect(groups.count == 2)
-
-        let todayGroup = groups.first { $0.id == "today" }
-        let yesterdayGroup = groups.first { $0.id == "yesterday" }
-
-        #expect(todayGroup?.meetings.count == 1)
-        #expect(todayGroup?.meetings.first?.title == "Started Today")
-        #expect(yesterdayGroup?.meetings.count == 1)
-        #expect(yesterdayGroup?.meetings.first?.title == "Started Yesterday")
-    }
-
-    @Test("groupedMeetings property mirrors static function")
-    @MainActor
-    func groupedMeetingsReflectsCore() async throws {
+    func modeIsBrowseWhenNoQuery() throws {
         let fix = try makeCoreFixture(testName: "MeetingListUITests")
         defer { fix.cleanup() }
 
-        _ = try await fix.store.createMeeting(title: "A")
-        _ = try await fix.store.createMeeting(title: "B")
-        await fix.core.reloadSummaries()
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.mode == .browse)
+    }
 
-        let listVM = MeetingListViewModel(core: fix.core)
-        let grouped = listVM.groupedMeetings
+    @Test("mode is .search when query is non-empty")
+    @MainActor
+    func modeIsSearchWhenQuerySet() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
 
-        // Should have at least one group containing the meetings
-        let totalMeetings = grouped.reduce(0) { $0 + $1.meetings.count }
-        #expect(totalMeetings == 2)
+        fix.core.setMeetingsQuery("test")
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.mode == .search)
+    }
+
+    @Test("results reflects core meetingsResults")
+    @MainActor
+    func resultsReflectsCore() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.results.isEmpty)
+    }
+
+    @Test("isSearching reflects core isSearchingMeetings")
+    @MainActor
+    func isSearchingReflectsCore() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.isSearching == false)
+    }
+
+    @Test("query reflects core meetingsQuery")
+    @MainActor
+    func queryReflectsCore() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        fix.core.setMeetingsQuery("hello")
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.query == "hello")
+    }
+}
+
+// MARK: - matchedFieldsText tests
+
+@Suite("MeetingListViewModel -- matchedFieldsText")
+struct MeetingListMatchedFieldsTests {
+    @Test("formats field names correctly")
+    func matchedFieldsTextFormats() {
+        let text = MeetingListViewModel.matchedFieldsText(
+            [.title, .transcript]
+        )
+        #expect(text == "title, transcript")
+
+        let single = MeetingListViewModel.matchedFieldsText([.people])
+        #expect(single == "people")
+
+        let all = MeetingListViewModel.matchedFieldsText(
+            [.title, .people, .transcript]
+        )
+        #expect(all == "title, people, transcript")
+
+        let empty = MeetingListViewModel.matchedFieldsText([])
+        #expect(empty == "")
+    }
+
+    @Test("includes notes field")
+    func matchedFieldsTextIncludesNotes() {
+        let text = MeetingListViewModel.matchedFieldsText(
+            [.title, .notes]
+        )
+        #expect(text == "title, notes")
+
+        let notesOnly = MeetingListViewModel.matchedFieldsText([.notes])
+        #expect(notesOnly == "notes")
     }
 }

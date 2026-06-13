@@ -1,4 +1,5 @@
 import AppCore
+import AppKit
 import Calendar
 import DesignSystem
 import HomeUI
@@ -6,19 +7,18 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
-import SearchUI
 import SettingsUI
 import SwiftUI
 
 /// The main app window: a `NavigationSplitView` with a sidebar (Home +
-/// Record indicator + Upcoming + Past grouped + Settings) and a detail
-/// pane routed by `AppCore.route`.
+/// Past Meetings + Upcoming + Settings) and a detail pane routed by
+/// `AppCore.route`. The stateful Record button lives in the toolbar.
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
-    /// Bound to the `.searchable` field via `.searchFocused`. Setting this
-    /// to `false` programmatically dismisses the search field's focus/caret.
-    @FocusState private var isSearchFieldFocused: Bool
+    /// Bound to the custom search `TextField` in the toolbar. Two-way synced
+    /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
+    @State private var searchText = ""
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -37,27 +37,90 @@ public struct AppShellView: View {
                 } detail: {
                     detailContent
                 }
-                .searchable(
-                    text: $viewModel.searchText,
-                    placement: .toolbar,
-                    prompt: "Search meetings\u{2026}"
-                )
-                .searchFocused($isSearchFieldFocused)
-                .onSubmit(of: .search) {
-                    viewModel.onSearchSubmit()
-                }
-                .onChange(of: viewModel.searchText) { _, newValue in
-                    viewModel.onSearchTextChange(newValue)
-                }
-                .onChange(of: isSearchFieldFocused) { _, focused in
-                    if focused {
-                        viewModel.onSearchFieldFocused()
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            viewModel.showHome()
+                        } label: {
+                            Image(systemName: "house")
+                        }
+                        .help("Home")
+                        .disabled(viewModel.isHome)
+                    }
+
+                    // Custom trailing group: search field + Record button.
+                    // Native `.searchable` always anchors to the trailing edge,
+                    // making it impossible to place a button to its right. We use
+                    // a custom TextField styled as a search field so the Record
+                    // button can sit to its right at the toolbar's trailing edge.
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                                .font(.body)
+                            TextField("Search", text: $searchText)
+                                .textFieldStyle(.plain)
+                                .font(.body)
+                                .frame(width: 160)
+                                .background(SearchFieldFocuser(
+                                    token: viewModel.searchFocusToken
+                                ))
+                            if !searchText.isEmpty {
+                                Button {
+                                    searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(.quinary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .fixedSize()
+
+                        if viewModel.isRecording {
+                            Button {
+                                viewModel.showRecording()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "record.circle")
+                                    Text(
+                                        "Recording\u{2026} \(viewModel.recordingElapsedText)"
+                                    )
+                                    .monospacedDigit()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Tokens.recordingRed)
+                            .help("Go to recording")
+                        } else {
+                            Button {
+                                Task { await viewModel.startRecording() }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "record.circle")
+                                        .foregroundStyle(Tokens.recordingRed)
+                                    Text("Record")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .help("Start recording")
+                        }
                     }
                 }
-                .onChange(
-                    of: viewModel.searchViewModel.dismissFocusCount
-                ) {
-                    isSearchFieldFocused = false
+                .onChange(of: searchText) { _, newValue in
+                    if newValue != viewModel.meetingsQuery {
+                        viewModel.setMeetingsQuery(newValue)
+                    }
+                }
+                .onChange(of: viewModel.meetingsQuery) { _, newValue in
+                    if newValue != searchText {
+                        searchText = newValue
+                    }
                 }
             }
         }
@@ -68,19 +131,12 @@ public struct AppShellView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            recordSection
-                .padding(.horizontal, Tokens.spacingSM)
-
-            if viewModel.showRecordingIndicator {
-                recordingIndicator
-                    .padding(.horizontal, Tokens.spacingSM)
-            }
-
-            Divider()
-                .padding(.vertical, Tokens.spacingSM)
-
             // Home row
             homeRow
+                .padding(.horizontal, Tokens.spacingSM)
+
+            // Past Meetings row
+            pastMeetingsRow
                 .padding(.horizontal, Tokens.spacingSM)
 
             Divider()
@@ -93,19 +149,6 @@ public struct AppShellView: View {
                 upcomingSection
             }
 
-            // Past section
-            Text("PAST")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
-                .padding(.horizontal, Tokens.spacingMD)
-                .padding(.bottom, Tokens.spacingXS)
-
-            ScrollView {
-                MeetingListView(
-                    viewModel: viewModel.meetingListViewModel
-                )
-            }
-
             Spacer()
 
             Divider()
@@ -116,37 +159,7 @@ public struct AppShellView: View {
                 .padding(.horizontal, Tokens.spacingSM)
                 .padding(.bottom, Tokens.spacingSM)
         }
-        .frame(minWidth: 180, idealWidth: 220)
-    }
-
-    private var recordSection: some View {
-        RecordButton(isDisabled: viewModel.recordButtonDisabled) {
-            Task { await viewModel.startRecording() }
-        }
-    }
-
-    private var recordingIndicator: some View {
-        Button {
-            viewModel.showRecording()
-        } label: {
-            HStack(spacing: Tokens.spacingSM) {
-                Circle()
-                    .fill(Tokens.recordingRed)
-                    .frame(width: 8, height: 8)
-
-                Text("Recording\u{2026}")
-                    .font(.callout)
-
-                Spacer()
-
-                Text(viewModel.recordingElapsedText)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(Tokens.secondaryText)
-            }
-            .padding(.vertical, Tokens.spacingXS)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .frame(minWidth: 100, idealWidth: 110)
     }
 
     private var homeRow: some View {
@@ -176,39 +189,35 @@ public struct AppShellView: View {
         )
     }
 
-    private var upcomingSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("UPCOMING")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
-                .padding(.horizontal, Tokens.spacingMD)
-                .padding(.bottom, Tokens.spacingXS)
-
-            ForEach(viewModel.upcomingEvents) { event in
-                Button {
-                    viewModel.selectEvent(event.id)
-                } label: {
-                    UpcomingEventRow(
-                        title: event.title,
-                        timeText: viewModel.tickTimeText(for: event),
-                        platformBadge: event.conferencePlatform,
-                        twoLine: true
+    private var pastMeetingsRow: some View {
+        Button {
+            viewModel.showMeetings()
+        } label: {
+            HStack(spacing: Tokens.spacingSM) {
+                Image(systemName: "clock")
+                    .foregroundStyle(
+                        viewModel.route == .meetings
+                            ? Color.accentColor
+                            : Tokens.secondaryText
                     )
-                    .padding(.vertical, Tokens.spacingXS)
-                    .padding(.horizontal, Tokens.spacingSM)
-                }
-                .buttonStyle(.plain)
-                .background(
-                    viewModel.route == .event(event.id)
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 4)
-                )
+                Text("Past Meetings")
+                    .font(.body)
+                Spacer()
             }
-
-            Divider()
-                .padding(.vertical, Tokens.spacingSM)
+            .padding(.vertical, Tokens.spacingXS)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background(
+            viewModel.route == .meetings
+                ? Color.accentColor.opacity(0.15)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+    }
+
+    private var upcomingSection: some View {
+        UpcomingSidebarSection(viewModel: viewModel)
     }
 
     private var settingsRow: some View {
@@ -251,20 +260,14 @@ public struct AppShellView: View {
                 viewModel: viewModel.recordingViewModel
             )
 
-        case let .meeting(meetingID):
-            MeetingDetailView(
-                viewModel: viewModel.meetingDetailViewModel(for: meetingID)
-            )
-            .id(meetingID)
+        case .meetings:
+            meetingsSplit
 
         case let .event(key):
             EventPreviewView(
                 viewModel: viewModel.eventPreviewViewModel(for: key)
             )
             .id(key)
-
-        case .search:
-            SearchView(viewModel: viewModel.searchViewModel)
 
         case .settings:
             SettingsView(viewModel: viewModel.settingsViewModel)
@@ -275,16 +278,153 @@ public struct AppShellView: View {
         }
     }
 
-    private var emptyPlaceholder: some View {
-        VStack(spacing: Tokens.spacingSM) {
-            Image(systemName: "waveform")
-                .font(.largeTitle)
+    /// The Meetings two-pane: native list + detail or placeholder.
+    private var meetingsSplit: some View {
+        MeetingsSplitView(viewModel: viewModel)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// The upcoming-events sidebar section.
+private struct UpcomingSidebarSection: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("UPCOMING")
+                .font(Tokens.sectionHeaderFont)
                 .foregroundStyle(Tokens.secondaryText)
-            Text("Select a meeting, or tap Record")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
+                .padding(.horizontal, Tokens.spacingMD)
+                .padding(.bottom, Tokens.spacingXS)
+
+            ForEach(viewModel.upcomingEvents) { event in
+                Button {
+                    viewModel.selectEvent(event.id)
+                } label: {
+                    UpcomingEventRow(
+                        title: event.title,
+                        timeText: viewModel.tickTimeText(for: event),
+                        platformBadge: event.conferencePlatform,
+                        twoLine: true
+                    )
+                    .padding(.vertical, Tokens.spacingXS)
+                    .padding(.horizontal, Tokens.spacingSM)
+                }
+                .buttonStyle(.plain)
+                .background(
+                    viewModel.route == .event(event.id)
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
+            }
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// The Meetings two-pane: native list + detail or placeholder.
+private struct MeetingsSplitView: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
+        HSplitView {
+            MeetingListView(
+                viewModel: viewModel.meetingListViewModel
+            )
+            .frame(minWidth: 180, idealWidth: 220, maxWidth: 420)
+
+            Group {
+                if let id = viewModel.meetingsSelection {
+                    MeetingDetailView(
+                        viewModel: viewModel.meetingDetailViewModel(for: id)
+                    )
+                    .id(id)
+                } else {
+                    ContentUnavailableView(
+                        "No Meeting Selected",
+                        systemImage: "quote.bubble",
+                        description: Text(
+                            "Select a meeting to see its transcript and details."
+                        )
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(minWidth: 360, maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Search field focus helper (AppKit first-responder)
+
+/// An invisible `NSViewRepresentable` placed as a `.background()` on the
+/// toolbar search `TextField`. When `token` changes (incremented by
+/// `AppCore.focusSearch()`), it walks up from its own `NSView` to find
+/// the hosting `NSTextField` and makes it the window's first responder.
+///
+/// SwiftUI's `@FocusState` is unreliable for `TextField`s hosted inside
+/// `ToolbarItemGroup` on macOS (the toolbar's NSToolbarItemViewer is in
+/// a separate hosting hierarchy). This uses AppKit's `makeFirstResponder`
+/// directly, which always works regardless of hosting context.
+private struct SearchFieldFocuser: NSViewRepresentable {
+    let token: UInt
+
+    func makeNSView(context _: Context) -> FocuserView {
+        FocuserView()
+    }
+
+    func updateNSView(_ nsView: FocuserView, context _: Context) {
+        guard token != nsView.lastToken else { return }
+        nsView.lastToken = token
+        // Skip the initial (token == 0) to avoid stealing focus on appear.
+        guard token > 0 else { return }
+        // Defer to the next run-loop pass so the view hierarchy is settled.
+        DispatchQueue.main.async {
+            nsView.focusNearestTextField()
+        }
+    }
+
+    final class FocuserView: NSView {
+        var lastToken: UInt = 0
+
+        /// Walks up the view hierarchy from this invisible view to find
+        /// the nearest `NSTextField` and makes it the first responder.
+        func focusNearestTextField() {
+            // Walk up a few levels looking for an editable NSTextField
+            // in the subtree. The SwiftUI TextField's backing NSTextField
+            // is typically a sibling or close ancestor-subtree peer.
+            var ancestor: NSView? = superview
+            for _ in 0 ..< 10 {
+                guard let current = ancestor else { break }
+                if let found = firstEditableTextField(in: current) {
+                    found.window?.makeFirstResponder(found)
+                    return
+                }
+                ancestor = current.superview
+            }
+        }
+
+        /// Depth-first search for the first editable `NSTextField` in
+        /// the given view's subtree.
+        private func firstEditableTextField(
+            in view: NSView
+        ) -> NSTextField? {
+            for subview in view.subviews {
+                if let textField = subview as? NSTextField,
+                   textField.isEditable
+                {
+                    return textField
+                }
+                if let found = firstEditableTextField(in: subview) {
+                    return found
+                }
+            }
+            return nil
+        }
     }
 }
 

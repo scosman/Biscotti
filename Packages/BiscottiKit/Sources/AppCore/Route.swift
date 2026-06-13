@@ -8,14 +8,12 @@ public enum Route: Sendable, Equatable {
     /// A recording is in progress; show the recording screen.
     case recording
 
-    /// A specific meeting is selected; show its detail screen.
-    case meeting(UUID)
+    /// The two-pane Meetings screen (list + detail). Selection state
+    /// lives in `AppCore.meetingsSelection`, not in the route.
+    case meetings
 
     /// An un-recorded upcoming calendar event (read-only preview), keyed by composite key.
     case event(String)
-
-    /// Search is active; show the search results pane.
-    case search
 
     /// In-window settings.
     case settings

@@ -45,7 +45,7 @@ struct BiscottiApp: App {
         // Single-instance Window (not WindowGroup) so `openWindow(id: "main")`
         // is idempotent — it reopens the one window, never spawns duplicates.
         // This is the right primitive for a single-main-window menu-bar app.
-        Window("Biscotti", id: "main") {
+        Window("", id: "main") {
             WindowRootView(launchState: appDelegate.launchState)
                 .frame(minWidth: 640, minHeight: 400)
                 .onReceive(NotificationCenter.default.publisher(
@@ -62,6 +62,50 @@ struct BiscottiApp: App {
                         appDelegate.handleWindowClosed()
                     }
                 }
+        }
+        .defaultSize(width: 1000, height: 640)
+        .commands {
+            // Replace the standard Settings menu item with one that
+            // navigates the main window to the in-window settings tab
+            // instead of opening a separate Settings window.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings\u{2026}") {
+                    appDelegate.showMainWindow()
+                    appDelegate.core?.showSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
+            // Replace the `.textEditing` group (Find submenu, Spelling &
+            // Grammar, Substitutions, Transformations, Speech) with our
+            // single "Find..." item. This eliminates the system's Find
+            // (which has its own Cmd+F targeting a text-finder responder
+            // action that does nothing in this app) so our Cmd+F is the
+            // sole binding. Standard clipboard (Cut/Copy/Paste/Select All)
+            // and Undo/Redo live in `.pasteboard` and `.undoRedo`
+            // respectively and are NOT affected by this replacement.
+            CommandGroup(replacing: .textEditing) {
+                Button("Find\u{2026}") {
+                    appDelegate.core?.focusSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
+
+            // Replace the standard Quit (Cmd+Q) with a custom handler.
+            // When "Exit app on window close" is OFF (default), Cmd+Q
+            // hides the window but keeps the menu-bar app alive. When
+            // ON, it terminates normally. The tray menu always has a
+            // real "Quit Biscotti" that terminates regardless.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Biscotti") {
+                    if appDelegate.launchState.exitOnWindowClose {
+                        NSApplication.shared.terminate(nil)
+                    } else {
+                        appDelegate.closeMainWindow()
+                    }
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
         }
 
         // Menu bar extra (native menu style)
@@ -108,6 +152,7 @@ private struct WindowRootView: View {
                 captured(id: "main")
             }
         }
+        .background(WindowTitleHider())
     }
 
     private func errorView(message: String) -> some View {
@@ -170,6 +215,12 @@ final class LaunchState: @unchecked Sendable {
     var menuBarViewModel: MenuBarViewModel?
     var launchError: String?
 
+    /// Cached "exit app on window close" setting. Read by
+    /// `applicationShouldTerminateAfterLastWindowClosed` and the
+    /// custom Cmd+Q handler. Updated from the store at launch and
+    /// whenever the user toggles the setting in preferences.
+    var exitOnWindowClose: Bool = false
+
     /// Closure that calls `openWindow(id: "main")`. Captured from
     /// `WindowRootView`'s `@Environment(\.openWindow)` on appear and
     /// shared with `AppDelegate.showMainWindow()` so it can create the
@@ -226,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         // assumeIsolated lets us call @MainActor code synchronously.
         MainActor.assumeIsolated {
             self.buildCore()
+            self.observeExitOnWindowCloseSetting()
         }
     }
 
@@ -234,7 +286,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     func applicationShouldTerminateAfterLastWindowClosed(
         _: NSApplication
     ) -> Bool {
-        false // Keep running in the menu bar.
+        // When the user has opted in to "Exit app on window close",
+        // closing the last window terminates. Otherwise the app stays
+        // alive in the menu bar (the default).
+        launchState.exitOnWindowClose
     }
 
     /// Called when the user clicks the Dock icon while the app is running
@@ -355,11 +410,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             // Register launch-at-login (default ON)
             registerLaunchAtLogin()
             logger.info("buildCore: registerLaunchAtLogin done")
+
+            // Load the cached "exit on window close" setting so the
+            // synchronous applicationShouldTerminateAfterLastWindowClosed
+            // and the Cmd+Q handler can read it without an async hop.
+            loadExitOnWindowCloseSetting(from: appCore)
         } catch {
             logger.error("buildCore: FAILED — \(error)")
             launchState.launchError = error.localizedDescription
         }
         logger.info("buildCore: done")
+    }
+
+    /// Reads the "exit on window close" setting from the store and
+    /// caches it on `launchState` for synchronous access.
+    @MainActor
+    private func loadExitOnWindowCloseSetting(from appCore: AppCore) {
+        Task { @MainActor in
+            let settings = try? await appCore.store.settings()
+            launchState.exitOnWindowClose = settings?.exitOnWindowClose ?? false
+        }
+    }
+
+    /// Observes `exitOnWindowCloseDidChange` notifications and refreshes
+    /// the cached setting. Uses `Task { @MainActor }` to avoid the
+    /// `#selector`/`assumeIsolated` concurrency pitfall.
+    @MainActor
+    private func observeExitOnWindowCloseSetting() {
+        Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .exitOnWindowCloseDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await core?.store.settings()
+                launchState.exitOnWindowClose = settings?.exitOnWindowClose ?? false
+            }
+        }
+    }
+
+    /// Closes the main window (if one exists). Used by the custom Cmd+Q
+    /// handler when the "exit on window close" setting is off.
+    @MainActor
+    func closeMainWindow() {
+        // Close all closable main-capable windows.
+        for window in NSApp.windows where window.canBecomeMain && window.isVisible {
+            window.close()
+        }
     }
 
     private func registerLaunchAtLogin() {
@@ -425,5 +521,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         notificationService?.foregroundPresentationOptions(
             for: notification
         ) ?? [.banner, .sound]
+    }
+}
+
+// MARK: - Window title hider
+
+/// An `NSViewRepresentable` that hides the hosting window's title text
+/// while preserving the toolbar, traffic lights, and draggable title bar.
+/// Placed as a `.background` on `WindowRootView` so it fires once the
+/// view is installed in a window.
+///
+/// Uses a custom `NSView` subclass that sets `titleVisibility`
+/// synchronously in `viewDidMoveToWindow()` — the earliest point the
+/// view has a window reference. Do NOT defer this via
+/// `DispatchQueue.main.async` — a post-layout titlebar mutation causes
+/// the toolbar to lay out at stale geometry on first paint (trailing
+/// items bunch left, overflow menu appears) until the next relayout.
+private struct WindowTitleHider: NSViewRepresentable {
+    func makeNSView(context _: Context) -> TitleHiderView {
+        TitleHiderView()
+    }
+
+    func updateNSView(_ nsView: TitleHiderView, context _: Context) {
+        // Re-apply in case the window was recreated (e.g. reopen from Dock).
+        nsView.window?.titleVisibility = .hidden
+        nsView.window?.title = ""
+    }
+
+    /// Custom NSView that hides the window title synchronously as soon
+    /// as it is added to a window, avoiding a deferred layout stutter.
+    final class TitleHiderView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.titleVisibility = .hidden
+            window?.title = ""
+        }
     }
 }

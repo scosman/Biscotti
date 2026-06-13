@@ -58,7 +58,7 @@ Dependencies flow strictly **downward** (a clean DAG; no cycles):
 ```
 L4  App glue        Biscotti.app  ·  BiscottiTranscriber.xpc
 L3b Window shell    AppShellUI  (window + sidebar + navigation; hosts the screens)
-L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI · SearchUI
+L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI
                     MenuBarUI · OnboardingUI · SettingsUI            (+ DesignSystem)
 L2  Coordination    AppCore  (the headless "background app" engine)
 L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary
@@ -215,9 +215,9 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 #### 15. AppShellUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the main window container — sidebar, navigation/routing, and which screen is shown.
-- **Must provide:** the sidebar (home, recording indicator, upcoming, past); routing between the screen modules; the search-takeover entry/exit; window chrome. Hosts the screens; owns no screen content itself.
+- **Must provide:** the sidebar (home, recording indicator, past meetings, upcoming, settings); routing between the screen modules; the Meetings two-pane (`HSplitView` list + detail); toolbar Home button and search field; window chrome. Hosts the screens; owns no screen content itself.
 - **Out of scope:** any screen's own content/logic (those are the screen modules).
-- **Depends on:** the window screen modules (Home/Recording/MeetingDetail/MeetingList/Search), AppCore, DesignSystem.
+- **Depends on:** the window screen modules (Home/Recording/MeetingDetail/MeetingList), AppCore, DesignSystem.
 - **Tested by:** routing/navigation view-model tests; views via previews.
 - **Deep-dive risk:** **low-medium.** **From:** none.
 
@@ -243,34 +243,27 @@ Each screen is its **own module** (cheap target) so screens come online independ
 - **Deep-dive risk:** **medium** (richest screen). **From:** none.
 
 #### 19. MeetingListUI  ·  *module in BiscottiKit*  ·  [V1]
-- **Owns:** the past/upcoming meeting lists.
-- **Must provide:** scrollable past-meetings list and upcoming list, with navigation into a meeting.
+- **Owns:** the Meetings-screen list (the left bar of the two-pane layout).
+- **Must provide:** grouped past meetings with sticky date-section headers (Today/Yesterday/Previous 7 Days/Previous 30 Days/month/year buckets); in-place search results (flat ranked list when a query is active); native `List(selection:)` driving the detail pane; empty/no-results states via `ContentUnavailableView`.
 - **Depends on:** DataStore, AppCore, DesignSystem.
-- **Tested by:** view-model unit tests; previews.
+- **Tested by:** view-model unit tests (date bucketing, mode derivation, formatting); previews.
 - **Deep-dive risk:** **low.** **From:** none.
 
-#### 20. SearchUI  ·  *module in BiscottiKit*  ·  [V1]
-- **Owns:** the search experience (the takeover view + results).
-- **Must provide:** live-filtering results as the user types, across title/people/transcripts; navigation into a result; back-to-previous-view.
-- **Depends on:** DataStore (search queries), AppCore, DesignSystem.
-- **Tested by:** view-model unit tests; previews.
-- **Deep-dive risk:** **low-medium.** **From:** none.
-
-#### 21. MenuBarUI  ·  *module in BiscottiKit*  ·  [V1]
+#### 20. MenuBarUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the tray/menu-bar experience + its view models.
 - **Must provide:** icon states (idle / next-meeting text with truncation / recording); body (recording status + start/stop, upcoming, recent w/ links, open-app, quit).
 - **Depends on:** AppCore, DataStore, DesignSystem.
 - **Tested by:** view-model unit tests; views via previews.
 - **Deep-dive risk:** **low-medium.** **From:** none.
 
-#### 22. OnboardingUI  ·  *module in BiscottiKit*  ·  [V1]
+#### 21. OnboardingUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the setup wizard.
 - **Must provide:** permission steps (mic, system-audio, calendar) with denial-fix guidance; calendar selection; model-download step with progress + disk check; optional demo.
 - **Depends on:** Permissions, Calendar, TranscriptionService (model status), DesignSystem, AppCore.
 - **Tested by:** view-model unit tests; flow validated manually.
 - **Deep-dive risk:** **medium.** **From:** none.
 
-#### 23. SettingsUI  ·  *module in BiscottiKit*  ·  [V1]
+#### 22. SettingsUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** settings screens.
 - **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle. **[P3]** audio file-usage view + deletion.
 - **Depends on:** Calendar, Vocabulary, DataStore, DesignSystem.
@@ -279,7 +272,7 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 ### App-glue targets (in the Xcode project — *not* packages)
 
-#### 24. Biscotti (app target)  ·  *app-project glue*  ·  [V1]
+#### 23. Biscotti (app target)  ·  *app-project glue*  ·  [V1]
 - **Owns:** the composition root and the irreducible Apple-platform glue.
 - **Must provide:** instantiate the DataStore container and wire AppCore + the two scenes (`AppShellUI` window + `MenuBarExtra`/`MenuBarUI`) incl. accessory (background) activation; entitlements, Info.plist usage strings, asset catalog; non-sandboxed config; third-party license attribution (e.g. argmax-oss-swift); launch-on-startup registration (`SMAppService`); App Intents; embed the XPC service. *(Developer ID / hardened runtime / notarization are configured by the separate Distribution project.)* **[P2]** global keyboard-shortcut registration.
 - **Out of scope:** business logic and screen content (all in packages).
@@ -287,7 +280,7 @@ Each screen is its **own module** (cheap target) so screens come online independ
 - **Tested by:** **app/UI test tier only** (non-gating CI); thin enough that little needs it.
 - **Deep-dive risk:** **low logic / medium integration.** **From:** none.
 
-#### 25. BiscottiTranscriber (XPC service)  ·  *app-project glue*  ·  [V1]
+#### 24. BiscottiTranscriber (XPC service)  ·  *app-project glue*  ·  [V1]
 - **Owns:** the crash-isolated host process for transcription.
 - **Must provide:** the `.xpc` service bundle, entry point, plist, and entitlements; link the Transcription package's worker and expose it across the XPC boundary; auto-relaunch by launchd.
 - **Out of scope:** the ML logic (lives in the Transcription package).
@@ -307,7 +300,7 @@ graph TD
   end
   subgraph BiscottiKit (one package, many targets)
     SHELL[AppShellUI]
-    HOME[HomeUI]; RECUI[RecordingUI]; DETAIL[MeetingDetailUI]; LIST[MeetingListUI]; SRCH[SearchUI]
+    HOME[HomeUI]; RECUI[RecordingUI]; DETAIL[MeetingDetailUI]; LIST[MeetingListUI]
     MENU[MenuBarUI]; ONB[OnboardingUI]; SET[SettingsUI]; DS[DesignSystem]
     CORE[AppCore]
     REC[Recording]; DET[MeetingDetection]; TS[TranscriptionService]; CAL[Calendar]; NOTIF[Notifications]; VOC[Vocabulary]
@@ -317,12 +310,11 @@ graph TD
 
   APP --> SHELL & MENU & CORE & STORE
   XPC --> TRX
-  SHELL --> HOME & RECUI & DETAIL & LIST & SRCH & CORE & DS
+  SHELL --> HOME & RECUI & DETAIL & LIST & CORE & DS
   HOME --> CORE & STORE & CAL & DS
   RECUI --> CORE & REC & DS
   DETAIL --> STORE & TS & CORE & DS
   LIST --> STORE & CORE & DS
-  SRCH --> STORE & CORE & DS
   MENU & ONB & SET --> CORE & DS
   ONB --> PERM & CAL & TS
   SET --> CAL & VOC & STORE
@@ -388,5 +380,5 @@ The package-vs-module calls, with their resolutions:
 1. **AudioCapture as its own package** (vs. a BiscottiKit module). **DECIDED: own package** — for engine isolation + its hardware test-app harness. (Weakest of the three splits since it has no heavy third-party dep, but the boundary is worth it.)
 2. **Recording / MeetingDetection split from AudioCapture.** **Kept** — the low-level engine (package) stays separate from the app-level services (modules) so the engine remains app/data-free and reusable.
 3. **DataStore as one module** (vs. splitting pure model types from the store/queries). **DECIDED: one module** — idiomatic for SwiftData `@Model`; the boundary-crossing data already uses plain `Sendable` DTOs from the engine packages, so the usual reason to split doesn't apply here. *Escape hatch:* if the DataStore build project hits real view-model-testing or strict-concurrency friction with live `@Model` objects, it may extract a pure `Models` leaf + mappers then — an internal, additive refactor (new leaf below DataStore; type-only dependents repoint), not a re-topology.
-4. **One UI module per screen** (Home, Recording, MeetingDetail, MeetingList, Search, plus MenuBar/Onboarding/Settings), with `AppShellUI` composing the window screens. **Chosen over a single `AppWindowUI`** so screens come online in different Projects (MVP ships Recording + MeetingDetail + basic List + Shell; Home/Search arrive later), each view-model unit-tests in isolation, and no screen becomes a god-module. Targets are cheap; this is the granularity sweet spot for UI. Collapse only if a screen is too thin to warrant its own module.
+4. **One UI module per screen** (Home, Recording, MeetingDetail, MeetingList, plus MenuBar/Onboarding/Settings), with `AppShellUI` composing the window screens. **Chosen over a single `AppWindowUI`** so screens come online in different Projects (MVP ships Recording + MeetingDetail + basic List + Shell; Home arrives later), each view-model unit-tests in isolation, and no screen becomes a god-module. Targets are cheap; this is the granularity sweet spot for UI. Collapse only if a screen is too thin to warrant its own module. *(SearchUI was originally planned as a separate screen module but was folded into MeetingListUI's in-place search mode during the Meetings 3-pane project.)*
 5. **Intelligence as its own package** — **kept** (quarantines llama.cpp); P2, easy to revisit.

@@ -45,6 +45,15 @@ public struct SettingsView: View {
                 "Launch at login",
                 isOn: launchAtLoginBinding
             )
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Exit app on window close",
+                    isOn: exitOnWindowCloseBinding
+                )
+                Text("When off, closing the window keeps Biscotti running in the menu bar.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
         }
     }
 
@@ -53,6 +62,15 @@ public struct SettingsView: View {
             get: { viewModel.launchAtLogin },
             set: { newValue in
                 Task { await viewModel.setLaunchAtLogin(newValue) }
+            }
+        )
+    }
+
+    private var exitOnWindowCloseBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.exitOnWindowClose },
+            set: { newValue in
+                Task { await viewModel.setExitOnWindowClose(newValue) }
             }
         )
     }

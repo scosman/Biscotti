@@ -31,7 +31,7 @@ public final class EventPreviewViewModel {
 
     /// The time window (in seconds) around the event start where
     /// "Join and Record" is the primary action. +/-15 minutes.
-    static let joinWindowSeconds: TimeInterval = 15 * 60
+    static let joinWindowSeconds: TimeInterval = MeetingTiming.joinWindowSeconds
 
     public init(
         core: AppCore,

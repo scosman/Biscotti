@@ -8,13 +8,12 @@ import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
-import SearchUI
 import SettingsUI
 
 /// View model for the app shell (NavigationSplitView wrapper).
 ///
-/// Owns the sidebar state (Record button, recording indicator, upcoming,
-/// settings) and routes the detail pane based on `AppCore.route`.
+/// Owns the sidebar state (upcoming, settings), the toolbar recording
+/// button state, and routes the detail pane based on `AppCore.route`.
 ///
 /// Child view models are created once and cached so they survive SwiftUI
 /// re-evaluations.
@@ -24,7 +23,7 @@ public final class AppShellViewModel {
 
     // MARK: - Stable child view models
 
-    /// The sidebar meeting-list view model (created once, never replaced).
+    /// The meeting-list view model (created once, never replaced).
     public let meetingListViewModel: MeetingListViewModel
 
     /// The recording-screen view model (created once, never replaced).
@@ -32,9 +31,6 @@ public final class AppShellViewModel {
 
     /// The home view model (created once, never replaced).
     public let homeViewModel: HomeViewModel
-
-    /// The search view model (created once, never replaced).
-    public let searchViewModel: SearchViewModel
 
     /// The settings view model (created once, never replaced).
     public let settingsViewModel: SettingsViewModel
@@ -50,15 +46,14 @@ public final class AppShellViewModel {
     private var cachedEventPreviewKey: String?
     private var cachedEventPreviewViewModel: EventPreviewViewModel?
 
-    /// The toolbar search text.
-    public var searchText: String = ""
-
     public init(core: AppCore) {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
-        homeViewModel = HomeViewModel(core: core)
-        searchViewModel = SearchViewModel(core: core)
+        homeViewModel = HomeViewModel(
+            core: core,
+            urlOpener: { NSWorkspace.shared.open($0) }
+        )
         settingsViewModel = SettingsViewModel(core: core)
         onboardingViewModel = OnboardingViewModel(core: core)
     }
@@ -107,32 +102,36 @@ public final class AppShellViewModel {
         core.route == .onboarding
     }
 
-    // MARK: - Sidebar state
+    // MARK: - Recording state (toolbar button)
 
-    /// Whether the Record button should be disabled (recording in progress).
-    public var recordButtonDisabled: Bool {
+    /// Whether a recording is currently in progress.
+    public var isRecording: Bool {
         core.recording.state.isRecording
     }
 
-    /// Whether to show the recording indicator in the sidebar.
-    public var showRecordingIndicator: Bool {
-        core.recording.state.isRecording
-    }
-
-    /// Formatted elapsed time for the sidebar recording indicator.
+    /// Formatted elapsed time for the toolbar recording button (e.g. "1:53"
+    /// or "1:02:14" for recordings over an hour).
     public var recordingElapsedText: String {
-        let elapsed = core.recording.state.elapsed
+        Self.formatElapsed(core.recording.state.elapsed)
+    }
+
+    /// Formats a time interval as "M:SS" (under an hour) or "H:MM:SS".
+    nonisolated static func formatElapsed(_ elapsed: TimeInterval) -> String {
         let totalSeconds = Int(elapsed)
+        let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    /// Upcoming meeting-like calendar events for the sidebar (capped at 5).
+    /// Upcoming meeting-like calendar events for the sidebar (capped at 6).
     /// Uses `displayedUpcoming` which filters out ended events and
     /// refreshes every minute via the minute-tick.
     public var upcomingEvents: [CalendarEvent] {
-        Array(core.displayedUpcoming.prefix(5))
+        Array(core.displayedUpcoming.prefix(6))
     }
 
     /// Whether the calendar has been authorized (shows/hides upcoming section).
@@ -147,6 +146,27 @@ public final class AppShellViewModel {
         core.route
     }
 
+    /// The currently selected meeting (for Meetings screen detail pane).
+    public var meetingsSelection: UUID? {
+        core.meetingsSelection
+    }
+
+    /// The current meetings search query (for two-way sync with toolbar).
+    public var meetingsQuery: String {
+        core.meetingsQuery
+    }
+
+    /// Whether the current route is Home (used to disable the toolbar Home button).
+    public var isHome: Bool {
+        core.route == .home
+    }
+
+    /// Token that increments when the search field should gain focus
+    /// (e.g. Cmd+F). The view observes this via `.onChange`.
+    public var searchFocusToken: UInt {
+        core.searchFocusToken
+    }
+
     // MARK: - Actions
 
     /// Starts a new recording session.
@@ -154,7 +174,7 @@ public final class AppShellViewModel {
         await core.startRecording()
     }
 
-    /// Navigates to the recording screen (when tapping the recording indicator).
+    /// Navigates to the recording screen (toolbar recording button tap).
     public func showRecording() {
         core.navigateToRecording()
     }
@@ -164,9 +184,19 @@ public final class AppShellViewModel {
         core.showHome()
     }
 
+    /// Routes to the Meetings screen (browse mode, keep selection).
+    public func showMeetings() {
+        core.showMeetings()
+    }
+
     /// Routes to Settings.
     public func showSettings() {
         core.showSettings()
+    }
+
+    /// Requests focus on the search field (Cmd+F).
+    public func focusSearch() {
+        core.focusSearch()
     }
 
     /// Routes to an upcoming event preview.
@@ -174,36 +204,9 @@ public final class AppShellViewModel {
         core.selectEvent(key)
     }
 
-    /// Called when the toolbar search text changes.
-    public func onSearchTextChange(_ text: String) {
-        if !text.isEmpty {
-            core.presentSearch()
-            searchViewModel.updateQuery(text)
-        } else if core.route == .search {
-            searchViewModel.updateQuery("")
-            core.dismissSearch()
-        }
-    }
-
-    /// Called when the user submits (presses Enter) in the search field.
-    /// Re-activates the search takeover if the field has a non-empty query.
-    public func onSearchSubmit() {
-        searchViewModel.reactivateSearch()
-    }
-
-    /// Called when the search field gains focus with a non-empty query
-    /// and the search pane is not currently displayed. Re-activates the
-    /// search takeover so the user sees their previous results.
-    public func onSearchFieldFocused() {
-        guard !searchText.isEmpty, core.route != .search else { return }
-        searchViewModel.reactivateSearch()
-    }
-
-    /// Clears the search and restores the previous route.
-    public func clearSearch() {
-        searchText = ""
-        searchViewModel.updateQuery("")
-        core.dismissSearch()
+    /// Forwards toolbar search text to AppCore's meetings search.
+    public func setMeetingsQuery(_ query: String) {
+        core.setMeetingsQuery(query)
     }
 
     /// Called on app launch to run recovery and load data.
@@ -213,19 +216,20 @@ public final class AppShellViewModel {
 
     // MARK: - Time formatting for upcoming events
 
-    /// Formats a CalendarEvent's start time as relative text.
-    /// Delegates to `TimeFormatting.relativeTimeText` (shared helper).
+    /// Formats a CalendarEvent's start time as coarse relative text
+    /// ("in 2 days", "in 5h", "in 12m") or "now".
+    /// Delegates to `TimeFormatting.coarseRelativeTimeText` (shared helper).
     public static func timeText(
         for event: CalendarEvent,
         relativeTo now: Date = Date()
     ) -> String {
-        TimeFormatting.relativeTimeText(event.start, relativeTo: now)
+        TimeFormatting.coarseRelativeTimeText(event.start, relativeTo: now)
     }
 
     /// Formats a CalendarEvent's start time relative to the
     /// minute-tick, ensuring the label refreshes every minute.
     public func tickTimeText(for event: CalendarEvent) -> String {
-        TimeFormatting.relativeTimeText(
+        TimeFormatting.coarseRelativeTimeText(
             event.start, relativeTo: core.minuteTick
         )
     }

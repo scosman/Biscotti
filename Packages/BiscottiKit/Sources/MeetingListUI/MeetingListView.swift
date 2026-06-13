@@ -3,11 +3,11 @@ import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The sidebar's scrollable list of past meetings, grouped by effective date.
+/// The Meetings screen's left-bar list: a native `List` with pinned
+/// section headers (browse mode) or flat ranked results (search mode).
 ///
-/// Groups: Today / Yesterday / This Week / Earlier. Each row shows the
-/// meeting title and a relative date. Selecting a row routes the detail
-/// pane to that meeting via `MeetingListViewModel`.
+/// Uses `List(selection:)` for the platform's native accent highlight
+/// and keyboard navigation (arrow up/down drives the detail pane).
 public struct MeetingListView: View {
     @Bindable private var viewModel: MeetingListViewModel
 
@@ -16,42 +16,75 @@ public struct MeetingListView: View {
     }
 
     public var body: some View {
-        Group {
-            if viewModel.groupedMeetings.isEmpty {
-                Text("No recordings yet")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                    .padding(.vertical, Tokens.spacingSM)
-            } else {
-                ForEach(viewModel.groupedMeetings) { group in
-                    Section {
-                        ForEach(group.meetings) { meeting in
-                            Button {
-                                viewModel.select(meeting.id)
-                            } label: {
-                                meetingRow(meeting)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.vertical, Tokens.spacingXS)
-                            .padding(.horizontal, Tokens.spacingSM)
-                            .background(
-                                viewModel.selectedMeetingID == meeting.id
-                                    ? Color.accentColor.opacity(0.15)
-                                    : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 4)
-                            )
-                        }
-                    } header: {
-                        Text(group.title)
-                            .font(Tokens.sectionHeaderFont)
-                            .foregroundStyle(Tokens.secondaryText)
-                            .padding(.horizontal, Tokens.spacingSM)
-                            .padding(.top, Tokens.spacingSM)
-                    }
+        // Empty states render OUTSIDE the List so ContentUnavailableView
+        // centers vertically in the full pane instead of pinning to a row.
+        if viewModel.mode == .browse, viewModel.groups.isEmpty {
+            ContentUnavailableView(
+                "No Recordings",
+                systemImage: "waveform",
+                description: Text(
+                    "Recorded meetings will appear here."
+                )
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewModel.mode == .search,
+                  !viewModel.isSearching, // still in-flight → fall through to List/spinner
+                  viewModel.results.isEmpty
+        {
+            ContentUnavailableView.search(text: viewModel.query)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(
+                selection: Binding(
+                    get: { viewModel.selectedID },
+                    set: { viewModel.select($0) }
+                )
+            ) {
+                switch viewModel.mode {
+                case .browse:
+                    browseContent
+
+                case .search:
+                    searchContent
+                }
+            }
+            .listStyle(.inset)
+        }
+    }
+
+    // MARK: - Browse mode (grouped by date)
+
+    private var browseContent: some View {
+        ForEach(viewModel.groups) { group in
+            Section(group.title) {
+                ForEach(group.meetings) { meeting in
+                    meetingRow(meeting)
+                        .tag(meeting.id)
                 }
             }
         }
     }
+
+    // MARK: - Search mode (flat results)
+
+    @ViewBuilder
+    private var searchContent: some View {
+        if viewModel.isSearching {
+            HStack {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+            .padding(.vertical, Tokens.spacingLG)
+        } else {
+            ForEach(viewModel.results) { hit in
+                searchRow(hit)
+                    .tag(hit.id)
+            }
+        }
+    }
+
+    // MARK: - Row views
 
     private func meetingRow(_ meeting: MeetingSummary) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -63,17 +96,39 @@ public struct MeetingListView: View {
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+    }
+
+    private func searchRow(_ hit: SearchHit) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(hit.title)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer()
+                Text(TimeFormatting.shortDate(hit.date))
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+            Text(
+                "matches: \(MeetingListViewModel.matchedFieldsText(hit.matchedFields))"
+            )
+            .font(.caption)
+            .foregroundStyle(Tokens.secondaryText)
+        }
     }
 }
 
-#Preview("Meeting List - Empty") {
-    MeetingListView(viewModel: .preview())
-        .frame(width: 200)
+#Preview("Meeting List - Browse Empty") {
+    MeetingListView(viewModel: .previewEmpty())
+        .frame(width: 280, height: 400)
 }
 
-#Preview("Meeting List - With Meetings") {
-    MeetingListView(viewModel: .preview())
-        .frame(width: 200)
+#Preview("Meeting List - Browse Populated") {
+    MeetingListView(viewModel: .previewBrowse())
+        .frame(width: 280, height: 400)
+}
+
+#Preview("Meeting List - Search") {
+    MeetingListView(viewModel: .previewSearch())
+        .frame(width: 280, height: 400)
 }

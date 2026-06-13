@@ -283,4 +283,54 @@ struct SettingsViewModelTests {
         await viewModel.load()
         #expect(viewModel.notificationsState == .denied)
     }
+
+    // MARK: - Exit on window close
+
+    @Test("exitOnWindowClose defaults to false")
+    func exitOnWindowCloseDefaultsFalse() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.exitOnWindowClose == false)
+    }
+
+    @Test("toggle exitOnWindowClose persists and reads back")
+    func toggleExitOnWindowClosePersists() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.exitOnWindowClose == false)
+
+        // Toggle on
+        await viewModel.setExitOnWindowClose(true)
+        #expect(viewModel.exitOnWindowClose == true)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.exitOnWindowClose == true)
+
+        // Toggle off
+        await viewModel.setExitOnWindowClose(false)
+        #expect(viewModel.exitOnWindowClose == false)
+
+        let settings2 = try await fixture.store.settings()
+        #expect(settings2.exitOnWindowClose == false)
+    }
+
+    @Test("load reads exitOnWindowClose from store")
+    func exitOnWindowCloseLoadedFromStore() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        // Pre-set the value in the store
+        try await fixture.store.updateSettings { settings in
+            settings.exitOnWindowClose = true
+        }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.exitOnWindowClose == true)
+    }
 }

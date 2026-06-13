@@ -121,4 +121,32 @@ struct ReadModelParticipantTests {
         #expect(summary.participants[2].name == "Carol")
         #expect(summary.participantCount == 3)
     }
+
+    @Test("minimal associate() creates snapshot but no participants (documented behavior)")
+    func minimalAssociateCreatesNoParticipants() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Audio Only")
+
+        // Use the low-level associate method (creates a minimal snapshot
+        // with no Person records). This is NOT on the live AppCore path
+        // but documents why legacy/edge-case meetings can lack participants.
+        try await store.associate(
+            meetingID: id,
+            withEventIdentifier: "ek-456",
+            compositeKey: "Audio Only|2023-11-14"
+        )
+
+        let summaries = try await store.meetingSummaries(limit: 10)
+        let summary = try #require(summaries.first(where: { $0.id == id }))
+
+        // Snapshot exists but no Person records were created
+        #expect(summary.participants.isEmpty)
+        #expect(summary.participantCount == 0)
+
+        // Verify the snapshot IS present
+        let hasSnapshot = try await store.read { store in
+            try store.meeting(id: id)?.calendarSnapshot != nil
+        }
+        #expect(hasSnapshot)
+    }
 }

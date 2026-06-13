@@ -370,7 +370,8 @@ private struct HomePastSection: View {
                 AvatarCluster(
                     people: data.people,
                     totalCount: data.total,
-                    size: Tokens.avatarSize
+                    size: Tokens.avatarSize,
+                    showLeadingRecordingAvatar: true
                 )
 
                 VStack(alignment: .leading, spacing: 4) {

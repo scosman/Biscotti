@@ -936,6 +936,30 @@ struct HomeViewModelMappingTests {
         #expect(text.contains("Alice, Bob, Carol"))
         #expect(!text.contains("Dave"))
     }
+
+    @Test("avatarData returns empty people for meeting with no participants")
+    @MainActor
+    func avatarDataEmptyForNoParticipants() throws {
+        let fix = try makeCoreFixture(testName: "HomeUIMappingEmpty")
+        defer { fix.cleanup() }
+
+        let viewModel = HomeViewModel(core: fix.core)
+
+        let summary = MeetingSummary(
+            id: UUID(),
+            title: "Audio Only Recording",
+            date: Date(),
+            hasTranscript: false,
+            participants: [],
+            participantCount: 0
+        )
+
+        let data = viewModel.avatarData(for: summary)
+        #expect(data.people.isEmpty)
+        #expect(data.total == 0)
+        // The recording avatar in AvatarCluster (showLeadingRecordingAvatar)
+        // guarantees the cluster is never blank even when people is empty.
+    }
 }
 
 // MARK: - Test helpers

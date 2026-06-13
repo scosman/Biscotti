@@ -4,6 +4,13 @@ import Testing
 
 @Suite("OutputParser")
 struct OutputParserTests {
+    @Test("Strips trailing turn close (Gemma 4)")
+    func stripsTurnClose() {
+        let result = OutputParser.parse(rawText: "Hello world<turn|>")
+        #expect(result.text == "Hello world")
+        #expect(result.reasoning == nil)
+    }
+
     @Test("Strips trailing end_of_turn")
     func stripsEndOfTurn() {
         let result = OutputParser.parse(rawText: "Hello world<end_of_turn>")
@@ -111,6 +118,13 @@ struct OutputParserTests {
     @Test("stripTrailingTurnTokens removes multiple tokens")
     func stripMultipleTurnTokens() {
         let text = "Hello<end_of_turn><eos>"
+        let result = OutputParser.stripTrailingTurnTokens(text)
+        #expect(result == "Hello")
+    }
+
+    @Test("stripTrailingTurnTokens removes Gemma 4 turn close + eos")
+    func stripTurnCloseAndEos() {
+        let text = "Hello<turn|><eos>"
         let result = OutputParser.stripTrailingTurnTokens(text)
         #expect(result == "Hello")
     }

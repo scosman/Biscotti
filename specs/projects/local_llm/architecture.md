@@ -208,19 +208,27 @@ blocking loop to a dedicated executor — out of scope here. Cancellation: the l
 protocol ChatTemplating { func render(system: String?, user: String, addGenerationPrompt: Bool) -> String }
 ```
 
-- **Primary — `BuiltinChatTemplate`:** uses llama.cpp's built-in template
-  (`llama_model_chat_template(model, nil)` → embedded Jinja; `llama_chat_apply_template(tmpl,
-  messages, count, add_assistant, buf, len)` with `llama_chat_message{role,content}`). Roles:
-  `system` (optional, Gemma 4 supports it natively) + `user`. **This is the source of truth for the
-  Gemma 4 format** and avoids hand-maintaining a Jinja template.
-- **Fallback — `GemmaChatTemplate` (hand-rolled):** a pure string builder for the Gemma 4 format,
-  used if the built-in path is unavailable/misbehaving. Exact token sequence pinned in Phase 1 from
-  the model card / embedded template; a golden unit test locks it.
-- **`[Phase-1 validate]` — the user-sanctioned decision:** try `BuiltinChatTemplate` first; if it
-  doesn't work cleanly with b9601 + this GGUF, fall back to `GemmaChatTemplate`. Pick one as the
-  default; keep the other behind a flag for A/B in the CLI/VALIDATION.
-- `system` is honored as a real system message when the template supports it (Gemma 4 does); the
-  hand-rolled fallback folds system into the first user turn if needed.
+- **Default — `GemmaChatTemplate` (hand-rolled, byte-matches embedded Jinja):** a pure string
+  builder for the **Gemma 4** chat format using `<|turn>`/`<turn|>` turn markers (Gemma 4 changed
+  from Gemma 3's `<start_of_turn>`/`<end_of_turn>`). The rendered output byte-matches the model's
+  embedded Jinja template (cross-checked via `--show-raw`). Named constants (`turnOpen`, `turnClose`,
+  `thinkingDirective`, `emptyThoughtPrefill`) make the markers trivially correctable. Key behaviors:
+  - System and user content is trimmed (matching the Jinja `| trim` filter).
+  - When `thinkingEnabled`, the system turn begins with `<|think|>\n` (newline after the directive,
+    before the system content) to enable the model's reasoning channel.
+  - When thinking is OFF and `addGenerationPrompt` is true, the model turn is prefilled with an
+    empty thought block (`<|channel>thought\n<channel|>`) to deterministically suppress reasoning.
+  - Golden unit tests lock the exact byte sequence for all combinations.
+  - See `experiments/llm/README.md` "Chat template rendering" for why hand-rolled (not Jinja) and
+    the `swift-jinja` recommendation for future multi-model support.
+- **A/B alternative — `BuiltinChatTemplate`:** uses llama.cpp's `llama_chat_apply_template` with the
+  GGUF-embedded Jinja template. Kept behind `--template builtin` for comparison, but **not the
+  default** because `llama_chat_apply_template`'s heuristic (b9601) is broken for Gemma 4 — it
+  renders a near-bare prompt with no turn markers, drops the system message, and never emits
+  `<|think|>`. The raw embedded Jinja is still extractable via `llama_model_chat_template` and
+  surfaced in `--show-raw` output.
+- `system` is honored as a real system turn (Gemma 4 supports it natively). When thinking is enabled
+  and no system message is provided, a system turn containing just `<|think|>` is emitted.
 
 ---
 
@@ -241,8 +249,9 @@ protocol ChatTemplating { func render(system: String?, user: String, addGenerati
 
 ## 7. Output parsing — `OutputParser.swift` (pure, unit-tested)
 
-- **Stop/turn stripping:** remove a trailing `<end_of_turn>` / `<eos>` / matched stop-sequence and
-  trim whitespace.
+- **Stop/turn stripping:** remove a trailing `<turn|>` (Gemma 4) / `<end_of_turn>` (Gemma 3
+  fallback) / `<eos>` / matched stop-sequence and trim whitespace. The decode loop also checks
+  for `<turn|>` as a stop token (alongside `<end_of_turn>` / EOS).
 - **Thinking/channel handling `[Phase-1 validate]` for exact tokens:** Gemma 4 may emit a reasoning
   channel (e.g. `<|channel>thought … <channel|>` / `<|think|>` markers). The parser detects such a
   block, routes it to `GenerationResult.reasoning`, and returns only the final answer as `text`. For
@@ -284,7 +293,11 @@ headers and content stay on stdout to remain visible when stderr is filtered.
   - Overrides: `--temp --top-k --top-p --min-p --max-tokens --seed --ctx-size --repeat-penalty`,
     `--raw` (skip template), `--thinking off|auto` (default off), `--template builtin|gemma`
     (selects the §5 path for A/B). `--stream` (final phase). `--verbose` (restore backend
-    stderr logging for debugging; default quiet — see §11).
+    stderr logging for debugging; default quiet — see §11). `--show-raw` (debug: after
+    normal output, print three sections to stdout: `=== rendered prompt ===` (the exact
+    templated prompt), `=== raw output ===` (unparsed model output), and
+    `=== embedded chat template ===` (the GGUF-embedded Jinja template string, or
+    `[none]`)).
   - Output: the full structured result (headers, thinking content or `[none]`, response) goes
     to **stdout**. Only diagnostics (`Loading model...`, `Generating...`) and the speed summary
     stay on **stderr**. This split is intentional: the llama.cpp/ggml backend emits noisy Metal
@@ -373,12 +386,19 @@ In `experiments/llm` only; the experiment's own `swift test`. Framework: **Swift
 
 ## 12. Open items delegated to Phase 1 (`[Phase-1 validate]`, user-sanctioned)
 
-1. **Built-in vs hand-rolled chat template** — try `llama_chat_apply_template`; fall back to
-   `GemmaChatTemplate`; choose the default, keep the other for A/B.
+1. **Built-in vs hand-rolled chat template** — **RESOLVED.** `llama_chat_apply_template`'s heuristic
+   (b9601) is broken for Gemma 4: near-bare prompt, no turn markers, system message dropped, no
+   `<|think|>`. `GemmaChatTemplate` (hand-rolled, Gemma 4 `<|turn>`/`<turn|>` format) is the default.
+   `BuiltinChatTemplate` kept behind `--template builtin` for A/B.
 2. **Built-in vs hand-rolled sampler** — prefer the `llama_sampler` chain; fall back if needed.
-3. **Double-BOS** — set `add_special` so exactly one `<bos>` is tokenized.
-4. **Thinking-mode tokens** — pin Gemma 4's reasoning-channel markers from observed output; wire the
-   table-driven `OutputParser` + default `.off` behavior.
-5. **b9601 API specifics** — exact KV-cache-clear call and any renamed symbols for this build.
+3. **Double-BOS** — **RESOLVED.** `add_special = true` with no literal `<bos>` in the hand-rolled
+   template; exactly one BOS token results.
+4. **Thinking-mode tokens** — **RESOLVED.** Gemma 4 reasoning-channel markers confirmed:
+   `<|channel>thought\n` / `<channel|>` for the channel block, `<|think|>` for the system-turn
+   thinking directive. Turn markers: `<|turn>` / `<turn|>` (not Gemma 3's `<start_of_turn>` /
+   `<end_of_turn>`). All wired into `OutputParser`, `StreamingChannelSplitter`, and decode-loop
+   stop detection.
+5. **b9601 API specifics** — **RESOLVED.** `llama_memory_clear` for KV-cache clear (renamed from
+   older `llama_kv_cache_clear` in b9601).
 
 Everything else is fully specified above.

@@ -238,7 +238,9 @@ public actor LLMEngine {
         // 1. Build prompt string
         let promptString: String
         if options.applyChatTemplate {
-            let template = selectTemplate(thinking: options.thinking)
+            let template = selectTemplate(
+                thinking: options.thinking, useBuiltin: options.useBuiltinTemplate
+            )
             promptString = template.render(
                 system: system, user: prompt, addGenerationPrompt: true
             )
@@ -277,7 +279,10 @@ public actor LLMEngine {
         var finishReason: FinishReason = .maxTokens
 
         let eosToken = llama_vocab_eos(vocab)
-        // Resolve <end_of_turn> token ID
+        // Resolve turn-close token IDs. Gemma 4 uses <turn|>; <end_of_turn> is
+        // the Gemma 3 fallback. Both are checked so generation stops cleanly on
+        // either model family.
+        let turnCloseID = tokenIDForPiece("<turn|>", vocab: vocab)
         let endOfTurnID = tokenIDForPiece("<end_of_turn>", vocab: vocab)
 
         for _ in 0 ..< maxTokens {
@@ -293,6 +298,10 @@ public actor LLMEngine {
             // Check stop conditions
             if token == eosToken {
                 finishReason = .eos
+                break
+            }
+            if let tcID = turnCloseID, token == tcID {
+                finishReason = .endOfTurn
                 break
             }
             if let eotID = endOfTurnID, token == eotID {
@@ -367,7 +376,10 @@ public actor LLMEngine {
             loadDuration: capturedLoadDuration,
             promptEvalDuration: Self.durationSeconds(from: evalStart, to: evalEnd),
             generationDuration: Self.durationSeconds(from: genStart, to: genEnd),
-            totalDuration: Self.durationSeconds(from: totalStart, to: totalEnd)
+            totalDuration: Self.durationSeconds(from: totalStart, to: totalEnd),
+            renderedPrompt: promptString,
+            rawText: decodedText,
+            embeddedChatTemplate: builtinTemplateString
         )
     }
 
@@ -392,16 +404,24 @@ public actor LLMEngine {
 
     // MARK: - Internal helpers
 
-    private func selectTemplate(thinking: ThinkingMode) -> any ChatTemplating {
+    private func selectTemplate(thinking: ThinkingMode, useBuiltin: Bool) -> any ChatTemplating {
         let thinkingEnabled = thinking == .auto
-        // Primary: built-in template from llama.cpp (source of truth)
-        // Fallback: hand-rolled GemmaChatTemplate
-        // [Phase-1 validate] -- try built-in first, keep fallback for A/B
-        if let builtinTemplateString {
+
+        // --template builtin: use llama.cpp's llama_chat_apply_template heuristic.
+        // Known broken for Gemma 4 (drops system, no turn markers, no <|think|>), but
+        // kept for A/B comparison to demonstrate the failure. Falls back to
+        // GemmaChatTemplate if the model has no embedded template string.
+        if useBuiltin, let templateString = builtinTemplateString {
             return BuiltinChatTemplate(
-                templateString: builtinTemplateString, thinkingEnabled: thinkingEnabled
+                templateString: templateString, thinkingEnabled: thinkingEnabled
             )
         }
+
+        // Default: hand-rolled GemmaChatTemplate — byte-matches the embedded Jinja
+        // template. See ChatTemplate.swift doc comment + experiments/llm/README.md
+        // "Chat template rendering" for why this is the default.
+        // Also the cross-reference site for the CLI's GemmaChatTemplate construction
+        // (RunCommand.swift gemma path) — update both if the template changes.
         return GemmaChatTemplate(thinkingEnabled: thinkingEnabled)
     }
 

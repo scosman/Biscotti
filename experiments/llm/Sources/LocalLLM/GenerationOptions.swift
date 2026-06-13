@@ -44,6 +44,13 @@ public struct GenerationOptions: Sendable {
     /// Thinking mode controls reasoning token handling.
     public var thinking: ThinkingMode
 
+    /// When true AND `applyChatTemplate` is true, use `BuiltinChatTemplate` (llama.cpp's
+    /// `llama_chat_apply_template` heuristic) instead of the default `GemmaChatTemplate`.
+    /// The builtin heuristic is broken for Gemma 4 (drops system, no turn markers, no
+    /// `<|think|>`) but is kept for A/B comparison via `--template builtin`.
+    /// Default: false (use `GemmaChatTemplate`).
+    public var useBuiltinTemplate: Bool
+
     public init(
         maxTokens: Int = 2048,
         temperature: Float = 1.0,
@@ -55,7 +62,8 @@ public struct GenerationOptions: Sendable {
         seed: UInt64? = nil,
         stopSequences: [String] = [],
         applyChatTemplate: Bool = true,
-        thinking: ThinkingMode = .off
+        thinking: ThinkingMode = .off,
+        useBuiltinTemplate: Bool = false
     ) {
         self.maxTokens = maxTokens
         self.temperature = temperature
@@ -68,6 +76,7 @@ public struct GenerationOptions: Sendable {
         self.stopSequences = stopSequences
         self.applyChatTemplate = applyChatTemplate
         self.thinking = thinking
+        self.useBuiltinTemplate = useBuiltinTemplate
     }
 
     /// Gemma-team recommended defaults.

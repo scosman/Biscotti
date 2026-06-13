@@ -94,23 +94,54 @@ public struct BuiltinChatTemplate: ChatTemplating {
     }
 }
 
-// MARK: - Hand-rolled Gemma 4 fallback
+// MARK: - Hand-rolled Gemma 4 template (default)
 
-/// A pure string builder for the Gemma 4 chat format.
+/// A pure string builder for the **Gemma 4** chat format, byte-matching the model's
+/// embedded Jinja template (cross-checked via `--show-raw`).
 ///
-/// Gemma 4 introduced native `system` role support. The format is:
+/// Gemma 4 changed its turn markers from Gemma 3's `<start_of_turn>`/`<end_of_turn>` to
+/// `<|turn>`/`<turn|>`. The template renders (thinking ON, system present):
 /// ```
-/// <start_of_turn>system
-/// {system}<end_of_turn>
-/// <start_of_turn>user
-/// {user}<end_of_turn>
-/// <start_of_turn>model
+/// <|turn>system
+/// <|think|>
+/// {system | trim}<turn|>
+/// <|turn>user
+/// {user | trim}<turn|>
+/// <|turn>model
 /// ```
 ///
-/// When thinking mode is `.auto`, prepends `<|think|>` to the system content to enable reasoning.
+/// When thinking mode is `.auto`, the system turn begins with `<|think|>\n` to enable
+/// the model's reasoning channel. If no system message is provided, a system turn
+/// containing just `<|think|>` is still emitted (the thinking directive must be present
+/// for the model to produce reasoning).
 ///
-/// No literal `<bos>` -- llama.cpp's tokenizer adds BOS via `add_special = true`.
+/// When thinking is `.off` and `addGenerationPrompt` is true, the model turn is prefilled
+/// with an empty thought block (`<|channel>thought\n<channel|>`) to deterministically
+/// suppress reasoning — matching the embedded template's behavior.
+///
+/// System and user content is trimmed (whitespace/newlines), matching the Jinja `| trim`
+/// filter in the embedded template.
+///
+/// No literal `<bos>` — llama.cpp's tokenizer adds BOS via `add_special = true`.
+///
+/// **Why this is the default (not `BuiltinChatTemplate`):** `llama_chat_apply_template`'s
+/// heuristic (b9601) does not handle Gemma 4 correctly — it renders a near-bare prompt
+/// with no turn markers, drops the system message, and never emits `<|think|>`. The
+/// `BuiltinChatTemplate` path is kept behind `--template builtin` for A/B comparison.
+/// See `experiments/llm/README.md` "Chat template rendering" for the full rationale
+/// and the `swift-jinja` recommendation for future multi-model support.
 public struct GemmaChatTemplate: ChatTemplating {
+    // Gemma 4 turn markers — named constants so they're trivially correctable
+    // if hardware testing reveals a variant.
+    static let turnOpen = "<|turn>"
+    static let turnClose = "<turn|>"
+    static let thinkingDirective = "<|think|>"
+
+    /// Empty thought block prefill for thinking-off mode. Placed after the model turn
+    /// prefix to deterministically suppress reasoning (the model sees an already-closed
+    /// thought channel and proceeds directly to content).
+    static let emptyThoughtPrefill = "<|channel>thought\n<channel|>"
+
     public let thinkingEnabled: Bool
 
     public init(thinkingEnabled: Bool = false) {
@@ -119,18 +150,38 @@ public struct GemmaChatTemplate: ChatTemplating {
 
     public func render(system: String?, user: String, addGenerationPrompt: Bool) -> String {
         var result = ""
+        let trimmedUser = user.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSystem = system?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if let system {
-            let systemContent = thinkingEnabled ? "<|think|>\n\(system)" : system
-            result += "<start_of_turn>system\n\(systemContent)<end_of_turn>\n"
+        // System turn: always present when thinking is enabled (for the directive),
+        // or when a system message is provided.
+        if let trimmedSystem, !trimmedSystem.isEmpty {
+            // When thinking on + system present: `<|think|>\n{system}` — the newline
+            // separates the directive from the system content, matching the embedded
+            // Jinja's `<|think|>\n` + `{{ message['content'] | trim }}`.
+            let systemContent = thinkingEnabled
+                ? "\(Self.thinkingDirective)\n\(trimmedSystem)"
+                : trimmedSystem
+            result += "\(Self.turnOpen)system\n\(systemContent)\(Self.turnClose)\n"
         } else if thinkingEnabled {
-            result += "<start_of_turn>system\n<|think|><end_of_turn>\n"
+            // When thinking on + no system: `<|think|>` alone (no trailing newline
+            // before `<turn|>`) — the Jinja template only emits `<|think|>\n` when
+            // it's about to append trimmed content; with no content, the `| trim`
+            // produces empty and the `\n` is not emitted.
+            result += "\(Self.turnOpen)system\n\(Self.thinkingDirective)\(Self.turnClose)\n"
         }
 
-        result += "<start_of_turn>user\n\(user)<end_of_turn>\n"
+        // User turn
+        result += "\(Self.turnOpen)user\n\(trimmedUser)\(Self.turnClose)\n"
 
+        // Model generation prefix
         if addGenerationPrompt {
-            result += "<start_of_turn>model\n"
+            result += "\(Self.turnOpen)model\n"
+            // When thinking is off, prefill an empty thought block to deterministically
+            // suppress reasoning — the model sees a closed channel and emits content directly.
+            if !thinkingEnabled {
+                result += "\(Self.emptyThoughtPrefill)"
+            }
         }
 
         return result

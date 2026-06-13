@@ -45,11 +45,14 @@ swift run localllm run --model $MODEL --prompt-file Prompts/infer_speaker_names.
 ### 4. A/B template comparison
 
 ```bash
-# Built-in template (default)
+# Hand-rolled Gemma 4 template (default — uses <|turn>/<turn|> markers)
+swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the quick brown fox jumps over the lazy dog." --template gemma --seed 42 --temp 0
+
+# Built-in template (llama.cpp heuristic — broken for Gemma 4, kept for A/B comparison)
 swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the quick brown fox jumps over the lazy dog." --template builtin --seed 42 --temp 0
 
-# Hand-rolled Gemma template
-swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the quick brown fox jumps over the lazy dog." --template gemma --seed 42 --temp 0
+# Use --show-raw to inspect what each template sends to the model:
+swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the quick brown fox jumps over the lazy dog." --template gemma --seed 42 --temp 0 --show-raw
 ```
 
 ### 5. Thinking mode test
@@ -127,10 +130,22 @@ _To be filled in during Phase 4 live validation._
 
 ### Template decision
 
-- [ ] Built-in template works correctly
-- [ ] Hand-rolled Gemma template works correctly
-- [ ] Chosen default: ___
-- [ ] Notes: ___
+- [x] Built-in template works correctly: **NO** — `llama_chat_apply_template`'s heuristic (b9601) is
+  broken for Gemma 4. It renders a near-bare prompt with no turn markers, drops the system message,
+  and never emits `<|think|>`. Diagnosed via `--show-raw` inspecting the rendered prompt.
+- [x] Hand-rolled Gemma template works correctly: **YES** — `GemmaChatTemplate` with Gemma 4's
+  `<|turn>`/`<turn|>` turn markers (not Gemma 3's `<start_of_turn>`/`<end_of_turn>`) now
+  **byte-matches** the model's embedded Jinja template (cross-checked via `--show-raw`).
+  Key details: `<|think|>\n` (newline after directive), content trimmed (matching Jinja `| trim`),
+  thinking-off mode prefills an empty thought block (`<|channel>thought\n<channel|>`) to
+  deterministically suppress reasoning.
+- [x] Chosen default: **gemma** (hand-rolled `GemmaChatTemplate`)
+- [x] Notes: The GGUF-embedded Jinja template is extractable via `llama_model_chat_template` and
+  contains the correct Gemma 4 format, but `llama_chat_apply_template`'s C-side heuristic does
+  not apply it correctly. A Jinja engine (`swift-jinja`) could render it directly — see
+  `experiments/llm/README.md` "Chat template rendering" for the research and decision. The
+  `--template builtin` flag is kept for A/B comparison. The `--show-raw` flag prints the rendered
+  prompt, raw model output, and embedded chat template for template debugging.
 
 ### Sampler decision
 
@@ -139,9 +154,11 @@ _To be filled in during Phase 4 live validation._
 
 ### Phase-1 validate items
 
-- [ ] Double-BOS: only one BOS token present
-- [ ] Thinking-mode tokens: confirmed markers
-- [ ] b9601 API specifics: confirmed KV-cache-clear call
+- [x] Double-BOS: only one BOS token present (`add_special = true`, no literal `<bos>` in template)
+- [x] Thinking-mode tokens: confirmed markers — channel: `<|channel>thought\n` / `<channel|>`;
+  thinking directive: `<|think|>` (in system turn); turn markers: `<|turn>` / `<turn|>` (Gemma 4,
+  NOT Gemma 3's `<start_of_turn>` / `<end_of_turn>`)
+- [x] b9601 API specifics: confirmed KV-cache-clear call (`llama_memory_clear`)
 
 ### Channel marker streaming fix
 

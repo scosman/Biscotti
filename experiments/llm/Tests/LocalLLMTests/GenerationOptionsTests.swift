@@ -17,6 +17,7 @@ struct GenerationOptionsTests {
         #expect(opts.seed == nil)
         #expect(opts.stopSequences.isEmpty)
         #expect(opts.applyChatTemplate == true)
+        #expect(opts.useBuiltinTemplate == false)
     }
 
     @Test("Default thinking mode is off")
@@ -41,7 +42,8 @@ struct GenerationOptionsTests {
             seed: 123,
             stopSequences: ["###"],
             applyChatTemplate: false,
-            thinking: .auto
+            thinking: .auto,
+            useBuiltinTemplate: true
         )
         #expect(opts.maxTokens == 512)
         #expect(opts.temperature == 0.7)
@@ -53,6 +55,7 @@ struct GenerationOptionsTests {
         #expect(opts.seed == 123)
         #expect(opts.stopSequences == ["###"])
         #expect(opts.applyChatTemplate == false)
+        #expect(opts.useBuiltinTemplate == true)
     }
 
     @Test("clampedMaxTokens respects remaining context")

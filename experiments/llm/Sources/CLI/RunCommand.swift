@@ -79,14 +79,17 @@ struct RunCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Thinking mode: off (default) or auto.")
     var thinking: CLIThinkingMode = .off
 
-    @Option(name: .long, help: "Template implementation: builtin (default) or gemma.")
-    var template: TemplateChoice = .builtin
+    @Option(name: .long, help: "Template implementation: gemma (default, hand-rolled Gemma 4) or builtin (llama.cpp heuristic, broken for Gemma 4).")
+    var template: TemplateChoice = .gemma
 
     @Flag(name: .long, help: "Stream tokens to stdout as they are generated.")
     var stream: Bool = false
 
     @Flag(name: .long, help: "Show llama.cpp/ggml backend logs (Metal, context, etc.) on stderr. Default: quiet.")
     var verbose: Bool = false
+
+    @Flag(name: .long, help: "Print the rendered prompt and raw model output after generation (debug).")
+    var showRaw: Bool = false
 
     // MARK: - Run
 
@@ -174,18 +177,23 @@ struct RunCommand: AsyncParsableCommand {
         logStderr("Loading model...")
         let engine = try await LLMEngine(modelPath: modelURL, config: engineConfig)
 
-        // Override the template choice if needed.
-        // The --template flag selects builtin vs gemma for A/B comparison (Phase 4).
+        // Template routing (--template gemma|builtin, --raw).
         // --raw takes precedence: skip ALL templating regardless of --template.
-        let useGemmaTemplate = template == .gemma && !raw
-
-        // Resolve effective prompt/system/options for the template choice
+        // Otherwise, the template choice is plumbed to the engine via GenerationOptions
+        // so that selectTemplate picks the right implementation.
         let effectivePrompt: String
         let effectiveSystem: String?
         var effectiveOptions = options
-        if useGemmaTemplate {
-            // Use the hand-rolled Gemma template: pass raw mode to the engine and
-            // build the prompt ourselves using GemmaChatTemplate.
+        if raw {
+            // Raw mode: no templating at all (already set via applyChatTemplate = false).
+            effectivePrompt = promptText
+            effectiveSystem = systemText
+        } else if template == .gemma {
+            // Hand-rolled Gemma 4 template (default): build the prompt here so the
+            // exact rendered string is visible in --show-raw. applyChatTemplate = false
+            // tells the engine not to re-template.
+            // Cross-reference: LLMEngine.selectTemplate also constructs GemmaChatTemplate
+            // for the engine-side default — update both if the template changes.
             effectiveOptions.applyChatTemplate = false
             let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
             effectivePrompt = gemmaTemplate.render(
@@ -193,6 +201,10 @@ struct RunCommand: AsyncParsableCommand {
             )
             effectiveSystem = nil
         } else {
+            // Builtin template (--template builtin): let the engine render via
+            // BuiltinChatTemplate (llama.cpp's llama_chat_apply_template heuristic).
+            // Known broken for Gemma 4 — kept for A/B comparison.
+            effectiveOptions.useBuiltinTemplate = true
             effectivePrompt = promptText
             effectiveSystem = systemText
         }
@@ -227,6 +239,17 @@ struct RunCommand: AsyncParsableCommand {
                 // Response section: header + message, all on stdout.
                 print("\n=== response ===")
                 print(result.text)
+            }
+
+            // --show-raw: print the rendered prompt, raw model output, and
+            // embedded chat template (debug).
+            if showRaw {
+                print("\n=== rendered prompt ===")
+                print(result.renderedPrompt)
+                print("\n=== raw output ===")
+                print(result.rawText)
+                print("\n=== embedded chat template ===")
+                print(result.embeddedChatTemplate ?? "[none]")
             }
 
             // Print speed summary to stderr

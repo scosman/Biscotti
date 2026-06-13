@@ -15,7 +15,10 @@ struct GenerationResultTests {
             loadDuration: nil,
             promptEvalDuration: 0.5,
             generationDuration: 4.0,
-            totalDuration: 4.5
+            totalDuration: 4.5,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         #expect(result.tokensPerSecond == 25.0)
     }
@@ -31,7 +34,10 @@ struct GenerationResultTests {
             loadDuration: nil,
             promptEvalDuration: 0.5,
             generationDuration: 0.0,
-            totalDuration: 0.5
+            totalDuration: 0.5,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         #expect(result.tokensPerSecond == 0)
     }
@@ -47,7 +53,10 @@ struct GenerationResultTests {
             loadDuration: 1.0,
             promptEvalDuration: 0.83,
             generationDuration: 6.4,
-            totalDuration: 7.23
+            totalDuration: 7.23,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         let tps = result.tokensPerSecond
         #expect(abs(tps - 29.21875) < 0.001)
@@ -64,14 +73,18 @@ struct GenerationResultTests {
         let withLoad = GenerationResult(
             text: "", reasoning: nil, promptTokenCount: 0, generatedTokenCount: 0,
             finishReason: .eos, loadDuration: 2.5, promptEvalDuration: 0.1,
-            generationDuration: 0.1, totalDuration: 0.2
+            generationDuration: 0.1, totalDuration: 0.2,
+            renderedPrompt: "", rawText: "",
+            embeddedChatTemplate: nil
         )
         #expect(withLoad.loadDuration == 2.5)
 
         let withoutLoad = GenerationResult(
             text: "", reasoning: nil, promptTokenCount: 0, generatedTokenCount: 0,
             finishReason: .eos, loadDuration: nil, promptEvalDuration: 0.1,
-            generationDuration: 0.1, totalDuration: 0.2
+            generationDuration: 0.1, totalDuration: 0.2,
+            renderedPrompt: "", rawText: "",
+            embeddedChatTemplate: nil
         )
         #expect(withoutLoad.loadDuration == nil)
     }
@@ -87,7 +100,10 @@ struct GenerationResultTests {
             loadDuration: nil,
             promptEvalDuration: 0.1,
             generationDuration: 1.0,
-            totalDuration: 1.1
+            totalDuration: 1.1,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         #expect(withReasoning.reasoning == "Let me think about this...")
     }

@@ -11,7 +11,9 @@ public struct OutputParser: Sendable {
     static let thinkingCloseTag = "<channel|>"
 
     // Turn/stop tokens to strip from the end of output.
-    static let turnTokens = ["<end_of_turn>", "<eos>"]
+    // Gemma 4 uses <turn|> as its turn-close; <end_of_turn> and <eos> kept as
+    // defensive fallbacks for Gemma 3 / other models.
+    static let turnTokens = ["<turn|>", "<end_of_turn>", "<eos>"]
 
     /// Parse raw model output, returning cleaned text and optional reasoning.
     ///

@@ -70,7 +70,10 @@ enum SyntheticStream {
                 loadDuration: nil,
                 promptEvalDuration: 0.1,
                 generationDuration: Double(tokenPieces.count) * 0.05,
-                totalDuration: 0.1 + Double(tokenPieces.count) * 0.05
+                totalDuration: 0.1 + Double(tokenPieces.count) * 0.05,
+                renderedPrompt: "",
+                rawText: rawText,
+                embeddedChatTemplate: nil
             )
 
             continuation.yield(.done(result))
@@ -154,7 +157,10 @@ struct StreamingTests {
             loadDuration: nil,
             promptEvalDuration: 0.1,
             generationDuration: 0.2,
-            totalDuration: 0.3
+            totalDuration: 0.3,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         let a = StreamEvent.done(result)
         let b = StreamEvent.done(result)
@@ -172,7 +178,10 @@ struct StreamingTests {
             loadDuration: nil,
             promptEvalDuration: 0.1,
             generationDuration: 0.1,
-            totalDuration: 0.2
+            totalDuration: 0.2,
+            renderedPrompt: "",
+            rawText: "",
+            embeddedChatTemplate: nil
         )
         let tokenEvent = StreamEvent.token("hi")
         let reasoningEvent = StreamEvent.reasoningToken("hi")

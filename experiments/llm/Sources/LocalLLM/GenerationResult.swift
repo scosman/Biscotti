@@ -15,7 +15,7 @@ public enum StreamEvent: Sendable, Equatable {
 
 /// Why generation stopped.
 public enum FinishReason: Sendable, Equatable {
-    /// Model emitted `<end_of_turn>`.
+    /// Model emitted a turn-close token: `<turn|>` (Gemma 4) or `<end_of_turn>` (Gemma 3).
     case endOfTurn
     /// Model emitted EOS token.
     case eos
@@ -54,6 +54,25 @@ public struct GenerationResult: Sendable, Equatable {
 
     /// Total wall-clock time for the generate call.
     public let totalDuration: TimeInterval
+
+    // MARK: - Debug fields
+
+    /// The exact prompt string sent to the tokenizer, AFTER chat-template rendering
+    /// (or the verbatim prompt under `--raw`). Debugging aid: inspect this to see
+    /// what the model actually received. Empty string when not populated (e.g. in tests).
+    public let renderedPrompt: String
+
+    /// The raw, UNPARSED model output — the decode loop's accumulated text BEFORE
+    /// `OutputParser.parse` / channel splitting. Debugging aid: inspect this to see
+    /// exactly what the model emitted (including channel markers, stop tokens, etc.).
+    /// Empty string when not populated (e.g. in tests).
+    public let rawText: String
+
+    /// The GGUF-embedded Jinja chat template string from the model metadata
+    /// (`llama_model_chat_template`). nil if the model has no embedded template.
+    /// Debugging aid: inspect this to see the authoritative format the model expects
+    /// (turn tokens, thinking markers, etc.). Populated by LLMEngine; nil in tests.
+    public let embeddedChatTemplate: String?
 
     /// Generation speed: generated tokens / generation duration. Returns 0 when duration is zero.
     public var tokensPerSecond: Double {

@@ -92,56 +92,145 @@ struct BuiltinChatTemplateTests {
         // The version with generation prompt should be longer (contains model turn prefix)
         #expect(withPrompt.count > withoutPrompt.count)
     }
+
+    @Test("Builtin and Gemma templates produce different output (anti-regression)")
+    func builtinAndGemmaAreDifferent() {
+        // The "gemma" heuristic in llama_chat_apply_template renders the OLD Gemma format
+        // (<start_of_turn>/<end_of_turn>). GemmaChatTemplate renders the Gemma 4 format
+        // (<|turn>/<turn|>). They must not be the same — if they are, the --template
+        // builtin path has silently fallen back to the gemma path.
+        let builtin = BuiltinChatTemplate(templateString: Self.gemmaTemplateName)
+        let gemma = GemmaChatTemplate()
+        let builtinResult = builtin.render(
+            system: "Be helpful.", user: "Hi", addGenerationPrompt: true
+        )
+        let gemmaResult = gemma.render(
+            system: "Be helpful.", user: "Hi", addGenerationPrompt: true
+        )
+        #expect(builtinResult != gemmaResult,
+                "Builtin and Gemma templates must produce different output")
+        // The builtin uses old Gemma markers; the hand-rolled uses Gemma 4 markers.
+        #expect(builtinResult.contains("<start_of_turn>"))
+        #expect(gemmaResult.contains("<|turn>"))
+        #expect(!gemmaResult.contains("<start_of_turn>"))
+    }
 }
 
-// MARK: - GemmaChatTemplate (hand-rolled fallback)
+// MARK: - GemmaChatTemplate (hand-rolled, byte-matches embedded Jinja)
 
 @Suite("GemmaChatTemplate")
 struct ChatTemplateTests {
     let template = GemmaChatTemplate()
+    let thinkingTemplate = GemmaChatTemplate(thinkingEnabled: true)
 
-    @Test("System + user with generation prompt")
-    func systemAndUserWithGenPrompt() {
+    // MARK: - Thinking OFF (default)
+
+    @Test("Thinking off: system + user with generation prompt (includes empty thought prefill)")
+    func thinkingOffSystemAndUserWithGenPrompt() {
         let result = template.render(
             system: "You are a helpful assistant.",
             user: "Hello!",
             addGenerationPrompt: true
         )
         let expected =
-            "<start_of_turn>system\n"
-            + "You are a helpful assistant.<end_of_turn>\n"
-            + "<start_of_turn>user\n"
-            + "Hello!<end_of_turn>\n"
-            + "<start_of_turn>model\n"
+            "<|turn>system\n"
+            + "You are a helpful assistant.<turn|>\n"
+            + "<|turn>user\n"
+            + "Hello!<turn|>\n"
+            + "<|turn>model\n"
+            + "<|channel>thought\n<channel|>"
         #expect(result == expected)
     }
 
-    @Test("User only with generation prompt")
-    func userOnlyWithGenPrompt() {
+    @Test("Thinking off: user only with generation prompt (includes empty thought prefill)")
+    func thinkingOffUserOnlyWithGenPrompt() {
         let result = template.render(
             system: nil,
             user: "What is 2+2?",
             addGenerationPrompt: true
         )
         let expected =
-            "<start_of_turn>user\n"
-            + "What is 2+2?<end_of_turn>\n"
-            + "<start_of_turn>model\n"
+            "<|turn>user\n"
+            + "What is 2+2?<turn|>\n"
+            + "<|turn>model\n"
+            + "<|channel>thought\n<channel|>"
         #expect(result == expected)
     }
 
-    @Test("User only without generation prompt")
-    func userOnlyNoGenPrompt() {
+    @Test("Thinking off: user only without generation prompt (no prefill)")
+    func thinkingOffUserOnlyNoGenPrompt() {
         let result = template.render(
             system: nil,
             user: "Hello",
             addGenerationPrompt: false
         )
         let expected =
-            "<start_of_turn>user\n"
-            + "Hello<end_of_turn>\n"
+            "<|turn>user\n"
+            + "Hello<turn|>\n"
         #expect(result == expected)
     }
+
+    @Test("Thinking off: system + user without generation prompt (no prefill)")
+    func thinkingOffSystemAndUserNoGenPrompt() {
+        let result = template.render(
+            system: "System msg",
+            user: "User msg",
+            addGenerationPrompt: false
+        )
+        let expected =
+            "<|turn>system\n"
+            + "System msg<turn|>\n"
+            + "<|turn>user\n"
+            + "User msg<turn|>\n"
+        #expect(result == expected)
+    }
+
+    // MARK: - Thinking ON
+
+    @Test("Thinking on: system + user with generation prompt (think directive + newline)")
+    func thinkingOnSystemAndUserWithGenPrompt() {
+        let result = thinkingTemplate.render(
+            system: "Be concise.",
+            user: "Hi",
+            addGenerationPrompt: true
+        )
+        let expected =
+            "<|turn>system\n"
+            + "<|think|>\n"
+            + "Be concise.<turn|>\n"
+            + "<|turn>user\n"
+            + "Hi<turn|>\n"
+            + "<|turn>model\n"
+        #expect(result == expected)
+    }
+
+    @Test("Thinking on: no system creates system turn with just think directive")
+    func thinkingOnNoSystemWithGenPrompt() {
+        let result = thinkingTemplate.render(
+            system: nil,
+            user: "Hi",
+            addGenerationPrompt: true
+        )
+        let expected =
+            "<|turn>system\n"
+            + "<|think|><turn|>\n"
+            + "<|turn>user\n"
+            + "Hi<turn|>\n"
+            + "<|turn>model\n"
+        #expect(result == expected)
+    }
+
+    @Test("Thinking on: no empty thought prefill in model turn")
+    func thinkingOnNoEmptyThoughtPrefill() {
+        let result = thinkingTemplate.render(
+            system: nil,
+            user: "Hi",
+            addGenerationPrompt: true
+        )
+        #expect(!result.contains("<|channel>thought"))
+    }
+
+    // MARK: - Content handling
 
     @Test("No literal <bos> in output")
     func noBosInOutput() {
@@ -153,42 +242,20 @@ struct ChatTemplateTests {
         #expect(!result.contains("<bos>"))
     }
 
-    @Test("System + user without generation prompt")
-    func systemAndUserNoGenPrompt() {
+    @Test("Content is trimmed (leading/trailing whitespace stripped)")
+    func contentTrimmed() {
         let result = template.render(
-            system: "System msg",
-            user: "User msg",
-            addGenerationPrompt: false
-        )
-        #expect(result.contains("<start_of_turn>system\nSystem msg<end_of_turn>"))
-        #expect(result.contains("<start_of_turn>user\nUser msg<end_of_turn>"))
-        #expect(!result.contains("<start_of_turn>model"))
-    }
-
-    @Test("Thinking enabled adds think token to system")
-    func thinkingEnabledWithSystem() {
-        let thinkingTemplate = GemmaChatTemplate(thinkingEnabled: true)
-        let result = thinkingTemplate.render(
-            system: "Be concise.",
-            user: "Hi",
+            system: "  padded system  \n",
+            user: "\n  padded user  ",
             addGenerationPrompt: true
         )
-        #expect(result.contains("<|think|>\nBe concise."))
-        #expect(result.contains("<start_of_turn>system"))
+        #expect(result.contains("padded system<turn|>"))
+        #expect(result.contains("padded user<turn|>"))
+        #expect(!result.contains("  padded"))
+        #expect(!result.contains("padded  "))
     }
 
-    @Test("Thinking enabled without system creates system turn for think token")
-    func thinkingEnabledNoSystem() {
-        let thinkingTemplate = GemmaChatTemplate(thinkingEnabled: true)
-        let result = thinkingTemplate.render(
-            system: nil,
-            user: "Hi",
-            addGenerationPrompt: true
-        )
-        #expect(result.contains("<start_of_turn>system\n<|think|><end_of_turn>"))
-    }
-
-    @Test("Multiline prompt content preserved")
+    @Test("Multiline prompt content preserved (internal newlines kept)")
     func multilineContent() {
         let result = template.render(
             system: nil,
@@ -196,5 +263,27 @@ struct ChatTemplateTests {
             addGenerationPrompt: true
         )
         #expect(result.contains("Line one\nLine two\nLine three"))
+    }
+
+    @Test("Empty system string treated as no system (no system turn when thinking off)")
+    func emptySystemStringThinkingOff() {
+        let result = template.render(
+            system: "   ",
+            user: "Hi",
+            addGenerationPrompt: true
+        )
+        // Empty/whitespace-only system should produce no system turn
+        #expect(!result.contains("<|turn>system"))
+    }
+
+    @Test("Empty system string with thinking on still emits system turn for directive")
+    func emptySystemStringThinkingOn() {
+        let result = thinkingTemplate.render(
+            system: "   ",
+            user: "Hi",
+            addGenerationPrompt: true
+        )
+        // Should produce a system turn with just the thinking directive
+        #expect(result.contains("<|turn>system\n<|think|><turn|>"))
     }
 }

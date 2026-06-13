@@ -529,7 +529,14 @@ struct AppCoreNotificationActionTests {
             return
         }
 
-        let detail = try await fix.store.meetingDetail(id: meetingID)
+        // The calendar association is persisted asynchronously after
+        // isRecording flips true; poll until it lands.
+        var detail: MeetingDetailData?
+        for _ in 0 ..< 40 {
+            try await Task.sleep(for: .milliseconds(50))
+            detail = try await fix.store.meetingDetail(id: meetingID)
+            if detail?.calendar != nil { break }
+        }
         #expect(detail?.calendar?.title == "Design Review")
     }
 

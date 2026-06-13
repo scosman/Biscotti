@@ -215,15 +215,19 @@ final class EventCollector {
         }
     }
 
-    /// Waits until the collector has at least `count` events or times out.
+    /// Waits until the collector has at least `count` events or gives up.
+    /// Uses an iteration count instead of a wall-clock deadline so that
+    /// MainActor starvation under parallel test execution cannot trip
+    /// the bound prematurely.
     func waitForEvents(
         count: Int,
-        timeout: Duration = .seconds(2)
+        maxIterations: Int = 500
     ) async {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while events.count < count, ContinuousClock.now < deadline {
+        var iteration = 0
+        while events.count < count, iteration < maxIterations {
             await Task.yield()
             try? await Task.sleep(for: .milliseconds(10))
+            iteration += 1
         }
     }
 

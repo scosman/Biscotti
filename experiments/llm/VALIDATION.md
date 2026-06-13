@@ -110,23 +110,30 @@ correct teardown order.
 - ggml-org/llama.cpp#17869 — unrelated (macOS backtrace printing), but referenced in
   the crash log's backtrace output
 
-**Status:** Fix builds and passes always-on tests. Needs hardware verification to
-confirm the crash is resolved.
+**Status:** Fix confirmed on hardware — no crash on exit with the ordered teardown
++ `_exit` fallback. The process exits cleanly.
 
 ---
 
 ## Results
 
-_To be filled in during Phase 4 live validation._
+**Setup:** Apple-silicon Mac, macOS 15; Gemma 4 12B QAT (`gemma-4-12b-it-UD-Q4_K_XL.gguf`);
+llama.cpp b9601 via mattt/llama.swift.
 
 ### Stack
 
-- [ ] Model download succeeded
-- [ ] Model load succeeded
-- [ ] Integration tests passed (`LLM_RUN_AI=1 swift test`)
-- [ ] Speed (tok/s): ___
-- [ ] Load time: ___
-- [ ] Peak memory: ___
+- [x] Model download succeeded
+- [x] Model load succeeded
+- [x] Integration tests passed (`LLM_RUN_AI=1 swift test`) — all gated tests run (model load,
+  greedy determinism, builtin-template sanity, streaming-vs-buffered parity)
+- [x] CLI runs end-to-end: download, run (streaming and non-streaming), thinking on/off, `--show-raw`
+- [x] Speed (summarize prompt, 1245-token prompt, default sampling, `--thinking off`):
+  - prompt eval: 1245 tok in 3.72s (334.9 tok/s)
+  - generation: 204 tok in 8.61s (23.7 tok/s)
+  - total: 12.39s
+- [x] Load time: 2.47s
+- [ ] Peak memory: not formally measured (Activity Monitor step skipped); recommend profiling on
+  8 GB Macs before productionizing
 
 ### Template decision
 
@@ -149,8 +156,10 @@ _To be filled in during Phase 4 live validation._
 
 ### Sampler decision
 
-- [ ] Built-in sampler chain works correctly
-- [ ] Notes: ___
+- [x] Built-in sampler chain works correctly: **YES** — greedy determinism test passes on hardware;
+  hand-rolled fallback not needed.
+- [x] Notes: The `llama_sampler` chain (penalties -> top_k -> top_p -> min_p -> temp -> dist) works
+  correctly for all tested configurations. No need to use the hand-rolled fallback path.
 
 ### Phase-1 validate items
 
@@ -195,26 +204,52 @@ at generation start; `[none]` is emitted before the response header if no
 `=== thinking ===` then reasoning or `[none]`, then `=== response ===`, then the
 message — all on stdout.
 
-**Status:** Build green + 132 always-on tests pass (including 19 splitter unit tests
+**Status:** Build green + 139 always-on tests pass (including 19 splitter unit tests
 covering: marker splitting across tokens, one-char-at-a-time feeding, off-mode
 suppression, auto-mode routing, unclosed thinking blocks, no-leak assertions,
 concatenation parity with `OutputParser.parse`, edge cases). Live streaming UX
-pending hardware verification.
+confirmed on hardware — channels route correctly in real time.
 
 ### Prompt quality
 
+All three tasks run against the synthetic diarized transcript fixture
+(`Fixtures/sample_transcript.txt`), default sampling, `--thinking off`.
+
 #### Summarize
-- Quality (1-5): ___
-- Notes: ___
+- Quality: 4/5 (Good)
+- Notes: Accurate multi-paragraph summary covering all key topics, decisions, and context.
+  No hallucinations. Captures the meeting structure and outcomes faithfully.
 
 #### Action items
-- Quality (1-5): ___
-- Notes: ___
+- Quality: 5/5 (Excellent)
+- Notes: Captured all action items with correct owners and deadlines. Correctly inferred
+  speaker real names (Mike/Priya/Sarah) for ownership even though the prompt only labels
+  Speaker A/B/C. Honest "Not specified" where no deadline was mentioned. No hallucinations
+  or misses.
 
 #### Speaker name inference
-- Quality (1-5): ___
-- Notes: ___
+- Quality: 5/5 (Perfect)
+- Notes: Speaker A=Sarah, B=Mike, C=Priya — each with accurate verbatim supporting quotes
+  that appear in the transcript. No hallucinations.
 
 ### Recommendation for Project 10
 
-_Model size/quant, sampling defaults, prompt phrasing learnings, anything to change for production._
+Local Gemma 4 12B QAT is **viable** for Biscotti's on-device transcript processing. The
+stack runs reliably on Apple silicon and produces accurate, useful output across
+summarization, action-item extraction, and speaker-name inference with no observed
+hallucinations, at acceptable speed (~24 tok/s generation, ~2.5s load) for
+non-interactive post-meeting processing.
+
+**Productionization notes:**
+
+1. **Port `LocalLLM` largely as-is** — the actor engine, streaming, and channel-aware output
+   parsing are production-grade. The value types, error handling, and concurrency model match
+   the repo's existing patterns.
+2. **Adopt `swift-jinja` for chat templating** when supporting more than one model family.
+   Single pinned model is fine hand-rolled; per-model hand-rolling doesn't scale across
+   model families with different thinking mechanisms. See `README.md` "Chat template rendering."
+3. **Remove the CLI `_exit` Metal-teardown workaround** once upstream fixes the ggml `rsets`
+   assert (tracked: ggml-org/llama.cpp `ggml-metal-device.m`). The library-side teardown
+   (`unload` + `shutdown`) is correct; `_exit` is a CLI-only belt-and-suspenders.
+4. **Profile peak memory on 8 GB Macs** before shipping — not measured in this validation.
+   The 12B QAT model loads into unified memory; 8 GB machines may be tight.

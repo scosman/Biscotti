@@ -35,7 +35,7 @@ checklist. Each phase is one reviewable unit. Built/tested in `experiments/llm` 
   `generateStreaming` (`AsyncThrowingStream<StreamEvent>`) with non-streaming buffering over the same
   loop; CLI `--stream`; streaming unit tests (event ordering, final result parity).
 
-- [ ] **Phase 4 — Live validation (human-run on Apple silicon).**
+- [x] **Phase 4 — Live validation (human-run on Apple silicon).**
   Resolve the `[Phase-1 validate]` items against the real model (built-in-vs-hand-rolled template &
   sampler decision, double-BOS, Gemma 4 thinking tokens, b9601 specifics); run the integration test
   + each prompt file; record stack + qualitative findings, speed/memory, and the Project 10

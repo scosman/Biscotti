@@ -50,7 +50,10 @@ public final class AppShellViewModel {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
-        homeViewModel = HomeViewModel(core: core)
+        homeViewModel = HomeViewModel(
+            core: core,
+            urlOpener: { NSWorkspace.shared.open($0) }
+        )
         settingsViewModel = SettingsViewModel(core: core)
         onboardingViewModel = OnboardingViewModel(core: core)
     }
@@ -213,19 +216,20 @@ public final class AppShellViewModel {
 
     // MARK: - Time formatting for upcoming events
 
-    /// Formats a CalendarEvent's start time as relative text.
-    /// Delegates to `TimeFormatting.relativeTimeText` (shared helper).
+    /// Formats a CalendarEvent's start time as coarse relative text
+    /// ("in 2 days", "in 5h", "in 12m") or "now".
+    /// Delegates to `TimeFormatting.coarseRelativeTimeText` (shared helper).
     public static func timeText(
         for event: CalendarEvent,
         relativeTo now: Date = Date()
     ) -> String {
-        TimeFormatting.relativeTimeText(event.start, relativeTo: now)
+        TimeFormatting.coarseRelativeTimeText(event.start, relativeTo: now)
     }
 
     /// Formats a CalendarEvent's start time relative to the
     /// minute-tick, ensuring the label refreshes every minute.
     public func tickTimeText(for event: CalendarEvent) -> String {
-        TimeFormatting.relativeTimeText(
+        TimeFormatting.coarseRelativeTimeText(
             event.start, relativeTo: core.minuteTick
         )
     }

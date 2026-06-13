@@ -208,17 +208,18 @@ var dateText: String     // "EEEE, MMMM d" of core.minuteTick (cached formatter)
 ```
 
 ### 5.2 Stat chips (derived from the upcoming set)
-Synchronous, from data already in `core`. Semantic: "today" = events in the
-local calendar day that are still upcoming/in-progress (we only have the
-upcoming set in memory; already-ended earlier-today meetings are not counted —
-see §10 confirm-item).
+Synchronous, from data already in `core`. Two chips: meetings-left and next-in.
+Semantic: "today" = events in the local calendar day that are still
+upcoming/in-progress (we only have the upcoming set in memory; already-ended
+earlier-today meetings are not counted — see §10 confirm-item).
 
 ```
 private var todaysMeetings: [CalendarEvent]   // displayedUpcoming where
   // isMeetingLike && Calendar.current.isDate(start, inSameDayAs: minuteTick)
 var meetingsLeftText: String?    // "{n} meetings left today" (n = count); nil if no calendar access
-var scheduledText: String?       // "{H}h {M}m scheduled" from Σ(end−start); nil if no access
-var nextInText: String?          // "Next in {relativeTimeText}" of displayedUpcoming.first; nil if none
+var nextInText: String?          // coarseRelativeTimeText of displayedUpcoming.first; nil if none
+                                 // Returns just the relative portion ("in 5h");
+                                 // the View composes the "Next " prefix for the stat chip.
 var showStatChips: Bool          // calendarAccess == .authorized
 ```
 The view renders only the non-nil chips; hides the whole row when
@@ -322,9 +323,9 @@ Unit tests only (SwiftUI views remain preview-verified; no snapshot infra).
 **HomeUI — extend `HomeViewModelTests`:**
 - greeting boundaries (set `minuteTick` to 09:00/14:00/20:00); `dateText`
   format.
-- stat chips: `meetingsLeftText`/`scheduledText` over synthetic same-day vs
-  other-day events; `nextInText` present/absent; `showStatChips` false when not
-  authorized.
+- stat chips: `meetingsLeftText` over synthetic same-day vs other-day events;
+  `nextInText` present/absent (coarse tiers: days, hours-only, precise);
+  `showStatChips` false when not authorized.
 - hero: `heroEvent` non-nil when first upcoming within ±15m, nil at +16m and
   when list empty; `heroIsRecordOnly` true when no `conferenceURL`;
   `recordDisabled` reflects recording state.
@@ -349,12 +350,13 @@ capturing `urlOpener`).
   gradients, `RoundedRectangle`, and a custom `ButtonStyle`.
 
 ## 10. Confirm-at-review defaults (carried from functional spec §9)
-1. Stat chips show what's **left today** ("{n} meetings left today") — today's
+1. Two stat chips: meetings-left ("{n} meetings left today") + next-in
+   ("Next {coarse countdown}"). Meetings-left counts today's
    upcoming/in-progress meeting-like events; already-ended earlier-today
-   meetings are not counted (only the upcoming set is in memory). Whole-day
-   accuracy would need a calendar day-query — out of scope for this pass.
-2. Preview caps unchanged (Upcoming 6, Past 4); participants mapped ≤5.
+   meetings are not counted (only the upcoming set is in memory).
+2. Preview caps: Upcoming 3, Past 3; participants mapped ≤5. Upstream fetch
+   window is 7 days.
 3. Avatars: 16-color palette rendered as a subtle gradient.
 4. "View in calendar" → Calendar.app at the event date.
 5. Empty/permission states behavior unchanged, re-skinned.
-```
+6. Home footer: Biscotti wordmark + tagline, no icon.

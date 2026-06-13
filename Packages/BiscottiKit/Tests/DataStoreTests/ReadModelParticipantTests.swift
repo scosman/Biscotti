@@ -72,4 +72,53 @@ struct ReadModelParticipantTests {
         #expect(summary.participants.isEmpty)
         #expect(summary.participantCount == 0)
     }
+
+    @Test("meetingSummaries includes participants when recording has linked calendar snapshot")
+    func meetingSummaryLinkedEventParticipants() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(
+            title: "Team Sync",
+            start: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        // Create people (simulates what persistSnapshot does)
+        let aliceID = try await store.findOrCreatePerson(
+            name: "Alice", email: "alice@example.com"
+        )
+        let bobID = try await store.findOrCreatePerson(
+            name: "Bob", email: "bob@example.com"
+        )
+        let carolID = try await store.findOrCreatePerson(
+            name: "Carol", email: "carol@example.com"
+        )
+
+        // Link as organizer + participants
+        try await store.setParticipants(
+            [aliceID, bobID, carolID],
+            organizer: aliceID,
+            for: id
+        )
+
+        // Attach a calendar snapshot (the linked event)
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ek-123",
+            compositeKey: "Team Sync|2023-11-14",
+            title: "Team Sync",
+            startDate: Date(timeIntervalSince1970: 1_700_000_000),
+            endDate: Date(timeIntervalSince1970: 1_700_003_600)
+        )
+        try await store.setSnapshot(snapshot, for: id)
+
+        let summaries = try await store.meetingSummaries(limit: 10)
+        #expect(summaries.count == 1)
+
+        let summary = summaries[0]
+        // Organizer-first, deduped: Alice (org + participant deduped), Bob, Carol
+        #expect(summary.participants.count == 3)
+        #expect(summary.participants[0].name == "Alice")
+        #expect(summary.participants[0].email == "alice@example.com")
+        #expect(summary.participants[1].name == "Bob")
+        #expect(summary.participants[2].name == "Carol")
+        #expect(summary.participantCount == 3)
+    }
 }

@@ -25,10 +25,10 @@ checklist.
     deduped, ≤5) + `participantCount`; map in `meetingSummaries(...)` (arch §3).
   - Tests: `AvatarTests` (initials/color-index) + DataStore read-model tests.
 
-- [ ] **Phase 2 — Home rebuild (ViewModel + View + wiring).**
+- [x] **Phase 2 — Home rebuild (ViewModel + View + wiring).**
   Assemble the parts into the redesigned Home; container background.
   - `HomeViewModel`: `urlOpener` injection; `greeting`/`dateText`; stat-chip
-    derivations (`meetingsLeftText`/`scheduledText`/`nextInText`/`showStatChips`);
+    derivations (`meetingsLeftText`/`nextInText`/`showStatChips`);
     hero detection (`heroEvent`/`heroIsRecordOnly`/`recordDisabled`); avatar +
     `pastSecondLine` mapping; actions `joinAndRecord`/`openInCalendar`
     (arch §5).

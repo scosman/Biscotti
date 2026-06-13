@@ -124,21 +124,20 @@ card → "Past Meetings" card**, inside a single centered column.
   refresh).
 
 ### 5.2 Stat chips (at-a-glance row)
-A horizontal row of up to three neutral pill chips (one reusable
+A horizontal row of up to two neutral pill chips (one reusable
 `StatChip(icon:tint:text:)`), each derived live from calendar data:
 
 | Chip | Icon (tint) | Text | Derivation |
 |---|---|---|---|
 | Meetings left | `calendar` (accent) | "{N} meetings left today" | Count of today's meeting-like events that are still upcoming/in-progress (the in-memory upcoming set, starting on the local **today**). |
-| Scheduled time | `clock` (secondary) | "{H}h {M}m scheduled" | Sum of durations (`end−start`) of those same remaining-today events. |
-| Next in | `circle.fill` (green) | "Next in {…}" | Countdown to the soonest **future** upcoming event (`displayedUpcoming` first item), using `minuteTick`. |
+| Next in | `circle.fill` (green) | "Next {…}" | Coarse countdown to the soonest **future** upcoming event (`displayedUpcoming` first item), using `minuteTick` and `coarseRelativeTimeText`. The ViewModel returns just the relative portion (e.g. "in 5h"); the View prepends "Next ". |
 
 Behavior:
 - **No calendar access:** the entire chip row is hidden (the "connect calendar"
   affordance lives in the Upcoming card, §5.5).
 - **Authorized but nothing today / nothing upcoming:** omit only the chips that
   have no data (e.g. drop "Next in" when nothing is upcoming; "0 meetings
-  today" / "0h 0m scheduled" still render when authorized).
+  today" still renders when authorized).
 - Counts refresh on `minuteTick` and on calendar reloads.
 
 > The chips reflect what's **left today** — they derive from the in-memory
@@ -153,7 +152,7 @@ Behavior:
   (14pt leading inset, under the text not the avatars). First row has no top
   divider.
 - Source: `core.displayedUpcoming` (ended events already filtered), capped at a
-  small preview count (keep the current cap of **6**).
+  small preview count of **3**. The upstream fetch window is **7 days**.
 - Each row starts with the **fixed 78pt avatar column** (§6) so all titles
   align regardless of participant count.
 - **Row tap** selects the event → existing `EventPreview` detail
@@ -201,7 +200,7 @@ Preserve current behavior, re-skinned into the new card:
   same baseline (accent, 12.5pt + small chevron). The link → `showMeetings()`.
   (This replaces the current in-card "See all" row.)
 - One white card; rows composed manually with inset dividers.
-- Source: `core.summaries` preview (keep the current cap of **4**).
+- Source: `core.summaries` preview, capped at **3**.
 - Each past row: **avatar column** (from the extended read-model, §7) + title
   (14.5pt medium) + meta `"Today · 32m · {names}"` (existing
   `TimeFormatting.meetingSecondLine` for the "Today · 32m" part, with the
@@ -215,6 +214,22 @@ Preserve current behavior, re-skinned into the new card:
 Inline capsule: `video.fill` (green `#1A9D5A`) + the platform label
 (`event.conferencePlatform`, e.g. "Google Meet"). Rendered only when a platform
 is known. Per `agent_spec.md` §4.9.
+
+### 5.9 Home footer
+A centered footer at the bottom of the Home scroll content:
+- **"Biscotti"** — 13pt semibold, tracking -0.1, primary color.
+- **"Total recall, total privacy."** — 12pt regular, tertiary color.
+- No icon. Padding 30pt above. Serves as brand anchoring / calm ending.
+
+### 5.10 Countdown formatting (`coarseRelativeTimeText`)
+All three countdown surfaces — the **stat chip** ("Next in"), the **sidebar**
+upcoming rows, and the **Home upcoming rows** — use a shared coarse formatter
+(`TimeFormatting.coarseRelativeTimeText`) with three tiers:
+- **>= 1 day:** "in N days" (whole days, no hours/minutes).
+- **> 3 hours:** "in Nh" (whole hours, no minutes). The boundary is strictly
+  > 180 minutes.
+- **<= 3 hours:** full precision ("in 2h 15m", "in 45m").
+- **Past/current:** "now".
 
 ---
 
@@ -293,12 +308,15 @@ Upcoming rows already have participant data on `CalendarEvent`
 ## 9. Defaults to confirm at review
 
 Sensible defaults chosen without a blocking question; flag any to change:
-1. **Stat-chip semantics** (§5.2): chips show what's **left today** (derived
-   from the in-memory upcoming set; already-ended meetings not counted).
-2. **Preview caps unchanged:** Upcoming 6, Past 4.
+1. **Stat-chip semantics** (§5.2): two chips — meetings-left and next-in.
+   Meetings-left shows what's **left today** (derived from the in-memory
+   upcoming set; already-ended meetings not counted). Next-in uses coarse
+   countdown formatting (§5.10).
+2. **Preview caps:** Upcoming 3, Past 3.
 3. **Avatar rendering:** flat 16-color palette rendered as a subtle gradient;
    initials white semibold. (Pure-flat fill is the alternative.)
 4. **"View in calendar"** for the hero opens Calendar.app at the event date
    (no EK identifier exists for live events).
 5. **Empty/permission states** kept (behavior unchanged), re-skinned into the
    new cards.
+6. **Home footer:** Biscotti wordmark + tagline, no icon (§5.9).

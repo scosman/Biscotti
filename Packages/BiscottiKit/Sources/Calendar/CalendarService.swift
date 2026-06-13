@@ -48,6 +48,11 @@ public final class CalendarService {
     /// without accessing MainActor-isolated storage.
     private let observationBox = ObservationBox()
 
+    /// The lookahead window for fetching upcoming events (7 days).
+    /// Used by AppCore.startBackgroundServices, CalendarService.handleStoreChanged,
+    /// and SettingsViewModel when refreshing after calendar selection changes.
+    public static let upcomingWindowSeconds: TimeInterval = 7 * 24 * 60 * 60
+
     // MARK: - Init
 
     public init(
@@ -331,11 +336,10 @@ public final class CalendarService {
 
 extension CalendarService {
     private func handleStoreChanged() async {
-        // Re-fetch upcoming events with a 24h window
         let now = Date()
         let window = DateInterval(
             start: now,
-            end: now.addingTimeInterval(24 * 60 * 60)
+            end: now.addingTimeInterval(Self.upcomingWindowSeconds)
         )
         await refreshUpcoming(window: window)
     }

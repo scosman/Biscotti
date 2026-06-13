@@ -378,6 +378,44 @@ struct AppShellUpcomingSearchTests {
         #expect(text2 == "in 1h 30m")
     }
 
+    @Test("timeText uses coarse formatting for distant events")
+    @MainActor
+    func timeTextCoarseTiers() {
+        let now = Date()
+
+        // 6 hours in the future (>3h tier: hours only, no minutes)
+        let event3 = CalendarEvent(
+            id: "e3",
+            title: "T3",
+            start: now.addingTimeInterval(6 * 3600 + 1200), // 6h 20m
+            end: now.addingTimeInterval(6 * 3600 + 4800),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text3 = AppShellViewModel.timeText(for: event3, relativeTo: now)
+        #expect(text3 == "in 6h")
+
+        // 3 days in the future (>=1 day tier: days only)
+        let event4 = CalendarEvent(
+            id: "e4",
+            title: "T4",
+            start: now.addingTimeInterval(3 * 86400),
+            end: now.addingTimeInterval(3 * 86400 + 3600),
+            conferencePlatform: nil,
+            conferenceURL: nil,
+            attendeeCount: 2,
+            calendarTitle: "W",
+            calendarColorHex: "#000",
+            isMeetingLike: true
+        )
+        let text4 = AppShellViewModel.timeText(for: event4, relativeTo: now)
+        #expect(text4 == "in 3 days")
+    }
+
     @Test("timeText returns 'now' for past events")
     @MainActor
     func timeTextPast() {

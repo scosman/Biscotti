@@ -238,7 +238,9 @@ public final class AppCore {
         await calendar.refreshUpcoming(
             window: DateInterval(
                 start: now,
-                end: now.addingTimeInterval(24 * 60 * 60)
+                end: now.addingTimeInterval(
+                    CalendarService.upcomingWindowSeconds
+                )
             )
         )
         upcoming = calendar.upcoming

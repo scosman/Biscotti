@@ -195,7 +195,9 @@ public final class SettingsViewModel {
             await core.calendar.refreshUpcoming(
                 window: DateInterval(
                     start: now,
-                    end: now.addingTimeInterval(24 * 60 * 60)
+                    end: now.addingTimeInterval(
+                        CalendarService.upcomingWindowSeconds
+                    )
                 )
             )
         } catch {

@@ -13,19 +13,27 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
     public let hasTranscript: Bool
     /// The recording's wall-clock duration in seconds, or `nil` if unknown.
     public let recordingDuration: TimeInterval?
+    /// Organizer-first, deduped participants (capped at 5 for display).
+    public let participants: [PersonData]
+    /// Total distinct participant count (drives the "+N" badge).
+    public let participantCount: Int
 
     public init(
         id: UUID,
         title: String,
         date: Date,
         hasTranscript: Bool,
-        recordingDuration: TimeInterval? = nil
+        recordingDuration: TimeInterval? = nil,
+        participants: [PersonData] = [],
+        participantCount: Int = 0
     ) {
         self.id = id
         self.title = title
         self.date = date
         self.hasTranscript = hasTranscript
         self.recordingDuration = recordingDuration
+        self.participants = participants
+        self.participantCount = participantCount
     }
 }
 
@@ -271,12 +279,25 @@ public extension DataStore {
         }
         let capped = limit.map { Array(sorted.prefix($0)) } ?? sorted
         return capped.map { meeting in
-            MeetingSummary(
+            // Build organizer-first, deduped participant list (capped at 5)
+            let allPeople: [Person] = ([meeting.organizer].compactMap(\.self) + meeting.participants)
+            var deduped: [Person] = []
+            var seenIDs: Set<UUID> = []
+            for person in allPeople where seenIDs.insert(person.id).inserted {
+                deduped.append(person)
+            }
+            let mappedParticipants = deduped.prefix(5).map {
+                PersonData(id: $0.id, name: $0.name, email: $0.email)
+            }
+
+            return MeetingSummary(
                 id: meeting.id,
                 title: meeting.title,
                 date: meeting.startDate ?? meeting.createdAt,
                 hasTranscript: meeting.preferredTranscriptID != nil,
-                recordingDuration: meeting.recordingDuration
+                recordingDuration: meeting.recordingDuration,
+                participants: mappedParticipants,
+                participantCount: deduped.count
             )
         }
     }

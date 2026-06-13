@@ -1,0 +1,52 @@
+import SwiftUI
+
+/// Filled accent button style for the hero row's "Join & Record" / "Record" button.
+///
+/// Accent fill, white 13.5pt semibold label, height 32, radius 8, subtle top
+/// highlight, pressed = dim. Custom style to avoid `.borderedProminent` default
+/// metrics while keeping a native feel.
+public struct JoinRecordButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Tokens.joinButtonLabel)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.buttonRadius)
+                    .fill(Color.accentColor)
+                    .overlay(alignment: .top) {
+                        // Subtle top highlight
+                        RoundedRectangle(cornerRadius: Tokens.buttonRadius)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.15), .clear],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                    }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.buttonRadius))
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+    }
+}
+
+#Preview("JoinRecordButtonStyle") {
+    VStack(spacing: 12) {
+        Button {} label: {
+            HStack(spacing: 6) {
+                Image(systemName: "record.circle")
+                Text("Join & Record")
+            }
+        }
+        .buttonStyle(JoinRecordButtonStyle())
+
+        Button("Record") {}
+            .buttonStyle(JoinRecordButtonStyle())
+            .disabled(true)
+    }
+    .padding()
+}

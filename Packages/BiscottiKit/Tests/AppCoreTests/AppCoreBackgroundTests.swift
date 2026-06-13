@@ -123,9 +123,12 @@ struct AppCoreDetectionPipelineTests {
         }
         await fix.core.onLaunch()
 
-        // Fire the calendar-start timer
+        // Fire the calendar-start timer and poll until the MainActor
+        // task that posts the calendar notification runs.
         fakeScheduler.advance(by: .seconds(2))
-        try await Task.sleep(for: .milliseconds(100))
+        try await pollUntil {
+            !fix.fakeNotificationCenter.addedRequests.isEmpty
+        }
 
         let requestsAfterCal = fix.fakeNotificationCenter
             .addedRequests.count

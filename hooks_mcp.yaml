@@ -63,7 +63,9 @@ actions:
   - name: "build_llm"
     description: "Build the local_llm experiment SPM package (experiments/llm)"
     command: "bash -c 'set -o pipefail; swift build --package-path experiments/llm 2>&1 | tail -n 400'"
+    timeout: 300
 
   - name: "test_llm"
     description: "Run the local_llm experiment unit tests (experiments/llm). Always-on tests only; the env-gated AI/integration test (LLM_RUN_AI=1) needs the model and is human/Phase-4 run."
     command: "bash -c 'set -o pipefail; swift test --package-path experiments/llm 2>&1 | tail -n 400'"
+    timeout: 300

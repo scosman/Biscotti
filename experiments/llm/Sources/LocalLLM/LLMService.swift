@@ -66,7 +66,7 @@ public enum LLMService {
     private static func createBackend(
         model: URL,
         backend: Backend,
-        config _: EngineConfig
+        config: EngineConfig
     ) throws -> any ServiceBackend {
         switch backend {
         case .inProcess:
@@ -74,14 +74,21 @@ public enum LLMService {
             // For now, this path requires a model file -- real LLMEngine will
             // be constructed at start() time in a future iteration. Phase 2
             // tests inject MockEngine directly via the internal initializer.
-            // TODO: Phase 3/4 will construct LLMEngine here with model + config.
+            // TODO: Phase 4 will construct LLMEngine here with model + config.
             throw LLMServiceError.serviceUnavailable(
                 "In-process backend with real LLMEngine requires model loading (use openConnection(engine:) for tests)"
             )
-        case .outOfProcess:
-            // TODO: Phase 3 -- RemoteBackend
-            throw LLMServiceError.serviceUnavailable(
-                "Out-of-process backend not yet implemented (Phase 3)"
+        case let .outOfProcess(explicitBinary):
+            guard let binaryURL = RemoteBackend.resolveServiceBinary(explicit: explicitBinary) else {
+                throw LLMServiceError.serviceUnavailable(
+                    "localllm-service binary not found. Build with 'swift build' first, " +
+                        "or set LOCALLLM_SERVICE_PATH."
+                )
+            }
+            return RemoteBackend(
+                serviceBinary: binaryURL,
+                model: model,
+                config: config
             )
         }
     }
@@ -106,6 +113,24 @@ public enum LLMService {
     ) async throws -> T {
         let conn = try await openConnection(engine: engine)
         return try await runWithGuaranteedClose(conn, body)
+    }
+
+    /// Open an out-of-process connection in `--fake` mode (transport tests).
+    ///
+    /// Returns the connection and the child's PID for reclamation assertions.
+    static func openFakeConnection(
+        serviceBinary: URL
+    ) async throws -> (LLMConnection, pid_t) {
+        let backend = RemoteBackend(
+            serviceBinary: serviceBinary,
+            model: URL(fileURLWithPath: "/dev/null"),
+            config: .default,
+            fake: true
+        )
+        let connection = LLMConnection(backend: backend)
+        try await connection.start()
+        let pid = backend.transportHandle.runningPID ?? 0
+        return (connection, pid)
     }
 
     // MARK: - Shared close guarantee

@@ -15,6 +15,9 @@ let package = Package(
         // "LocalLLM" library target's Sources/LocalLLM directory. SPM allows the product
         // name to differ from the target name.
         .executable(name: "localllm", targets: ["llm-cli"]),
+        // Service binary for out-of-process LLM hosting. Spawned by RemoteBackend;
+        // speaks the framed-JSON wire protocol over stdin/stdout pipes.
+        .executable(name: "localllm-service", targets: ["llm-service"]),
     ],
     dependencies: [
         .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.9601.0")),
@@ -35,6 +38,11 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/CLI"
+        ),
+        .executableTarget(
+            name: "llm-service",
+            dependencies: ["LocalLLM"],
+            path: "Sources/Service"
         ),
         .testTarget(
             name: "LocalLLMTests",

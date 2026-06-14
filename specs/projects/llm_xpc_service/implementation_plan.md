@@ -33,7 +33,7 @@ order. Verify each phase with `build_llm` + `test_llm` (out-of-sandbox).
     `withConnection` closes on success **and** throw; cancellation releases the gate;
     mock-error → correct `LocalLLMError`. (arch §13)
 
-- [ ] **Phase 3 — Out-of-process transport** (arch §2, §7, §8, §9)
+- [x] **Phase 3 — Out-of-process transport** (arch §2, §7, §8, §9)
   - `Package.swift`: add executable target `llm-service` (product `localllm-service`),
     depends on `LocalLLM` (§2).
   - `ServiceLoop` (in `LocalLLM`, unit-testable): rescue-and-gag stdout (§7.1/§8 step 0);

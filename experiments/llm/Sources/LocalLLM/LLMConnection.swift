@@ -112,6 +112,12 @@ public actor LLMConnection {
     /// (`.done`), errors, or is cancelled. A consumer that stops iterating cancels
     /// the underlying request and frees the queue for the next caller.
     ///
+    /// Uses the `unfolding:` factory so the element-producing closure runs in the
+    /// consumer's task context. This means `withTaskCancellationHandler` fires
+    /// immediately when the consumer's task is cancelled, sending the cancel frame
+    /// to the child process even if iteration is suspended waiting for the next
+    /// event.
+    ///
     /// Throws `LLMServiceError.connectionClosed` (via the stream) if the connection
     /// is closed or failed.
     public func generateStreaming(
@@ -125,60 +131,90 @@ public actor LLMConnection {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
 
-        return AsyncThrowingStream { continuation in
-            let task = Task { [weak self] in
-                guard let self else {
-                    continuation.finish(throwing: LLMServiceError.connectionClosed)
-                    return
+        // Capture actor-isolated references outside the nonisolated closure
+        // to avoid repeated actor hops in the hot path.
+        let backend = self.backend
+        let sem = self.semaphore
+
+        // Shared mutable state for the unfolding closure. The closure is called
+        // repeatedly by the consumer's for-await loop; we need state to survive
+        // between calls (semaphore acquired, id allocated, backend iterator).
+        let holder = StreamHolder()
+
+        return AsyncThrowingStream<StreamEvent, Error>(unfolding: { [weak self] () async throws -> StreamEvent? in
+            // First call: acquire semaphore, validate, allocate id, start backend.
+            if !holder.started {
+                holder.started = true
+
+                await sem.wait()
+
+                if let error = await self?.closedOrFailedError() {
+                    sem.signal()
+                    throw error
                 }
-
-                await self.semaphore.wait()
-
-                // Re-check after acquiring
-                if let error = await self.closedOrFailedError() {
-                    self.semaphore.signal()
-                    continuation.finish(throwing: error)
-                    return
+                guard let self else {
+                    sem.signal()
+                    throw LLMServiceError.connectionClosed
                 }
 
                 let id = await self.allocateID()
+                holder.id = id
                 await self.setState(.generating)
 
-                let backendStream = self.backend.generateStreaming(
+                let backendStream = backend.generateStreaming(
                     id: id, prompt: prompt, system: system, options: options
                 )
-
-                do {
-                    for try await event in backendStream {
-                        if Task.isCancelled {
-                            await self.backend.cancel(id: id)
-                            await self.restoreReadyIfOpen()
-                            self.semaphore.signal()
-                            continuation.finish(throwing: LLMServiceError.cancelled)
-                            return
-                        }
-                        continuation.yield(event)
-                    }
-                    await self.restoreReadyIfOpen()
-                    self.semaphore.signal()
-                    continuation.finish()
-                } catch is CancellationError {
-                    await self.backend.cancel(id: id)
-                    await self.restoreReadyIfOpen()
-                    self.semaphore.signal()
-                    continuation.finish(throwing: LLMServiceError.cancelled)
-                } catch let error as LLMServiceError {
-                    await self.handleServiceError(error)
-                    self.semaphore.signal()
-                    continuation.finish(throwing: error)
-                } catch {
-                    await self.restoreReadyIfOpen()
-                    self.semaphore.signal()
-                    continuation.finish(throwing: error)
-                }
+                holder.iterator = backendStream.makeAsyncIterator()
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
+
+            guard let id = holder.id else {
+                throw LLMServiceError.connectionClosed
+            }
+
+            // Pull the next event from the backend stream. Use
+            // withTaskCancellationHandler so a consumer-side task.cancel()
+            // immediately sends the cancel frame to the child, even if
+            // iterator.next() is suspended waiting for the next event.
+            let event: StreamEvent?
+            do {
+                event = try await withTaskCancellationHandler {
+                    try await holder.iterator?.next()
+                } onCancel: {
+                    // Fire-and-forget: send cancel to the child process.
+                    // The child will stop its work and send back a
+                    // .requestError(.cancelled), which unblocks next().
+                    Task {
+                        await backend.cancel(id: id)
+                    }
+                }
+            } catch is CancellationError {
+                await backend.cancel(id: id)
+                if let self { await self.restoreReadyIfOpen() }
+                sem.signal()
+                holder.cleanup()
+                throw LLMServiceError.cancelled
+            } catch let error as LLMServiceError {
+                if let self { await self.handleServiceError(error) }
+                sem.signal()
+                holder.cleanup()
+                throw error
+            } catch {
+                if let self { await self.restoreReadyIfOpen() }
+                sem.signal()
+                holder.cleanup()
+                throw error
+            }
+
+            // nil means the backend stream ended (normal completion)
+            guard let event else {
+                if let self { await self.restoreReadyIfOpen() }
+                sem.signal()
+                holder.cleanup()
+                return nil
+            }
+
+            return event
+        })
     }
 
     // MARK: - Close
@@ -272,5 +308,25 @@ public actor LLMConnection {
             // Per-request or lifecycle errors don't mark the connection failed.
             restoreReadyIfOpen()
         }
+    }
+}
+
+// MARK: - StreamHolder (mutable state for unfolding closure)
+
+/// Holds mutable state across repeated calls to the `unfolding:` closure in
+/// `generateStreaming`. Each call to the closure pulls the next event from the
+/// backend stream; the holder keeps the iterator and metadata alive between calls.
+///
+/// Marked `@unchecked Sendable` because it is only accessed from one task at a
+/// time (the consumer's `for try await` loop -- `unfolding:` closures are never
+/// called concurrently).
+private final class StreamHolder: @unchecked Sendable {
+    var started = false
+    var id: UInt64?
+    var iterator: AsyncThrowingStream<StreamEvent, Error>.AsyncIterator?
+
+    func cleanup() {
+        iterator = nil
+        id = nil
     }
 }

@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Shared design tokens: colors, typography, and spacing for a tight, Apple-native UI.
+/// Shared design tokens: colors, typography, and spacing for the F Sage identity.
 public enum Tokens {
     // MARK: - Colors
 
-    /// Primary accent color (system red for recording state).
+    /// Active-recording indicators only (pulsing dot, toolbar "Recording..." pill, Stop button).
     public static let recordingRed = Color.red
 
-    /// Secondary text color.
-    public static let secondaryText = Color.secondary
+    /// Secondary text color (warm ink @ 54%).
+    public static let secondaryText = Color.inkSecondary
 
     /// Background for banners (warning).
     public static let warningBackground = Color.yellow.opacity(0.15)
@@ -16,34 +16,34 @@ public enum Tokens {
     /// Background for banners (error).
     public static let errorBackground = Color.red.opacity(0.15)
 
-    /// Speaker chip background (subtle tint).
-    public static let speakerChipBackground = Color.accentColor.opacity(0.12)
+    /// Speaker chip background (sage wash).
+    public static let speakerChipBackground = Color.accentWashSoft
 
-    // MARK: - Home / Pro Palette
+    // MARK: - Surfaces (warm ivory)
 
-    /// Near-white content background (#FBFBFC) for the detail pane behind Home.
-    public static let contentBackground = Color(red: 0.984, green: 0.984, blue: 0.988)
+    /// Warm ivory content background.
+    public static let contentBackground = Color.paper
 
     /// Card fill (white).
     public static let cardFill = Color.white
 
-    /// Hairline separator: black @ 8%.
-    public static let hairline = Color.black.opacity(0.08)
+    /// Hairline separator: ink @ 11%.
+    public static let hairline = Color.hairline
 
-    /// Card border stroke: black @ 7%, 0.5pt.
-    public static let cardStroke = Color.black.opacity(0.07)
+    /// Card border stroke: warm ink @ 10%, 0.5pt.
+    public static let cardStroke = Color.cardStroke
 
-    /// Neutral chip fill: black @ 5%.
-    public static let neutralChip = Color.black.opacity(0.05)
+    /// Neutral chip fill: ink @ 6%.
+    public static let neutralChip = Color.neutralChip
 
-    /// Accent wash (soft, 6%) — hero row background.
-    public static let accentWashSoft = Color.accentColor.opacity(0.06)
+    /// Accent wash (soft, 8%) -- hero row background, speaker chips.
+    public static let accentWashSoft = Color.accentWashSoft
 
-    /// Accent wash (strong, 14%) — selection background.
-    public static let accentWashStrong = Color.accentColor.opacity(0.14)
+    /// Accent wash (strong, 14%) -- selection background.
+    public static let accentWashStrong = Color.accentWashStrong
 
-    /// Success / "live" green (#1A9D5A) — Meet chip icon, "Next in" dot.
-    public static let liveGreen = Color(red: 0.102, green: 0.616, blue: 0.353)
+    /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
+    public static let liveGreen = Color.sage
 
     /// Fixed 16-color avatar palette. Order is permanent; never reorder.
     public static let avatarPalette: [Color] = [
@@ -67,8 +67,8 @@ public enum Tokens {
 
     // MARK: - Typography
 
-    /// Large monospaced font for elapsed time display.
-    public static let elapsedTimeFont = Font.system(.largeTitle, design: .monospaced).weight(.medium)
+    /// Recording elapsed counter: JetBrains Mono largeTitle, weight 500.
+    public static let elapsedTimeFont = Font.monoElapsed
 
     /// Title font for meeting headers.
     public static let meetingTitleFont = Font.headline
@@ -82,45 +82,45 @@ public enum Tokens {
     /// Small font for speaker labels.
     public static let speakerLabelFont = Font.caption.weight(.semibold)
 
-    /// Section header font (e.g. "PAST").
-    public static let sectionHeaderFont = Font.caption.weight(.medium)
+    /// Section header font -- use `.kicker()` modifier at call sites instead.
+    public static let sectionHeaderFont = Font.monoKicker
 
     // MARK: - Home Typography
 
-    /// Greeting title: 32pt bold. Apply `greetingTracking` via `.tracking()`.
-    public static let greetingFont = Font.system(size: 32, weight: .bold)
+    /// Greeting title: Newsreader Display ~32, weight 500. Apply `greetingTracking` via `.tracking()`.
+    public static let greetingFont = Font.serifGreeting
 
-    /// Tracking for the greeting title (-0.6pt tighter).
-    public static let greetingTracking: CGFloat = -0.6
+    /// Tracking for the greeting title (-0.32pt).
+    public static let greetingTracking: CGFloat = -0.32
 
-    /// Date line: 15pt regular.
-    public static let dateLine = Font.system(size: 15, weight: .regular)
+    /// Date line: JetBrains Mono 15pt regular.
+    public static let dateLine = Font.monoDate
 
-    /// "Starting soon" hero title: 16pt semibold.
+    /// "Starting soon" hero title: 16pt semibold (SF Pro, unchanged).
     public static let heroTitle = Font.system(size: 16, weight: .semibold)
 
-    /// Row title: 14.5pt medium.
+    /// Row title: 14.5pt medium (SF Pro, unchanged).
     public static let rowTitle = Font.system(size: 14.5, weight: .medium)
 
-    /// Meta text: 12.5pt regular.
+    /// Meta text: 12.5pt regular (SF Pro, unchanged).
     public static let metaText = Font.system(size: 12.5)
 
-    /// Meta text medium weight: 12.5pt medium.
+    /// Meta text medium weight: 12.5pt medium (SF Pro, unchanged).
     public static let metaTextMedium = Font.system(size: 12.5, weight: .medium)
 
-    /// Group label: 11.5pt semibold (rendered uppercase). Apply `groupLabelTracking` via `.tracking()`.
-    public static let groupLabel = Font.system(size: 11.5, weight: .semibold)
+    /// Group label: JetBrains Mono 10.5pt medium (rendered uppercase). Apply `groupLabelTracking`.
+    public static let groupLabel = Font.monoKicker
 
-    /// Tracking for group labels (+0.5pt wider).
-    public static let groupLabelTracking: CGFloat = 0.5
+    /// Tracking for group labels (+1.47pt, approx +0.14em at 10.5).
+    public static let groupLabelTracking: CGFloat = 1.47
 
-    /// Chip / Meet label: 11pt medium.
+    /// Chip / Meet label: 11pt medium (SF Pro, unchanged).
     public static let chipLabel = Font.system(size: 11, weight: .medium)
 
-    /// Stat chip text: 12.5pt medium.
-    public static let statChipText = Font.system(size: 12.5, weight: .medium)
+    /// Stat chip text: JetBrains Mono 12.5pt medium.
+    public static let statChipText = Font.monoStat
 
-    /// Join button label: 13.5pt semibold.
+    /// Join button label: 13.5pt semibold (SF Pro, unchanged).
     public static let joinButtonLabel = Font.system(size: 13.5, weight: .semibold)
 
     // MARK: - Spacing (8-pt grid)

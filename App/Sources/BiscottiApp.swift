@@ -1,5 +1,6 @@
 import AppCore
 import AppShellUI
+import DesignSystem
 import MenuBarUI
 import Notifications
 import os
@@ -136,6 +137,7 @@ private struct WindowRootView: View {
         Group {
             if let shellVM = launchState.shellViewModel {
                 AppShellView(viewModel: shellVM)
+                    .tint(.sage)
             } else if let err = launchState.launchError {
                 errorView(message: err)
             } else {
@@ -147,6 +149,7 @@ private struct WindowRootView: View {
             }
         }
         .onAppear {
+            FontRegistration.ensure()
             let captured = openWindow
             launchState.sceneOpener = {
                 captured(id: "main")

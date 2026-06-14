@@ -20,7 +20,7 @@ order. Verify each phase with `build_llm` + `test_llm` (out-of-sandbox).
   - Tests: codec round-trips + partial/coalesced/oversize; Codable round-trips; WireError
     mapping both directions. No process spawning. (arch §13)
 
-- [ ] **Phase 2 — Connection + in-process backend** (arch §3, §4, §5, §11)
+- [x] **Phase 2 — Connection + in-process backend** (arch §3, §4, §5, §11)
   - Seams: `ServiceBackend`; `InferenceEngine` (+ `LLMEngine` conformance) (§4).
   - `InProcessBackend` (wraps `InferenceEngine`); `MockEngine` (canned tokens/results,
     scriptable errors) for model-free tests.

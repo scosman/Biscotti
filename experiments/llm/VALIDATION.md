@@ -61,7 +61,29 @@ swift run localllm run --model $MODEL --prompt "Summarize in one sentence: the q
 swift run localllm run --model $MODEL --prompt "What is 15 * 23? Show your work." --thinking auto --seed 42 --temp 0
 ```
 
-### 6. Streaming channel-awareness test
+### 6. Backend A/B comparison
+
+```bash
+# Default: out-of-process (child service process, full memory reclamation)
+swift run localllm run --model $MODEL --prompt "What is the capital of France?" --backend out-of-process --seed 42 --temp 0
+
+# In-process (no child, no reclamation-by-exit; for debug/A-B comparison)
+swift run localllm run --model $MODEL --prompt "What is the capital of France?" --backend in-process --seed 42 --temp 0
+
+# Both should produce identical output with greedy decoding.
+```
+
+### 7. Reclamation check (out-of-process)
+
+```bash
+# Run a generation and immediately check for orphaned service processes:
+swift run localllm run --model $MODEL --prompt "Say hello." --seed 42 --temp 0
+pgrep -f localllm-service
+# Expected: no output (the service process exited when the CLI closed the connection).
+# If a PID is printed, the service was orphaned -- investigate.
+```
+
+### 8. Streaming channel-awareness test
 
 ```bash
 # Streaming with thinking auto — the full structured block goes to stdout:
@@ -118,7 +140,8 @@ correct teardown order.
 ## Results
 
 **Setup:** Apple-silicon Mac, macOS 15; Gemma 4 12B QAT (`gemma-4-12b-it-UD-Q4_K_XL.gguf`);
-llama.cpp b9601 via mattt/llama.swift.
+llama.cpp b9601 via mattt/llama.swift. CLI runs through `LLMService.withConnection`
+(out-of-process by default).
 
 ### Stack
 
@@ -232,6 +255,18 @@ All three tasks run against the synthetic diarized transcript fixture
 - Notes: Speaker A=Sarah, B=Mike, C=Priya — each with accurate verbatim supporting quotes
   that appear in the transcript. No hallucinations.
 
+### Service interface (Phase 4)
+
+- [ ] AI integration tests pass (`LLM_RUN_AI=1 swift test`) -- tests now run through
+  `LLMService.withConnection` (out-of-process), with a shared connection across the suite
+- [ ] Reclamation: child PID is gone after `close()` (verified by `testReclamation`)
+- [ ] In-process parity: same prompt produces identical output via both backends
+  (verified by `testInProcessParity`)
+- [ ] CLI `--backend out-of-process` works end-to-end (default)
+- [ ] CLI `--backend in-process` works end-to-end (A/B comparison)
+- [ ] No orphaned `localllm-service` processes after CLI exit
+  (`pgrep -f localllm-service` returns nothing)
+
 ### Recommendation for Project 10
 
 Local Gemma 4 12B QAT is **viable** for Biscotti's on-device transcript processing. The
@@ -242,14 +277,16 @@ non-interactive post-meeting processing.
 
 **Productionization notes:**
 
-1. **Port `LocalLLM` largely as-is** — the actor engine, streaming, and channel-aware output
-   parsing are production-grade. The value types, error handling, and concurrency model match
-   the repo's existing patterns.
+1. **Port `LocalLLM` largely as-is** -- the `LLMService`/`LLMConnection` API, actor engine,
+   streaming, and channel-aware output parsing are production-grade. The service interface
+   provides full memory reclamation via process isolation. The value types, error handling,
+   and concurrency model match the repo's existing patterns.
 2. **Adopt `swift-jinja` for chat templating** when supporting more than one model family.
    Single pinned model is fine hand-rolled; per-model hand-rolling doesn't scale across
    model families with different thinking mechanisms. See `README.md` "Chat template rendering."
-3. **Remove the CLI `_exit` Metal-teardown workaround** once upstream fixes the ggml `rsets`
-   assert (tracked: ggml-org/llama.cpp `ggml-metal-device.m`). The library-side teardown
-   (`unload` + `shutdown`) is correct; `_exit` is a CLI-only belt-and-suspenders.
+3. **The CLI `_exit` Metal-teardown workaround is now only needed for `--backend in-process`.**
+   Out-of-process mode (the default) delegates teardown to the child service process, so the
+   parent CLI exits normally. Remove the in-process `_exit` once upstream fixes the ggml
+   `rsets` assert (tracked: ggml-org/llama.cpp `ggml-metal-device.m`).
 4. **Profile peak memory on 8 GB Macs** before shipping — not measured in this validation.
    The 12B QAT model loads into unified memory; 8 GB machines may be tight.

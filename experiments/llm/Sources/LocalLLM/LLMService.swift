@@ -35,9 +35,12 @@ public enum LLMService {
         model: URL,
         backend: Backend = .outOfProcess(),
         config: EngineConfig = .default,
+        verbose: Bool = false,
         _ body: (LLMConnection) async throws -> T
     ) async throws -> T {
-        let conn = try await openConnection(model: model, backend: backend, config: config)
+        let conn = try await openConnection(
+            model: model, backend: backend, config: config, verbose: verbose
+        )
         return try await runWithGuaranteedClose(conn, body)
     }
 
@@ -52,9 +55,12 @@ public enum LLMService {
     public static func openConnection(
         model: URL,
         backend: Backend = .outOfProcess(),
-        config: EngineConfig = .default
+        config: EngineConfig = .default,
+        verbose: Bool = false
     ) async throws -> LLMConnection {
-        let serviceBackend = try createBackend(model: model, backend: backend, config: config)
+        let serviceBackend = try createBackend(
+            model: model, backend: backend, config: config, verbose: verbose
+        )
         let connection = LLMConnection(backend: serviceBackend)
         try await connection.start()
         return connection
@@ -66,18 +72,12 @@ public enum LLMService {
     private static func createBackend(
         model: URL,
         backend: Backend,
-        config: EngineConfig
+        config: EngineConfig,
+        verbose: Bool
     ) throws -> any ServiceBackend {
         switch backend {
         case .inProcess:
-            // In-process uses a real LLMEngine or a test-injected engine.
-            // For now, this path requires a model file -- real LLMEngine will
-            // be constructed at start() time in a future iteration. Phase 2
-            // tests inject MockEngine directly via the internal initializer.
-            // TODO: Phase 4 will construct LLMEngine here with model + config.
-            throw LLMServiceError.serviceUnavailable(
-                "In-process backend with real LLMEngine requires model loading (use openConnection(engine:) for tests)"
-            )
+            return InProcessBackend(model: model, config: config)
         case let .outOfProcess(explicitBinary):
             guard let binaryURL = RemoteBackend.resolveServiceBinary(explicit: explicitBinary) else {
                 throw LLMServiceError.serviceUnavailable(
@@ -88,7 +88,8 @@ public enum LLMService {
             return RemoteBackend(
                 serviceBinary: binaryURL,
                 model: model,
-                config: config
+                config: config,
+                verbose: verbose
             )
         }
     }

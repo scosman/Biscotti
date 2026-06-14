@@ -51,7 +51,7 @@ order. Verify each phase with `build_llm` + `test_llm` (out-of-sandbox).
     `serviceInterrupted` + `state==failed`; **close reclaims** (pid gone, `kill(pid,0)`→ESRCH);
     deinit backstop kills a dropped connection. (arch §13)
 
-- [ ] **Phase 4 — CLI rework + AI tests + docs** (arch §12, §13)
+- [x] **Phase 4 — CLI rework + AI tests + docs** (arch §12, §13)
   - `RunCommand` over `LLMService.withConnection`: `--backend out-of-process|in-process`
     (default out-of-process); `--verbose` gates child stderr; preserve all existing output
     (`--stream`, thinking/response sections, `--show-raw`, speed summary, sampling/`--thinking`/

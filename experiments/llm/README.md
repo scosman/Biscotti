@@ -2,7 +2,7 @@
 
 Validates local LLM inference for Biscotti using Swift + [llama.swift](https://github.com/mattt/llama.swift) (llama.cpp) + Gemma 4 12B QAT on Apple Silicon.
 
-**Status:** Library core + CLI complete. Waiting for Phase 4 live validation on real hardware.
+**Status:** Library core + service interface + CLI complete. The CLI runs generation through `LLMService.withConnection` (out-of-process by default). AI integration tests (`LLM_RUN_AI=1`) need a human run on real hardware.
 
 ## Requirements
 
@@ -48,6 +48,8 @@ swift run localllm run --prompt-file Prompts/summarize.txt \
 
 The model's response prints to **stdout** (clean, pipeable). Diagnostics and the speed summary print to **stderr**.
 
+By default, inference runs in a **separate child process** (`localllm-service`) for full memory reclamation on exit. Use `--backend in-process` for direct in-process inference (no child process, no reclamation-by-exit).
+
 ### Options
 
 | Flag | Description |
@@ -69,6 +71,48 @@ The model's response prints to **stdout** (clean, pipeable). Diagnostics and the
 | `--raw` | Skip chat template; send prompt verbatim |
 | `--thinking off\|auto` | Thinking mode (default: off) |
 | `--template builtin\|gemma` | Template implementation (default: gemma). `builtin` uses llama.cpp's heuristic (broken for Gemma 4; kept for A/B comparison) |
+| `--backend out-of-process\|in-process` | Backend mode (default: out-of-process). Out-of-process spawns a child service process for full memory reclamation; in-process runs directly (debug/A-B) |
+| `--verbose` | Show llama.cpp/ggml backend logs on stderr. For out-of-process, this gates the child's stderr; default suppresses it |
+| `--stream` | Stream tokens to stdout as they are generated |
+| `--show-raw` | Print the rendered prompt and raw model output after generation (debug) |
+
+## Service interface (programmatic)
+
+The `LLMService` API provides scoped, leak-proof LLM connections with full memory
+reclamation. The model runs in a separate child process; closing the connection
+terminates the child and the OS reclaims 100% of its memory.
+
+```swift
+import LocalLLM
+
+let summary = try await LLMService.withConnection(
+    model: modelURL,
+    backend: .outOfProcess(),  // default; .inProcess for no child
+    config: .default
+) { connection in
+    // Model loads once here; reused for every call inside the block.
+    let result = try await connection.generate(
+        prompt: "Summarize this meeting.",
+        options: GenerationOptions(maxTokens: 512)
+    )
+    return result.text
+}
+// Service process is GONE here; memory fully reclaimed.
+```
+
+Streaming is also supported inside the block:
+
+```swift
+try await LLMService.withConnection(model: modelURL) { connection in
+    for try await event in connection.generateStreaming(prompt: "Tell me a story.") {
+        switch event {
+        case .token(let piece): print(piece, terminator: "")
+        case .reasoningToken(let piece): print("[think] \(piece)", terminator: "")
+        case .done(let result): print("\n--- \(result.generatedTokenCount) tokens ---")
+        }
+    }
+}
+```
 
 ## Run tests
 
@@ -134,3 +178,20 @@ Revisit `swift-jinja` if/when multi-model support is needed (Project 10 or beyon
 - [huggingface/swift-jinja](https://github.com/huggingface/swift-jinja) (v2.3.6+, Gemma 4 test)
 - [huggingface/swift-transformers](https://github.com/huggingface/swift-transformers)
 - [ai.google.dev Gemma formatting](https://ai.google.dev/gemma/docs/formatting) + [thinking docs](https://ai.google.dev/gemma/docs/thinking)
+
+## Build/test gotcha: orphaned processes and the `.build` lock
+
+When running `swift build` or `swift test` through a timeout-capable harness (e.g. the
+`hooks-mcp` MCP server), killing the harness process on timeout **orphans the underlying
+`swift` process**. That orphan holds the `.build` directory lock, which silently blocks
+all subsequent builds and tests until the orphan is killed manually:
+
+```bash
+# Symptom: builds hang indefinitely
+# Recovery:
+pkill -f 'swift-build-tool'
+pkill -f 'swift-frontend'
+```
+
+The `hooks_mcp.yaml` `build_llm`/`test_llm` timeouts were raised to 300s to reduce the
+likelihood of this happening. Keep builds and tests fast to stay well within the timeout.

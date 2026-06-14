@@ -14,6 +14,12 @@ enum CLIThinkingMode: String, ExpressibleByArgument, CaseIterable, Sendable {
     case auto
 }
 
+/// CLI-facing backend choice (maps to LLMService.Backend).
+enum CLIBackend: String, ExpressibleByArgument, CaseIterable, Sendable {
+    case outOfProcess = "out-of-process"
+    case inProcess = "in-process"
+}
+
 struct RunCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
@@ -90,6 +96,9 @@ struct RunCommand: AsyncParsableCommand {
 
     @Flag(name: .long, help: "Print the rendered prompt and raw model output after generation (debug).")
     var showRaw: Bool = false
+
+    @Option(name: .long, help: "Backend: out-of-process (default, full memory reclamation) or in-process (debug/A-B).")
+    var backend: CLIBackend = .outOfProcess
 
     // MARK: - Run
 
@@ -169,13 +178,10 @@ struct RunCommand: AsyncParsableCommand {
         options.thinking = thinking == .auto ? .auto : .off
 
         // Set verbose mode before engine init (backend init reads this flag once).
+        // Only needed for in-process (out-of-process gates child stderr separately).
         if verbose {
             LocalLLMRuntime.verbose.withLock { $0 = true }
         }
-
-        // Load engine
-        logStderr("Loading model...")
-        let engine = try await LLMEngine(modelPath: modelURL, config: engineConfig)
 
         // Template routing (--template gemma|builtin, --raw).
         // --raw takes precedence: skip ALL templating regardless of --template.
@@ -193,7 +199,7 @@ struct RunCommand: AsyncParsableCommand {
             // exact rendered string is visible in --show-raw. applyChatTemplate = false
             // tells the engine not to re-template.
             // Cross-reference: LLMEngine.selectTemplate also constructs GemmaChatTemplate
-            // for the engine-side default — update both if the template changes.
+            // for the engine-side default -- update both if the template changes.
             effectiveOptions.applyChatTemplate = false
             let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
             effectivePrompt = gemmaTemplate.render(
@@ -203,27 +209,43 @@ struct RunCommand: AsyncParsableCommand {
         } else {
             // Builtin template (--template builtin): let the engine render via
             // BuiltinChatTemplate (llama.cpp's llama_chat_apply_template heuristic).
-            // Known broken for Gemma 4 — kept for A/B comparison.
+            // Known broken for Gemma 4 -- kept for A/B comparison.
             effectiveOptions.useBuiltinTemplate = true
             effectivePrompt = promptText
             effectiveSystem = systemText
         }
 
-        // Generate (streaming or buffered). Wrapped in do/catch so that teardown
-        // (unload + backend shutdown) runs on BOTH success and error paths. Without
-        // this, a mid-generation error (decodeFailed, cancelled, etc.) would skip
-        // backend teardown and hit the same ggml-metal rsets assert on exit.
-        do {
+        // Map CLI backend choice to LLMService.Backend
+        let serviceBackend: LLMService.Backend
+        switch backend {
+        case .outOfProcess:
+            serviceBackend = .outOfProcess()
+        case .inProcess:
+            serviceBackend = .inProcess
+        }
+
+        logStderr("Loading model...")
+
+        // Run generation through LLMService.withConnection. For out-of-process,
+        // the child process handles teardown and memory reclamation on close.
+        // For in-process, we still need the ordered shutdown sequence.
+        try await LLMService.withConnection(
+            model: modelURL,
+            backend: serviceBackend,
+            config: engineConfig,
+            verbose: verbose
+        ) { conn in
             logStderr("Generating...")
             let result: GenerationResult
             if stream {
                 result = try await runStreaming(
-                    engine: engine, prompt: effectivePrompt,
+                    connection: conn, prompt: effectivePrompt,
                     system: effectiveSystem, options: effectiveOptions
                 )
             } else {
-                result = try await engine.generate(
-                    prompt: effectivePrompt, system: effectiveSystem, options: effectiveOptions
+                result = try await conn.generate(
+                    prompt: effectivePrompt, system: effectiveSystem,
+                    options: effectiveOptions
                 )
 
                 // Always print both section headers (unconditional) to stdout.
@@ -254,27 +276,19 @@ struct RunCommand: AsyncParsableCommand {
 
             // Print speed summary to stderr
             printSpeedSummary(result)
-        } catch {
-            // Error path: free engine + backend cleanly, then re-throw so
-            // ArgumentParser prints the error and exits non-zero.
-            // Do NOT call _exit here — the error must surface normally.
-            await engine.unload()
-            LocalLLMRuntime.shutdown()
-            throw error
         }
 
-        // Success path: ordered teardown, then hard-exit to bypass static destructors.
-        await engine.unload()
-        LocalLLMRuntime.shutdown()
-        fflush(stdout)
-        fflush(stderr)
-
-        // Fallback: if the upstream ggml-metal rsets assert still fires despite correct
-        // teardown order (observed in some llama.cpp builds — see tobi/qmd#674), bypass
-        // the C++ static destructors entirely. This is CLI-only; never in the library.
-        // TODO: Remove once llama.cpp ships a fix for the rsets teardown assert
-        // (upstream: ggml-org/llama.cpp ggml-metal-device.m ggml_metal_rsets_free).
-        _exit(EXIT_SUCCESS)
+        // For in-process backend, the model lives in our process so we still need
+        // the ordered teardown + _exit to avoid the ggml-metal rsets SIGABRT. For
+        // out-of-process, the child owns teardown and we exit normally.
+        if backend == .inProcess {
+            LocalLLMRuntime.shutdown()
+            fflush(stdout)
+            fflush(stderr)
+            // TODO: Remove once llama.cpp ships a fix for the rsets teardown assert
+            // (upstream: ggml-org/llama.cpp ggml-metal-device.m ggml_metal_rsets_free).
+            _exit(EXIT_SUCCESS)
+        }
     }
 
     // MARK: - Helpers
@@ -304,12 +318,12 @@ struct RunCommand: AsyncParsableCommand {
     ///    or empty output), print the missing `[none]`/newline + blank line +
     ///    `=== response ===` so both headers always appear.
     private func runStreaming(
-        engine: LLMEngine,
+        connection: LLMConnection,
         prompt: String,
         system: String?,
         options: GenerationOptions
     ) async throws -> GenerationResult {
-        let stream = await engine.generateStreaming(
+        let stream = await connection.generateStreaming(
             prompt: prompt, system: system, options: options
         )
 

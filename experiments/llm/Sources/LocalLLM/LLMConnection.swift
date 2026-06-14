@@ -239,6 +239,14 @@ public actor LLMConnection {
         }
     }
 
+    // MARK: - Internal (test / diagnostic)
+
+    /// The child process PID if using an out-of-process backend, or nil for in-process.
+    /// Used by integration tests to assert reclamation (child gone after close).
+    var childPID: pid_t? {
+        (backend as? RemoteBackend)?.transportHandle.runningPID
+    }
+
     // MARK: - Internal helpers
 
     private func setState(_ newState: State) {

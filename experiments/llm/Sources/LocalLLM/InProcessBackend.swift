@@ -6,18 +6,39 @@ import Foundation
 /// The `id` parameter on generate/cancel is ignored -- serialization is handled
 /// by `LLMConnection`'s semaphore, so at most one request is in-flight.
 final class InProcessBackend: ServiceBackend, @unchecked Sendable {
-    private let engine: any InferenceEngine
+    private var engine: any InferenceEngine
     private let lock = NSLock()
     /// Cancellation closure for the current in-flight streaming task.
     private var cancelCurrent: (@Sendable () -> Void)?
 
+    /// Deferred model loading: when set, `start()` constructs the real LLMEngine.
+    private let deferredModel: URL?
+    private let deferredConfig: EngineConfig?
+
     init(engine: any InferenceEngine) {
         self.engine = engine
+        deferredModel = nil
+        deferredConfig = nil
+    }
+
+    /// Deferred-load initializer: the real `LLMEngine` is constructed at `start()`.
+    ///
+    /// Used by the CLI's `--backend in-process` path where the model URL and config
+    /// are known at construction time but the expensive model load should happen
+    /// inside `start()` (after the connection is opened).
+    init(model: URL, config: EngineConfig) {
+        // Placeholder engine; replaced at start() time
+        engine = PlaceholderEngine()
+        deferredModel = model
+        deferredConfig = config
     }
 
     func start() async throws {
-        // Engine is already constructed (model loaded at init time for real
-        // LLMEngine, or no-op for MockEngine). Nothing to do.
+        if let model = deferredModel, let config = deferredConfig {
+            engine = try await LLMEngine(modelPath: model, config: config)
+        }
+        // Otherwise: engine is already constructed (model loaded at init time for
+        // real LLMEngine, or no-op for MockEngine). Nothing to do.
     }
 
     func generate(
@@ -66,4 +87,20 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
     nonisolated func forceKill() {
         // No-op in-process: no child to kill.
     }
+}
+
+// MARK: - Placeholder engine (used before deferred start)
+
+/// Minimal engine that throws if used before start() replaces it with the real one.
+/// Only exists to satisfy the non-optional `engine` property at init time.
+private final class PlaceholderEngine: InferenceEngine, @unchecked Sendable {
+    func generate(prompt _: String, system _: String?, options _: GenerationOptions) async throws -> GenerationResult {
+        throw LLMServiceError.serviceUnavailable("Engine not loaded (start() not called)")
+    }
+
+    func generateStreaming(prompt _: String, system _: String?, options _: GenerationOptions) async -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: LLMServiceError.serviceUnavailable("Engine not loaded")) }
+    }
+
+    func unload() async {}
 }

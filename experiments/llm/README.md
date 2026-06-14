@@ -25,11 +25,11 @@ The first build downloads the LlamaSwift XCFramework (~150 MB). Subsequent build
 swift run localllm download
 ```
 
-Downloads Gemma 4 12B QAT GGUF (~8 GB) to `~/Library/Caches/net.scosman.biscotti.localllm/`. Skips if already present.
+Downloads Gemma 4 12B QAT GGUF (~8 GB) to `~/Library/Application Support/Biscotti/llms/`. Skips if already present.
 
 Options:
 - `--url <url>` -- override the model URL
-- `--dest <path>` -- override the destination (file path or directory)
+- `--dest <path>` -- override the cache directory
 
 ## Run inference
 
@@ -38,7 +38,7 @@ Options:
 swift run localllm run --prompt "What is the capital of France?"
 
 # Explicit model path (overrides the default)
-swift run localllm run --model ~/Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf \
+swift run localllm run --model ~/Library/Application\ Support/Biscotti/llms/gemma-4-12b-it-UD-Q4_K_XL.gguf \
   --prompt "What is the capital of France?"
 
 # Prompt from file with transcript substitution

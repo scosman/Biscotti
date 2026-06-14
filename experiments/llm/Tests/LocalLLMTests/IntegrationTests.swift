@@ -10,7 +10,7 @@ import Testing
 /// in the environment. A bare `swift test` skips these entirely (fast, no model needed).
 ///
 /// The model path is read from `LLM_MODEL_PATH` env var, or defaults to the standard
-/// cache location: `~/Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf`
+/// cache location: `~/Library/Application Support/Biscotti/llms/gemma-4-12b-it-UD-Q4_K_XL.gguf`
 ///
 /// All tests share a single engine instance (load-once/generate-many) to avoid
 /// redundant ~8 GB model loads during Phase 4 runs.
@@ -22,7 +22,7 @@ struct IntegrationTests {
         }
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home
-            .appendingPathComponent("Library/Caches/net.scosman.biscotti.localllm")
+            .appendingPathComponent("Library/Application Support/Biscotti/llms")
             .appendingPathComponent("gemma-4-12b-it-UD-Q4_K_XL.gguf")
     }()
 

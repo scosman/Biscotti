@@ -43,7 +43,7 @@ struct RunCommand: AsyncParsableCommand {
         name: .long,
         help: "Path to a GGUF model file. Defaults to the localllm download cache. Run 'localllm download' to fetch one."
     )
-    var model: String = ModelDownloader.defaultModelPath.path
+    var model: String = defaultModelFilePath.path
 
     // MARK: - Sampling overrides
 

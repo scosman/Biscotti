@@ -12,16 +12,16 @@ struct DownloadCommand: AsyncParsableCommand {
     @Option(name: .long, help: "URL to download from.")
     var url: String = ModelDownloader.defaultModelURL.absoluteString
 
-    @Option(name: .long, help: "Destination path (file or directory).")
-    var dest: String = ModelDownloader.defaultModelPath.path
+    @Option(name: .long, help: "Cache directory to store the model in.")
+    var dest: String = defaultCacheDirectory.path
 
     mutating func run() async throws {
         guard let sourceURL = URL(string: url) else {
             throw ValidationError("Invalid URL: \(url)")
         }
-        let destURL = URL(fileURLWithPath: (dest as NSString).expandingTildeInPath)
+        let cacheDir = URL(fileURLWithPath: (dest as NSString).expandingTildeInPath)
 
-        let downloader = ModelDownloader()
+        let downloader = ModelDownloader(cacheDirectory: cacheDir)
 
         logStderr("Checking for \(sourceURL.lastPathComponent)...")
 
@@ -33,7 +33,6 @@ struct DownloadCommand: AsyncParsableCommand {
 
             let finalPath = try await downloader.download(
                 from: sourceURL,
-                to: destURL,
                 progress: { bytes, total in
                     // On first progress callback, we know a real download is happening
                     let isFirst = downloadStarted.withLock { started in

@@ -25,12 +25,12 @@ LLM_RUN_AI=1 swift test
 # Expected: all tests pass, including determinism check
 ```
 
-> The integration tests default to the model at `~/Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf` (matching `localllm download`'s default). If you used `--dest` to download elsewhere, set `LLM_MODEL_PATH=/path/to/model.gguf` alongside `LLM_RUN_AI=1`.
+> The integration tests default to the model at `~/Library/Application Support/Biscotti/llms/gemma-4-12b-it-UD-Q4_K_XL.gguf` (matching `localllm download`'s default). If you used `--dest` to download elsewhere, set `LLM_MODEL_PATH=/path/to/model.gguf` alongside `LLM_RUN_AI=1`.
 
 ### 3. Run each validation prompt
 
 ```bash
-MODEL=~/Library/Caches/net.scosman.biscotti.localllm/gemma-4-12b-it-UD-Q4_K_XL.gguf
+MODEL=~/Library/Application\ Support/Biscotti/llms/gemma-4-12b-it-UD-Q4_K_XL.gguf
 
 # Summarize
 swift run localllm run --model $MODEL --prompt-file Prompts/summarize.txt --transcript-file Fixtures/sample_transcript.txt --seed 42 --temp 0

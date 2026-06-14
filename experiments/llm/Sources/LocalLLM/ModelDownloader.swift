@@ -4,6 +4,10 @@ import Foundation
 ///
 /// Implements skip-if-present and temp-then-move atomicity. No resume, no checksum --
 /// an interrupted download is discarded and restarted on the next call.
+///
+/// The cache directory is a **required** init parameter -- the library does not own a default
+/// location. Callers (CLI, app) supply the path so a single shared directory can be used across
+/// all consumers, avoiding duplicate multi-GB downloads.
 public struct ModelDownloader: Sendable {
     /// Default Gemma 4 12B QAT GGUF URL.
     public static let defaultModelURL = URL(
@@ -11,36 +15,40 @@ public struct ModelDownloader: Sendable {
             "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/main/gemma-4-12b-it-UD-Q4_K_XL.gguf"
     )!
 
-    /// Default local cache directory for downloaded models.
-    public static let defaultModelDirectory: URL = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent("Library/Caches/net.scosman.biscotti.localllm")
-    }()
+    /// The caller-supplied cache directory where models are stored.
+    public let cacheDirectory: URL
 
-    /// Resolved default model file path -- the location `download` writes to and `run` reads from.
+    /// Resolved model file path for the default model URL within this downloader's cache directory.
     ///
-    /// Composed from ``defaultModelDirectory`` + ``defaultModelURL``'s filename so both CLI commands
-    /// always agree. Single source of truth.
-    public static let defaultModelPath: URL =
-        defaultModelDirectory.appendingPathComponent(defaultModelURL.lastPathComponent)
+    /// Composed from ``cacheDirectory`` + ``defaultModelURL``'s filename.
+    public var modelPath: URL {
+        cacheDirectory.appendingPathComponent(Self.defaultModelURL.lastPathComponent)
+    }
 
-    public init() {}
+    /// Create a downloader that stores models in `cacheDirectory`.
+    ///
+    /// - Parameter cacheDirectory: The directory to use for model storage. Created on demand
+    ///   during download if it doesn't already exist.
+    public init(cacheDirectory: URL) {
+        self.cacheDirectory = cacheDirectory
+    }
 
-    /// Download a model file.
+    /// Download a model file into this downloader's ``cacheDirectory``.
+    ///
+    /// The destination is derived from `cacheDirectory + source.lastPathComponent` -- the
+    /// ``cacheDirectory`` is always authoritative for where models are stored.
     ///
     /// - Parameters:
     ///   - source: URL to download from. Defaults to `defaultModelURL`.
-    ///   - destination: Where to save the file. If a directory, the filename is derived from the URL.
     ///   - progress: Called periodically with (bytesDownloaded, totalBytes). `totalBytes` is nil if
     ///     the server didn't provide Content-Length.
     /// - Returns: The final file path.
     /// - Throws: `LocalLLMError.downloadFailed` on failure.
     public func download(
         from source: URL = ModelDownloader.defaultModelURL,
-        to destination: URL,
         progress: @Sendable @escaping (_ bytes: Int64, _ total: Int64?) -> Void
     ) async throws -> URL {
-        let finalPath = Self.resolveDestination(source: source, destination: destination)
+        let finalPath = cacheDirectory.appendingPathComponent(source.lastPathComponent)
 
         // Skip if a non-empty file already exists
         if Self.fileExistsAndNonEmpty(at: finalPath) {
@@ -80,53 +88,6 @@ public struct ModelDownloader: Sendable {
     }
 
     // MARK: - Pure helpers (testable without network)
-
-    /// Resolve the destination: if it's a directory (existing or intended), append the filename
-    /// from the URL; if it's already a file path, return as-is.
-    ///
-    /// Directory detection: an existing directory on disk, a trailing slash, OR a non-existent path
-    /// whose extension differs from the source URL's are all treated as directories. This prevents
-    /// the bug where a not-yet-created cache directory (no trailing slash) was mistaken for a file
-    /// path and the model bytes were written to a *file* with the directory's name.
-    ///
-    /// **Limitation:** a non-existent file path whose extension differs from the source's
-    /// (e.g. `/tmp/model.bin` for a `.gguf` source) is misclassified as a directory.
-    /// Acceptable for this experiment; revisit if porting to Project 10.
-    public static func resolveDestination(source: URL, destination: URL) -> URL {
-        // 1. Already exists on disk as a directory → append filename.
-        var isDir: ObjCBool = false
-        let exists = FileManager.default.fileExists(
-            atPath: destination.path, isDirectory: &isDir
-        )
-        if exists, isDir.boolValue {
-            return destination.appendingPathComponent(source.lastPathComponent)
-        }
-
-        // 2. Trailing slash signals "this is a directory" even if it doesn't exist yet.
-        if destination.path.hasSuffix("/") {
-            return destination.appendingPathComponent(source.lastPathComponent)
-        }
-
-        // 3. Non-existent path: use the source URL's extension to discriminate. If the
-        //    destination's extension matches the source file's extension (e.g. both `.gguf`),
-        //    it's a file path. Otherwise it's a directory — even if dots appear in the last
-        //    component (e.g. `net.scosman.biscotti.localllm` has "extension" `localllm`, which
-        //    does not match `gguf`).
-        let sourceExt = source.pathExtension.lowercased()
-        let destExt = destination.pathExtension.lowercased()
-        if !sourceExt.isEmpty, destExt == sourceExt {
-            // Looks like a file path with the same extension as the model → use as-is.
-            return destination
-        }
-
-        // Otherwise treat as a directory (create later) and append the source filename.
-        return destination.appendingPathComponent(source.lastPathComponent)
-    }
-
-    /// Derive the filename from a URL's last path component.
-    public static func deriveFilename(from url: URL) -> String {
-        url.lastPathComponent
-    }
 
     /// Check if a **regular file** (not a directory) exists and is non-empty.
     ///

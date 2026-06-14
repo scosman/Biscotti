@@ -148,14 +148,14 @@ public struct AvatarCluster: View {
     private var plusBadge: some View {
         ZStack {
             Circle()
-                .fill(Color.secondary.opacity(0.15))
+                .fill(Color.inkSecondary.opacity(0.28))
 
             Circle()
                 .strokeBorder(.white, lineWidth: 2)
 
             Text("+\(overflowCount)")
-                .font(.system(size: size * 0.35, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.monoBadge)
+                .foregroundStyle(.inkSecondary)
         }
         .frame(width: size, height: size)
     }
@@ -177,7 +177,7 @@ public struct RecordingAvatar: View {
     public var body: some View {
         ZStack {
             Circle()
-                .fill(Color.secondary.opacity(0.22))
+                .fill(Color.ink.opacity(0.22))
 
             // Inset hairline ring (matches person avatar treatment)
             Circle()
@@ -215,6 +215,7 @@ public struct RecordingAvatar: View {
         )
     }
     .padding()
+    .background(Tokens.contentBackground)
 }
 
 #Preview("AvatarCluster") {
@@ -238,6 +239,7 @@ public struct RecordingAvatar: View {
         )
     }
     .padding()
+    .background(Tokens.contentBackground)
 }
 
 #Preview("AvatarCluster Recording") {
@@ -273,6 +275,7 @@ public struct RecordingAvatar: View {
         )
     }
     .padding()
+    .background(Tokens.contentBackground)
 }
 
 #Preview("RecordingAvatar") {
@@ -281,4 +284,5 @@ public struct RecordingAvatar: View {
         RecordingAvatar(size: 28, stacked: true)
     }
     .padding()
+    .background(Tokens.contentBackground)
 }

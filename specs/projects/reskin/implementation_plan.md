@@ -27,7 +27,7 @@ checklist, not a restatement.
     (`architecture.md` §6). Verify Newsreader's exact Display PostScript name.
   - Gate: `make ci` green; `make build-app` builds.
 
-- [ ] **Phase 2 — DesignSystem components re-tokenized.** Re-skin every shared
+- [x] **Phase 2 — DesignSystem components re-tokenized.** Re-skin every shared
   component (`architecture.md` §5 "DesignSystem"): Avatar/AvatarCluster,
   StatChip, UpcomingEventRow, MeetingPlatformChip, HomeCardModifier/InsetDivider,
   JoinRecordButtonStyle, TranscriptSegmentRow, StatusRow (success→sage), Banner,

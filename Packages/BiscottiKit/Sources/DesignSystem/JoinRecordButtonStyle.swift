@@ -16,7 +16,7 @@ public struct JoinRecordButtonStyle: ButtonStyle {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: Tokens.buttonRadius)
-                    .fill(Color.accentColor)
+                    .fill(Color.sage)
                     .overlay(alignment: .top) {
                         // Subtle top highlight
                         RoundedRectangle(cornerRadius: Tokens.buttonRadius)
@@ -49,4 +49,5 @@ public struct JoinRecordButtonStyle: ButtonStyle {
             .disabled(true)
     }
     .padding()
+    .background(Tokens.contentBackground)
 }

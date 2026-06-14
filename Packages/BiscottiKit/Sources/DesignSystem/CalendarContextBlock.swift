@@ -107,7 +107,7 @@ public struct CalendarContextBlock: View {
         .padding(Tokens.spacingSM)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.secondary.opacity(0.06))
+                .fill(Color.neutralChip)
         )
     }
 
@@ -163,4 +163,5 @@ public extension Color {
     }
     .padding()
     .frame(width: 400)
+    .background(Tokens.contentBackground)
 }

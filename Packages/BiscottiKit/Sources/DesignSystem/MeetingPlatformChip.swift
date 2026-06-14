@@ -19,14 +19,14 @@ public struct MeetingPlatformChip: View {
 
             Text(platform)
                 .font(Tokens.chipLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.inkSecondary)
         }
         .padding(.vertical, 0)
         .padding(.horizontal, 7)
         .frame(height: 19)
         .background(
             RoundedRectangle(cornerRadius: Tokens.meetChipRadius)
-                .fill(Color.black.opacity(0.06))
+                .fill(Color.neutralChip)
         )
     }
 }
@@ -37,4 +37,5 @@ public struct MeetingPlatformChip: View {
         MeetingPlatformChip(platform: "Zoom")
     }
     .padding()
+    .background(Tokens.contentBackground)
 }

@@ -45,4 +45,5 @@ public struct TranscriptSegmentRow: View {
     }
     .padding()
     .frame(width: 400)
+    .background(Tokens.contentBackground)
 }

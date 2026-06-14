@@ -56,17 +56,15 @@ public struct AudioTransport: View {
             )
 
             Text(Self.formatTime(currentTime))
-                .font(.caption)
-                .monospacedDigit()
+                .font(.monoCaption)
                 .foregroundStyle(Tokens.secondaryText)
 
             Text("/")
-                .font(.caption)
+                .font(.monoCaption)
                 .foregroundStyle(Tokens.secondaryText)
 
             Text(Self.formatTime(duration))
-                .font(.caption)
-                .monospacedDigit()
+                .font(.monoCaption)
                 .foregroundStyle(Tokens.secondaryText)
         }
     }
@@ -75,7 +73,7 @@ public struct AudioTransport: View {
         HStack(spacing: Tokens.spacingSM) {
             Image(systemName: "play.fill")
                 .font(.title3)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.inkTertiary)
 
             Text("Audio not available")
                 .font(Tokens.metadataFont)
@@ -115,6 +113,7 @@ public struct AudioTransport: View {
     )
     .padding()
     .frame(width: 400)
+    .background(Tokens.contentBackground)
 }
 
 #Preview("Audio Transport - Disabled") {
@@ -128,4 +127,5 @@ public struct AudioTransport: View {
     )
     .padding()
     .frame(width: 400)
+    .background(Tokens.contentBackground)
 }

@@ -38,6 +38,7 @@ public struct Banner: View {
 
             Text(message)
                 .font(Tokens.metadataFont)
+                .foregroundStyle(.inkSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if let actionLabel, let action {
@@ -60,6 +61,7 @@ public struct Banner: View {
         actionLabel: "Fix..."
     ) {}
         .padding()
+        .background(Tokens.contentBackground)
 }
 
 #Preview("Error Banner") {
@@ -69,9 +71,11 @@ public struct Banner: View {
         actionLabel: "Retry"
     ) {}
         .padding()
+        .background(Tokens.contentBackground)
 }
 
 #Preview("Banner without action") {
     Banner("Something went wrong", style: .error)
         .padding()
+        .background(Tokens.contentBackground)
 }

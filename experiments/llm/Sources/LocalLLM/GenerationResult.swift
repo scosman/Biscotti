@@ -14,7 +14,7 @@ public enum StreamEvent: Sendable, Equatable {
 }
 
 /// Why generation stopped.
-public enum FinishReason: Sendable, Equatable {
+public enum FinishReason: Sendable, Equatable, Codable {
     /// Model emitted a turn-close token: `<turn|>` (Gemma 4) or `<end_of_turn>` (Gemma 3).
     case endOfTurn
     /// Model emitted EOS token.
@@ -26,7 +26,7 @@ public enum FinishReason: Sendable, Equatable {
 }
 
 /// The result of a single-turn generation.
-public struct GenerationResult: Sendable, Equatable {
+public struct GenerationResult: Sendable, Equatable, Codable {
     /// The model's response with turn/stop/thinking tokens stripped and trimmed.
     public let text: String
 

@@ -3,7 +3,7 @@ import Foundation
 /// Typed errors for LocalLLM operations.
 ///
 /// No leaked llama.cpp/C types -- all underlying details are wrapped as strings.
-public enum LocalLLMError: Error, LocalizedError, Sendable {
+public enum LocalLLMError: Error, LocalizedError, Sendable, Equatable {
     /// The specified model file does not exist or is not readable.
     case modelFileNotFound(URL)
 

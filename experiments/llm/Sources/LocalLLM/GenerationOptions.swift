@@ -1,5 +1,5 @@
 /// Controls how the model thinks and whether to surface reasoning content.
-public enum ThinkingMode: Sendable {
+public enum ThinkingMode: Sendable, Codable, Equatable {
     /// Ask the model not to reason; strip any thinking tokens that leak through.
     case off
     /// Leave the template default; surface reasoning separately in `GenerationResult.reasoning`.
@@ -9,7 +9,7 @@ public enum ThinkingMode: Sendable {
 /// Per-call generation parameters.
 ///
 /// Defaults match the Gemma-team recommended sampling settings.
-public struct GenerationOptions: Sendable {
+public struct GenerationOptions: Sendable, Codable, Equatable {
     /// Maximum tokens to generate. Clamped to remaining context at generation time.
     public var maxTokens: Int
 

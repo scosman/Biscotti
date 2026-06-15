@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Semantic color palette (F Sage)
@@ -29,6 +30,9 @@ public extension Color {
 
     /// Selection background: sage @ 14%.
     static let accentWashStrong = sage.opacity(0.14)
+
+    /// Focused find-match highlight: sage @ 35%.
+    static let findHighlightFocused = sage.opacity(0.35)
 
     /// Hero tint / speaker chip: sage @ 8%.
     static let accentWashSoft = sage.opacity(0.08)
@@ -124,4 +128,36 @@ public extension ShapeStyle where Self == Color {
     }
     // Note: `.hairline` and `.neutralChip` are less commonly used as ShapeStyles
     // so they are accessed through Color.hairline / Color.neutralChip directly.
+}
+
+// MARK: - NSColor mirrors (same RGB literals, for AppKit consumers)
+
+/// AppKit-native mirrors of the F Sage palette, built from the same
+/// RGB/alpha literals as the SwiftUI `Color` extensions above. Preferred
+/// over `NSColor(Color.x)` to avoid color-space surprises.
+///
+/// These names intentionally shadow no built-in `NSColor` properties
+/// (AppKit has no `.ink`, `.sage`, etc.). The naming mirrors the
+/// `Color` extensions above for single-sourced consistency.
+public extension NSColor {
+    /// Primary text -- warm near-black (#1A1813).
+    static let ink = NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 1)
+
+    /// Secondary text: ink @ 54%.
+    static let inkSecondary = NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 0.54)
+
+    /// Tertiary text / chevrons: ink @ 34%.
+    static let inkTertiary = NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 0.34)
+
+    /// Brand accent -- sage green (#4E7D5C).
+    static let sage = NSColor(srgbRed: 0.306, green: 0.490, blue: 0.361, alpha: 1)
+
+    /// Selection background: sage @ 14%.
+    static let accentWashStrong = NSColor(srgbRed: 0.306, green: 0.490, blue: 0.361, alpha: 0.14)
+
+    /// Focused find-match highlight: sage @ 35%.
+    static let findHighlightFocused = NSColor(srgbRed: 0.306, green: 0.490, blue: 0.361, alpha: 0.35)
+
+    /// Card border: warm dark @ 10%.
+    static let cardStroke = NSColor(srgbRed: 0.102, green: 0.086, blue: 0.055, alpha: 0.10)
 }

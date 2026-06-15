@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
+PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture Packages/LocalLLM
 LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
 .PHONY: help bootstrap generate build test test-ai lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
@@ -31,6 +31,7 @@ test: ## GATING: run package tests
 
 test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
+	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
 
 lint: ## Check formatting + lint (non-mutating)
 	swiftformat $(LINT_PATHS) --lint --quiet --cache ignore

@@ -52,20 +52,17 @@ actions:
     description: "Check that all manual test step IDs have been run (expected RED until Phase 4.5)"
     command: "bash -c 'set -o pipefail; make manual-tests-check 2>&1 | tail -n 50'"
 
-  # The local_llm experiment (experiments/llm) is a standalone SPM package,
-  # intentionally NOT in PACKAGES / `make build` / CI (matches ArgMaxKit), so it
-  # has no make target. These actions give the agent an out-of-sandbox build/test
-  # path for it: `swift build`/`swift test` under the agent Bash sandbox hit an
-  # llbuild `sandbox-exec` denial, but the MCP server runs outside that sandbox.
-  # Output is tailed to stay within the agent context window (the first build
-  # downloads the verbose LlamaSwift XCFramework); `pipefail` preserves the exit
-  # code so failures still surface as errors.
+  # LocalLLM is now part of PACKAGES and included in `make build`/`make test`,
+  # but these standalone actions are kept for quick iteration on just the LLM
+  # package. Output is tailed to stay within the agent context window (the first
+  # build downloads the verbose LlamaSwift XCFramework); `pipefail` preserves the
+  # exit code so failures still surface as errors.
   - name: "build_llm"
-    description: "Build the local_llm experiment SPM package (experiments/llm)"
-    command: "bash -c 'set -o pipefail; swift build --package-path experiments/llm 2>&1 | tail -n 400'"
+    description: "Build the LocalLLM SPM package (Packages/LocalLLM)"
+    command: "bash -c 'set -o pipefail; swift build --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
     timeout: 300
 
   - name: "test_llm"
-    description: "Run the local_llm experiment unit tests (experiments/llm). Always-on tests only; the env-gated AI/integration test (LLM_RUN_AI=1) needs the model and is human/Phase-4 run."
-    command: "bash -c 'set -o pipefail; swift test --package-path experiments/llm 2>&1 | tail -n 400'"
+    description: "Run the LocalLLM unit tests (Packages/LocalLLM). Always-on tests only; the env-gated AI/integration tests (BISCOTTI_RUN_AI_TESTS=1) need the model and are human-run."
+    command: "bash -c 'set -o pipefail; swift test --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
     timeout: 300

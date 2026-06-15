@@ -4,8 +4,9 @@ import SwiftUI
 public enum Tokens {
     // MARK: - Colors
 
-    /// Active-recording indicators only (pulsing dot, toolbar "Recording..." pill, Stop button).
-    public static let recordingRed = Color.red
+    /// Active-recording indicators (pulsing dot, toolbar "Recording..." pill, Stop button).
+    /// Aliases `Color.signalRed` -- the single unified red for the app.
+    public static let recordingRed = Color.signalRed
 
     /// Secondary text color (warm ink @ 54%).
     public static let secondaryText = Color.inkSecondary
@@ -14,7 +15,7 @@ public enum Tokens {
     public static let warningBackground = Color.yellow.opacity(0.15)
 
     /// Background for banners (error).
-    public static let errorBackground = Color.red.opacity(0.15)
+    public static let errorBackground = Color.signalRed.opacity(0.15)
 
     /// Speaker chip background (sage wash).
     public static let speakerChipBackground = Color.accentWashSoft

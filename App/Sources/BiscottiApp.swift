@@ -162,7 +162,7 @@ private struct WindowRootView: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundStyle(.red)
+                .foregroundStyle(.signalRed)
             Text("Failed to start Biscotti")
                 .font(.headline)
             Text(message)

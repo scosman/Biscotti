@@ -49,11 +49,11 @@ public struct HomeView: View {
             Text(viewModel.greeting)
                 .font(Tokens.greetingFont)
                 .tracking(Tokens.greetingTracking)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.ink)
 
             Text(viewModel.dateText)
                 .font(Tokens.dateLine)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.inkSecondary)
         }
     }
 
@@ -64,14 +64,14 @@ public struct HomeView: View {
             if let text = viewModel.meetingsLeftText {
                 StatChip(
                     icon: "calendar",
-                    tint: .accentColor,
+                    tint: .sage,
                     text: text
                 )
             }
             if let text = viewModel.nextInText {
                 StatChip(
                     icon: "circle.fill",
-                    tint: Tokens.liveGreen,
+                    tint: .sage,
                     text: "Next \(text)"
                 )
             }
@@ -103,7 +103,7 @@ private struct HomeUpcomingSection: View {
         VStack(spacing: Tokens.spacingSM) {
             Text("Connect your calendar to see upcoming meetings")
                 .font(Tokens.metaText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.inkSecondary)
 
             Button("Allow Calendar Access") {
                 Task { await viewModel.requestCalendarAccess() }
@@ -118,7 +118,7 @@ private struct HomeUpcomingSection: View {
     private var noUpcomingCard: some View {
         Text("No meetings coming up")
             .font(Tokens.metaText)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.inkSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Tokens.spacingLG)
             .homeCard()
@@ -188,7 +188,7 @@ private struct HomeUpcomingSection: View {
                             .joined(separator: ", ")
                     )
                     .font(Tokens.metaText)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.inkSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 }
@@ -196,12 +196,12 @@ private struct HomeUpcomingSection: View {
 
             HStack(spacing: 9) {
                 Text(viewModel.tickTimeText(for: event))
-                    .font(Tokens.metaTextMedium)
-                    .foregroundStyle(Color.accentColor)
+                    .font(.monoMetaMedium)
+                    .foregroundStyle(.sage)
 
                 Text(HomeSharedViews.formattedTime(event.start))
-                    .font(Tokens.metaText)
-                    .foregroundStyle(.secondary)
+                    .font(.monoMeta)
+                    .foregroundStyle(.inkSecondary)
 
                 if let platform = event.conferencePlatform {
                     MeetingPlatformChip(platform: platform)
@@ -211,7 +211,7 @@ private struct HomeUpcomingSection: View {
             if let notes = event.notes, !notes.isEmpty {
                 Text(notes)
                     .font(Tokens.metaText)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.inkSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .padding(.top, 2)
@@ -241,7 +241,7 @@ private struct HomeUpcomingSection: View {
             } label: {
                 Text("View in calendar")
                     .font(Tokens.metaText)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.sage)
             }
             .buttonStyle(.plain)
         }
@@ -272,12 +272,12 @@ private struct HomeUpcomingSection: View {
 
                     HStack(spacing: 9) {
                         Text(viewModel.tickTimeText(for: event))
-                            .font(Tokens.metaTextMedium)
-                            .foregroundStyle(Color.accentColor)
+                            .font(.monoMetaMedium)
+                            .foregroundStyle(.sage)
 
                         Text(HomeSharedViews.formattedTime(event.start))
-                            .font(Tokens.metaText)
-                            .foregroundStyle(.secondary)
+                            .font(.monoMeta)
+                            .foregroundStyle(.inkSecondary)
 
                         if let platform = event.conferencePlatform {
                             MeetingPlatformChip(platform: platform)
@@ -289,7 +289,7 @@ private struct HomeUpcomingSection: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.inkTertiary)
             }
             .padding(.vertical, Tokens.rowVerticalPadding)
             .padding(.horizontal, Tokens.rowHorizontalPadding)
@@ -320,7 +320,7 @@ private struct HomePastSection: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.sage)
                 }
                 .buttonStyle(.plain)
             }
@@ -337,7 +337,7 @@ private struct HomePastSection: View {
     private var noRecordingsCard: some View {
         Text("No recordings yet")
             .font(Tokens.metaText)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.inkSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Tokens.spacingLG)
             .homeCard()
@@ -380,8 +380,8 @@ private struct HomePastSection: View {
                         .lineLimit(1)
 
                     Text(viewModel.pastSecondLine(for: meeting))
-                        .font(Tokens.metaText)
-                        .foregroundStyle(.secondary)
+                        .font(.monoMeta)
+                        .foregroundStyle(.inkSecondary)
                         .lineLimit(1)
                 }
 
@@ -389,7 +389,7 @@ private struct HomePastSection: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.inkTertiary)
             }
             .padding(.vertical, Tokens.rowVerticalPadding)
             .padding(.horizontal, Tokens.rowHorizontalPadding)
@@ -405,13 +405,17 @@ private struct HomePastSection: View {
 private struct HomeFooter: View {
     var body: some View {
         VStack(spacing: 3) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(.sage)
+
             Text("Biscotti")
                 .font(.system(size: 13, weight: .semibold))
                 .tracking(-0.1)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.ink)
             Text("Total recall, total privacy.")
                 .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.inkTertiary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 30)
@@ -424,10 +428,10 @@ private struct HomeFooter: View {
 private enum HomeSharedViews {
     static func groupLabel(_ title: String) -> some View {
         Text(title)
-            .font(Tokens.groupLabel)
-            .tracking(Tokens.groupLabelTracking)
-            .foregroundStyle(.secondary)
+            .font(.monoKicker)
             .textCase(.uppercase)
+            .tracking(1.47)
+            .foregroundStyle(.inkSecondary)
             .padding(.leading, 4)
     }
 

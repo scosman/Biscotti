@@ -57,11 +57,34 @@ implementation.
   residual `Color.accentColor` also resolves to sage; but call sites should
   prefer the named `sage` / wash tokens.
 
-### Red — retained for "live/recording" only
+### Red — unified `signalRed` (#B23320)
 
-| Token | Role | Value |
-|---|---|---|
-| `recordingRed` | Active-recording indicators (RecordingView dot, toolbar "Recording…" pill, Stop button) | **Unchanged — stays system `Color.red`.** (The design agent's `#EF3A22` is noted but we keep the current value per scope.) |
+A single warm, dark-enough-for-text red that complements sage, replacing the
+former system `Color.red`. Used for **both** error/failure states **and**
+recording indicators — there is no separate error red vs. recording red.
+
+| Token | Role | Value | Swift |
+|---|---|---|---|
+| `signalRed` | **Unified red** — errors, recording indicators, destructive actions | `#B23320` | `Color(red: 0.698, green: 0.200, blue: 0.125)` |
+| `recordingRed` | Alias of `signalRed` for recording call sites | same | `Color.signalRed` |
+
+**Usage guidance:**
+- This is the single canonical red. Do not introduce other reds or use raw
+  `Color.red` / `.systemRed`.
+- Dark enough for readable error text on light backgrounds.
+- Use for error icons, error text, error-tinted backgrounds
+  (`signalRed.opacity(0.15)`).
+- Use for recording indicators (pulsing dot, "Recording…" live state, Stop
+  button fill).
+- Use for destructive actions and buttons: destructive text links and icons
+  via `.foregroundStyle(.signalRed)`. For a filled red destructive button, use
+  an explicit custom `ButtonStyle` that fills with `signalRed` and sets a white
+  label (same pattern as `ToolbarRecordButtonStyle`). **Do not use
+  `.tint(.signalRed)`** — macOS ignores `.tint()` with custom colors on
+  bordered/prominent buttons, rendering them grey. System-rendered `.alert` /
+  `.confirmationDialog` destructive buttons are OS-styled; leave them as-is.
+- When used as a button fill (recording or destructive), pair with **white**
+  text/icons for contrast.
 
 ### Avatar palette — unchanged
 

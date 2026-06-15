@@ -453,7 +453,7 @@ struct EventPickerSheet: View {
                             dismiss()
                         }
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.signalRed)
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }

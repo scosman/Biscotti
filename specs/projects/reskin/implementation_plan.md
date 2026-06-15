@@ -34,7 +34,7 @@ checklist, not a restatement.
   AudioTransport, CalendarContextBlock, RecordButton. Verify each `#Preview`
   reads correctly.
 
-- [ ] **Phase 3 — Home + App shell** (primary surfaces + both additive
+- [x] **Phase 3 — Home + App shell** (primary surfaces + both additive
   elements). `HomeView` (serif greeting, mono numbers/kickers, sage links/
   countdowns, footer brand mark) and `AppShellView` (**new sidebar brand
   lockup**, **idle Record → sage** / active stays red, sage selection + glyphs,

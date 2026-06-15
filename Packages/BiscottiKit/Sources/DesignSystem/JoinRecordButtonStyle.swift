@@ -34,6 +34,35 @@ public struct JoinRecordButtonStyle: ButtonStyle {
     }
 }
 
+/// Filled toolbar button for the Record affordance.
+///
+/// macOS toolbars suppress `.tint()` on `.borderedProminent` buttons, rendering
+/// them grey instead of the requested color. This custom style draws the fill
+/// explicitly so the color is guaranteed regardless of toolbar hosting context.
+///
+/// Usage: `.buttonStyle(ToolbarRecordButtonStyle(fill: .sage))` for idle,
+/// `.buttonStyle(ToolbarRecordButtonStyle(fill: .signalRed))` for active.
+public struct ToolbarRecordButtonStyle: ButtonStyle {
+    let fill: Color
+
+    public init(fill: Color) {
+        self.fill = fill
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(fill)
+            )
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+    }
+}
+
 #Preview("JoinRecordButtonStyle") {
     VStack(spacing: 12) {
         Button {} label: {

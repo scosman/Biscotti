@@ -257,10 +257,13 @@ All three tasks run against the synthetic diarized transcript fixture
 
 ### Service interface (Phase 4)
 
-- [ ] AI integration tests pass (`LLM_RUN_AI=1 swift test`) -- tests now run through
+AI suite confirmed on Apple M4 Pro, macOS 15, 2026-06-14 — 223 tests pass,
+6 model-backed AI tests green (cold 25.4s / warm 7.7s).
+
+- [x] AI integration tests pass (`LLM_RUN_AI=1 swift test`) -- tests now run through
   `LLMService.withConnection` (out-of-process), with a shared connection across the suite
-- [ ] Reclamation: child PID is gone after `close()` (verified by `testReclamation`)
-- [ ] In-process parity: same prompt produces identical output via both backends
+- [x] Reclamation: child PID is gone after `close()` (verified by `testReclamation`)
+- [x] In-process parity: same prompt produces identical output via both backends
   (verified by `testInProcessParity`)
 - [ ] CLI `--backend out-of-process` works end-to-end (default)
 - [ ] CLI `--backend in-process` works end-to-end (A/B comparison)

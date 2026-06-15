@@ -24,11 +24,13 @@ let package = Package(
         .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
         .library(name: "HomeUI", targets: ["HomeUI"]),
         .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
-        .library(name: "ManualTestKit", targets: ["ManualTestKit"])
+        .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
+        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
-        .package(name: "AudioCapture", path: "../AudioCapture")
+        .package(name: "AudioCapture", path: "../AudioCapture"),
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.7.0")
     ],
     targets: [
         .target(
@@ -225,6 +227,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "MarkdownEditorUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors
@@ -451,6 +454,19 @@ let package = Package(
         .testTarget(
             name: "ManualTestKitTests",
             dependencies: ["ManualTestKit"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MarkdownEditorUI",
+            dependencies: [
+                "DesignSystem",
+                .product(name: "MarkdownEngine", package: "swift-markdown-engine")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MarkdownEditorUITests",
+            dependencies: ["MarkdownEditorUI"],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

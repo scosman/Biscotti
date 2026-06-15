@@ -63,7 +63,6 @@ public struct RecordingView: View {
     private var elapsedTime: some View {
         Text(viewModel.elapsedText)
             .font(Tokens.elapsedTimeFont)
-            .monospacedDigit()
     }
 
     private var stopButton: some View {

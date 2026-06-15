@@ -31,6 +31,7 @@ public struct AppShellView: View {
                 OnboardingView(
                     viewModel: viewModel.onboardingViewModel
                 )
+                .background(Tokens.contentBackground)
             } else {
                 NavigationSplitView {
                     sidebar
@@ -127,6 +128,15 @@ public struct AppShellView: View {
             }
         }
         .background(Color.wall.ignoresSafeArea())
+        .onChange(of: viewModel.showOnboarding) { _, isOnboarding in
+            // Only reset when replaying (VM has advanced past welcome);
+            // skip on first launch where the VM is already at defaults.
+            if isOnboarding,
+               viewModel.onboardingViewModel.currentStep != .welcome
+            {
+                viewModel.onboardingViewModel.resetForReplay()
+            }
+        }
         .task { await viewModel.onLaunch() }
     }
 
@@ -270,25 +280,37 @@ public struct AppShellView: View {
 
     // MARK: - Detail pane
 
-    @ViewBuilder
     private var detailContent: some View {
+        DetailContentView(viewModel: viewModel)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// Routes the detail pane based on `AppCore.route`.
+private struct DetailContentView: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
         switch viewModel.route {
         case .home:
+            // Home paints its own paper background internally.
             HomeView(viewModel: viewModel.homeViewModel)
 
         case .recording:
             RecordingView(
                 viewModel: viewModel.recordingViewModel
             )
+            .background(Tokens.contentBackground)
 
         case .meetings:
-            meetingsSplit
+            MeetingsSplitView(viewModel: viewModel)
 
         case let .event(key):
             EventPreviewView(
                 viewModel: viewModel.eventPreviewViewModel(for: key)
             )
             .id(key)
+            .background(Tokens.contentBackground)
 
         case .settings:
             SettingsView(viewModel: viewModel.settingsViewModel)
@@ -297,11 +319,6 @@ public struct AppShellView: View {
             // Handled by the full-window takeover above; should not reach here.
             EmptyView()
         }
-    }
-
-    /// The Meetings two-pane: native list + detail or placeholder.
-    private var meetingsSplit: some View {
-        MeetingsSplitView(viewModel: viewModel)
     }
 }
 
@@ -381,6 +398,7 @@ private struct MeetingsSplitView: View {
                 }
             }
             .frame(minWidth: 360, maxWidth: .infinity)
+            .background(Tokens.contentBackground)
         }
     }
 }

@@ -34,7 +34,7 @@ public struct Banner: View {
     public var body: some View {
         HStack(spacing: Tokens.spacingSM) {
             Image(systemName: style == .warning ? "exclamationmark.triangle.fill" : "xmark.circle.fill")
-                .foregroundStyle(style == .warning ? .yellow : .signalRed)
+                .foregroundStyle(style == .warning ? .warningOchre : .signalRed)
 
             Text(message)
                 .font(Tokens.metadataFont)

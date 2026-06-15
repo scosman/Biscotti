@@ -150,6 +150,17 @@ public final class SettingsViewModel {
         }
     #endif
 
+    // MARK: - Debug actions
+
+    #if DEBUG
+        /// Re-runs the onboarding wizard from the beginning.
+        /// Debug-only: lets developers verify the onboarding flow
+        /// without resetting the app's data.
+        public func replayOnboarding() {
+            core.showOnboardingReplay()
+        }
+    #endif
+
     // MARK: - Calendar actions
 
     /// Whether a calendar is enabled (checked).

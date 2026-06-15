@@ -11,8 +11,8 @@ public enum Tokens {
     /// Secondary text color (warm ink @ 54%).
     public static let secondaryText = Color.inkSecondary
 
-    /// Background for banners (warning).
-    public static let warningBackground = Color.yellow.opacity(0.15)
+    /// Background for banners (warning). Derived from the canonical `warningOchre`.
+    public static let warningBackground = Color.warningOchre.opacity(0.15)
 
     /// Background for banners (error).
     public static let errorBackground = Color.signalRed.opacity(0.15)

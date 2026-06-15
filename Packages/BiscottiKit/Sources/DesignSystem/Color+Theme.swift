@@ -58,6 +58,31 @@ public extension Color {
     ///   destructive), pair with **white** text/icons for contrast.
     static let signalRed = Color(red: 0.698, green: 0.200, blue: 0.125)
 
+    /// **The single canonical warning color for the entire app** (#C6891E,
+    /// RGB 198/137/30).
+    ///
+    /// A warm ochre chosen to complement sage and read clearly on ivory
+    /// backgrounds. Use this token everywhere you would reach for
+    /// yellow/amber/orange for **warning semantics** -- do **not**
+    /// introduce other yellows/oranges or use raw `.yellow` / `.orange`
+    /// / `Color(.systemYellow)` / `Color(.systemOrange)` for warnings.
+    ///
+    /// **Approved usages:**
+    /// - **Warning icons:** the primary use case. Warning triangles
+    ///   (`exclamationmark.triangle.fill`), caution indicators, and
+    ///   permission-denied state icons.
+    /// - **Warning text:** dark enough to be legible as text on light
+    ///   backgrounds if needed, but avoid relying on color alone to
+    ///   convey warnings in text -- pair with an icon or contextual
+    ///   label.
+    /// - **Warning-tinted backgrounds:** use
+    ///   `warningOchre.opacity(0.15)` for banner/chip fills.
+    /// - **Button fills (if ever needed):** follow the same rule as
+    ///   `signalRed` -- use a custom fill `ButtonStyle` with a
+    ///   white/legible label, not `.tint()`, which macOS ignores for
+    ///   custom colors on bordered/prominent buttons.
+    static let warningOchre = Color(red: 0.776, green: 0.537, blue: 0.118)
+
     /// Window wall: flat warm-grey fallback (#E4E1D8).
     static let wall = Color(red: 0.894, green: 0.882, blue: 0.847)
 
@@ -92,6 +117,10 @@ public extension ShapeStyle where Self == Color {
 
     static var signalRed: Color {
         .signalRed
+    }
+
+    static var warningOchre: Color {
+        .warningOchre
     }
     // Note: `.hairline` and `.neutralChip` are less commonly used as ShapeStyles
     // so they are accessed through Color.hairline / Color.neutralChip directly.

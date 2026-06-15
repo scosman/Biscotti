@@ -167,7 +167,7 @@ private struct WindowRootView: View {
                 .font(.headline)
             Text(message)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.inkSecondary)
                 .multilineTextAlignment(.center)
         }
         .padding()

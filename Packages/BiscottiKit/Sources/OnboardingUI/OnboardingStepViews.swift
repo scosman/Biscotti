@@ -153,7 +153,7 @@ extension OnboardingView {
                     .controlSize(.large)
                 } else {
                     Label("Notifications enabled", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.sage)
                         .font(Tokens.metadataFont)
                 }
             }
@@ -177,7 +177,7 @@ extension OnboardingView {
                     )
                 } else if viewModel.downloadComplete {
                     Label("Models ready", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.sage)
                 } else if viewModel.isDownloading {
                     VStack(spacing: Tokens.spacingXS) {
                         ProgressView()
@@ -203,8 +203,7 @@ extension OnboardingView {
     var launchAtLoginStep: some View {
         VStack(spacing: Tokens.spacingLG) {
             Text("Launch at Login")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.serifHeadline)
 
             Text(
                 "Start Biscotti when you start your computer?"
@@ -241,8 +240,7 @@ extension OnboardingView {
     var doneStep: some View {
         VStack(spacing: Tokens.spacingLG) {
             Text("You\u{2019}re all set!")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.serifHeadline)
 
             Text("Start recording your first meeting.")
                 .font(Tokens.metadataFont)
@@ -265,8 +263,7 @@ extension OnboardingView {
     ) -> some View {
         VStack(spacing: Tokens.spacingLG) {
             Text(title)
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.serifHeadline)
 
             Text(explanation)
                 .font(Tokens.metadataFont)
@@ -304,7 +301,7 @@ extension OnboardingView {
         if state == .denied {
             HStack(spacing: Tokens.spacingXS) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.warningOchre)
                 Text("Denied?")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
@@ -313,11 +310,11 @@ extension OnboardingView {
                 }
                 .font(Tokens.metadataFont)
                 .buttonStyle(.plain)
-                .foregroundStyle(.blue)
+                .foregroundStyle(.sage)
             }
         } else if state == .authorized {
             Label("Granted", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(.sage)
                 .font(Tokens.metadataFont)
         }
     }

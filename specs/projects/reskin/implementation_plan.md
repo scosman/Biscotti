@@ -41,7 +41,7 @@ checklist, not a restatement.
   mono kicker, the window-wall/sidebar-tint seam with flat fallback). Highest
   visual surface area; review on a real `build-app` run.
 
-- [ ] **Phase 4 — Remaining screens.** Mechanical token/family swaps per
+- [x] **Phase 4 — Remaining screens.** Mechanical token/family swaps per
   `architecture.md` §5: `MeetingListView` (+ ContentUnavailableView serif title),
   `MeetingDetailView`/`EventPreviewView`, `RecordingView` (counter → mono, else
   unchanged), Onboarding (serif headline, success→sage), `SettingsView`. Menu

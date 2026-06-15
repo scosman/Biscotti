@@ -39,8 +39,8 @@ public struct OnboardingView: View {
                 Circle()
                     .fill(
                         index <= viewModel.progressIndex
-                            ? Color.primary
-                            : Color.secondary.opacity(0.3)
+                            ? Color.ink
+                            : Color.inkTertiary
                     )
                     .frame(width: 8, height: 8)
             }

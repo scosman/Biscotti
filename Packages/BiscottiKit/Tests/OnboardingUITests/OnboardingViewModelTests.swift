@@ -292,4 +292,42 @@ struct OnboardingViewModelTests {
         let model = OnboardingViewModel(core: fixture.core)
         #expect(model.totalSteps == 8)
     }
+
+    // MARK: - Replay reset
+
+    @Test("resetForReplay resets step and all per-step state")
+    func resetForReplayResetsEverything() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+
+        // Advance partway through the wizard
+        await model.advance() // welcome -> microphone
+        await model.skip() // -> systemAudio
+        await model.skip() // -> calendar
+        await model.skip() // -> notifications
+        await model.skip() // -> modelDownload
+
+        #expect(model.currentStep == .modelDownload)
+
+        // Mutate some state to verify reset clears it
+        await model.startDownload()
+        #expect(model.downloadComplete == true)
+
+        // Reset
+        model.resetForReplay()
+
+        #expect(model.currentStep == .welcome)
+        #expect(model.microphoneResult == .notDetermined)
+        #expect(model.systemAudioResult == .notDetermined)
+        #expect(model.calendarResult == .notDetermined)
+        #expect(model.notificationsGranted == false)
+        #expect(model.calendarGroups.isEmpty)
+        #expect(model.enabledCalendarIDs == nil)
+        #expect(model.downloadStatus == nil)
+        #expect(model.isDownloading == false)
+        #expect(model.downloadComplete == false)
+        #expect(model.hasSufficientDisk == true)
+    }
 }

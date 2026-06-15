@@ -42,7 +42,7 @@ public struct EventPreviewView: View {
                         start: event.start,
                         end: event.end
                     ))
-                    .font(Tokens.metadataFont)
+                    .font(.monoMeta)
                     .foregroundStyle(Tokens.secondaryText)
                 }
 
@@ -90,7 +90,7 @@ public struct EventPreviewView: View {
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.secondary.opacity(0.12))
+                            .fill(Color.neutralChip)
                     )
             }
         }
@@ -174,8 +174,8 @@ public struct EventPreviewView: View {
         if !event.attendees.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Text("Attendees (\(event.attendees.count))")
-                    .font(Tokens.sectionHeaderFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                    .kicker()
+                    .foregroundStyle(.inkSecondary)
 
                 let names = event.attendees.map(\.displayName)
                 Text(names.joined(separator: ", "))
@@ -188,8 +188,8 @@ public struct EventPreviewView: View {
         if let notes = event.notes, !notes.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Text("Notes")
-                    .font(Tokens.sectionHeaderFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                    .kicker()
+                    .foregroundStyle(.inkSecondary)
 
                 Text(notes)
                     .font(.body)
@@ -205,8 +205,8 @@ public struct EventPreviewView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             Text(label)
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
+                .kicker()
+                .foregroundStyle(.inkSecondary)
             Text(value)
                 .font(.body)
                 .textSelection(.enabled)

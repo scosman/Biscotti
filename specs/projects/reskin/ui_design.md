@@ -86,6 +86,31 @@ recording indicators — there is no separate error red vs. recording red.
 - When used as a button fill (recording or destructive), pair with **white**
   text/icons for contrast.
 
+### Warning — unified `warningOchre` (#C6891E)
+
+A single warm ochre chosen to complement sage and read clearly on ivory
+backgrounds, replacing the former system `.yellow` / `.orange` used for warning
+states.
+
+| Token | Role | Value | Swift |
+|---|---|---|---|
+| `warningOchre` | **Unified warning color** — warning icons, warning states | `#C6891E` | `Color(red: 0.776, green: 0.537, blue: 0.118)` |
+
+**Usage guidance:**
+- This is the single canonical warning color. Do not introduce other
+  yellows/oranges or use raw `.yellow` / `.orange` / `Color(.systemYellow)` /
+  `Color(.systemOrange)` for warning semantics.
+- **Primarily for warning icons:** warning triangles, caution indicators,
+  permission-denied state icons.
+- **Can be used for warning text** — dark enough to be legible on light
+  backgrounds if needed, but avoid relying on color alone to convey warnings in
+  text; pair with an icon or contextual label.
+- Warning-tinted backgrounds: use `warningOchre.opacity(0.15)` for banner/chip
+  fills.
+- If ever used as a button fill, follow the same rule as `signalRed` — use a
+  custom fill `ButtonStyle` with a white/legible label, not `.tint()`, which
+  macOS ignores for custom colors on bordered/prominent buttons.
+
 ### Avatar palette — unchanged
 
 The fixed 16-color initial-keyed `avatarPalette` is **kept verbatim** (order is

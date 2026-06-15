@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import Synchronization
 import Testing
@@ -31,6 +32,33 @@ struct IntegrationTests {
     /// not just the `.serialized` trait.
     static let sharedConnection = Mutex<LLMConnection?>(nil)
 
+    /// One-shot token: registers an `atexit` handler exactly once, right after
+    /// the model is loaded. atexit/__cxa_atexit handlers run LIFO, so registering
+    /// AFTER the model load guarantees this runs BEFORE ggml's Metal-device static
+    /// destructor (which was registered during model load). The handler performs
+    /// ordered teardown: close the connection (frees ctx/model, drops Metal residency
+    /// sets), then `llama_backend_free()` (frees the Metal device). Without this,
+    /// the normal `exit()` path runs ggml's destructor while residency sets are still
+    /// alive → `GGML_ASSERT([rsets->data count] == 0)` → SIGABRT.
+    ///
+    /// We do NOT call `_exit()` here (unlike the CLI/XPC host) because the test
+    /// runner's real exit code must be preserved for `make test-ai` pass/fail reporting.
+    private static let registerAtexitOnce: Void = {
+        atexit {
+            let sem = DispatchSemaphore(value: 0)
+            Task {
+                if let conn = IntegrationTests.sharedConnection.withLock({ $0 }) {
+                    await conn.close()
+                    IntegrationTests.sharedConnection.withLock { $0 = nil }
+                }
+                LocalLLMRuntime.shutdown()
+                sem.signal()
+            }
+            // Bounded wait: 30s so a stuck teardown can't hang the run forever.
+            _ = sem.wait(timeout: .now() + 30.0)
+        }
+    }()
+
     /// Load or return the shared connection. First call opens an in-process
     /// connection (loads the model); subsequent calls return the cached instance.
     static func connection() async throws -> LLMConnection {
@@ -45,6 +73,12 @@ struct IntegrationTests {
             config: config
         )
         sharedConnection.withLock { $0 = conn }
+
+        // Register the atexit handler AFTER model load (LIFO ordering ensures it
+        // runs before ggml's static destructors). Evaluated once; subsequent calls
+        // are no-ops.
+        _ = registerAtexitOnce
+
         return conn
     }
 

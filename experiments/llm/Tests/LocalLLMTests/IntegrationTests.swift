@@ -38,10 +38,23 @@ struct IntegrationTests {
     /// Load or return the shared connection. First call opens an out-of-process
     /// connection (spawns the service, loads the model); subsequent calls return
     /// the cached instance.
+    ///
+    /// Sets `LOCALLLM_SERVICE_PATH` so that `RemoteBackend.resolveServiceBinary()`
+    /// finds the binary even under the SPM test runner (whose Bundle/argv point at
+    /// the system xctest, not the package's `.build/` directory).
     static func connection() async throws -> LLMConnection {
         if let existing = sharedConnection.withLock({ $0 }) {
             return existing
         }
+
+        // Resolve the service binary via the shared test helper and inject it
+        // into the environment so the production resolver picks it up.
+        // No restore needed: this suite is LLM_RUN_AI-gated and the value is the
+        // correct binary path, so leaving it set is harmless (and beneficial if
+        // reclamation() runs before connection() due to test ordering).
+        let serviceBinary = try TestServiceBinary.require()
+        setenv("LOCALLLM_SERVICE_PATH", serviceBinary.path, 1)
+
         let config = EngineConfig(contextSize: 4096, seed: 42)
         let conn = try await LLMService.openConnection(
             model: modelPath,
@@ -216,6 +229,11 @@ struct IntegrationTests {
 
     @Test("Reclamation: child process is gone after close")
     func reclamation() async throws {
+        // Ensure the service binary is resolvable (may already be set by connection()).
+        // No restore needed: same rationale as in connection() above.
+        let serviceBinary = try TestServiceBinary.require()
+        setenv("LOCALLLM_SERVICE_PATH", serviceBinary.path, 1)
+
         // Open a dedicated connection for this test (not the shared one)
         let config = EngineConfig(contextSize: 4096, seed: 42)
         let conn = try await LLMService.openConnection(

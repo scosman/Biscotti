@@ -5,7 +5,7 @@ import SwiftUI
 /// A Biscotti-themed live markdown editor.
 ///
 /// Wraps the third-party `NativeTextViewWrapper` from `MarkdownEngine`
-/// with the F Sage color palette, always-visible dimmed markers, and
+/// with the F Sage color palette, dimmed markers (hide-on-blur), and
 /// prose-friendly defaults. Callers interact with a plain markdown
 /// `String` binding and never see the engine's configuration object.
 ///
@@ -43,7 +43,7 @@ public struct MarkdownEditor: View {
     public var body: some View {
         NativeTextViewWrapper(
             text: $text,
-            configuration: .biscotti(baseFontSize: Self.bodyFontSize),
+            configuration: .biscotti(),
             fontName: Self.bodyFontName,
             fontSize: Self.bodyFontSize,
             documentId: documentId,

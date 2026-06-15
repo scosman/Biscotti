@@ -29,7 +29,7 @@ public enum MeetingDetailState: Sendable, Equatable {
 @MainActor @Observable
 public final class MeetingDetailViewModel {
     private let core: AppCore
-    private let meetingID: UUID
+    public let meetingID: UUID
     private let makePlayer: () -> any AudioPlaybackProviding
 
     /// Injectable "now" for deterministic testing of time-gated UI.

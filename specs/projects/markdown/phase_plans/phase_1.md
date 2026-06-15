@@ -4,6 +4,13 @@ status: complete
 
 # Phase 1: Foundation -- dependency + `MarkdownEditorUI` module
 
+> **Post-hoc note (Phase 2):** The `baseFontSize` parameter and
+> `hiddenMarkerFontSize = baseFontSize` ("always-visible markers") described
+> below were reverted in Phase 2. The engine's `shrinkInactiveMarkers`
+> applies a negative kern that collapses layout advance, causing text overlap
+> at full font size. The factory is now `biscotti()` (no parameter) and
+> markers use the engine default hide-on-blur behavior.
+
 ## Overview
 
 Add the pinned `swift-markdown-engine` dependency, create the `MarkdownEditorUI` module with its test target, add `NSColor` palette mirrors to `DesignSystem`, implement the `MarkdownEditor` wrapper view and the `MarkdownEditorConfiguration.biscotti(...)` factory, and write tests for the config factory. This phase de-risks the primary concern (Swift 6 strict-concurrency compile with a third-party dependency) before any integration work.

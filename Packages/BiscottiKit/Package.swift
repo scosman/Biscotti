@@ -227,6 +227,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "MarkdownEditorUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors

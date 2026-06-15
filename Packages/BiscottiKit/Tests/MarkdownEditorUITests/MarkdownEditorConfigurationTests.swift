@@ -6,9 +6,8 @@ import Testing
 
 @Suite("MarkdownEditorConfiguration.biscotti")
 struct MarkdownEditorConfigurationTests {
-    private let baseFontSize: CGFloat = 14
     private var config: MarkdownEditorConfiguration {
-        .biscotti(baseFontSize: baseFontSize)
+        .biscotti()
     }
 
     // MARK: - Theme colors
@@ -60,9 +59,10 @@ struct MarkdownEditorConfigurationTests {
 
     // MARK: - Markers
 
-    @Test("hiddenMarkerFontSize equals baseFontSize for always-visible markers")
-    func markersAlwaysVisible() {
-        #expect(config.markers.hiddenMarkerFontSize == baseFontSize)
+    @Test("hiddenMarkerFontSize uses engine default (hide-on-blur)")
+    func markersUseEngineDefault() {
+        let engineDefault = MarkerStyle.default
+        #expect(config.markers.hiddenMarkerFontSize == engineDefault.hiddenMarkerFontSize)
     }
 
     // MARK: - Lists

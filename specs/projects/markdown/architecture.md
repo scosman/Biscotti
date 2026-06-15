@@ -62,7 +62,7 @@ the single place engine knobs are set:
 
 ```swift
 public extension MarkdownEditorConfiguration {
-    static func biscotti(baseFontSize: CGFloat) -> MarkdownEditorConfiguration
+    static func biscotti() -> MarkdownEditorConfiguration
 }
 ```
 
@@ -78,7 +78,7 @@ Mapping (engine knob → Biscotti intent):
 | `theme.findMatchHighlight` | `NSColor` from `accentWashStrong` |
 | `theme.findCurrentMatchHighlight` | stronger sage |
 | `theme.strikethroughColor` | `NSColor` inkSecondary |
-| `markers.hiddenMarkerFontSize` | **= `baseFontSize`** → markers never shrink (always visible) |
+| `markers.hiddenMarkerFontSize` | engine default (0.1pt) — hide-on-blur; always-visible was attempted but the engine's `shrinkInactiveMarkers` applies a negative kern that collapses layout advance, causing text overlap at full font size |
 | `overscroll` | reduced for a bounded box (e.g. `percent: 0`, small `maxPoints`/`minPoints`) |
 | `scrollers` | `.default` (vertical, autohide) |
 | `lists.helpersEnabled` | `true` (auto-continue/indent) |
@@ -131,7 +131,7 @@ MarkdownEditor(
 ## Testing
 
 - **`MarkdownEditorUITests`** (runs under `swift test`):
-  - `MarkdownEditorConfiguration.biscotti(...)` maps tokens correctly: `bodyText == NSColor.ink`, `mutedText == NSColor.inkSecondary`, `link == NSColor.sage`, `markers.hiddenMarkerFontSize == baseFontSize`, `lists.autoClosePairsEnabled == false`, `services` are the no-op defaults, etc.
+  - `MarkdownEditorConfiguration.biscotti()` maps tokens correctly: `bodyText == NSColor.ink`, `mutedText == NSColor.inkSecondary`, `link == NSColor.sage`, `markers.hiddenMarkerFontSize == engine default (0.1pt)`, `lists.autoClosePairsEnabled == false`, `services` are the no-op defaults, etc.
   - Any pure helper (placeholder `NSAttributedString` construction) behaves.
 - **`DesignSystemTests`**: optionally assert the new `NSColor` mirrors equal the `Color` palette values.
 - **Build gate**: `MarkdownEditorUI` + `MeetingDetailUI` compile under the Swift 6 toolchain (the main signal the dependency integrates) via `mcp__hooks-mcp__build` / CI `make ci`.

@@ -53,16 +53,17 @@ The wrapper does **not** expose the engine's wiki-link / code-block / caret call
 
 ### Marker rendering (the headline behavior)
 
-**Always-visible, dimmed markers.** Markdown markers (`*`, `**`, `~~`, `#`, list bullets, `>` etc.)
-remain on screen at all times, drawn in a **lighter/dimmer color than body text**, while the spans
-they delimit render styled (italic, bold, strikethrough, heading size, …).
+**Dimmed markers, revealed on focus (hide-on-blur).** Markdown markers (`*`, `**`, `~~`, `#`, list
+bullets, `>` etc.) are drawn in a **lighter/dimmer color than body text** while the caret is on the
+line/token, and the spans they delimit render styled (italic, bold, strikethrough, heading size, …).
+When the caret leaves a token, its markers hide (the engine's default live-preview behavior).
 
 Mechanism (validated against the engine source):
-- The engine keeps markers in the text storage and, when the caret is *outside* a token, shrinks them to `MarkerStyle.hiddenMarkerFontSize` (default `0.1` ≈ invisible). Setting `hiddenMarkerFontSize` to the **body font size** keeps markers at full, readable size at all times (no shrink/grow as the caret moves).
-- Markers are colored via the theme: most inline markers use `MarkdownEditorTheme.mutedText`; heading markers use `headingMarker`. We map both onto a **dimmed ink** from the F Sage palette so markers read as clearly secondary to body text.
-- Net effect matches the chosen design: `*italic*` shows a dimmed `*…*` with the inner word italicized; `## Agenda` shows a dimmed `##` with the heading enlarged.
+- The engine keeps markers in the text storage and, when the caret is *outside* a token, applies `shrinkInactiveMarkers`: each marker character gets a tiny font (`MarkerStyle.hiddenMarkerFontSize`, default `0.1pt`) **and** a negative kern equal to that font size, collapsing the marker's layout advance to ~zero. This makes inactive markers effectively invisible without changing character offsets. Setting `hiddenMarkerFontSize` to the body font size was attempted but causes text overlap — the negative kern still collapses the advance while the glyph draws at full size. There is no engine config to disable the layout collapse independently.
+- While the caret IS on a token, markers render at full size with the dimmed-ink color (`MarkdownEditorTheme.mutedText` for inline markers, `headingMarker` for `#` glyphs). We map both onto `inkSecondary` from the F Sage palette.
+- Net effect: `*italic*` shows dimmed `*…*` with the inner word italicized while editing that span; once the caret moves away, the markers hide and only the styled text remains. Standard live-preview markdown editing UX.
 
-Exact dimming level (e.g. `inkSecondary` vs `inkTertiary`) and whether markers are body-size or slightly smaller is a **visual-tuning** decision finalized during implementation against a real render (see Testing). The functional contract is: *markers always visible, clearly dimmer than body text, spans fully styled.*
+The functional contract is: *markers dimmed and visible while editing a span, hidden when the caret moves away, spans fully styled at all times.*
 
 ### Supported markdown features
 
@@ -98,7 +99,7 @@ The editor uses Biscotti's design tokens, not stock system colors:
 | `theme.strikethroughColor` | `ink` |
 | base font (`fontName` / `fontSize`) | app body font + notes body size |
 | `headings.fontMultipliers` | engine defaults (tunable) so H1–H3 read as clear hierarchy |
-| `markers.hiddenMarkerFontSize` | = body size (always-visible markers) |
+| `markers.hiddenMarkerFontSize` | engine default 0.1pt (hide-on-blur; see Marker rendering) |
 | editor background | clear (sits on the meeting-detail `paper` background) |
 
 The control should look like it belongs in the app: warm ivory background showing through, ink body

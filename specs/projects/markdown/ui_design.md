@@ -22,8 +22,8 @@ section in the meeting-detail `ScrollView` (`MeetingDetailView.swift:281–297`)
 │  ── divider ──                                   │
 │  Notes                          ← section header │
 │  ┌────────────────────────────────────────────┐ │
-│  │  ## Agenda            ← '##' dimmed, H2     │ │  ← bounded markdown
-│  │  Ship *Q3* plan        ← '*' dimmed, italic │ │     editor box
+│  │  ## Agenda          ← '##' dimmed while editing│ │  ← bounded markdown
+│  │  Ship Q3 plan        ← styled italic, H2     │ │     editor box
 │  │  - [ ] follow up with Sam                   │ │     (min ~120 / max ~340pt,
 │  │  - [x] send recap                           │ │      scrolls internally)
 │  │                                             │ │
@@ -50,9 +50,9 @@ section in the meeting-detail `ScrollView` (`MeetingDetailView.swift:281–297`)
 | Element | Treatment |
 |---|---|
 | Body text + caret | `ink` |
-| **Syntax markers** (`*`, `**`, `~~`, `#`, `>`, list bullets) | **dimmed ink** (`inkSecondary` — clearly lighter than body), always visible |
-| Headings | enlarged via the engine's level multipliers off the base notes size (H1≈2.0×, H2≈1.5×, H3≈1.17×); the `#` markers stay dimmed |
-| Italic / bold / strikethrough spans | rendered styled; their markers stay dimmed and visible |
+| **Syntax markers** (`*`, `**`, `~~`, `#`, `>`, list bullets) | **dimmed ink** (`inkSecondary` — clearly lighter than body), visible while the caret is on the token (hide-on-blur) |
+| Headings | enlarged via the engine's level multipliers off the base notes size (H1≈2.0×, H2≈1.5×, H3≈1.17×); the `#` markers dimmed while editing |
+| Italic / bold / strikethrough spans | rendered styled; their markers dimmed and visible while editing the span, hidden when caret moves away |
 | Links | `sage`, underlined per engine default |
 | Inline / fenced code | monospaced (system mono), not colorized |
 | Task checkboxes | native rendered glyph; completed-item text struck through (`inkSecondary`) |
@@ -65,7 +65,7 @@ off it. (Serif is reserved for headlines, mono for metadata; notes prose stays s
 
 ## Interaction
 
-- **Type to edit, live styling** — markers render as you type; markers stay visible & dimmed (per the chosen mode), spans style in place.
+- **Type to edit, live styling** — markers render as you type; while the caret is on a token its markers are visible & dimmed, and hide when the caret moves away (standard live-preview behavior). Spans style in place.
 - **Task checkboxes** are clickable to toggle `[ ]` ⇄ `[x]`.
 - **Lists** auto-continue on Return and indent/outdent with Tab/Shift-Tab.
 - **Auto-close bracket pairs is disabled** for notes (prose-friendly — typing `(` should not auto-insert `)`).

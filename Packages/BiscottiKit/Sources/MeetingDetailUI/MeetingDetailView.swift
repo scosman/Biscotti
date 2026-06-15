@@ -2,6 +2,7 @@ import AppCore
 import Calendar
 import DataStore
 import DesignSystem
+import MarkdownEditorUI
 import SwiftUI
 import TranscriptionService
 
@@ -284,15 +285,19 @@ public struct MeetingDetailView: View {
                 .kicker()
                 .foregroundStyle(.inkSecondary)
 
-            TextEditor(
+            MarkdownEditor(
                 text: Binding(
                     get: { viewModel.notes },
                     set: { viewModel.updateNotes($0) }
-                )
+                ),
+                documentId: viewModel.meetingID.uuidString,
+                placeholder: "Add notes\u{2026}"
             )
-            .font(.body)
-            .frame(minHeight: 60)
-            .scrollContentBackground(.hidden)
+            .frame(minHeight: 120, maxHeight: 340)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.cardStroke)
+            )
         }
     }
 }

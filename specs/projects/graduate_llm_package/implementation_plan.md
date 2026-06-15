@@ -33,7 +33,7 @@ hardware run (the agent cannot run it).
   via a fake reporter up to the seam. *Gate:* `make build`/`test`/`lint` green. (NSXPC itself
   isn't autonomously testable — validated in Phase 4.)
 
-- [ ] **Phase 3 — XPC host + ManualTestApp tab + docs.**
+- [x] **Phase 3 — XPC host + ManualTestApp tab + docs.**
   `XPCServices/BiscottiLLM/` (`main.swift` thin bridge over an in-process `LLMConnection`;
   `ConnectionCounter`→ordered teardown→`_exit(0)`; `Info.plist` `XPC!`/`ServiceType
   Application`; `BiscottiLLM.entitlements` app-sandbox=false). ManualTestApp `project.yml`

@@ -4,17 +4,21 @@ On-device LLM inference for Biscotti, built on [llama.cpp](https://github.com/gg
 
 ## What it provides
 
-- **`LLMService`** / **`LLMConnection`** -- actor-based session API with scoped (`withConnection`) and explicit (`openConnection`/`close`) lifecycle forms.
+- **`LLMService`** / **`LLMConnection`** -- actor-based session API with scoped (`withConnection`) and explicit (`openConnection`/`close`) lifecycle forms. Two backends: `.inProcess` and `.hosted(serviceName:)` (NSXPC).
 - **`LLMEngine`** -- single-model engine: load once, generate many. Supports buffered and streaming output, greedy and sampled decoding, thinking/reasoning mode, and custom stop sequences.
 - **`GemmaChatTemplate`** -- Gemma 4 chat template (byte-matches the embedded Jinja).
-- **`ModelDownloader`** -- resumable GGUF model download with progress callback.
-- **CLI** (`localllm`) -- `download` and `run` subcommands for interactive use and scripting.
+- **`ModelDownloader`** -- GGUF model download with progress callback.
+- **`BiscottiLLM.xpc`** -- macOS XPC service host (`XPCServices/BiscottiLLM/`) for out-of-process isolation and full memory reclamation. Embedded in ManualTestApp.
+- **CLI** (`localllm`) -- `download` and `run` subcommands for interactive use and scripting (in-process only).
 
 ## Architecture
 
-Currently all inference runs **in-process** via `InProcessBackend`. Phase 2 will add an NSXPC `hosted(serviceName:)` backend for out-of-process isolation and full memory reclamation.
+Two backends behind the `ServiceBackend` protocol:
 
-The `ServiceBackend` protocol decouples the connection from transport details, so adding XPC changes nothing above the backend layer.
+- **`.inProcess`** — runs `LLMEngine` in the caller's process. Used by the CLI, unit tests, and as the inner engine inside the XPC service host.
+- **`.hosted(serviceName:)`** — NSXPC client adapter connecting to `BiscottiLLM.xpc` for out-of-process isolation and full memory reclamation on close. The service host (`XPCServices/BiscottiLLM/`) wraps an in-process `LLMConnection`, mirrors the `BiscottiTranscriber` pattern (connection counting, ordered Metal teardown, `_exit(0)` reclamation), and is embedded in ManualTestApp (and later the shipping app).
+
+The `ServiceBackend` protocol decouples the connection from transport details -- the `LLMService`/`LLMConnection` API is identical for both backends.
 
 ## Building and testing
 

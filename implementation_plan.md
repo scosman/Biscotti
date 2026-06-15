@@ -122,8 +122,8 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 ### Project 10 — Intelligence (LLM)  ·  [P2]
 - **Archetype:** library + feature.
 - **Delivers:** LLM summaries, action items, speaker-name inference, and vocab extraction from invites.
-- **In scope:** the `Intelligence` package (provider abstraction — local llama.cpp/Gemma + external OpenAI-compatible; the four features); `AppCore` additions (invoke); `MeetingDetailUI` additions (render summaries/action items, speaker-name UI); `SettingsUI` additions (provider/API-key config); `DataStore` additions (store outputs).
-- **Depends on:** Project 4 (transcripts), Project 3.
+- **In scope:** the `Intelligence` package (provider abstraction — local via `LocalLLM` + external OpenAI-compatible; the four features); `AppCore` additions (invoke); `MeetingDetailUI` additions (render summaries/action items, speaker-name UI); `SettingsUI` additions (provider/API-key config); `DataStore` additions (store outputs).
+- **Depends on:** Project 4 (transcripts), Project 3. **Note:** the `LocalLLM` runtime and `BiscottiLLM.xpc` service are already graduated and hardware-validated (via the `graduate_llm_package` spec project); Project 10 consumes them through the `Intelligence` package.
 - **Risk:** **high.**
 
 ### Project 11 — Auto-Speaker Identification  ·  [P2]

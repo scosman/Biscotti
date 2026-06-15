@@ -1,6 +1,7 @@
 import AppKit
 import AudioCapture
 import Foundation
+import LocalLLM
 import ManualTestKit
 import os
 import Transcription
@@ -20,6 +21,8 @@ enum WiredScripts {
                 wireAudioCapture(script)
             case "transcription":
                 wireTranscription(script)
+            case "local_llm":
+                wireLocalLLM(script)
             default:
                 script
             }
@@ -117,6 +120,86 @@ enum WiredScripts {
                             micURL: paths.micAAC,
                             systemURL: paths.systemAAC
                         )
+                    }
+                default:
+                    return step
+                }
+
+            case .instruction, .humanQuestion:
+                return step
+            }
+        }
+
+        return TestScript(id: script.id, title: script.title, steps: wiredSteps)
+    }
+
+    // MARK: - Local LLM wiring
+
+    /// The XPC service name for BiscottiLLM, matching the embedded xpc-service
+    /// bundle identifier in project.yml.
+    private static let llmServiceName = "net.scosman.biscotti.BiscottiLLM"
+
+    /// Maps over the canonical Local LLM script, replacing action/autoCheck closures
+    /// with real LocalLLM calls. Inference steps use the XPC backend (BiscottiLLM.xpc);
+    /// model download is in-process (ModelDownloader).
+    private static func wireLocalLLM(_ script: TestScript) -> TestScript {
+        let cache = LocalLLMPaths.defaultModelCacheDir
+
+        let wiredSteps = script.steps.map { step -> TestStep in
+            switch step {
+            case let .action(id, label, _):
+                switch id {
+                case "llm_model_download":
+                    return .action(id: id, label: label) { status in
+                        let downloader = ModelDownloader(cacheDirectory: cache)
+                        _ = try await downloader.download { bytes, total in
+                            if let total {
+                                let mb = Double(bytes) / 1_000_000
+                                let totalMB = Double(total) / 1_000_000
+                                let pct = Double(bytes) / Double(total) * 100
+                                status(String(
+                                    format: "Downloading: %.0f / %.0f MB (%.0f%%)",
+                                    mb, totalMB, pct
+                                ))
+                            } else {
+                                let mb = Double(bytes) / 1_000_000
+                                status(String(format: "Downloading: %.0f MB", mb))
+                            }
+                        }
+                        status("Download complete")
+                    }
+
+                case "llm_xpc_inference":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let text = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Generating response...")
+                            let result = try await conn.generate(
+                                prompt: "What is the capital of France? "
+                                    + "Answer in one sentence.",
+                                options: GenerationOptions(maxTokens: 128)
+                            )
+                            return result.text
+                        }
+                        status("Response: \(text)")
+                    }
+
+                default:
+                    return step
+                }
+
+            case let .autoCheck(id, label, _):
+                switch id {
+                case "llm_reclamation":
+                    return .autoCheck(id: id, label: label) {
+                        // Brief pause to let the service process exit after
+                        // connection invalidation.
+                        try? await Task.sleep(for: .seconds(2))
+                        return AutoChecks.checkNoLLMServiceRunning()
                     }
                 default:
                     return step

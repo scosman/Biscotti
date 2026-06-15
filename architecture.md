@@ -40,10 +40,12 @@ This directly answers the overview's open question ("small package vs. component
 │   │   └── Sources/<Module>/ ...  # DataStore, Permissions, Calendar, Recording, … UI modules
 │   ├── AudioCapture/              # own package (reason 2 + 3)
 │   ├── Transcription/             # own package (reason 1: argmax-oss-swift; +2, +3)
-│   └── Intelligence/   [P2]       # own package (reason 1: llama.cpp)
+│   ├── LocalLLM/                  # own package (reason 1: llama.cpp; graduated from experiments/llm)
+│   └── Intelligence/   [P2]       # own package (reason 1: consumes LocalLLM)
 ├── App/                           # the Xcode project — thin glue only
 │   ├── Biscotti (app target)         # composition root + Apple-platform glue
-│   └── BiscottiTranscriber (.xpc)    # XPC service target; links Transcription
+│   ├── BiscottiTranscriber (.xpc)    # XPC service target; links Transcription
+│   └── BiscottiLLM (.xpc)           # XPC service target; links LocalLLM
 └── (CI, lint, format config — added by the later Scaffolding project, not here)
 ```
 
@@ -63,7 +65,7 @@ L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI ·
 L2  Coordination    AppCore  (the headless "background app" engine)
 L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary
 L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem
-        engines     AudioCapture(pkg) · Transcription(pkg) · Intelligence(pkg,P2)
+        engines     AudioCapture(pkg) · Transcription(pkg) · LocalLLM(pkg) · Intelligence(pkg,P2)
 ```
 
 ---
@@ -94,15 +96,25 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 - **Deep-dive risk:** **high.** XPC + CoreML validation, model memory lifecycle, status surfacing, vocab workaround.
 - **From:** `experiments/ArgMaxKit` (already an SPM package).
 
-#### 3. Intelligence  ·  *own package*  ·  [P2]
+#### 3. LocalLLM  ·  *own package*  ·  [graduated]
+- **Home:** own package (`Packages/LocalLLM`), graduated from `experiments/llm`.
+- **Owns:** on-device LLM inference over llama.cpp/Gemma 4 — the runtime engine that the future `Intelligence` package will consume.
+- **Provides:** `LLMService`/`LLMConnection` actor API (scoped + explicit lifecycle), `.inProcess` and `.hosted(serviceName:)` backends, `LLMEngine` (buffered + streaming generation, thinking mode, sampled decoding), `GemmaChatTemplate`, `ModelDownloader`, CLI (`localllm`). The production transport — `BiscottiLLM.xpc` (XPC service host, mirroring BiscottiTranscriber) — is built and embedded in ManualTestApp ahead of Project 10.
+- **Out of scope:** provider abstraction, external providers, summary/action-item/speaker-name *product features* (those are Intelligence/Project 10).
+- **Depends on:** `llama.swift` (llama.cpp SPM wrapper), `swift-argument-parser` (CLI only). No internal deps.
+- **Tested by:** unit tests (MockEngine + InProcessBackend); AI integration tests (`make test-ai`, model-backed); ManualTestApp `Local LLM` tab for the XPC path (hardware-validated).
+- **Deep-dive risk:** **medium** (runtime is validated; XPC path validated on hardware via ManualTestApp).
+- **From:** `experiments/llm`.
+
+#### 4. Intelligence  ·  *own package*  ·  [P2]
 - **Home:** own package (`Packages/Intelligence`).
-- **Owns:** LLM-powered enhancements over transcripts.
-- **Must provide:** summaries, action-item extraction, speaker-name inference, custom-vocab extraction from invites; a pluggable provider abstraction with a **local** (llama.cpp / Gemma) and an **external** (OpenAI-compatible base URL + key) implementation.
-- **Out of scope:** the data store, transcription itself, UI.
-- **Depends on:** llama.cpp Swift wrapper (local provider); consumes transcript values produced upstream. No internal deps.
+- **Owns:** LLM-powered enhancements over transcripts. Consumes `LocalLLM` for the local provider.
+- **Must provide:** summaries, action-item extraction, speaker-name inference, custom-vocab extraction from invites; a pluggable provider abstraction with a **local** (via `LocalLLM`) and an **external** (OpenAI-compatible base URL + key) implementation.
+- **Out of scope:** the data store, transcription itself, UI, the LLM runtime (that's `LocalLLM`).
+- **Depends on:** `LocalLLM` (local provider); consumes transcript values produced upstream. No other internal deps.
 - **Tested by:** unit tests with stubbed providers; integration test against a small local model.
 - **Deep-dive risk:** **high**, but deferred (P2).
-- **From:** none (new).
+- **From:** none (new; builds on `LocalLLM`).
 
 ### Foundation modules (in `BiscottiKit`)
 
@@ -295,6 +307,14 @@ Each screen is its **own module** (cheap target) so screens come online independ
 - **Tested by:** exercised via the Transcription harness + app integration.
 - **Deep-dive risk:** **medium** (validated together with Transcription). **From:** `research/argmax` (isolation).
 
+#### 26. BiscottiLLM (XPC service)  ·  *app-project glue*  ·  [graduated]
+- **Owns:** the crash-isolated host process for LLM inference, mirroring BiscottiTranscriber's pattern.
+- **Must provide:** the `.xpc` service bundle, entry point, plist, and entitlements; wrap an in-process `LLMConnection` behind the `LLMServiceProtocol`/`LLMEventReporting` XPC boundary; connection counting and `_exit(0)` reclamation on last-connection invalidation (ordered Metal teardown); auto-relaunch by launchd.
+- **Out of scope:** the inference runtime (lives in the LocalLLM package).
+- **Depends on:** LocalLLM (pkg).
+- **Tested by:** exercised via the ManualTestApp `Local LLM` tab on hardware.
+- **Deep-dive risk:** **medium** (pattern validated by BiscottiTranscriber). **From:** `experiments/llm` (graduated).
+
 ---
 
 ## Dependency Graph
@@ -313,10 +333,11 @@ graph TD
     REC[Recording]; DET[MeetingDetection]; TS[TranscriptionService]; CAL[Calendar]; NOTIF[Notifications]; VOC[Vocabulary]
     STORE[DataStore]; PERM[Permissions]; RC[RemoteConfig]
   end
-  AUD[(AudioCapture pkg)]; TRX[(Transcription pkg)]; INT[(Intelligence pkg P2)]
+  AUD[(AudioCapture pkg)]; TRX[(Transcription pkg)]; LLM[(LocalLLM pkg)]; INT[(Intelligence pkg P2)]
 
   APP --> SHELL & MENU & CORE & STORE
   XPC --> TRX
+  XPCLLM[BiscottiLLM.xpc] --> LLM
   SHELL --> HOME & RECUI & DETAIL & LIST & SRCH & CORE & DS
   HOME --> CORE & STORE & CAL & DS
   RECUI --> CORE & REC & DS
@@ -328,6 +349,7 @@ graph TD
   SET --> CAL & VOC & STORE
   MENU --> STORE
   CORE --> REC & DET & TS & CAL & NOTIF & STORE
+  INT --> LLM
   CORE -.P2.-> INT
   REC --> AUD & STORE & PERM
   DET --> AUD & RC
@@ -337,7 +359,7 @@ graph TD
   VOC --> STORE
 ```
 
-No cycles. Leaves: `DataStore`, `Permissions`, `RemoteConfig`, `DesignSystem`, and the three engine packages.
+No cycles. Leaves: `DataStore`, `Permissions`, `RemoteConfig`, `DesignSystem`, and the four engine packages.
 
 ---
 
@@ -367,7 +389,7 @@ Not components — conventions every component follows, recorded so they don't f
 
 | Future capability | Home | Notes |
 |---|---|---|
-| LLM summaries / action items / speaker-naming / vocab-extraction | **Intelligence** (new pkg) + AppCore + MeetingDetailUI | Provider abstraction (local llama.cpp + external). |
+| LLM summaries / action items / speaker-naming / vocab-extraction | **Intelligence** (new pkg, consumes **LocalLLM**) + AppCore + MeetingDetailUI | Provider abstraction (local via LocalLLM + external). LocalLLM runtime + BiscottiLLM.xpc already graduated. |
 | iCloud/CloudKit sync | **DataStore** (config) | SwiftData sync option; not a new package. |
 | Global keyboard shortcut | **Biscotti app** (glue) + AppCore (dispatch) | Mostly Apple glue. |
 | Per-recording manual vocab | **Vocabulary** + MeetingDetailUI/SettingsUI | Extends existing modules. |
@@ -389,4 +411,4 @@ The package-vs-module calls, with their resolutions:
 2. **Recording / MeetingDetection split from AudioCapture.** **Kept** — the low-level engine (package) stays separate from the app-level services (modules) so the engine remains app/data-free and reusable.
 3. **DataStore as one module** (vs. splitting pure model types from the store/queries). **DECIDED: one module** — idiomatic for SwiftData `@Model`; the boundary-crossing data already uses plain `Sendable` DTOs from the engine packages, so the usual reason to split doesn't apply here. *Escape hatch:* if the DataStore build project hits real view-model-testing or strict-concurrency friction with live `@Model` objects, it may extract a pure `Models` leaf + mappers then — an internal, additive refactor (new leaf below DataStore; type-only dependents repoint), not a re-topology.
 4. **One UI module per screen** (Home, Recording, MeetingDetail, MeetingList, Search, plus MenuBar/Onboarding/Settings), with `AppShellUI` composing the window screens. **Chosen over a single `AppWindowUI`** so screens come online in different Projects (MVP ships Recording + MeetingDetail + basic List + Shell; Home/Search arrive later), each view-model unit-tests in isolation, and no screen becomes a god-module. Targets are cheap; this is the granularity sweet spot for UI. Collapse only if a screen is too thin to warrant its own module.
-5. **Intelligence as its own package** — **kept** (quarantines llama.cpp); P2, easy to revisit.
+5. **Intelligence as its own package** — **kept** (consumes `LocalLLM`; P2, easy to revisit). The `LocalLLM` runtime itself is now a graduated package (`Packages/LocalLLM`), with `BiscottiLLM.xpc` built ahead of Project 10.

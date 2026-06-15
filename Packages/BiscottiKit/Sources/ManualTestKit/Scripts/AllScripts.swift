@@ -4,5 +4,6 @@
 /// automatically includes it in the CI gate and the app's tab bar.
 public let allScripts: [TestScript] = [
     .audioCapture,
-    .transcription
+    .transcription,
+    .localLLM
 ]

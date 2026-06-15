@@ -66,6 +66,46 @@
     "stepID" : "ac_two_dialogs",
     "timestamp" : "2026-06-10T03:49:37Z"
   },
+  "llm_action_items_quality" : {
+    "status" : "not-run",
+    "stepID" : "llm_action_items_quality"
+  },
+  "llm_ai_tests_passed" : {
+    "status" : "not-run",
+    "stepID" : "llm_ai_tests_passed"
+  },
+  "llm_model_disk" : {
+    "status" : "not-run",
+    "stepID" : "llm_model_disk"
+  },
+  "llm_model_download" : {
+    "status" : "not-run",
+    "stepID" : "llm_model_download"
+  },
+  "llm_reclamation" : {
+    "status" : "not-run",
+    "stepID" : "llm_reclamation"
+  },
+  "llm_speaker_names_quality" : {
+    "status" : "not-run",
+    "stepID" : "llm_speaker_names_quality"
+  },
+  "llm_streaming_channels" : {
+    "status" : "not-run",
+    "stepID" : "llm_streaming_channels"
+  },
+  "llm_summarize_quality" : {
+    "status" : "not-run",
+    "stepID" : "llm_summarize_quality"
+  },
+  "llm_thinking_mode" : {
+    "status" : "not-run",
+    "stepID" : "llm_thinking_mode"
+  },
+  "llm_xpc_inference" : {
+    "status" : "not-run",
+    "stepID" : "llm_xpc_inference"
+  },
   "tx_ai_test_passed" : {
     "status" : "pass",
     "stepID" : "tx_ai_test_passed",

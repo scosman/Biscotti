@@ -46,6 +46,77 @@ struct ImmediateClock: Clock {
     }
 }
 
+// MARK: - OneShotImmediateClock
+
+/// A clock that completes the first `sleep` immediately, then
+/// suspends forever on subsequent calls (until cancelled). This
+/// allows the start debounce to fire while keeping the stop
+/// debounce pending so that cancellation behavior can be tested
+/// deterministically.
+final class OneShotImmediateClock: Clock, @unchecked Sendable {
+    typealias Duration = Swift.Duration
+
+    struct Instant: InstantProtocol {
+        var offset: Swift.Duration
+        static var zero: Instant {
+            Instant(offset: .zero)
+        }
+
+        func advanced(by duration: Swift.Duration) -> Instant {
+            Instant(offset: offset + duration)
+        }
+
+        func duration(to other: Instant) -> Swift.Duration {
+            other.offset - offset
+        }
+
+        static func < (lhs: Instant, rhs: Instant) -> Bool {
+            lhs.offset < rhs.offset
+        }
+    }
+
+    private let lock = NSLock()
+    private var fired = false
+
+    var now: Instant {
+        .zero
+    }
+
+    var minimumResolution: Swift.Duration {
+        .zero
+    }
+
+    func sleep(
+        until _: Instant, tolerance _: Swift.Duration?
+    ) async throws {
+        let shouldFireImmediately: Bool = lock.withLock {
+            if !fired {
+                fired = true
+                return true
+            }
+            return false
+        }
+
+        if shouldFireImmediately {
+            try Task.checkCancellation()
+            await Task.yield()
+        } else {
+            // Block until cancelled, same as NeverClock.
+            let box = ContinuationBox()
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    box.store(cont)
+                    if Task.isCancelled {
+                        box.resume(throwing: CancellationError())
+                    }
+                }
+            } onCancel: {
+                box.resume(throwing: CancellationError())
+            }
+        }
+    }
+}
+
 // MARK: - ContinuationBox
 
 /// Thread-safe box for sharing a `CheckedContinuation` between the
@@ -265,5 +336,20 @@ func makeNeverDetector(
         catalog: catalog,
         source: source,
         clock: AnyClock(NeverClock())
+    )
+}
+
+/// Creates a detector whose first debounce (start) fires immediately
+/// but whose second debounce (stop) blocks until cancelled. This
+/// makes stop-debounce cancellation tests deterministic.
+@MainActor
+func makeOneShotDetector(
+    catalog: FakeMeetingCatalog,
+    source: FakeActivitySource
+) -> MeetingDetector {
+    MeetingDetector(
+        catalog: catalog,
+        source: source,
+        clock: AnyClock(OneShotImmediateClock())
     )
 }

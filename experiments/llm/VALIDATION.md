@@ -265,10 +265,18 @@ AI suite confirmed on Apple M4 Pro, macOS 15, 2026-06-14 — 223 tests pass,
 - [x] Reclamation: child PID is gone after `close()` (verified by `testReclamation`)
 - [x] In-process parity: same prompt produces identical output via both backends
   (verified by `testInProcessParity`)
-- [ ] CLI `--backend out-of-process` works end-to-end (default)
-- [ ] CLI `--backend in-process` works end-to-end (A/B comparison)
-- [ ] No orphaned `localllm-service` processes after CLI exit
+- [x] CLI `--backend out-of-process` works end-to-end (default)
+- [x] CLI `--backend in-process` works end-to-end (A/B comparison)
+- [x] No orphaned `localllm-service` processes after CLI exit
   (`pgrep -f localllm-service` returns nothing)
+
+Manual CLI runs, Apple M4 Pro, macOS 15, 2026-06-14: out-of-process and in-process
+produce identical greedy output with clean exit (no GGML_ASSERT crash); no orphaned
+`localllm-service` after exit; `--stream` + `--thinking auto` routes thinking/response
+channels cleanly (no raw marker leakage); `--verbose` gating works (default suppresses
+child stderr). One cosmetic caveat: on `--backend in-process`, ggml emits
+`ggml_metal_*` device-init lines to stderr even without `--verbose` — in-process only;
+out-of-process suppresses them via the child stderr gate.
 
 ### Recommendation for Project 10
 

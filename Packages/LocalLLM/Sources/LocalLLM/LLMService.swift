@@ -15,7 +15,7 @@ public enum LLMService {
         case inProcess
 
         /// Connect to an NSXPC service for out-of-process isolation and full
-        /// memory reclamation on close. Not yet implemented.
+        /// memory reclamation on close.
         case hosted(serviceName: String)
     }
 
@@ -78,10 +78,8 @@ public enum LLMService {
         switch backend {
         case .inProcess:
             InProcessBackend(model: model, config: config)
-        case .hosted:
-            fatalError(
-                "Backend.hosted is not yet implemented. Use .inProcess for now."
-            )
+        case let .hosted(serviceName):
+            XPCBackend(serviceName: serviceName, model: model, config: config)
         }
     }
 

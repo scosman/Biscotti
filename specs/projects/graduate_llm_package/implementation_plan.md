@@ -24,7 +24,7 @@ hardware run (the agent cannot run it).
   *Gate:* `make build`/`test`/`lint`/`ci` green; CLI builds; always-on suite green (minus
   deleted tests).
 
-- [ ] **Phase 2 — NSXPC transport (library side).**
+- [x] **Phase 2 — NSXPC transport (library side).**
   Add the `@objc` `LLMServiceProtocol` + `LLMEventReporting`, the Codable DTOs
   (`LLMLoadRequest`/`LLMGenerateRequest`), rename `WireError`→`LLMErrorPayload`, the
   `XPCBackend: ServiceBackend` client adapter, `LLMEventReceiver`, and `LocalLLMPaths`. Restore

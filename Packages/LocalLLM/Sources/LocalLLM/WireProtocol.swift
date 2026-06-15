@@ -1,13 +1,13 @@
 import Foundation
 
-// MARK: - Wire Error (Codable error payload for XPC boundary)
+// MARK: - LLM Error Payload (Codable error payload for XPC boundary)
 
 /// Codable mirror of the error space, transported across the process boundary.
 ///
 /// Maps 1:1 to/from `LocalLLMError` cases. The `.service` case is a catch-all
 /// for errors that don't map to a specific `LocalLLMError`. Used by the NSXPC
 /// service to encode errors as `Data` for `@objc`-compatible transport.
-public enum WireError: Codable, Sendable, Equatable {
+public enum LLMErrorPayload: Codable, Sendable, Equatable {
     case modelFileNotFound(path: String)
     case modelLoadFailed(String)
     case contextCreationFailed(String)
@@ -20,10 +20,10 @@ public enum WireError: Codable, Sendable, Equatable {
     /// Catch-all for errors without a specific LocalLLMError mapping.
     case service(String)
 
-    /// Convert any error to a `WireError` for transport.
+    /// Convert any error to an `LLMErrorPayload` for transport.
     ///
     /// `LocalLLMError` cases are mapped 1:1. All other errors fall back to `.service`.
-    public static func from(_ error: any Error) -> WireError {
+    public static func from(_ error: any Error) -> LLMErrorPayload {
         if let llmError = error as? LocalLLMError {
             switch llmError {
             case let .modelFileNotFound(url):

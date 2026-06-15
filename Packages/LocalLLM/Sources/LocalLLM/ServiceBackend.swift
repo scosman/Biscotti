@@ -3,7 +3,7 @@
 /// Implementations:
 /// - `InProcessBackend` -- wraps an `InferenceEngine` in the caller's process
 ///   (CLI, tests, and the XPC service host's inner engine).
-/// - `XPCBackend` (future) -- NSXPC client adapter for the hosted service.
+/// - `XPCBackend` -- NSXPC client adapter for the hosted service.
 ///
 /// The serial queue, state machine, and id allocation live in `LLMConnection`
 /// (above the backend), so semantics are identical for all backends.

@@ -150,13 +150,13 @@ struct GenerationResultCodableTests {
     }
 }
 
-// MARK: - WireError Codable Round-Trips
+// MARK: - LLMErrorPayload Codable Round-Trips
 
-@Suite("WireError Codable")
-struct WireErrorCodableTests {
-    @Test("All WireError cases round-trip")
+@Suite("LLMErrorPayload Codable")
+struct LLMErrorPayloadCodableTests {
+    @Test("All LLMErrorPayload cases round-trip")
     func allCasesRoundTrip() throws {
-        let cases: [WireError] = [
+        let cases: [LLMErrorPayload] = [
             .modelFileNotFound(path: "/path/to/model.gguf"),
             .modelLoadFailed("bad header"),
             .contextCreationFailed("OOM"),
@@ -168,20 +168,20 @@ struct WireErrorCodableTests {
             .downloadFailed(url: "https://example.com/model.gguf", underlying: "timeout"),
             .service("generic failure")
         ]
-        for wireError in cases {
-            #expect(try roundTrip(wireError) == wireError)
+        for payload in cases {
+            #expect(try roundTrip(payload) == payload)
         }
     }
 }
 
-// MARK: - WireError Mapping
+// MARK: - LLMErrorPayload Mapping
 
-@Suite("WireError Mapping")
-struct WireErrorMappingTests {
+@Suite("LLMErrorPayload Mapping")
+struct LLMErrorPayloadMappingTests {
     @Test("modelFileNotFound maps both directions")
     func modelFileNotFound() {
         let original = LocalLLMError.modelFileNotFound(URL(fileURLWithPath: "/tmp/model.gguf"))
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .modelFileNotFound(path: "/tmp/model.gguf"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -193,7 +193,7 @@ struct WireErrorMappingTests {
     @Test("modelLoadFailed maps both directions")
     func modelLoadFailed() {
         let original = LocalLLMError.modelLoadFailed("corrupt")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .modelLoadFailed("corrupt"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -205,7 +205,7 @@ struct WireErrorMappingTests {
     @Test("contextCreationFailed maps both directions")
     func contextCreationFailed() {
         let original = LocalLLMError.contextCreationFailed("OOM")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .contextCreationFailed("OOM"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -217,7 +217,7 @@ struct WireErrorMappingTests {
     @Test("tokenizationFailed maps both directions")
     func tokenizationFailed() {
         let original = LocalLLMError.tokenizationFailed("bad token")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .tokenizationFailed("bad token"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -229,7 +229,7 @@ struct WireErrorMappingTests {
     @Test("contextOverflow maps both directions")
     func contextOverflow() {
         let original = LocalLLMError.contextOverflow(promptTokens: 5000, contextSize: 4096)
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .contextOverflow(promptTokens: 5000, contextSize: 4096))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -241,7 +241,7 @@ struct WireErrorMappingTests {
     @Test("generationFailed maps both directions")
     func generationFailed() {
         let original = LocalLLMError.generationFailed("Metal crashed")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .generationFailed("Metal crashed"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -253,7 +253,7 @@ struct WireErrorMappingTests {
     @Test("decodeFailed maps both directions")
     func decodeFailed() {
         let original = LocalLLMError.decodeFailed(code: -42)
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .decodeFailed(code: -42))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -265,7 +265,7 @@ struct WireErrorMappingTests {
     @Test("cancelled maps to LLMServiceError.cancelled")
     func cancelledMapping() {
         let original = LocalLLMError.cancelled
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .cancelled)
         guard let reconstructed = wire.toClientError() as? LLMServiceError else {
             Issue.record("Expected LLMServiceError, got \(type(of: wire.toClientError()))")
@@ -278,7 +278,7 @@ struct WireErrorMappingTests {
     func downloadFailed() throws {
         let url = try #require(URL(string: "https://example.com/model.gguf"))
         let original = LocalLLMError.downloadFailed(url: url, underlying: "timeout")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         #expect(wire == .downloadFailed(url: "https://example.com/model.gguf", underlying: "timeout"))
         guard let reconstructed = wire.toClientError() as? LocalLLMError else {
             Issue.record("Expected LocalLLMError, got \(type(of: wire.toClientError()))")
@@ -298,7 +298,7 @@ struct WireErrorMappingTests {
             let description: String
         }
         let original = CustomError(description: "something weird")
-        let wire = WireError.from(original)
+        let wire = LLMErrorPayload.from(original)
         if case let .service(msg) = wire {
             #expect(msg.contains("something weird"))
         } else {
@@ -311,9 +311,9 @@ struct WireErrorMappingTests {
         #expect(reconstructed == .serviceInterrupted)
     }
 
-    @Test("WireError.service maps to LLMServiceError.serviceInterrupted")
+    @Test("LLMErrorPayload.service maps to LLMServiceError.serviceInterrupted")
     func serviceToServiceInterrupted() {
-        let wire = WireError.service("internal failure")
+        let wire = LLMErrorPayload.service("internal failure")
         guard let error = wire.toClientError() as? LLMServiceError else {
             Issue.record("Expected LLMServiceError, got \(type(of: wire.toClientError()))")
             return

@@ -135,14 +135,14 @@ public struct MeetingDetailView: View {
 
             HStack(spacing: Tokens.spacingSM) {
                 Text(viewModel.formattedDate)
-                    .font(Tokens.metadataFont)
+                    .font(.monoMeta)
                     .foregroundStyle(Tokens.secondaryText)
 
                 if let duration = viewModel.formattedDuration {
                     Text("\u{00B7}")
                         .foregroundStyle(Tokens.secondaryText)
                     Text(duration)
-                        .font(Tokens.metadataFont)
+                        .font(.monoMeta)
                         .foregroundStyle(Tokens.secondaryText)
                 }
             }
@@ -256,7 +256,7 @@ public struct MeetingDetailView: View {
         .padding(Tokens.spacingSM)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(0.08))
+                .fill(Color.accentWashSoft)
         )
     }
 
@@ -281,8 +281,8 @@ public struct MeetingDetailView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             Text("Notes")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
+                .kicker()
+                .foregroundStyle(.inkSecondary)
 
             TextEditor(
                 text: Binding(
@@ -414,7 +414,7 @@ struct EventPickerSheet: View {
                                         .font(.body)
                                     HStack {
                                         Text(Self.formatEventTime(event))
-                                            .font(Tokens.metadataFont)
+                                            .font(.monoMeta)
                                             .foregroundStyle(
                                                 Tokens.secondaryText
                                             )
@@ -453,7 +453,7 @@ struct EventPickerSheet: View {
                             dismiss()
                         }
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.signalRed)
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }

@@ -31,6 +31,7 @@ public struct AppShellView: View {
                 OnboardingView(
                     viewModel: viewModel.onboardingViewModel
                 )
+                .background(Tokens.contentBackground)
             } else {
                 NavigationSplitView {
                     sidebar
@@ -56,7 +57,7 @@ public struct AppShellView: View {
                     ToolbarItemGroup(placement: .primaryAction) {
                         HStack(spacing: 4) {
                             Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.inkSecondary)
                                 .font(.body)
                             TextField("Search", text: $searchText)
                                 .textFieldStyle(.plain)
@@ -70,7 +71,7 @@ public struct AppShellView: View {
                                     searchText = ""
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.inkSecondary)
                                         .font(.caption)
                                 }
                                 .buttonStyle(.plain)
@@ -78,7 +79,7 @@ public struct AppShellView: View {
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
-                        .background(.quinary)
+                        .background(Color.neutralChip)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .fixedSize()
 
@@ -91,11 +92,12 @@ public struct AppShellView: View {
                                     Text(
                                         "Recording\u{2026} \(viewModel.recordingElapsedText)"
                                     )
-                                    .monospacedDigit()
+                                    .font(.monoMeta)
                                 }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Tokens.recordingRed)
+                            .buttonStyle(
+                                ToolbarRecordButtonStyle(fill: Tokens.recordingRed)
+                            )
                             .help("Go to recording")
                         } else {
                             Button {
@@ -103,11 +105,12 @@ public struct AppShellView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "record.circle")
-                                        .foregroundStyle(Tokens.recordingRed)
                                     Text("Record")
                                 }
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(
+                                ToolbarRecordButtonStyle(fill: .sage)
+                            )
                             .help("Start recording")
                         }
                     }
@@ -124,6 +127,16 @@ public struct AppShellView: View {
                 }
             }
         }
+        .background(Color.wall.ignoresSafeArea())
+        .onChange(of: viewModel.showOnboarding) { _, isOnboarding in
+            // Only reset when replaying (VM has advanced past welcome);
+            // skip on first launch where the VM is already at defaults.
+            if isOnboarding,
+               viewModel.onboardingViewModel.currentStep != .welcome
+            {
+                viewModel.onboardingViewModel.resetForReplay()
+            }
+        }
         .task { await viewModel.onLaunch() }
     }
 
@@ -131,6 +144,11 @@ public struct AppShellView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Brand lockup
+            sidebarBrandLockup
+                .padding(.horizontal, Tokens.spacingSM)
+                .padding(.bottom, Tokens.spacingSM)
+
             // Home row
             homeRow
                 .padding(.horizontal, Tokens.spacingSM)
@@ -160,6 +178,19 @@ public struct AppShellView: View {
                 .padding(.bottom, Tokens.spacingSM)
         }
         .frame(minWidth: 100, idealWidth: 110)
+        .background(Color.sidebarTint)
+    }
+
+    private var sidebarBrandLockup: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(.sage)
+            Text("Biscotti")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.ink)
+        }
+        .padding(.vertical, Tokens.spacingXS)
     }
 
     private var homeRow: some View {
@@ -170,7 +201,7 @@ public struct AppShellView: View {
                 Image(systemName: "house")
                     .foregroundStyle(
                         viewModel.route == .home
-                            ? Color.accentColor
+                            ? Color.sage
                             : Tokens.secondaryText
                     )
                 Text("Home")
@@ -183,7 +214,7 @@ public struct AppShellView: View {
         .buttonStyle(.plain)
         .background(
             viewModel.route == .home
-                ? Color.accentColor.opacity(0.15)
+                ? Tokens.accentWashStrong
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 4)
         )
@@ -197,7 +228,7 @@ public struct AppShellView: View {
                 Image(systemName: "clock")
                     .foregroundStyle(
                         viewModel.route == .meetings
-                            ? Color.accentColor
+                            ? Color.sage
                             : Tokens.secondaryText
                     )
                 Text("Past Meetings")
@@ -210,7 +241,7 @@ public struct AppShellView: View {
         .buttonStyle(.plain)
         .background(
             viewModel.route == .meetings
-                ? Color.accentColor.opacity(0.15)
+                ? Tokens.accentWashStrong
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 4)
         )
@@ -228,7 +259,7 @@ public struct AppShellView: View {
                 Image(systemName: "gearshape")
                     .foregroundStyle(
                         viewModel.route == .settings
-                            ? Color.accentColor
+                            ? Color.sage
                             : Tokens.secondaryText
                     )
                 Text("Settings")
@@ -241,7 +272,7 @@ public struct AppShellView: View {
         .buttonStyle(.plain)
         .background(
             viewModel.route == .settings
-                ? Color.accentColor.opacity(0.15)
+                ? Tokens.accentWashStrong
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 4)
         )
@@ -249,25 +280,37 @@ public struct AppShellView: View {
 
     // MARK: - Detail pane
 
-    @ViewBuilder
     private var detailContent: some View {
+        DetailContentView(viewModel: viewModel)
+    }
+}
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+/// Routes the detail pane based on `AppCore.route`.
+private struct DetailContentView: View {
+    let viewModel: AppShellViewModel
+
+    var body: some View {
         switch viewModel.route {
         case .home:
+            // Home paints its own paper background internally.
             HomeView(viewModel: viewModel.homeViewModel)
 
         case .recording:
             RecordingView(
                 viewModel: viewModel.recordingViewModel
             )
+            .background(Tokens.contentBackground)
 
         case .meetings:
-            meetingsSplit
+            MeetingsSplitView(viewModel: viewModel)
 
         case let .event(key):
             EventPreviewView(
                 viewModel: viewModel.eventPreviewViewModel(for: key)
             )
             .id(key)
+            .background(Tokens.contentBackground)
 
         case .settings:
             SettingsView(viewModel: viewModel.settingsViewModel)
@@ -276,11 +319,6 @@ public struct AppShellView: View {
             // Handled by the full-window takeover above; should not reach here.
             EmptyView()
         }
-    }
-
-    /// The Meetings two-pane: native list + detail or placeholder.
-    private var meetingsSplit: some View {
-        MeetingsSplitView(viewModel: viewModel)
     }
 }
 
@@ -292,8 +330,8 @@ private struct UpcomingSidebarSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("UPCOMING")
-                .font(Tokens.sectionHeaderFont)
-                .foregroundStyle(Tokens.secondaryText)
+                .kicker()
+                .foregroundStyle(.inkSecondary)
                 .padding(.horizontal, Tokens.spacingMD)
                 .padding(.bottom, Tokens.spacingXS)
 
@@ -313,7 +351,7 @@ private struct UpcomingSidebarSection: View {
                 .buttonStyle(.plain)
                 .background(
                     viewModel.route == .event(event.id)
-                        ? Color.accentColor.opacity(0.15)
+                        ? Tokens.accentWashStrong
                         : Color.clear,
                     in: RoundedRectangle(cornerRadius: 4)
                 )
@@ -344,17 +382,23 @@ private struct MeetingsSplitView: View {
                     )
                     .id(id)
                 } else {
-                    ContentUnavailableView(
-                        "No Meeting Selected",
-                        systemImage: "quote.bubble",
-                        description: Text(
+                    ContentUnavailableView {
+                        Label {
+                            Text("No Meeting Selected")
+                                .font(.serifHeadline)
+                        } icon: {
+                            Image(systemName: "quote.bubble")
+                        }
+                    } description: {
+                        Text(
                             "Select a meeting to see its transcript and details."
                         )
-                    )
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(minWidth: 360, maxWidth: .infinity)
+            .background(Tokens.contentBackground)
         }
     }
 }

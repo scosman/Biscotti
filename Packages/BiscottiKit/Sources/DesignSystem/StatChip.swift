@@ -24,7 +24,7 @@ public struct StatChip: View {
 
             Text(text)
                 .font(Tokens.statChipText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.inkSecondary)
         }
         .padding(.vertical, 0)
         .padding(.horizontal, 10)
@@ -38,9 +38,10 @@ public struct StatChip: View {
 
 #Preview("StatChips") {
     HStack(spacing: Tokens.statChipSpacing) {
-        StatChip(icon: "calendar", tint: .accentColor, text: "5 meetings left today")
-        StatChip(icon: "clock", tint: .secondary, text: "2h 10m scheduled")
-        StatChip(icon: "circle.fill", tint: Tokens.liveGreen, text: "Next in 6m")
+        StatChip(icon: "calendar", tint: .sage, text: "5 meetings left today")
+        StatChip(icon: "clock", tint: .inkSecondary, text: "2h 10m scheduled")
+        StatChip(icon: "circle.fill", tint: .sage, text: "Next in 6m")
     }
     .padding()
+    .background(Tokens.contentBackground)
 }

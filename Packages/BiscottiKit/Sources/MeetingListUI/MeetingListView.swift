@@ -19,13 +19,16 @@ public struct MeetingListView: View {
         // Empty states render OUTSIDE the List so ContentUnavailableView
         // centers vertically in the full pane instead of pinning to a row.
         if viewModel.mode == .browse, viewModel.groups.isEmpty {
-            ContentUnavailableView(
-                "No Recordings",
-                systemImage: "waveform",
-                description: Text(
-                    "Recorded meetings will appear here."
-                )
-            )
+            ContentUnavailableView {
+                Label {
+                    Text("No Recordings")
+                        .font(.serifHeadline)
+                } icon: {
+                    Image(systemName: "waveform")
+                }
+            } description: {
+                Text("Recorded meetings will appear here.")
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.mode == .search,
                   !viewModel.isSearching, // still in-flight → fall through to List/spinner
@@ -106,7 +109,7 @@ public struct MeetingListView: View {
                     .lineLimit(1)
                 Spacer()
                 Text(TimeFormatting.shortDate(hit.date))
-                    .font(Tokens.metadataFont)
+                    .font(.monoMeta)
                     .foregroundStyle(Tokens.secondaryText)
             }
             Text(

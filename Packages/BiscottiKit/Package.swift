@@ -54,6 +54,7 @@ let package = Package(
         ),
         .target(
             name: "DesignSystem",
+            resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(

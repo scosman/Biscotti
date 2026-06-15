@@ -25,8 +25,13 @@ public struct SettingsView: View {
 
                 // Calendars (last)
                 calendarSection
+
+                #if DEBUG
+                    debugSection
+                #endif
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .padding(Tokens.spacingMD)
         }
         .frame(
@@ -34,6 +39,7 @@ public struct SettingsView: View {
             maxHeight: .infinity,
             alignment: .topLeading
         )
+        .background(Tokens.contentBackground)
         .task { await viewModel.load() }
     }
 
@@ -154,7 +160,7 @@ public struct SettingsView: View {
                     : "exclamationmark.triangle.fill"
             )
             .foregroundStyle(
-                state == .authorized ? .green : .orange
+                state == .authorized ? .sage : .warningOchre
             )
 
             Text(label)
@@ -197,6 +203,21 @@ public struct SettingsView: View {
             EmptyView()
         }
     }
+
+    // MARK: - Debug section
+
+    #if DEBUG
+        private var debugSection: some View {
+            Section("Debug") {
+                Button {
+                    viewModel.replayOnboarding()
+                } label: {
+                    Label("Replay Onboarding", systemImage: "arrow.counterclockwise")
+                }
+                .foregroundStyle(.sage)
+            }
+        }
+    #endif
 }
 
 // Color(hex:) initializer is in DesignSystem/CalendarContextBlock.swift

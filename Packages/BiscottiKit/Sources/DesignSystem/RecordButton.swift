@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A prominent Record button styled with a red circle indicator.
+/// A prominent Record button styled with a sage circle indicator (idle = sage).
 ///
 /// Used in the sidebar as the primary recording action.
 public struct RecordButton: View {
@@ -19,7 +19,7 @@ public struct RecordButton: View {
                     .fontWeight(.semibold)
             } icon: {
                 Circle()
-                    .fill(isDisabled ? Color.gray : Tokens.recordingRed)
+                    .fill(isDisabled ? Color.gray : Color.sage)
                     .frame(width: 10, height: 10)
             }
         }
@@ -32,9 +32,11 @@ public struct RecordButton: View {
 #Preview("Record Button - Enabled") {
     RecordButton {}
         .padding()
+        .background(Tokens.contentBackground)
 }
 
 #Preview("Record Button - Disabled") {
     RecordButton(isDisabled: true) {}
         .padding()
+        .background(Tokens.contentBackground)
 }

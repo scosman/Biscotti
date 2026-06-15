@@ -373,6 +373,23 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         await core.completeOnboarding()
     }
 
+    /// Resets the wizard to the welcome step so it can be replayed
+    /// from the beginning (e.g. via the debug "Replay Onboarding"
+    /// button in Settings).
+    public func resetForReplay() {
+        currentStep = .welcome
+        microphoneResult = .notDetermined
+        systemAudioResult = .notDetermined
+        calendarResult = .notDetermined
+        notificationsGranted = false
+        calendarGroups = []
+        enabledCalendarIDs = nil
+        downloadStatus = nil
+        isDownloading = false
+        downloadComplete = false
+        hasSufficientDisk = true
+    }
+
     // MARK: - Private
 
     /// Reads the live system permission state for the current step

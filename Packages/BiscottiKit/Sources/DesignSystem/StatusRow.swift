@@ -25,7 +25,7 @@ public struct StatusRow: View {
                     .controlSize(.small)
             } else {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.sage)
             }
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Text(message)
@@ -45,14 +45,17 @@ public struct StatusRow: View {
 #Preview("Status Row - Progress") {
     StatusRow("Downloading model...")
         .padding()
+        .background(Tokens.contentBackground)
 }
 
 #Preview("Status Row - With Subtitle") {
     StatusRow("Transcribing\u{2026}", subtitle: "Downloading speech-to-text model")
         .padding()
+        .background(Tokens.contentBackground)
 }
 
 #Preview("Status Row - Complete") {
     StatusRow("Ready", isProgress: false)
         .padding()
+        .background(Tokens.contentBackground)
 }

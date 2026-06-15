@@ -94,7 +94,10 @@ struct DebounceTests {
             meetingBundleIDs: ["us.zoom.xos"],
             displayNames: ["us.zoom.xos": "Zoom"]
         )
-        let detector = makeImmediateDetector(
+        // Use OneShotImmediateClock: start debounce fires immediately
+        // but stop debounce blocks until cancelled, ensuring the resume
+        // snapshot cancels the pending stop deterministically.
+        let detector = makeOneShotDetector(
             catalog: catalog, source: source
         )
         let collector = EventCollector()

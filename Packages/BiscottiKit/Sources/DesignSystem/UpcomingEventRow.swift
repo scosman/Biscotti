@@ -70,9 +70,8 @@ public struct UpcomingEventRow: View {
 
     private var timeLabel: some View {
         Text(timeText)
-            .font(Tokens.metadataFont)
-            .foregroundStyle(Tokens.secondaryText)
-            .monospacedDigit()
+            .font(.monoMeta)
+            .foregroundStyle(.inkSecondary)
     }
 
     @ViewBuilder
@@ -80,12 +79,12 @@ public struct UpcomingEventRow: View {
         if let platformBadge {
             Text(platformBadge)
                 .font(.caption2)
-                .foregroundStyle(Tokens.secondaryText)
+                .foregroundStyle(.inkSecondary)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.12))
+                        .fill(Color.neutralChip)
                 )
         }
     }
@@ -99,6 +98,7 @@ public struct UpcomingEventRow: View {
     }
     .padding()
     .frame(width: 280)
+    .background(Tokens.contentBackground)
 }
 
 #Preview("Upcoming Event Row — 2-line") {
@@ -109,4 +109,5 @@ public struct UpcomingEventRow: View {
     }
     .padding()
     .frame(width: 280)
+    .background(Tokens.contentBackground)
 }

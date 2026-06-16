@@ -35,7 +35,12 @@ private actor ConnectionHolder {
         connection = conn
     }
 
-    func setTask(_ task: Task<Void, Never>) {
+    /// Creates a new `Task` from the given operation and stores it in
+    /// `currentTask` atomically within a single actor-isolated call.
+    /// This avoids the self-referential capture that `nonisolated(unsafe) var task`
+    /// required, which Swift 6 rejects as non-Sendable.
+    func runTracked(_ operation: @Sendable @escaping () async -> Void) {
+        let task = Task { await operation() }
         currentTask = task
     }
 
@@ -149,46 +154,47 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
         )
         let holder = holder
 
-        // Register the task with the holder *inside* the task body before
-        // starting the stream, so cancel() can never race with setTask()
-        // and miss the in-flight generation.
-        nonisolated(unsafe) var task: Task<Void, Never>!
-        task = Task {
-            await holder.setTask(task)
+        // Atomically create and store the generation task inside the actor,
+        // so cancel() always sees the in-flight task. The operation closure
+        // captures only Sendable values (actor ref, UncheckedSendableBox,
+        // @Sendable reply, Codable request), avoiding the non-Sendable
+        // self-referential capture that Swift 6 rejects.
+        Task {
+            await holder.runTracked {
+                do {
+                    guard let conn = await holder.conn else {
+                        reply(LLMNSErrorBridge.nsError(
+                            from: LLMServiceError.serviceUnavailable("No model loaded")
+                        ))
+                        return
+                    }
 
-            do {
-                guard let conn = await holder.conn else {
-                    reply(LLMNSErrorBridge.nsError(
-                        from: LLMServiceError.serviceUnavailable("No model loaded")
-                    ))
-                    return
-                }
+                    let stream = await conn.generateStreaming(
+                        prompt: request.prompt,
+                        system: request.system,
+                        options: request.options
+                    )
 
-                let stream = await conn.generateStreaming(
-                    prompt: request.prompt,
-                    system: request.system,
-                    options: request.options
-                )
-
-                for try await event in stream {
-                    switch event {
-                    case let .token(piece):
-                        reporterBox.value?.reportToken(piece)
-                    case let .reasoningToken(piece):
-                        reporterBox.value?.reportReasoningToken(piece)
-                    case let .done(result):
-                        if let data = try? JSONEncoder().encode(result) {
-                            reporterBox.value?.reportDone(resultData: data)
+                    for try await event in stream {
+                        switch event {
+                        case let .token(piece):
+                            reporterBox.value?.reportToken(piece)
+                        case let .reasoningToken(piece):
+                            reporterBox.value?.reportReasoningToken(piece)
+                        case let .done(result):
+                            if let data = try? JSONEncoder().encode(result) {
+                                reporterBox.value?.reportDone(resultData: data)
+                            }
                         }
                     }
+                    reply(nil)
+                } catch {
+                    let payload = LLMErrorPayload.from(error)
+                    if let data = try? JSONEncoder().encode(payload) {
+                        reporterBox.value?.reportError(errorData: data)
+                    }
+                    reply(nil)
                 }
-                reply(nil)
-            } catch {
-                let payload = LLMErrorPayload.from(error)
-                if let data = try? JSONEncoder().encode(payload) {
-                    reporterBox.value?.reportError(errorData: data)
-                }
-                reply(nil)
             }
         }
     }

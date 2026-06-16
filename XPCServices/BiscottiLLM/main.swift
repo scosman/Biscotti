@@ -66,6 +66,8 @@ private actor ConnectionHolder {
 /// Thread-safety: mutable state is held in the `ConnectionHolder` actor.
 /// All access goes through `await`, so `@unchecked Sendable` is safe.
 final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
+    /// Weak to avoid a retain cycle: the connection retains this exported
+    /// object, so a strong back-reference would prevent deallocation.
     private weak var connection: NSXPCConnection?
     fileprivate let holder = ConnectionHolder()
 

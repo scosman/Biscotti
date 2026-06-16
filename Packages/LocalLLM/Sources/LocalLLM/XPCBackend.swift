@@ -221,6 +221,8 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
         conn?.invalidate()
     }
 
+    /// Does not set `didShutdown`: this is the last-resort deinit backstop —
+    /// `shutdown()` won't meaningfully run after deinit, and `invalidate()` is idempotent.
     nonisolated func forceKill() {
         let conn: NSXPCConnection? = lock.withLock {
             let current = connection

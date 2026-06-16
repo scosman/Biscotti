@@ -156,7 +156,6 @@ struct RunCommand: AsyncParsableCommand {
         if let maxTokens { options.maxTokens = maxTokens }
         if let seed { options.seed = seed }
         if let repeatPenalty { options.repeatPenalty = repeatPenalty }
-        options.applyChatTemplate = !raw
         options.thinking = thinking == .auto ? .auto : .off
 
         // Set verbose mode before engine init (backend init reads this flag once).
@@ -174,6 +173,7 @@ struct RunCommand: AsyncParsableCommand {
         if raw {
             effectivePrompt = promptText
             effectiveSystem = systemText
+            effectiveOptions.applyChatTemplate = false
         } else {
             effectiveOptions.applyChatTemplate = false
             let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)

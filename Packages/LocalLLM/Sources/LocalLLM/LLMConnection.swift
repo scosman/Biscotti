@@ -114,8 +114,8 @@ public actor LLMConnection {
     ///
     /// Uses the `unfolding:` factory so the element-producing closure runs in the
     /// consumer's task context. This means `withTaskCancellationHandler` fires
-    /// immediately when the consumer's task is cancelled, sending the cancel frame
-    /// to the child process even if iteration is suspended waiting for the next
+    /// immediately when the consumer's task is cancelled, sending the cancel
+    /// request to the backend even if iteration is suspended waiting for the next
     /// event.
     ///
     /// Throws `LLMServiceError.connectionClosed` (via the stream) if the connection
@@ -173,16 +173,16 @@ public actor LLMConnection {
 
             // Pull the next event from the backend stream. Use
             // withTaskCancellationHandler so a consumer-side task.cancel()
-            // immediately sends the cancel frame to the child, even if
+            // immediately sends the cancel request to the backend, even if
             // iterator.next() is suspended waiting for the next event.
             let event: StreamEvent?
             do {
                 event = try await withTaskCancellationHandler {
                     try await holder.iterator?.next()
                 } onCancel: {
-                    // Fire-and-forget: send cancel to the child process.
-                    // The child will stop its work and send back a
-                    // .requestError(.cancelled), which unblocks next().
+                    // Fire-and-forget: send cancel to the backend.
+                    // The backend will stop its work and terminate the
+                    // stream, which unblocks next().
                     Task {
                         await backend.cancel(id: id)
                     }

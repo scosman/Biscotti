@@ -471,6 +471,10 @@ struct WithConnectionTests {
         )
         let capturedConnection = ConnectionBox()
 
+        // Deterministic start signal: wait for the engine to confirm generation
+        // has begun before cancelling, replacing the old fixed sleep.
+        let startedStream = engine.makeGenerationStartedStream()
+
         let task = Task {
             try await LLMService.withConnection(engine: engine) { conn in
                 await capturedConnection.set(conn)
@@ -479,8 +483,9 @@ struct WithConnectionTests {
             }
         }
 
-        // Let the body start running
-        try await Task.sleep(for: .milliseconds(100))
+        // Wait for the engine to actually begin generation, then cancel.
+        var startedIter = startedStream.makeAsyncIterator()
+        await startedIter.next()
         task.cancel()
 
         // Wait for the task to finish (it will throw CancellationError)
@@ -523,13 +528,18 @@ struct CancellationTests {
         )
         let conn = try await LLMService.openConnection(engine: engine)
 
+        // Deterministic start signal: wait for the engine to confirm generation
+        // has begun before cancelling, replacing the old fixed sleep.
+        let startedStream = engine.makeGenerationStartedStream()
+
         // Start a long generation and cancel it
         let task = Task {
             _ = try await conn.generate(prompt: "long")
         }
 
-        // Let it start generating
-        try await Task.sleep(for: .milliseconds(100))
+        // Wait for the engine to actually begin generation, then cancel.
+        var startedIter = startedStream.makeAsyncIterator()
+        await startedIter.next()
         task.cancel()
 
         // Wait for cancellation to propagate

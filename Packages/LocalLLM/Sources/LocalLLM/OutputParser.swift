@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Handles stop-token stripping and thinking-channel extraction. All operations are
 /// string-in/string-out and testable without a model.
-public struct OutputParser: Sendable {
+public enum OutputParser: Sendable {
     // Gemma 4 thinking channel markers.
     // Table-driven so updating for a different model is a one-line change.
     static let thinkingOpenTag = "<|channel>thought\n"

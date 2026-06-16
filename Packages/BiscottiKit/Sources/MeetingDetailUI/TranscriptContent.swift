@@ -41,8 +41,9 @@ public enum TranscriptContent {
             }
             result.append(timestamp)
 
-            // Newline + utterance
-            var utterance = AttributedString("\n\(segment.text)")
+            // Newline + utterance (trim leading whitespace from text)
+            let trimmedText = segment.text.drop(while: \.isWhitespace)
+            var utterance = AttributedString("\n\(trimmedText)")
             utterance.font = .system(size: 14)
             utterance.foregroundColor = Color.inkSecondary
             result.append(utterance)
@@ -69,7 +70,8 @@ public enum TranscriptContent {
     public static func plainText(_ segments: [SegmentData]) -> String {
         segments.map { segment in
             let timeText = TimeFormatting.formatPlaybackTime(segment.startTime)
-            return "\(segment.speakerLabel)  \(timeText)\n\(segment.text)"
+            let trimmedText = segment.text.drop(while: \.isWhitespace)
+            return "\(segment.speakerLabel)  \(timeText)\n\(trimmedText)"
         }
         .joined(separator: "\n\n")
     }

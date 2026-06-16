@@ -46,6 +46,9 @@ public struct VersionPicker: View {
                     onSelect(version.id)
                 } label: {
                     HStack {
+                        if version.id == selectedID {
+                            Image(systemName: "checkmark")
+                        }
                         Text(version.dateText)
                         Text("(\(version.methodLabel))")
                             .foregroundStyle(.secondary)

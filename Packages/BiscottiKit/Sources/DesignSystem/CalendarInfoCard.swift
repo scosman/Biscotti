@@ -39,8 +39,10 @@ public struct CalendarCardData: Sendable, Equatable {
 /// A rounded card showing calendar event context for a linked meeting.
 ///
 /// Row A: attendee avatar stack + summary + "Open in Calendar" button.
-/// Row B: `DisclosureGroup` with collapsed description preview and
-///        expanded definition list (WHEN / WHERE / DESCRIPTION / INVITED).
+/// Row B: custom disclosure with tappable header (whole row toggles).
+///        Collapsed: "Event Details" + WHEN preview line.
+///        Expanded: definition list (WHEN / WHERE / INVITED / DESCRIPTION)
+///        with selectable/copyable values.
 public struct CalendarInfoCard: View {
     let data: CalendarCardData
     let onOpenInCalendar: () -> Void
@@ -106,47 +108,77 @@ public struct CalendarInfoCard: View {
             .controlSize(.small)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Tokens.neutralChip, in: RoundedRectangle(cornerRadius: Tokens.buttonRadius))
+            .background(
+                Tokens.neutralChip,
+                in: RoundedRectangle(cornerRadius: Tokens.buttonRadius)
+            )
         }
     }
 
-    // MARK: - Row B
+    // MARK: - Row B: custom tappable disclosure
 
     private var rowB: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            definitionList
-                .padding(.top, Tokens.spacingSM)
-        } label: {
-            HStack(spacing: Tokens.spacingSM) {
-                Text("Description")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.ink)
-
-                if !expanded, let notes = data.eventNotes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.inkSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+        VStack(alignment: .leading, spacing: 0) {
+            // Tappable header -- whole line toggles expansion
+            Button {
+                withAnimation {
+                    expanded.toggle()
                 }
+            } label: {
+                HStack(spacing: Tokens.spacingSM) {
+                    // Rotating chevron (mirrors stock DisclosureGroup)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.inkSecondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .animation(.default, value: expanded)
+
+                    Text("Event Details")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.ink)
+
+                    // Collapsed preview: show WHEN content
+                    if !expanded, let when = data.whenText {
+                        Text(when)
+                            .font(.monoMeta)
+                            .foregroundStyle(.inkSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(expanded ? "expanded" : "collapsed")
+
+            if expanded {
+                definitionList
+                    .padding(.top, Tokens.spacingSM)
             }
         }
-        .tint(.inkSecondary)
     }
 
     // MARK: - Definition list
 
     private var definitionList: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 11) {
+        Grid(
+            alignment: .leadingFirstTextBaseline,
+            horizontalSpacing: 16,
+            verticalSpacing: 11
+        ) {
             if let when = data.whenText {
                 GridRow {
                     Text("WHEN")
                         .kicker()
                         .foregroundStyle(.inkTertiary)
-                        .frame(width: 74, alignment: .leading)
+                        .gridColumnAlignment(.leading)
                     Text(when)
                         .font(.monoMeta)
                         .foregroundStyle(.ink)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -155,21 +187,7 @@ public struct CalendarInfoCard: View {
                     Text("WHERE")
                         .kicker()
                         .foregroundStyle(.inkTertiary)
-                        .frame(width: 74, alignment: .leading)
                     whereContent
-                }
-            }
-
-            if let notes = data.eventNotes, !notes.isEmpty {
-                GridRow {
-                    Text("DESCRIPTION")
-                        .kicker()
-                        .foregroundStyle(.inkTertiary)
-                        .frame(width: 74, alignment: .leading)
-                    Text(notes)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.inkSecondary)
-                        .frame(maxWidth: 460, alignment: .leading)
                 }
             }
 
@@ -178,10 +196,23 @@ public struct CalendarInfoCard: View {
                     Text("INVITED")
                         .kicker()
                         .foregroundStyle(.inkTertiary)
-                        .frame(width: 74, alignment: .leading)
                     Text(invited)
                         .font(.system(size: 13))
                         .foregroundStyle(.ink)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let notes = data.eventNotes, !notes.isEmpty {
+                GridRow {
+                    Text("DESCRIPTION")
+                        .kicker()
+                        .foregroundStyle(.inkTertiary)
+                    Text(notes)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.inkSecondary)
+                        .frame(maxWidth: 460, alignment: .leading)
+                        .textSelection(.enabled)
                 }
             }
         }
@@ -203,6 +234,7 @@ public struct CalendarInfoCard: View {
                             .foregroundStyle(.inkSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .textSelection(.enabled)
                     }
                 }
             }
@@ -210,6 +242,7 @@ public struct CalendarInfoCard: View {
                 Text(location)
                     .font(.system(size: 13))
                     .foregroundStyle(.inkSecondary)
+                    .textSelection(.enabled)
             }
         }
     }

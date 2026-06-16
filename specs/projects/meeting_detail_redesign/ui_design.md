@@ -48,26 +48,34 @@ jitter during playback.
 
 ## Scroll model
 
+**Loading state:** while the meeting data is loading, the pane shows a single
+centered `ProgressView("Loading…")` spinner — no partial skeletons. Once loaded,
+the real content renders.
+
 One outer `ScrollView`; the Notes editor is sized to fill the height left below
-the chrome **with a 500pt floor**, so the chrome looks pinned when it fits and
-the pane scrolls only when squeezed:
+the chrome **with no minimum floor**, so the chrome looks pinned when it fits and
+the pane scrolls **only when content genuinely exceeds the viewport**:
 
 ```
 ScrollView:
   chrome (measured height): header · calendar card · transport · tab bar
   ─────────────────────────────────────────────────────────────────────
-  Notes tab      → MarkdownEditor, height = max(500, paneH − chromeH),
-                   scrolls internally  →  chrome looks pinned when it fits;
-                                          pane scrolls when < 500 left
-  Transcript tab → selectable Text, minHeight = max(500, paneH − chromeH),
+  Notes tab      → MarkdownEditor, height = max(0, paneH − chromeH − padding),
+                   scrolls internally  →  chrome looks pinned when it fits
+  Transcript tab → selectable Text, minHeight = max(0, paneH − chromeH − padding),
                    grows; the outer ScrollView scrolls it (chrome scrolls away)
 ```
 
 This refines the design agent's "whole pane scrolls as one" into a native-reality
 call: the pinned markdown engine exposes no content-height API, so we size the
-editor explicitly. Net effect — **no double scroll**, a guaranteed ≥500pt editing
-area, transport reachable while editing, and normal scroll-to-read for the
-transcript. See `architecture.md` for the `ChromeHeightKey` measurement.
+editor explicitly. Net effect — **no double scroll**, empty/short content fits
+the viewport without forcing a scroll, and normal scroll-to-read for long
+transcripts. See `architecture.md` for the `ChromeHeightKey` measurement.
+
+**Performance note:** the `AttributedString` for the transcript is cached by
+transcript ID + `canPlay` in the view model. It is only rebuilt when the
+underlying data changes, not on every SwiftUI render — this avoids a ~1s
+synchronous build for long transcripts.
 
 ## Layout metrics
 
@@ -93,9 +101,12 @@ Yesterday at 4:18 PM   ·   32 min   ·   ◐ Google Meet
 ```
 - **Title** — inline-editable `TextField`, `.plain` style, `Font.biscottiSerif(27)`,
   `.foregroundStyle(.ink)`, `tracking(-0.27)`, tight line spacing. Fills width.
-- **"…" menu** — trailing, borderless `Menu` with `Image(systemName:
-  "ellipsis.circle")` ~19pt, `.inkSecondary` (tints `.sage` while open),
-  `.menuStyle(.borderlessButton)`, `.menuIndicator(.hidden)`.
+- **"…" menu** — trailing `Menu` with `Image(systemName: "ellipsis.circle")`
+  at `.font(.system(size: 18, weight: .light))`, `.inkSecondary`.
+  Uses `.menuStyle(.button)` + `.buttonStyle(.plain)` so the label renders
+  as a plain view that honors `.font()` — `.borderlessButton` clamps the
+  glyph to a fixed control metric (FB9754368). `.menuIndicator(.hidden)`,
+  `.fixedSize()`.
 - **Meta line** — `HStack(spacing: spacingSM)`, `.monoMeta` (`.inkSecondary`),
   middle-dot `·` separators in `.inkTertiary`:
   - relative date/time · duration · **source pill**.
@@ -108,7 +119,7 @@ Yesterday at 4:18 PM   ·   32 min   ·   ◐ Google Meet
 
 ### "…" overflow menu
 Native `Menu` items (SF Symbols), order:
-- Reveal in Finder — `folder` *(hidden if no audio files present)*
+- Reveal recording in Finder — `folder` *(hidden if no audio files present)*
 - Re-transcribe — `arrow.triangle.2.circlepath` *(only when `canReTranscribe`)*
 - — divider —
 - Link Calendar Event… — `calendar.badge.plus` *(only when no event linked)*
@@ -132,21 +143,22 @@ A rounded card: `RoundedRectangle(cornerRadius: 12)` fill `Tokens.cardFill`,
     systemImage: "calendar")`, `Tokens.neutralChip` fill, radius 8, label `.ink`,
     icon `.inkSecondary`, `.controlSize(.small)`.
 - **Divider** (`Color.hairline`), `.padding(.vertical, spacingSM)`.
-- **Row B — stock `DisclosureGroup`** (`isExpanded: $showDetails`,
-  `.tint(.inkSecondary)`), leading triangle, system animation:
-  - **Collapsed:** triangle + "Description" (`.system(13, .medium)`, `.ink`) +
-    one truncated preview line of event notes (`.system(13)`, `.inkSecondary`,
-    `.lineLimit(1)`, `.truncationMode(.tail)`).
+- **Row B — custom tappable disclosure** (whole header line toggles; not
+  stock `DisclosureGroup`). Rotating chevron (`chevron.right`, 11pt semibold,
+  `.inkSecondary`), system rotation animation:
+  - **Collapsed:** chevron + "Event Details" (`.system(13, .medium)`, `.ink`) +
+    WHEN preview text (`.monoMeta`, `.inkSecondary`, `.lineLimit(1)`,
+    `.truncationMode(.tail)`).
   - **Expanded:** preview hidden; a definition list `Grid(alignment:
     .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 11)`,
-    label column fixed ~74pt:
+    label column content-sized (`.gridColumnAlignment(.leading)`):
 
     | dt (`.kicker()`, `.inkTertiary`) | dd (`.system(13)`, `.ink`/`.inkSecondary`) |
     |---|---|
-    | WHEN | date/time range, `.monoMeta` |
-    | WHERE | `video` icon (`.sage`) + platform + `.monoMeta` URL; and/or location |
-    | DESCRIPTION | wrapped notes paragraph, `.inkSecondary`, maxWidth ~460 |
-    | INVITED | "Steve (organizer) · Alex · Jay · +2" |
+    | WHEN | date/time range, `.monoMeta`, `.textSelection(.enabled)` |
+    | WHERE | `video` icon (`.sage`) + platform + `.monoMeta` URL; and/or location, selectable |
+    | INVITED | "Steve (organizer) · Alex · Jay · +2", `.textSelection(.enabled)` |
+    | DESCRIPTION | wrapped notes paragraph, `.inkSecondary`, maxWidth ~460, `.textSelection(.enabled)` |
 
 ### Audio transport card
 A rounded card (`cornerRadius` 12, `cardFill`, 0.5pt `cardStroke`, padding
@@ -160,18 +172,22 @@ A rounded card (`cornerRadius` 12, `cardFill`, 0.5pt `cardStroke`, padding
 - **Speed `Menu`** — soft-secondary styled (`Tokens.neutralChip`, height ~26,
   radius 8, trailing chevron) showing the current rate "1×"; options 0.5 / 1 /
   1.25 / 1.5 / 2×.
-- **Disabled** (`!canPlay`): existing "Audio not available" treatment; speed
-  menu disabled. No download button.
+- **Disabled** (`!canPlay`): "Audio not available" label + disabled speed menu.
+  Only shown after loading completes; while loading, the transport is hidden
+  behind the unified loading spinner. No download button.
 
 ### Tab row — segmented control (+ version picker + copy)
 `HStack`:
 - **`Picker`** `.pickerStyle(.segmented)` `.fixedSize()` — `Transcript` |
   `Notes`, left-aligned, content-width. Default `.transcript`.
 - `Spacer()`
-- **On the Transcript tab only:** the **`VersionPicker`** (only when
-  `versions.count > 1`) and a **"Copy Transcript"** button (`Label("Copy",
+- **On the Transcript tab:** the **`VersionPicker`** (only when
+  `versions.count > 1`).
+- **Always visible (both tabs):** a **"Copy"** button (`Label("Copy",
   systemImage: "doc.on.doc")`, `.borderless`, `.controlSize(.small)`,
-  `.inkSecondary`).
+  `.inkSecondary`). On the Transcript tab it copies the transcript; on the
+  Notes tab it copies the notes. Hidden when there is nothing to copy
+  (empty transcript / empty notes).
 - Padding: `.top, spacingLG` · `.bottom, spacingMD`.
 
 ### Transcript (Transcript tab, ready state)
@@ -194,14 +210,24 @@ Sounds good — first the weekly actives, then the cohort curve.
 ```
 
 Other states (same tab): processing → centered `StatusRow`; failed → `Banner`
-+ optional Retry; empty → "No transcript available." (Copy hidden.)
++ optional Retry. Two distinct empty states (`.system(size: 15)`):
+- **Not transcribed** (`versions` empty): "No transcript yet" + "Transcribe now"
+  button (when `canReTranscribe`).
+- **Transcription empty** (transcript exists but `segments` empty):
+  "Transcription empty" — no Transcribe action (it already ran).
+Copy hidden for both empty states.
+
+**Version picker:** shows a checkmark next to the currently displayed version.
 
 ### Notes (Notes tab)
-`MarkdownEditor` bound to `viewModel.notes`, **filling the content area with a
-500pt floor** and scrolling internally (drop the `maxHeight: 340` frame; use the
-computed `.frame(height: max(500, paneH − chromeH))`). Placeholder "Add notes…".
-Subtle container per design (optional 0.5pt `cardStroke` rounded rect or
-borderless — final call at build). No `MarkdownEditorUI` change.
+`MarkdownEditor` bound to `viewModel.notes`, **filling the remaining viewport**
+and scrolling internally (`.frame(height: max(0, paneH − chromeH − padding))`).
+Placeholder "Add notes…". Click anywhere in the notes area — including the empty
+space below the placeholder — to focus the editor (via a `TextViewFocusForwarder`
+`NSViewRepresentable` background that walks the view hierarchy to find and focus
+the underlying `NSTextView`). Bottom page padding (`homeVerticalPadding`) ensures
+the notes don't touch the window edge. Subtle 0.5pt `cardStroke` rounded rect
+border. No `MarkdownEditorUI` change.
 
 ---
 
@@ -215,7 +241,7 @@ borderless — final call at build). No `MarkdownEditorUI` change.
 │ ┌───────────────────────────────────────────────────┐│
 │ │ ◍◍◍ +2  Steve (organizer), Alex…    [Open in Cal] ││  ← calendar card
 │ │ ───────────────────────────────────────────────── ││
-│ │ ▶ Description  Quarterly retention review and…     ││  ← DisclosureGroup
+│ │ ▶ Event Details  Yesterday, Jun 11 · 4:18–4:50 PM   ││  ← tappable disclosure
 │ └───────────────────────────────────────────────────┘│
 │ ┌───────────────────────────────────────────────────┐│
 │ │ ▶  ──●────────────────  3:11 / 32:00      [ 1× ▾ ] ││  ← transport + speed
@@ -248,7 +274,7 @@ borderless — final call at build). No `MarkdownEditorUI` change.
 - A **selectable transcript** view + its `AttributedString` builder
   (speaker-color, mono seek-links).
 - A **calendar info card** (restyle of `CalendarContextBlock` into card +
-  `DisclosureGroup` definition list) — or a new view superseding it.
+  custom tappable disclosure with definition list) — or a new view superseding it.
 - A small **speed menu** styled as the soft secondary control.
 
 ## Accessibility / interaction notes

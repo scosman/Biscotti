@@ -31,7 +31,7 @@ contract.
   WHEN/WHERE/DESCRIPTION/INVITED) + `SourcePill`. Add the VM's `calendarCard`
   mapping + `whenText` / `invitedText` helpers (unit-tested).
 
-- [ ] **Phase 4 — Screen rewrite (assembly).**
+- [x] **Phase 4 — Screen rewrite (assembly).**
   Rewrite `MeetingDetailView`: pinned-chrome + scrolling-tab-content layout, 760
   reading cap; serif inline-editable title; the "…" overflow menu (incl. new
   `revealInFinder()` + `hasAudioFiles`, link/change/unlink, re-transcribe, and

@@ -104,6 +104,24 @@ public final class MeetingDetailViewModel {
     /// The loaded transcript for the selected (non-preferred) version.
     public private(set) var selectedTranscript: TranscriptData?
 
+    // MARK: - Cached attributed transcript
+
+    /// Cached `AttributedString` for the displayed transcript. Building the
+    /// attributed string synchronously for long transcripts (~hundreds of
+    /// segments) is expensive enough to cause a visible load delay. We cache
+    /// it keyed by transcript ID + canPlay so it is only rebuilt when the
+    /// underlying data actually changes, not on every SwiftUI render.
+    public private(set) var cachedTranscriptAttributed: AttributedString?
+
+    /// The transcript ID + canPlay state that the cached attributed string
+    /// was built for. When either changes we rebuild.
+    private var cachedTranscriptKey: CachedTranscriptKey?
+
+    private struct CachedTranscriptKey: Equatable {
+        let transcriptID: UUID
+        let canPlay: Bool
+    }
+
     // MARK: - Phase 8: Notes
 
     /// The user-editable notes, two-way bound to the text editor.
@@ -219,18 +237,6 @@ public final class MeetingDetailViewModel {
         calendarContext != nil
     }
 
-    /// Whether to show the quiet "Link a calendar event..." prompt.
-    public var showLinkEventPrompt: Bool {
-        !hasCalendarContext
-    }
-
-    /// Whether the "Open in Calendar" button should be shown.
-    /// Visible when there is an associated calendar event (i.e. calendar
-    /// context exists).
-    public var showOpenInCalendar: Bool {
-        calendarContext != nil
-    }
-
     /// Calendar events available for association correction. Populated
     /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
     /// window around the meeting's recording time instead of the
@@ -272,6 +278,7 @@ public final class MeetingDetailViewModel {
             notes = detail?.notes ?? ""
             versions = detail?.versions ?? []
             await loadAudioPlayer()
+            rebuildTranscriptCacheIfNeeded()
         } catch {
             detail = nil
             calendarContext = nil
@@ -287,6 +294,9 @@ public final class MeetingDetailViewModel {
                 versions = detail?.versions ?? []
                 selectedVersionID = nil
                 selectedTranscript = nil
+                // Rebuild cached attributed string for the new transcript.
+                cachedTranscriptKey = nil
+                rebuildTranscriptCacheIfNeeded()
             } catch {
                 // Non-fatal.
             }
@@ -333,6 +343,14 @@ public final class MeetingDetailViewModel {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// Copies the current notes to the system pasteboard as plain text.
+    public func copyNotes() {
+        guard !notes.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(notes, forType: .string)
     }
 
     /// Stops the playback ticker and cleans up. Called on disappear/flush.
@@ -384,16 +402,21 @@ public final class MeetingDetailViewModel {
         playbackTickerTask?.cancel()
         playbackTickerTask = nil
     }
+}
 
-    // MARK: - Phase 8: Transcript version actions
+// MARK: - Version selection, notes autosave, re-transcribe
 
+public extension MeetingDetailViewModel {
     /// Selects and loads a specific transcript version.
-    public func selectVersion(_ versionID: UUID) async {
+    func selectVersion(_ versionID: UUID) async {
         selectedVersionID = versionID
+        // Invalidate cache key so rebuild picks up the new version.
+        cachedTranscriptKey = nil
 
         // If selecting the preferred version, clear the override
         if versionID == detail?.preferredTranscript?.id {
             selectedTranscript = nil
+            rebuildTranscriptCacheIfNeeded()
             return
         }
 
@@ -404,16 +427,15 @@ public final class MeetingDetailViewModel {
         } catch {
             selectedTranscript = nil
         }
+        rebuildTranscriptCacheIfNeeded()
     }
-
-    // MARK: - Phase 8: Notes autosave
 
     /// Updates notes and debounces autosave to the store.
     ///
     /// Uses `[weak self]` for the short debounce window. If the VM
     /// deallocs mid-debounce, `flushNotes()` (called in `onDisappear`)
     /// is the guarantee that pending edits are persisted before teardown.
-    public func updateNotes(_ text: String) {
+    func updateNotes(_ text: String) {
         notes = text
         notesAutosaveTask?.cancel()
         notesAutosaveTask = Task { [weak self] in
@@ -430,7 +452,7 @@ public final class MeetingDetailViewModel {
     /// Flushes any pending notes and title changes immediately and stops
     /// playback. Called on navigation away (onDisappear) to prevent
     /// leaked timers and lost edits.
-    public func flushNotes() async {
+    func flushNotes() async {
         notesAutosaveTask?.cancel()
         notesAutosaveTask = nil
         stopPlayback()
@@ -438,12 +460,53 @@ public final class MeetingDetailViewModel {
         await saveTitle()
     }
 
-    // MARK: - Phase 8: Re-transcribe after correction
-
     /// Dismisses the re-transcribe prompt and triggers re-transcription.
-    public func reTranscribeAfterCorrection() async {
+    func reTranscribeAfterCorrection() async {
         showReTranscribeAfterCorrection = false
         await reTranscribe()
+    }
+}
+
+// MARK: - Cached attributed transcript
+
+public extension MeetingDetailViewModel {
+    /// Whether the meeting has ever been transcribed (has at least one
+    /// transcript version), even if the transcript is empty.
+    var hasBeenTranscribed: Bool {
+        !versions.isEmpty
+    }
+
+    /// Non-mutating check: true when the displayed transcript has segments
+    /// and a cached `AttributedString` is available. Safe to call during
+    /// SwiftUI `body` evaluation (no state mutation).
+    var hasDisplayableTranscript: Bool {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else { return false }
+        return cachedTranscriptAttributed != nil
+    }
+
+    /// Rebuilds the cached `AttributedString` from the current displayed
+    /// transcript. Called reactively when inputs change (job status,
+    /// version switch, canPlay flip) -- never during `body` evaluation.
+    func rebuildTranscriptCacheIfNeeded() {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else {
+            cachedTranscriptKey = nil
+            cachedTranscriptAttributed = nil
+            return
+        }
+
+        let key = CachedTranscriptKey(
+            transcriptID: transcript.id, canPlay: canPlay
+        )
+        guard key != cachedTranscriptKey else { return }
+
+        cachedTranscriptAttributed = TranscriptContent.attributedString(
+            transcript.segments, canSeek: canPlay
+        )
+        cachedTranscriptKey = key
     }
 }
 

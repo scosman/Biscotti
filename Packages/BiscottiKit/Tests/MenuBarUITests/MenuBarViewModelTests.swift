@@ -1,9 +1,9 @@
 import BiscottiTestSupport
 import Calendar
-import DataStore
 import Foundation
 import Testing
 @testable import AppCore
+@testable import DataStore
 @testable import MenuBarUI
 
 // MARK: - Formatting helper tests
@@ -73,54 +73,13 @@ struct MenuBarFormattingTests {
         )
         #expect(result == "in 2h")
     }
-
-    @Test("isWithin2Hours returns true for 1h future")
-    func isWithin2HoursTrue() {
-        let now = Date()
-        let future = now.addingTimeInterval(3600) // 1h
-        #expect(
-            MenuBarViewModel.isWithin2Hours(future, relativeTo: now)
-                == true
-        )
-    }
-
-    @Test("isWithin2Hours returns false for 3h future")
-    func isWithin2HoursFalse() {
-        let now = Date()
-        let future = now.addingTimeInterval(3 * 3600) // 3h
-        #expect(
-            MenuBarViewModel.isWithin2Hours(future, relativeTo: now)
-                == false
-        )
-    }
-
-    @Test("isWithin2Hours returns false for past dates")
-    func isWithin2HoursPast() {
-        let now = Date()
-        let past = now.addingTimeInterval(-60)
-        #expect(
-            MenuBarViewModel.isWithin2Hours(past, relativeTo: now)
-                == false
-        )
-    }
-
-    @Test("isWithin2Hours boundary: exactly 2h returns true")
-    func isWithin2HoursBoundary() {
-        let now = Date()
-        let exactly2h = now.addingTimeInterval(2 * 3600)
-        #expect(
-            MenuBarViewModel.isWithin2Hours(
-                exactly2h, relativeTo: now
-            ) == true
-        )
-    }
 }
 
 // MARK: - Icon state tests
 
 @Suite("MenuBarViewModel -- icon state")
 struct MenuBarIconStateTests {
-    @Test("iconState is idle when not recording and no upcoming within 2h")
+    @Test("iconState is idle when not recording and no upcoming within lead time")
     @MainActor
     func iconIdleNoUpcoming() throws {
         let fix = try makeCoreFixture(testName: "MenuBarTests")
@@ -140,6 +99,132 @@ struct MenuBarIconStateTests {
 
         let model = MenuBarViewModel(core: fix.core)
         #expect(model.iconState == .recording)
+    }
+
+    @Test("iconState shows nextMeeting when event is within lead time")
+    @MainActor
+    func iconShowsNextMeetingWithinLeadTime() async throws {
+        let now = Date()
+        let dtos = [
+            makeDTO(
+                eventIdentifier: "ev-1",
+                title: "Standup",
+                start: now.addingTimeInterval(30 * 60), // 30 min from now
+                end: now.addingTimeInterval(60 * 60)
+            )
+        ]
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "MenuBarLeadTimeTests"
+        )
+        defer { fix.cleanup() }
+
+        // Default lead time is 1 hour, meeting is 30 min away -> should show
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        let model = MenuBarViewModel(core: fix.core)
+        if case .nextMeeting = model.iconState {
+            // Expected
+        } else {
+            Issue.record("Expected nextMeeting, got \(model.iconState)")
+        }
+    }
+
+    @Test("iconState is idle when event is outside lead time")
+    @MainActor
+    func iconIdleWhenOutsideLeadTime() async throws {
+        let now = Date()
+        let dtos = [
+            makeDTO(
+                eventIdentifier: "ev-1",
+                title: "Standup",
+                start: now.addingTimeInterval(2 * 3600), // 2h from now
+                end: now.addingTimeInterval(3 * 3600)
+            )
+        ]
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "MenuBarLeadTimeTests"
+        )
+        defer { fix.cleanup() }
+
+        // Default lead time is 1 hour, meeting is 2h away -> should NOT show
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        let model = MenuBarViewModel(core: fix.core)
+        #expect(model.iconState == .idle)
+    }
+
+    @Test("iconState respects never setting even with imminent event")
+    @MainActor
+    func iconIdleWhenNever() async throws {
+        let now = Date()
+        let dtos = [
+            makeDTO(
+                eventIdentifier: "ev-1",
+                title: "Standup",
+                start: now.addingTimeInterval(5 * 60), // 5 min from now
+                end: now.addingTimeInterval(60 * 60)
+            )
+        ]
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "MenuBarLeadTimeTests"
+        )
+        defer { fix.cleanup() }
+
+        // Set to never
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+            $0.menuBarLeadTimeSeconds = MenuBarLeadTime.never.rawValue
+        }
+        await fix.core.onLaunch()
+
+        let model = MenuBarViewModel(core: fix.core)
+        #expect(model.iconState == .idle)
+    }
+
+    @Test("iconState shows event when lead time set to 24h")
+    @MainActor
+    func iconShowsEventWith24hLeadTime() async throws {
+        let now = Date()
+        let dtos = [
+            makeDTO(
+                eventIdentifier: "ev-1",
+                title: "Standup",
+                start: now.addingTimeInterval(12 * 3600), // 12h from now
+                end: now.addingTimeInterval(13 * 3600)
+            )
+        ]
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: dtos,
+            testName: "MenuBarLeadTimeTests"
+        )
+        defer { fix.cleanup() }
+
+        // Set to 24 hours
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+            $0.menuBarLeadTimeSeconds = MenuBarLeadTime.twentyFourHours.rawValue
+        }
+        await fix.core.onLaunch()
+
+        let model = MenuBarViewModel(core: fix.core)
+        if case .nextMeeting = model.iconState {
+            // Expected
+        } else {
+            Issue.record("Expected nextMeeting, got \(model.iconState)")
+        }
     }
 }
 

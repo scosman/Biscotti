@@ -21,6 +21,13 @@ public extension Notification.Name {
     static let exitOnWindowCloseDidChange = Notification.Name(
         "net.scosman.biscotti.exitOnWindowCloseDidChange"
     )
+
+    /// Posted after the "menu bar lead time" setting is persisted.
+    /// `MenuBarViewModel` observes this to refresh its cached lead time
+    /// so `iconState` reflects the new threshold without restart.
+    static let menuBarLeadTimeDidChange = Notification.Name(
+        "net.scosman.biscotti.menuBarLeadTimeDidChange"
+    )
 }
 
 /// Thin MVP coordinator that wires Recording, TranscriptionService,
@@ -81,6 +88,10 @@ public final class AppCore {
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
 
+    /// Cached menu bar lead time setting. Drives how far before a meeting
+    /// the menu bar shows the detailed "next meeting" text.
+    public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
+
     // MARK: - Child services (publicly readable for the UI layer)
 
     /// The persistent store.
@@ -139,6 +150,9 @@ public final class AppCore {
 
     /// The fire-and-forget transcription task spawned by `stopRecording()`.
     package var pendingTranscriptionTask: Task<Void, Never>?
+
+    /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
+    private var menuBarLeadTimeObserverTask: Task<Void, Never>?
 
     /// Auto-stop countdown duration in seconds.
     private let autoStopSeconds = 15
@@ -199,15 +213,17 @@ public final class AppCore {
         await recording.recoverOrphans()
         logger.info("onLaunch: recoverOrphans done")
 
-        // Check onboarding gate
+        // Check onboarding gate and load cached settings
         logger.info("onLaunch: reading settings")
         let onboardingComplete: Bool
         do {
             let settings = try await store.settings()
             onboardingComplete = settings.onboardingComplete
+            loadMenuBarLeadTime(from: settings)
         } catch {
             onboardingComplete = false
         }
+        startMenuBarLeadTimeObserver()
 
         if !onboardingComplete {
             logger.info("onLaunch: routing to onboarding")
@@ -464,12 +480,41 @@ public final class AppCore {
             summaries = []
         }
     }
+}
 
-    // MARK: - Test support
+// MARK: - Menu bar lead time
 
+extension AppCore {
+    /// Updates the cached `menuBarLeadTime` from a settings snapshot.
+    func loadMenuBarLeadTime(from settings: AppSettingsData) {
+        menuBarLeadTime = MenuBarLeadTime(
+            seconds: settings.menuBarLeadTimeSeconds
+        )
+    }
+
+    /// Starts an async observer that refreshes `menuBarLeadTime` when
+    /// the setting is changed from SettingsUI.
+    func startMenuBarLeadTimeObserver() {
+        menuBarLeadTimeObserverTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .menuBarLeadTimeDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    loadMenuBarLeadTime(from: settings)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Test support
+
+package extension AppCore {
     /// Waits for any pending fire-and-forget transcription task spawned by
     /// `stopRecording()` to finish.
-    package func awaitPendingTranscription() async {
+    func awaitPendingTranscription() async {
         await pendingTranscriptionTask?.value
         pendingTranscriptionTask = nil
     }

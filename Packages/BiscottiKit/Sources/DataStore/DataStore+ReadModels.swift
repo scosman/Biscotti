@@ -126,6 +126,10 @@ public struct AppSettingsData: Sendable, Equatable {
     /// When false (the default), those actions just hide the window and the app
     /// stays alive in the menu bar.
     public var exitOnWindowClose: Bool
+    /// Lead time (in seconds) before a meeting start at which the menu bar
+    /// shows the detailed "next meeting" text. `0` means never show.
+    /// Default: 3600 (1 hour before).
+    public var menuBarLeadTimeSeconds: Int
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
@@ -134,12 +138,14 @@ public struct AppSettingsData: Sendable, Equatable {
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
         exitOnWindowClose: Bool = false,
+        menuBarLeadTimeSeconds: Int = 3600,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
         self.exitOnWindowClose = exitOnWindowClose
+        self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
     }
@@ -384,6 +390,7 @@ public extension DataStore {
                 customVocabulary: existing.customVocabulary,
                 launchAtLogin: existing.launchAtLogin,
                 exitOnWindowClose: existing.exitOnWindowClose,
+                menuBarLeadTimeSeconds: existing.menuBarLeadTimeSeconds,
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs
             )
@@ -411,6 +418,7 @@ public extension DataStore {
             customVocabulary: model.customVocabulary,
             launchAtLogin: model.launchAtLogin,
             exitOnWindowClose: model.exitOnWindowClose,
+            menuBarLeadTimeSeconds: model.menuBarLeadTimeSeconds,
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs
         )
@@ -419,6 +427,7 @@ public extension DataStore {
         model.customVocabulary = dto.customVocabulary
         model.launchAtLogin = dto.launchAtLogin
         model.exitOnWindowClose = dto.exitOnWindowClose
+        model.menuBarLeadTimeSeconds = dto.menuBarLeadTimeSeconds
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         try save()

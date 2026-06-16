@@ -22,6 +22,11 @@ import SwiftData
     /// stays alive in the menu bar.
     public var exitOnWindowClose: Bool = false
 
+    /// Lead time (in seconds) before a meeting start at which the menu bar
+    /// shows the detailed "next meeting" text. `0` means never show.
+    /// Default: 3600 (1 hour before).
+    public var menuBarLeadTimeSeconds: Int = 3600
+
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
@@ -53,12 +58,14 @@ import SwiftData
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
         exitOnWindowClose: Bool = false,
+        menuBarLeadTimeSeconds: Int = 3600,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
         self.exitOnWindowClose = exitOnWindowClose
+        self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
         self.onboardingComplete = onboardingComplete
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()

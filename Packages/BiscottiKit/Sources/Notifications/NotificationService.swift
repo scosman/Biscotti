@@ -2,7 +2,7 @@ import Foundation
 import os
 import UserNotifications
 
-/// Manages notification lifecycle: authorization, presentation, countdown updates,
+/// Manages notification lifecycle: authorization, presentation, countdown cancellation,
 /// and the typed action stream consumed by AppCore.
 ///
 /// This module **presents and reports intent only**; `AppCore` performs the action.
@@ -15,7 +15,7 @@ public final class NotificationService {
     )
 
     /// Cached authorization status. Updated after `requestAuthorization()` and
-    /// before each `present` / `updateCountdown` call.
+    /// before each `present` call.
     private var cachedAuthStatus: UNAuthorizationStatus?
 
     /// The stream continuation for `actions()`. Created lazily on first call.
@@ -91,31 +91,11 @@ public final class NotificationService {
         let request = makeRequest(for: kind)
         do {
             try await provider.add(request)
+            logger.info(
+                "present: added \(request.content.categoryIdentifier) request \(request.identifier)"
+            )
         } catch {
             logger.error("Failed to add notification: \(error)")
-        }
-    }
-
-    /// Refreshes the stop-countdown notification with a new seconds-remaining value.
-    /// Re-adds a request with the same stable identifier so the existing banner
-    /// is replaced in-place.
-    public func updateCountdown(
-        meetingID: UUID,
-        secondsRemaining: Int
-    ) async {
-        guard await isAuthorized() else {
-            return
-        }
-
-        let kind = NotificationKind.stopCountdown(
-            meetingID: meetingID,
-            secondsRemaining: secondsRemaining
-        )
-        let request = makeRequest(for: kind)
-        do {
-            try await provider.add(request)
-        } catch {
-            logger.error("Failed to update countdown: \(error)")
         }
     }
 
@@ -189,18 +169,12 @@ public final class NotificationService {
     /// presentation options to use when a notification arrives while the app
     /// is in the foreground.
     public func foregroundPresentationOptions(
-        for notification: UNNotification
+        for _: UNNotification
     ) -> UNNotificationPresentationOptions {
-        let categoryID = notification.request.content.categoryIdentifier
-
-        switch categoryID {
-        case CategoryID.stopCountdown:
-            // Silent update; no repeated banner pop while user is in the app.
-            return [.list]
-        default:
-            // Meeting-start and ad-hoc: show banner + sound even when foreground.
-            return [.banner, .sound]
-        }
+        // Always show banner + sound in the foreground.
+        // The stop-countdown notification is the only surface for the "Keep
+        // recording" action — it must be visible even when the app is frontmost.
+        [.banner, .sound]
     }
 
     // MARK: - Private
@@ -224,7 +198,7 @@ public final class NotificationService {
         let keepRecording = UNNotificationAction(
             identifier: ActionID.keepRecording,
             title: "Keep Recording",
-            options: []
+            options: [.foreground]
         )
 
         let meetingStart = UNNotificationCategory(
@@ -334,9 +308,9 @@ private func fillCountdownContent(
     meetingID: UUID,
     secondsRemaining: Int
 ) {
-    content.title = "Audio stopped \u{2014} stopping in \(secondsRemaining)s"
-    content.body = "Tap Keep Recording to continue."
-    content.sound = nil
+    content.title = "Recording will stop in \(secondsRemaining)s"
+    content.body = "Tap to keep recording"
+    content.sound = .default
     content.categoryIdentifier = CategoryID.stopCountdown
     content.userInfo = [
         UserInfoKey.kind: KindValue.countdown,

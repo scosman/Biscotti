@@ -120,10 +120,6 @@ public final class AppCore {
     private let scheduler: any AppScheduler
     private var meetingsSearchTask: Task<Void, Never>?
 
-    /// Whether the active recording was started due to detection (vs manual).
-    /// Determines whether auto-stop applies.
-    private var isDetectionDriven = false
-
     /// The bundle ID of the detected app that triggered the current recording.
     private var activeDetectedBundleID: String?
 
@@ -155,7 +151,7 @@ public final class AppCore {
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
 
     /// Auto-stop countdown duration in seconds.
-    private let autoStopSeconds = 15
+    private let autoStopSeconds = 10
 
     /// De-dup suppression window for ad-hoc detections after calendar prompts.
     private let calendarSuppressionInterval: TimeInterval = 600 // 10 minutes
@@ -168,6 +164,11 @@ public final class AppCore {
     private let logger = Logger(
         subsystem: "net.scosman.biscotti",
         category: "AppCore"
+    )
+
+    private let detectionLogger = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "Detection"
     )
 
     // MARK: - Init
@@ -327,7 +328,6 @@ public final class AppCore {
         }
 
         // Clear detection tracking
-        isDetectionDriven = false
         activeDetectedBundleID = nil
 
         await reloadSummaries()
@@ -341,10 +341,9 @@ public final class AppCore {
         return meetingID
     }
 
-    /// Records a detected event (from a notification action). Sets
-    /// detection-driven flag and starts recording.
+    /// Records a detected event (from a notification action). Starts
+    /// recording, optionally associated with the given calendar event.
     public func recordDetectedEvent(eventKey: String?) async {
-        isDetectionDriven = true
         await startRecording(eventKey: eventKey)
     }
 
@@ -596,6 +595,8 @@ extension AppCore {
                 await handleDetectionStarted(app: app)
             case let .stopped(app):
                 handleDetectionStopped(app: app)
+            case .allMicUsersStopped:
+                handleAllMicUsersStopped()
             }
         }
     }
@@ -603,18 +604,33 @@ extension AppCore {
     private func handleDetectionStarted(
         app: DetectedApp
     ) async {
-        // Suppress if already recording
-        if case .recording = runState { return }
+        detectionLogger.info(
+            "Received .started for \(app.bundleID)"
+        )
 
-        // Suppress if a calendar notification was recently presented (de-dup)
-        if let lastCal = lastCalendarNotificationDate,
-           Date().timeIntervalSince(lastCal) < calendarSuppressionInterval
-        {
-            logger.debug(
-                "Suppressing ad-hoc detection; calendar prompt within window"
+        // Suppress if already recording
+        if case .recording = runState {
+            detectionLogger.info(
+                "Suppressed: already recording"
             )
             return
         }
+
+        // Suppress if a calendar notification was recently presented (de-dup)
+        if let lastCal = lastCalendarNotificationDate {
+            let elapsed = Date().timeIntervalSince(lastCal)
+            let window = calendarSuppressionInterval
+            if elapsed < window {
+                detectionLogger.info(
+                    "Suppressed: calendar prompt \(Int(elapsed))s ago (window \(Int(window))s)"
+                )
+                return
+            }
+        }
+
+        detectionLogger.info(
+            "Presenting ad-hoc notification for \(app.bundleID)"
+        )
 
         // Present notification
         await notifications.present(
@@ -636,16 +652,14 @@ extension AppCore {
         {
             runState = .idle
             activeDetectedBundleID = nil
-            return
         }
+    }
 
-        // If recording and detection-driven, begin auto-stop
-        if case let .recording(meetingID) = runState,
-           isDetectionDriven,
-           activeDetectedBundleID == app.bundleID
-        {
-            beginAutoStopCountdown(meetingID: meetingID)
-        }
+    /// When all non-Biscotti mic users stop (>=1 -> 0 transition),
+    /// begin auto-stop countdown regardless of how the recording started.
+    private func handleAllMicUsersStopped() {
+        guard case let .recording(meetingID) = runState else { return }
+        beginAutoStopCountdown(meetingID: meetingID)
     }
 }
 
@@ -660,6 +674,7 @@ extension AppCore {
         let notif = notifications
 
         countdownTask = Task { [weak self] in
+            // Present a single static notification (no per-second updates).
             await notif.present(
                 .stopCountdown(
                     meetingID: meetingID,
@@ -667,26 +682,15 @@ extension AppCore {
                 )
             )
 
-            for remaining in stride(
-                from: seconds - 1, through: 0, by: -1
-            ) {
-                do {
-                    try await sched.sleep(for: .seconds(1))
-                } catch {
-                    return // cancelled
-                }
-                guard !Task.isCancelled else { return }
-
-                if remaining > 0 {
-                    await notif.updateCountdown(
-                        meetingID: meetingID,
-                        secondsRemaining: remaining
-                    )
-                }
+            do {
+                try await sched.sleep(for: .seconds(seconds))
+            } catch {
+                return // cancelled (keepRecording or manual stop)
             }
+            guard !Task.isCancelled else { return }
 
             // Timer reached 0 -- auto-stop
-            guard let self, !Task.isCancelled else { return }
+            guard let self else { return }
             await stopRecording()
         }
     }
@@ -729,6 +733,7 @@ extension AppCore {
 
             case let .keepRecording(meetingID):
                 cancelAutoStopCountdown(meetingID: meetingID)
+                route = .recording
             }
         }
     }

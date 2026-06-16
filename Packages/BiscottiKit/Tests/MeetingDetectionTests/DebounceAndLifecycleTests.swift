@@ -40,6 +40,9 @@ struct DebounceTests {
         await collector.settle()
         collector.cancel()
 
+        // No started/stopped events (debounce suppressed). The
+        // allMicUsersStopped event is also debounced (5s) and NeverClock
+        // blocks indefinitely, so it never fires either.
         #expect(collector.events.isEmpty)
     }
 
@@ -50,7 +53,10 @@ struct DebounceTests {
             meetingBundleIDs: ["us.zoom.xos"],
             displayNames: ["us.zoom.xos": "Zoom"]
         )
-        let detector = makeImmediateDetector(
+        // OneShotImmediateClock: start debounce fires immediately,
+        // stop debounce blocks until cancelled — prevents the stop
+        // debounce from racing with the resume snapshot.
+        let detector = makeOneShotDetector(
             catalog: catalog, source: source
         )
         let collector = EventCollector()
@@ -130,8 +136,11 @@ struct DebounceTests {
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
+        // The mic-user debounce is cancelled when Zoom's mic resumes,
+        // so .allMicUsersStopped does NOT fire.
         #expect(collector.events == [
-            .started(app: zoom), .stopped(app: zoom)
+            .started(app: zoom),
+            .stopped(app: zoom)
         ])
     }
 }
@@ -167,14 +176,18 @@ struct StopAndLifecycleTests {
             isRunningInput: false,
             isRunningOutput: false
         )])
-        await collector.waitForEvents(count: 2)
+        await collector.waitForEvents(count: 3)
 
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
-        #expect(collector.events == [
-            .started(app: zoom), .stopped(app: zoom)
-        ])
+        // .started always comes first; .allMicUsersStopped and .stopped
+        // resolve via separate debounce Tasks so their relative order is
+        // non-deterministic with ImmediateClock.
+        #expect(collector.events.first == .started(app: zoom))
+        #expect(collector.events.contains(.allMicUsersStopped))
+        #expect(collector.events.contains(.stopped(app: zoom)))
+        #expect(collector.events.count == 3)
         detector.stop()
         collector.cancel()
     }
@@ -201,14 +214,18 @@ struct StopAndLifecycleTests {
         await collector.waitForEvents(count: 1)
 
         source.emit([])
-        await collector.waitForEvents(count: 2)
+        await collector.waitForEvents(count: 3)
 
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
-        #expect(collector.events == [
-            .started(app: zoom), .stopped(app: zoom)
-        ])
+        // .started always comes first; .allMicUsersStopped and .stopped
+        // resolve via separate debounce Tasks so their relative order is
+        // non-deterministic with ImmediateClock.
+        #expect(collector.events.first == .started(app: zoom))
+        #expect(collector.events.contains(.allMicUsersStopped))
+        #expect(collector.events.contains(.stopped(app: zoom)))
+        #expect(collector.events.count == 3)
         detector.stop()
         collector.cancel()
     }

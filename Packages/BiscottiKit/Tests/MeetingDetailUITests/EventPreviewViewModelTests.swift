@@ -75,11 +75,17 @@ private final class URLTracker: @unchecked Sendable {
     var urls: [URL] = []
 }
 
-/// Bundles the three objects returned by `makeReadyVM`.
+/// Tracks strings written to the clipboard by the VM.
+private final class ClipboardTracker: @unchecked Sendable {
+    var strings: [String] = []
+}
+
+/// Bundles the objects returned by `makeReadyVM`.
 private struct ReadyVM {
     let viewModel: EventPreviewViewModel
     let fixture: CoreFixture
     let openedURLs: URLTracker
+    let copiedStrings: ClipboardTracker
 }
 
 /// Creates a fully-wired fixture with the event refreshed and VM ready.
@@ -120,90 +126,44 @@ private func makeReadyVM(
     await fix.calendarService.refreshUpcoming(window: window)
 
     let eventKey = try #require(fix.calendarService.upcoming.first?.id)
-    let tracker = URLTracker()
+    let urlTracker = URLTracker()
+    let clipTracker = ClipboardTracker()
 
     let viewModel = EventPreviewViewModel(
         core: fix.core,
         eventKey: eventKey,
         currentDate: currentDate,
-        urlOpener: { url in tracker.urls.append(url) }
+        urlOpener: { url in urlTracker.urls.append(url) },
+        clipboardWriter: { text in clipTracker.strings.append(text) }
     )
 
-    return ReadyVM(viewModel: viewModel, fixture: fix, openedURLs: tracker)
+    return ReadyVM(
+        viewModel: viewModel,
+        fixture: fix,
+        openedURLs: urlTracker,
+        copiedStrings: clipTracker
+    )
 }
 
 // MARK: - Primary Action Tests
 
-@Suite("EventPreviewViewModel -- primary action by time window")
+@Suite("EventPreviewViewModel -- primary action by conference URL")
 struct EventPreviewActionTests {
-    @Test("Open Link when meeting is >15 min in the future")
+    @Test("Join and Record when conference URL exists")
     @MainActor
-    func primaryActionOpenLinkWhenFarFuture() async throws {
-        // Event starts 30 min from now
+    func primaryActionJoinAndRecordWithURL() async throws {
         let eventStart = refDate.addingTimeInterval(30 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart, currentDate: { refDate }
         )
         defer { ready.fixture.cleanup() }
 
-        #expect(ready.viewModel.primaryAction == .openLink)
-    }
-
-    @Test("Join and Record when within +15 min of start (before)")
-    @MainActor
-    func primaryActionJoinAndRecordBeforeStart() async throws {
-        // Event starts 10 min from now (within 15 min window)
-        let eventStart = refDate.addingTimeInterval(10 * 60)
-        let ready = try await makeReadyVM(
-            eventStart: eventStart, currentDate: { refDate }
-        )
-        defer { ready.fixture.cleanup() }
-
         #expect(ready.viewModel.primaryAction == .joinAndRecord)
     }
 
-    @Test("Join and Record when within -15 min of start (after)")
+    @Test("Record when no conference URL")
     @MainActor
-    func primaryActionJoinAndRecordAfterStart() async throws {
-        // Event started 10 min ago (within 15 min window)
-        let eventStart = refDate.addingTimeInterval(-10 * 60)
-        let ready = try await makeReadyVM(
-            eventStart: eventStart, currentDate: { refDate }
-        )
-        defer { ready.fixture.cleanup() }
-
-        #expect(ready.viewModel.primaryAction == .joinAndRecord)
-    }
-
-    @Test("Join and Record at exact 15 min boundary (before)")
-    @MainActor
-    func primaryActionJoinAndRecordAtExactBoundary() async throws {
-        // Event starts exactly 15 min from now
-        let eventStart = refDate.addingTimeInterval(15 * 60)
-        let ready = try await makeReadyVM(
-            eventStart: eventStart, currentDate: { refDate }
-        )
-        defer { ready.fixture.cleanup() }
-
-        #expect(ready.viewModel.primaryAction == .joinAndRecord)
-    }
-
-    @Test("Open Link at 15 min + 1 second (just outside boundary)")
-    @MainActor
-    func primaryActionOpenLinkJustOutsideBoundary() async throws {
-        // Event starts 15 min + 1 second from now
-        let eventStart = refDate.addingTimeInterval(15 * 60 + 1)
-        let ready = try await makeReadyVM(
-            eventStart: eventStart, currentDate: { refDate }
-        )
-        defer { ready.fixture.cleanup() }
-
-        #expect(ready.viewModel.primaryAction == .openLink)
-    }
-
-    @Test("Record when no conference URL (far future)")
-    @MainActor
-    func primaryActionRecordWhenNoURLFarFuture() async throws {
+    func primaryActionRecordWhenNoURL() async throws {
         let eventStart = refDate.addingTimeInterval(30 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart,
@@ -215,7 +175,7 @@ struct EventPreviewActionTests {
         #expect(ready.viewModel.primaryAction == .record)
     }
 
-    @Test("Record when no conference URL (near start)")
+    @Test("Record when no conference URL near start")
     @MainActor
     func primaryActionRecordWhenNoURLNearStart() async throws {
         let eventStart = refDate.addingTimeInterval(5 * 60)
@@ -228,54 +188,142 @@ struct EventPreviewActionTests {
 
         #expect(ready.viewModel.primaryAction == .record)
     }
-
-    @Test("Record when meeting is well past start (>15 min after)")
-    @MainActor
-    func primaryActionRecordWhenWellPastStart() async throws {
-        // Event started 20 min ago
-        let eventStart = refDate.addingTimeInterval(-20 * 60)
-        let ready = try await makeReadyVM(
-            eventStart: eventStart, currentDate: { refDate }
-        )
-        defer { ready.fixture.cleanup() }
-
-        #expect(ready.viewModel.primaryAction == .record)
-    }
 }
 
-// MARK: - Secondary Record Button Tests
+// MARK: - Prominence Window Tests
 
-@Suite("EventPreviewViewModel -- secondary record button")
-struct EventPreviewSecondaryRecordTests {
-    @Test("Shows secondary Record with Open Link primary")
+@Suite("EventPreviewViewModel -- prominence window (5 min before start to 5 min after end)")
+struct EventPreviewProminenceTests {
+    @Test("Not prominent when meeting is far in the future (30 min)")
     @MainActor
-    func secondaryRecordWithOpenLink() async throws {
+    func notProminentFarFuture() async throws {
         let eventStart = refDate.addingTimeInterval(30 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart, currentDate: { refDate }
         )
         defer { ready.fixture.cleanup() }
 
-        #expect(ready.viewModel.primaryAction == .openLink)
-        #expect(ready.viewModel.showSecondaryRecord == true)
+        #expect(ready.viewModel.isProminent == false)
     }
 
-    @Test("Shows secondary Record with Join and Record primary")
+    @Test("Prominent when 5 min before start (exact boundary)")
     @MainActor
-    func secondaryRecordWithJoinAndRecord() async throws {
-        let eventStart = refDate.addingTimeInterval(10 * 60)
+    func prominentAtFiveMinBefore() async throws {
+        // Event starts in 5 min (exactly at the boundary)
+        let eventStart = refDate.addingTimeInterval(5 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart, currentDate: { refDate }
         )
         defer { ready.fixture.cleanup() }
 
-        #expect(ready.viewModel.primaryAction == .joinAndRecord)
-        #expect(ready.viewModel.showSecondaryRecord == true)
+        #expect(ready.viewModel.isProminent == true)
     }
 
-    @Test("No secondary Record when primary is Record")
+    @Test("Not prominent at 5 min + 1 second before start")
     @MainActor
-    func noSecondaryRecordWhenPrimaryIsRecord() async throws {
+    func notProminentJustOutsideBefore() async throws {
+        let eventStart = refDate.addingTimeInterval(5 * 60 + 1)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == false)
+    }
+
+    @Test("Prominent during meeting (midway through)")
+    @MainActor
+    func prominentDuringMeeting() async throws {
+        // Event started 30 min ago, ends in 30 min (1h meeting)
+        let eventStart = refDate.addingTimeInterval(-30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == true)
+    }
+
+    @Test("Prominent at event start")
+    @MainActor
+    func prominentAtStart() async throws {
+        let eventStart = refDate
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == true)
+    }
+
+    @Test("Prominent at event end")
+    @MainActor
+    func prominentAtEnd() async throws {
+        // Event started 1h ago (and default end = start+1h = refDate)
+        let eventStart = refDate.addingTimeInterval(-3600)
+        let eventEnd = refDate
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            eventEnd: eventEnd,
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == true)
+    }
+
+    @Test("Prominent at 5 min after end (exact boundary)")
+    @MainActor
+    func prominentAtFiveMinAfterEnd() async throws {
+        // Event: 2h ago to 1h5min ago. Now is exactly 5 min after end.
+        let eventStart = refDate.addingTimeInterval(-2 * 3600)
+        let eventEnd = refDate.addingTimeInterval(-5 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            eventEnd: eventEnd,
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == true)
+    }
+
+    @Test("Not prominent at 5 min + 1 second after end")
+    @MainActor
+    func notProminentJustOutsideAfterEnd() async throws {
+        // Event: 2h ago to (5min+1s) ago. Now is 1 second past the end window.
+        let eventStart = refDate.addingTimeInterval(-2 * 3600)
+        let eventEnd = refDate.addingTimeInterval(-5 * 60 - 1)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            eventEnd: eventEnd,
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.isProminent == false)
+    }
+}
+
+// MARK: - Show Copy Link Tests
+
+@Suite("EventPreviewViewModel -- showCopyLink")
+struct EventPreviewShowCopyLinkTests {
+    @Test("Shows copy link when conference URL exists")
+    @MainActor
+    func showsCopyLinkWithURL() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.showCopyLink == true)
+    }
+
+    @Test("Hides copy link when no conference URL")
+    @MainActor
+    func hidesCopyLinkWithoutURL() async throws {
         let eventStart = refDate.addingTimeInterval(30 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart,
@@ -284,8 +332,7 @@ struct EventPreviewSecondaryRecordTests {
         )
         defer { ready.fixture.cleanup() }
 
-        #expect(ready.viewModel.primaryAction == .record)
-        #expect(ready.viewModel.showSecondaryRecord == false)
+        #expect(ready.viewModel.showCopyLink == false)
     }
 }
 
@@ -293,19 +340,35 @@ struct EventPreviewSecondaryRecordTests {
 
 @Suite("EventPreviewViewModel -- action side effects")
 struct EventPreviewActionSideEffectTests {
-    @Test("Open Link opens the conference URL")
+    @Test("Copy Link writes conference URL to clipboard")
     @MainActor
-    func openLinkOpensURL() async throws {
+    func copyLinkWritesToClipboard() async throws {
         let eventStart = refDate.addingTimeInterval(30 * 60)
         let ready = try await makeReadyVM(
             eventStart: eventStart, currentDate: { refDate }
         )
         defer { ready.fixture.cleanup() }
 
-        ready.viewModel.openLink()
+        ready.viewModel.copyLink()
 
-        #expect(ready.openedURLs.urls.count == 1)
-        #expect(ready.openedURLs.urls.first?.absoluteString.contains("zoom.us") == true)
+        #expect(ready.copiedStrings.strings.count == 1)
+        #expect(ready.copiedStrings.strings.first?.contains("zoom.us") == true)
+    }
+
+    @Test("Copy Link does nothing when no conference URL")
+    @MainActor
+    func copyLinkNoOpWithoutURL() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            conferenceURL: nil,
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        ready.viewModel.copyLink()
+
+        #expect(ready.copiedStrings.strings.isEmpty)
     }
 
     @Test("Join and Record opens URL AND starts recording")
@@ -341,6 +404,27 @@ struct EventPreviewActionSideEffectTests {
         await ready.viewModel.startRecording()
 
         #expect(ready.fixture.core.recording.state.isRecording)
+    }
+
+    @Test("Open in Calendar opens ical deep-link URL with event identifier")
+    @MainActor
+    func openInCalendarOpensURL() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        ready.viewModel.openInCalendar()
+
+        #expect(ready.openedURLs.urls.count == 1)
+        let url = try #require(ready.openedURLs.urls.first)
+        // Must use ical:// scheme (not calshow:) matching MeetingDetailViewModel
+        #expect(url.scheme == "ical")
+        // Must contain the event identifier path
+        #expect(url.absoluteString.contains("ekevent/"))
+        // Must not contain a fractional ".0" — integer epoch only
+        #expect(!url.absoluteString.contains(".0"))
     }
 }
 
@@ -450,6 +534,233 @@ struct EventPreviewDetailsTests {
 
         #expect(viewModel.event == nil)
         #expect(viewModel.primaryAction == .record)
+    }
+}
+
+// MARK: - Avatar Data Tests
+
+@Suite("EventPreviewViewModel -- avatar data")
+struct EventPreviewAvatarTests {
+    @Test("Avatar data includes organizer and attendees")
+    @MainActor
+    func avatarDataIncludesAll() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            organizer: AttendeeInfo(name: "Alice", email: "alice@x.com"),
+            attendees: [
+                AttendeeInfo(name: "Bob", email: "bob@x.com"),
+                AttendeeInfo(name: "Carol", email: nil)
+            ],
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        let data = ready.viewModel.avatarData
+        #expect(data.people.count == 3) // Alice + Bob + Carol
+        #expect(data.total == 3) // attendeeCount = 3 (2 attendees + 1 organizer)
+        #expect(data.people[0].displayName == "Alice")
+        #expect(data.people[1].displayName == "Bob")
+    }
+
+    @Test("Avatar data empty when no event")
+    @MainActor
+    func avatarDataEmptyWhenNoEvent() throws {
+        let fix = try makeCoreFixture(testName: "EventPreviewAvatar")
+        defer { fix.cleanup() }
+
+        let viewModel = EventPreviewViewModel(
+            core: fix.core,
+            eventKey: "nonexistent-key"
+        )
+
+        let data = viewModel.avatarData
+        #expect(data.people.isEmpty)
+        #expect(data.total == 0)
+    }
+}
+
+// MARK: - Attendee Email Lines Tests
+
+@Suite("EventPreviewViewModel -- attendeeEmailLines")
+struct EventPreviewAttendeeEmailTests {
+    @Test("Email lines use email when available, organizer first with suffix")
+    @MainActor
+    func emailLinesWithOrganizer() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            organizer: AttendeeInfo(name: "Alice", email: "alice@x.com"),
+            attendees: [
+                AttendeeInfo(name: "Bob", email: "bob@x.com"),
+                AttendeeInfo(name: "Carol", email: nil)
+            ],
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        let lines = ready.viewModel.attendeeEmailLines
+        #expect(lines.count == 3)
+        #expect(lines[0] == "alice@x.com (organizer)")
+        #expect(lines[1] == "bob@x.com")
+        // Carol has no email, falls back to displayName
+        #expect(lines[2] == "Carol")
+    }
+
+    @Test("Email lines without organizer")
+    @MainActor
+    func emailLinesWithoutOrganizer() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart,
+            conferenceURL: nil,
+            organizer: nil,
+            attendees: [
+                AttendeeInfo(name: "A", email: "a@test.com"),
+                AttendeeInfo(name: "B", email: nil)
+            ],
+            currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        let lines = ready.viewModel.attendeeEmailLines
+        #expect(lines.count == 2)
+        #expect(lines[0] == "a@test.com")
+        #expect(lines[1] == "B")
+    }
+
+    @Test("Email lines empty when no event")
+    @MainActor
+    func emailLinesEmptyWhenNoEvent() throws {
+        let fix = try makeCoreFixture(testName: "EventPreviewEmails")
+        defer { fix.cleanup() }
+
+        let viewModel = EventPreviewViewModel(
+            core: fix.core,
+            eventKey: "nonexistent-key"
+        )
+
+        #expect(viewModel.attendeeEmailLines.isEmpty)
+    }
+}
+
+// MARK: - Domain Summary Tests
+
+@Suite("EventPreviewViewModel -- domainSummary")
+struct EventPreviewDomainSummaryTests {
+    @Test("Domain summary nil with single domain")
+    @MainActor
+    func singleDomainReturnsNil() {
+        let lines = [
+            "alice@waldo.fyi (organizer)",
+            "bob@waldo.fyi",
+            "carol@waldo.fyi"
+        ]
+        let result = EventPreviewViewModel.buildDomainSummary(for: lines)
+        #expect(result == nil)
+    }
+
+    @Test("Domain summary nil with no email domains")
+    @MainActor
+    func noDomainsReturnsNil() {
+        let lines = ["Alice", "Bob", "Carol"]
+        let result = EventPreviewViewModel.buildDomainSummary(for: lines)
+        #expect(result == nil)
+    }
+
+    @Test("Domain summary shows multiple domains sorted by count")
+    @MainActor
+    func multipleDomainsShowsSorted() throws {
+        let lines = [
+            "a@waldo.fyi (organizer)",
+            "b@waldo.fyi",
+            "c@waldo.fyi",
+            "d@kiln.tech",
+            "e@kiln.tech",
+            "f@other.io"
+        ]
+        let result = EventPreviewViewModel.buildDomainSummary(for: lines)
+        #expect(result != nil)
+        // waldo.fyi(3) > kiln.tech(2) > other.io(1)
+        #expect(try #require(result?.contains("3 from waldo.fyi")))
+        #expect(try #require(result?.contains("2 from kiln.tech")))
+        #expect(try #require(result?.contains("1 from other.io")))
+    }
+
+    @Test("Domain summary strips organizer suffix before parsing")
+    @MainActor
+    func stripsOrganizerSuffix() throws {
+        let lines = [
+            "alice@a.com (organizer)",
+            "bob@b.com"
+        ]
+        let result = EventPreviewViewModel.buildDomainSummary(for: lines)
+        #expect(result != nil)
+        #expect(try #require(result?.contains("a.com")))
+        #expect(try #require(result?.contains("b.com")))
+    }
+
+    @Test("Domain summary with empty lines")
+    @MainActor
+    func emptyLinesReturnsNil() {
+        let result = EventPreviewViewModel.buildDomainSummary(for: [])
+        #expect(result == nil)
+    }
+
+    @Test("Domain summary is case-insensitive")
+    @MainActor
+    func caseInsensitive() throws {
+        let lines = [
+            "a@Waldo.FYI (organizer)",
+            "b@waldo.fyi",
+            "c@other.com"
+        ]
+        let result = EventPreviewViewModel.buildDomainSummary(for: lines)
+        #expect(result != nil)
+        #expect(try #require(result?.contains("2 from waldo.fyi")))
+        #expect(try #require(result?.contains("1 from other.com")))
+    }
+}
+
+// MARK: - Display Helper Tests
+
+@Suite("EventPreviewViewModel -- display helpers")
+struct EventPreviewDisplayTests {
+    @Test("Relative time text shows countdown")
+    @MainActor
+    func relativeTimeText() async throws {
+        let eventStart = refDate.addingTimeInterval(12 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.relativeTimeText == "in 12m")
+    }
+
+    @Test("Formatted duration for 1h meeting")
+    @MainActor
+    func formattedDuration() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        // Default end = start + 1h
+        #expect(ready.viewModel.formattedDuration == "1h")
+    }
+
+    @Test("Formatted date range is non-nil")
+    @MainActor
+    func formattedDateRange() async throws {
+        let eventStart = refDate.addingTimeInterval(30 * 60)
+        let ready = try await makeReadyVM(
+            eventStart: eventStart, currentDate: { refDate }
+        )
+        defer { ready.fixture.cleanup() }
+
+        #expect(ready.viewModel.formattedDateRange != nil)
     }
 }
 

@@ -30,12 +30,11 @@ private final class CardFakePlayer: AudioPlaybackProviding,
 
 // MARK: - whenText tests
 
-/// @MainActor required on pure-function tests because these static helpers
-/// inherit @MainActor isolation from MeetingDetailViewModel.
-@Suite("MeetingDetailViewModel -- whenText")
+/// whenText tests now target the shared `TimeFormatting.whenText` helper
+/// (formerly duplicated in both MeetingDetailViewModel and EventPreviewViewModel).
+@Suite("TimeFormatting -- whenText")
 struct WhenTextTests {
     @Test("formats same-day date range with en-dash separator")
-    @MainActor
     func formatsSameDayRange() throws {
         let cal = Foundation.Calendar.current
         let start = try #require(cal.date(
@@ -45,7 +44,7 @@ struct WhenTextTests {
             from: DateComponents(year: 2026, month: 6, day: 11, hour: 16, minute: 50)
         ))
 
-        let result = MeetingDetailViewModel.whenText(start: start, end: end)
+        let result = TimeFormatting.whenText(start: start, end: end)
         #expect(result != nil)
         // Structural: contains middot separator and en-dash between times
         #expect(try #require(result?.contains("\u{00B7}"))) // middot
@@ -55,21 +54,19 @@ struct WhenTextTests {
     }
 
     @Test("returns nil when no start date")
-    @MainActor
     func returnsNilWithoutStart() {
-        let result = MeetingDetailViewModel.whenText(start: nil, end: nil)
+        let result = TimeFormatting.whenText(start: nil, end: nil)
         #expect(result == nil)
     }
 
     @Test("formats start-only when no end date")
-    @MainActor
     func formatsStartOnly() throws {
         let cal = Foundation.Calendar.current
         let start = try #require(cal.date(
             from: DateComponents(year: 2026, month: 6, day: 11, hour: 16, minute: 18)
         ))
 
-        let result = MeetingDetailViewModel.whenText(start: start, end: nil)
+        let result = TimeFormatting.whenText(start: start, end: nil)
         #expect(result != nil)
         // Should have a middot but no en-dash (single time, not a range)
         #expect(try #require(result?.contains("\u{00B7}")))
@@ -78,7 +75,6 @@ struct WhenTextTests {
     }
 
     @Test("formats multi-day range with both dates")
-    @MainActor
     func formatsMultiDayRange() throws {
         let cal = Foundation.Calendar.current
         let start = try #require(cal.date(
@@ -88,7 +84,7 @@ struct WhenTextTests {
             from: DateComponents(year: 2026, month: 6, day: 12, hour: 10, minute: 0)
         ))
 
-        let result = MeetingDetailViewModel.whenText(start: start, end: end)
+        let result = TimeFormatting.whenText(start: start, end: end)
         #expect(result != nil)
         // Both day numbers present
         #expect(try #require(result?.contains("11")))

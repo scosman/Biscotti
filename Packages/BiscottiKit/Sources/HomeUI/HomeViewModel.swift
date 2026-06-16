@@ -165,10 +165,14 @@ public final class HomeViewModel {
         await core.startRecording(eventKey: event.id)
     }
 
-    /// Open Calendar.app at the event's start date.
+    /// Open Calendar.app to the event via the shared deep-link helper.
     public func openInCalendar(_ event: CalendarEvent) {
-        let refInterval = event.start.timeIntervalSinceReferenceDate
-        if let url = URL(string: "ical://\(refInterval)") {
+        // Extract the EKEvent identifier from the composite key (first |-component).
+        let eventID = event.id.components(separatedBy: "|").first
+        if let url = CalendarDeepLink.calendarAppURL(
+            eventIdentifier: eventID,
+            startDate: event.start
+        ) {
             urlOpener(url)
         }
     }

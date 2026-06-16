@@ -46,14 +46,21 @@ public struct CalendarCardData: Sendable, Equatable {
 public struct CalendarInfoCard: View {
     let data: CalendarCardData
     let onOpenInCalendar: () -> Void
+
+    /// When true the event-details definition list is always visible
+    /// and the disclosure toggle is hidden. Default is false (collapsed).
+    let alwaysExpanded: Bool
+
     @State private var expanded = false
 
     public init(
         data: CalendarCardData,
-        onOpenInCalendar: @escaping () -> Void
+        onOpenInCalendar: @escaping () -> Void,
+        alwaysExpanded: Bool = false
     ) {
         self.data = data
         self.onOpenInCalendar = onOpenInCalendar
+        self.alwaysExpanded = alwaysExpanded
     }
 
     public var body: some View {
@@ -117,46 +124,53 @@ public struct CalendarInfoCard: View {
 
     // MARK: - Row B: custom tappable disclosure
 
+    /// Whether the definition list is currently visible.
+    private var isExpanded: Bool {
+        alwaysExpanded || expanded
+    }
+
     private var rowB: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Tappable header -- whole line toggles expansion
-            Button {
-                withAnimation {
-                    expanded.toggle()
-                }
-            } label: {
-                HStack(spacing: Tokens.spacingSM) {
-                    // Rotating chevron (mirrors stock DisclosureGroup)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.inkSecondary)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                        .animation(.default, value: expanded)
-
-                    Text("Event Details")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.ink)
-
-                    // Collapsed preview: show WHEN content
-                    if !expanded, let when = data.whenText {
-                        Text(when)
-                            .font(.monoMeta)
-                            .foregroundStyle(.inkSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+            if !alwaysExpanded {
+                // Tappable header -- whole line toggles expansion
+                Button {
+                    withAnimation {
+                        expanded.toggle()
                     }
+                } label: {
+                    HStack(spacing: Tokens.spacingSM) {
+                        // Rotating chevron (mirrors stock DisclosureGroup)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.inkSecondary)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                            .animation(.default, value: expanded)
 
-                    Spacer()
+                        Text("Event Details")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.ink)
+
+                        // Collapsed preview: show WHEN content
+                        if !expanded, let when = data.whenText {
+                            Text(when)
+                                .font(.monoMeta)
+                                .foregroundStyle(.inkSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityValue(expanded ? "expanded" : "collapsed")
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityValue(expanded ? "expanded" : "collapsed")
 
-            if expanded {
+            if isExpanded {
                 definitionList
-                    .padding(.top, Tokens.spacingSM)
+                    .padding(.top, alwaysExpanded ? 0 : Tokens.spacingSM)
             }
         }
     }
@@ -229,12 +243,11 @@ public struct CalendarInfoCard: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.ink)
                     if let url = data.conferenceURL {
-                        Text(url.absoluteString)
+                        Link(url.absoluteString, destination: url)
                             .font(.monoMeta)
-                            .foregroundStyle(.inkSecondary)
+                            .foregroundStyle(.sage)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .textSelection(.enabled)
                     }
                 }
             }

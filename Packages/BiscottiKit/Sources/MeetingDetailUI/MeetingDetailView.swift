@@ -121,6 +121,10 @@ public struct MeetingDetailView: View {
 
     /// The main content shown after the initial data load completes.
     /// Extracted from `body` to keep each function under the line limit.
+    ///
+    /// The ScrollView fills the full pane width (scrollbar at the
+    /// window's right edge). Inside, the readable content is capped at
+    /// 760pt and left-aligned, with whitespace filling the right.
     private func loadedContent(geo: GeometryProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -135,6 +139,7 @@ public struct MeetingDetailView: View {
             .padding(.top, Tokens.homeVerticalPadding)
             .padding(.bottom, Tokens.homeVerticalPadding)
             .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
     }

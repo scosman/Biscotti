@@ -165,6 +165,21 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
                 on: receiver, continuation: continuation
             )
 
+            // The XPC proxy is not Sendable, but it is thread-safe (NSXPC
+            // proxies dispatch to the connection's queue). Wrap it so the
+            // @Sendable onTermination closure can reach it.
+            nonisolated(unsafe) let sendableProxy = proxy
+
+            // Install onTermination BEFORE the proxy call so that a consumer
+            // cancellation arriving between the proxy call and this assignment
+            // still sends cancel to the service.
+            continuation.onTermination = { @Sendable reason in
+                receiver.clearHandlers()
+                if case .cancelled = reason {
+                    sendableProxy.cancel {}
+                }
+            }
+
             // NOTE: The reply handler below may race with `onDone`/`onError`
             // handlers installed by `XPCStreamingRelay`. If the service has
             // already delivered a terminal event (reportDone/reportError) and
@@ -181,17 +196,6 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
                         throwing: XPCErrorMapper.map(error)
                     )
                     receiver.clearHandlers()
-                }
-            }
-
-            // The XPC proxy is not Sendable, but it is thread-safe (NSXPC
-            // proxies dispatch to the connection's queue). Wrap it so the
-            // @Sendable onTermination closure can reach it.
-            nonisolated(unsafe) let sendableProxy = proxy
-            continuation.onTermination = { @Sendable reason in
-                receiver.clearHandlers()
-                if case .cancelled = reason {
-                    sendableProxy.cancel {}
                 }
             }
         }

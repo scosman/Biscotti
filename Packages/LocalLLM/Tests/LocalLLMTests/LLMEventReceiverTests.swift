@@ -140,6 +140,72 @@ struct LLMEventReceiverTests {
         receiver.reportError(errorData: Data())
     }
 
+    @Test("done handler that clears handlers causes late callbacks to be dropped")
+    func detachOnDone() throws {
+        let receiver = LLMEventReceiver()
+        let doneCounter = Counter()
+        let lateTokenCollector = TokenCollector()
+
+        // Simulate the XPCStreamingRelay contract: onDone clears handlers.
+        receiver.setHandlers(
+            onToken: { lateTokenCollector.append($0) },
+            onReasoningToken: { _ in },
+            onDone: { _ in
+                doneCounter.increment()
+                receiver.clearHandlers()
+            },
+            onError: { _ in }
+        )
+
+        // Drive a token, then done.
+        receiver.reportToken("before-done")
+        let result = MockEngine.defaultResult()
+        let resultData = try JSONEncoder().encode(result)
+        receiver.reportDone(resultData: resultData)
+        #expect(doneCounter.value == 1)
+
+        // Late callbacks after done should be silently dropped.
+        receiver.reportToken("late-token")
+        receiver.reportDone(resultData: resultData)
+        receiver.reportReasoningToken("late-reasoning")
+
+        #expect(doneCounter.value == 1)
+        // Only the pre-done token should have been collected.
+        #expect(lateTokenCollector.values == ["before-done"])
+    }
+
+    @Test("error handler that clears handlers causes late callbacks to be dropped")
+    func detachOnError() throws {
+        let receiver = LLMEventReceiver()
+        let errorCounter = Counter()
+        let lateTokenCollector = TokenCollector()
+
+        // Simulate the XPCStreamingRelay contract: onError clears handlers.
+        receiver.setHandlers(
+            onToken: { lateTokenCollector.append($0) },
+            onReasoningToken: { _ in },
+            onDone: { _ in },
+            onError: { _ in
+                errorCounter.increment()
+                receiver.clearHandlers()
+            }
+        )
+
+        receiver.reportToken("before-error")
+        let payload = LLMErrorPayload.generationFailed("Metal crashed")
+        let errorData = try JSONEncoder().encode(payload)
+        receiver.reportError(errorData: errorData)
+        #expect(errorCounter.value == 1)
+
+        // Late callbacks should be dropped.
+        receiver.reportToken("late-token")
+        receiver.reportError(errorData: errorData)
+        receiver.reportDone(resultData: Data())
+
+        #expect(errorCounter.value == 1)
+        #expect(lateTokenCollector.values == ["before-error"])
+    }
+
     @Test("done and error both clear through correctly")
     func doneAndErrorSequence() throws {
         let receiver = LLMEventReceiver()

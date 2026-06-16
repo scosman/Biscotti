@@ -82,7 +82,11 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
         do {
             request = try JSONDecoder().decode(LLMLoadRequest.self, from: requestData)
         } catch {
-            reply(error)
+            reply(LLMNSErrorBridge.nsError(
+                from: LLMServiceError.protocolError(
+                    "Failed to decode LLMLoadRequest: \(error.localizedDescription)"
+                )
+            ))
             return
         }
 
@@ -111,7 +115,11 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
         do {
             request = try JSONDecoder().decode(LLMGenerateRequest.self, from: requestData)
         } catch {
-            reply(nil, error)
+            reply(nil, LLMNSErrorBridge.nsError(
+                from: LLMServiceError.protocolError(
+                    "Failed to decode LLMGenerateRequest: \(error.localizedDescription)"
+                )
+            ))
             return
         }
 
@@ -145,7 +153,11 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
         do {
             request = try JSONDecoder().decode(LLMGenerateRequest.self, from: requestData)
         } catch {
-            reply(error)
+            reply(LLMNSErrorBridge.nsError(
+                from: LLMServiceError.protocolError(
+                    "Failed to decode LLMGenerateRequest: \(error.localizedDescription)"
+                )
+            ))
             return
         }
 

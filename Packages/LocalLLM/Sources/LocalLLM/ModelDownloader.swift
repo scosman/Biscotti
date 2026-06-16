@@ -48,6 +48,8 @@ public struct ModelDownloader: Sendable {
         from source: URL = ModelDownloader.defaultModelURL,
         progress: @Sendable @escaping (_ bytes: Int64, _ total: Int64?) -> Void
     ) async throws -> URL {
+        // TODO: Filename sanitization (non-empty, no leading dot, filename-safe chars) should
+        // be added when the downloader accepts arbitrary user URLs in Project 10.
         let finalPath = cacheDirectory.appendingPathComponent(source.lastPathComponent)
 
         // Skip if a non-empty file already exists
@@ -66,9 +68,23 @@ public struct ModelDownloader: Sendable {
         try? FileManager.default.removeItem(at: tempPath)
 
         do {
-            try await performDownload(
+            let expectedLength = try await performDownload(
                 from: source, to: tempPath, progress: progress
             )
+
+            // Validate downloaded size against the server's Content-Length when available.
+            // TODO: Full SHA-256 integrity verification against a published digest is
+            // deferred to the Project 10 download manager.
+            if let expectedLength, expectedLength > 0 {
+                let attrs = try FileManager.default.attributesOfItem(atPath: tempPath.path)
+                let actualSize = (attrs[.size] as? Int64) ?? 0
+                if actualSize != expectedLength {
+                    throw LocalLLMError.downloadFailed(
+                        url: source,
+                        underlying: "Size mismatch: expected \(expectedLength) bytes, got \(actualSize)"
+                    )
+                }
+            }
 
             // Atomic move to final path
             try? FileManager.default.removeItem(at: finalPath)
@@ -111,11 +127,13 @@ public struct ModelDownloader: Sendable {
 
     // MARK: - Network (isolated for testability)
 
+    /// Returns the server's expected content length (nil if not provided).
+    @discardableResult
     private func performDownload(
         from source: URL,
         to destination: URL,
         progress: @Sendable @escaping (_ bytes: Int64, _ total: Int64?) -> Void
-    ) async throws {
+    ) async throws -> Int64? {
         let request = URLRequest(url: source)
         let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
 
@@ -162,5 +180,7 @@ public struct ModelDownloader: Sendable {
             try fileHandle.write(contentsOf: buffer)
         }
         progress(downloaded, totalBytes)
+
+        return totalBytes
     }
 }

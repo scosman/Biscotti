@@ -1,6 +1,6 @@
 /// Load-time configuration for the LLM engine.
 ///
-/// Controls model loading parameters and context allocation. Immutable after creation.
+/// Controls model loading parameters and context allocation.
 public struct EngineConfig: Sendable, Codable, Equatable {
     /// Context window size in tokens. Gemma 4 12B supports up to 128k but 32k is practical
     /// for meeting transcript workloads and keeps memory manageable.

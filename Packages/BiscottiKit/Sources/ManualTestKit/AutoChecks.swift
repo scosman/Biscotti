@@ -1,7 +1,8 @@
 import Foundation
 
-/// Pure-function auto-check helpers used by the test scripts' `.autoCheck` steps.
-/// These are the automatable assertions the harness runs — no Core Audio or XPC needed.
+/// Auto-check helpers used by the test scripts' `.autoCheck` steps.
+/// Most checks are pure functions (no I/O beyond `FileManager`); the exception
+/// is `checkNoLLMServiceRunning`, which enumerates processes via `pgrep`.
 public enum AutoChecks {
     /// Default minimum file size in bytes (10 KB) — a file below this is suspiciously small
     /// for any real audio recording, even a very short one at 64 kbps.

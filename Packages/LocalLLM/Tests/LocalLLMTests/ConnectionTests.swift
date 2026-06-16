@@ -100,13 +100,28 @@ struct BufferedGenerationTests {
     @Test("State transitions through generating and back to ready")
     func stateTransitions() async throws {
         // Use a delay so we can observe the generating state
-        let engine = MockEngine(tokenDelay: .milliseconds(50))
+        let engine = MockEngine(tokenDelay: .milliseconds(100))
         let conn = try await LLMService.openConnection(engine: engine)
 
         let stateBefore = await conn.state
         #expect(stateBefore == .ready)
 
-        let result = try await conn.generate(prompt: "test")
+        // Wait for the engine to signal that generation has actually started
+        // before observing the .generating state.
+        let startedStream = engine.makeGenerationStartedStream()
+
+        let task = Task {
+            try await conn.generate(prompt: "test")
+        }
+
+        // Wait for the engine to enter generation
+        var startedIter = startedStream.makeAsyncIterator()
+        await startedIter.next()
+
+        let stateGenerating = await conn.state
+        #expect(stateGenerating == .generating)
+
+        let result = try await task.value
         #expect(result.text == "Hello world")
 
         let stateAfter = await conn.state
@@ -202,6 +217,11 @@ struct SerialOrderingTests {
         let engine = MockEngine(tokenDelay: .milliseconds(20))
         let conn = try await LLMService.openConnection(engine: engine)
 
+        // Deterministic signal: wait for the engine to confirm the first
+        // generation has actually started before launching the second task.
+        let startedStream = engine.makeGenerationStartedStream()
+        var startedIter = startedStream.makeAsyncIterator()
+
         // Track completion order via an actor-isolated array
         let tracker = OrderTracker()
 
@@ -210,8 +230,8 @@ struct SerialOrderingTests {
             await tracker.record(1)
         }()
 
-        // Small delay to ensure the first call acquires the semaphore first.
-        try await Task.sleep(for: .milliseconds(5))
+        // Wait for the first generate to enter the engine (semaphore acquired).
+        await startedIter.next()
 
         async let second: Void = {
             _ = try await conn.generate(prompt: "second")
@@ -227,6 +247,158 @@ struct SerialOrderingTests {
 
         await conn.close()
     }
+}
+
+// MARK: - Failed State Transitions
+
+@Suite("LLMConnection Failed State")
+struct FailedStateTests {
+    @Test("serviceInterrupted transitions connection to .failed")
+    func serviceInterruptedMarksFailed() async throws {
+        let backend = FailingBackend(
+            error: LLMServiceError.serviceInterrupted
+        )
+        let conn = LLMConnection(backend: backend)
+        try await conn.start()
+
+        let stateBefore = await conn.state
+        #expect(stateBefore == .ready)
+
+        do {
+            _ = try await conn.generate(prompt: "test")
+            Issue.record("Expected serviceInterrupted error")
+        } catch let error as LLMServiceError {
+            #expect(error == .serviceInterrupted)
+        }
+
+        let stateAfter = await conn.state
+        #expect(stateAfter == .failed(.serviceInterrupted))
+
+        // Subsequent generate should throw the failed error without re-entering the backend
+        let callsBefore = backend.generateCallCount
+        do {
+            _ = try await conn.generate(prompt: "another")
+            Issue.record("Expected failed error on subsequent call")
+        } catch let error as LLMServiceError {
+            #expect(error == .serviceInterrupted)
+        }
+        #expect(backend.generateCallCount == callsBefore)
+
+        await conn.close()
+    }
+
+    @Test("protocolError transitions connection to .failed")
+    func protocolErrorMarksFailed() async throws {
+        let backend = FailingBackend(
+            error: LLMServiceError.protocolError("bad frame")
+        )
+        let conn = LLMConnection(backend: backend)
+        try await conn.start()
+
+        do {
+            _ = try await conn.generate(prompt: "test")
+            Issue.record("Expected protocolError")
+        } catch let error as LLMServiceError {
+            #expect(error == .protocolError("bad frame"))
+        }
+
+        let stateAfter = await conn.state
+        #expect(stateAfter == .failed(.protocolError("bad frame")))
+
+        await conn.close()
+    }
+
+    @Test("Per-request error leaves connection ready")
+    func perRequestErrorStaysReady() async throws {
+        let backend = FailingBackend(
+            error: LocalLLMError.contextOverflow(promptTokens: 5000, contextSize: 4096)
+        )
+        let conn = LLMConnection(backend: backend)
+        try await conn.start()
+
+        do {
+            _ = try await conn.generate(prompt: "test")
+            Issue.record("Expected contextOverflow error")
+        } catch is LocalLLMError {
+            // Expected
+        }
+
+        let stateAfter = await conn.state
+        #expect(stateAfter == .ready)
+
+        await conn.close()
+    }
+
+    @Test("serviceInterrupted in streaming transitions to .failed")
+    func serviceInterruptedInStreamingMarksFailed() async throws {
+        let backend = FailingBackend(
+            error: LLMServiceError.serviceInterrupted
+        )
+        let conn = LLMConnection(backend: backend)
+        try await conn.start()
+
+        let stream = await conn.generateStreaming(prompt: "test")
+        do {
+            for try await _ in stream {
+                Issue.record("Should not yield events")
+            }
+            Issue.record("Expected serviceInterrupted")
+        } catch let error as LLMServiceError {
+            #expect(error == .serviceInterrupted)
+        }
+
+        let stateAfter = await conn.state
+        #expect(stateAfter == .failed(.serviceInterrupted))
+
+        await conn.close()
+    }
+}
+
+// MARK: - FailingBackend
+
+/// A test-only `ServiceBackend` that throws a configurable error from
+/// `generate`/`generateStreaming`. Used to test `LLMConnection`'s error-handling
+/// paths that `MockEngine` + `InProcessBackend` cannot trigger (e.g.
+/// `LLMServiceError.serviceInterrupted`).
+private final class FailingBackend: ServiceBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private let error: any Error
+    private var _generateCallCount = 0
+
+    var generateCallCount: Int {
+        lock.withLock { _generateCallCount }
+    }
+
+    init(error: any Error) {
+        self.error = error
+    }
+
+    func start() async throws {
+        // No-op: transitions to ready.
+    }
+
+    func generate(
+        id _: UInt64, prompt _: String, system _: String?,
+        options _: GenerationOptions
+    ) async throws -> GenerationResult {
+        lock.withLock { _generateCallCount += 1 }
+        throw error
+    }
+
+    func generateStreaming(
+        id _: UInt64, prompt _: String, system _: String?,
+        options _: GenerationOptions
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        lock.withLock { _generateCallCount += 1 }
+        let capturedError = error
+        return AsyncThrowingStream { $0.finish(throwing: capturedError) }
+    }
+
+    func cancel(id _: UInt64) async {}
+
+    func shutdown() async {}
+
+    nonisolated func forceKill() {}
 }
 
 /// Actor to track completion order safely across concurrent tasks.

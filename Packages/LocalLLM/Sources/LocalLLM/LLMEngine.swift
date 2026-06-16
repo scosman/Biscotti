@@ -489,7 +489,10 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     }
 
     /// Convert a ContinuousClock duration to seconds. Single source of truth for timing math.
-    private static func durationSeconds(from start: ContinuousClock.Instant, to end: ContinuousClock.Instant) -> TimeInterval {
+    private static func durationSeconds(
+        from start: ContinuousClock.Instant,
+        to end: ContinuousClock.Instant
+    ) -> TimeInterval {
         let duration = end - start
         return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }

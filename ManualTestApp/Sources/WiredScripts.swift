@@ -139,9 +139,31 @@ enum WiredScripts {
     /// bundle identifier in project.yml.
     private static let llmServiceName = "net.scosman.biscotti.BiscottiLLM"
 
+    /// Guard that the model file exists before attempting XPC inference.
+    /// Throws a clear error directing the user to run the download step first,
+    /// mirroring the CLI's `RunCommand.run()` guard.
+    private static func requireModelDownloaded(_ model: URL) throws {
+        guard FileManager.default.fileExists(atPath: model.path) else {
+            throw ModelNotDownloadedError(path: model.path)
+        }
+    }
+
+    /// Surfaced when an inference step is run before the model has been downloaded.
+    private struct ModelNotDownloadedError: LocalizedError {
+        let path: String
+        var errorDescription: String? {
+            "Model not found at \(path). Run the 'Download LLM model' step first."
+        }
+    }
+
     /// Maps over the canonical Local LLM script, replacing action/autoCheck closures
     /// with real LocalLLM calls. Inference steps use the XPC backend (BiscottiLLM.xpc);
     /// model download is in-process (ModelDownloader).
+    ///
+    /// Each inference step intentionally opens and closes its own connection. The
+    /// per-request model load + memory reclamation cycle is part of what the manual
+    /// test validates (XPC service spawn, load, generate, exit), so the per-step
+    /// model-load latency is by design.
     private static func wireLocalLLM(_ script: TestScript) -> TestScript {
         let cache = LocalLLMPaths.defaultModelCacheDir
 
@@ -172,6 +194,7 @@ enum WiredScripts {
                 case "llm_xpc_inference":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         let text = try await LLMService.withConnection(
                             model: model,
@@ -191,6 +214,7 @@ enum WiredScripts {
                 case "llm_summarize_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         let text = try await LLMService.withConnection(
                             model: model,
@@ -211,6 +235,7 @@ enum WiredScripts {
                 case "llm_action_items_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         let text = try await LLMService.withConnection(
                             model: model,
@@ -232,6 +257,7 @@ enum WiredScripts {
                 case "llm_speaker_names_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         let text = try await LLMService.withConnection(
                             model: model,
@@ -253,6 +279,7 @@ enum WiredScripts {
                 case "llm_thinking_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         let output = try await LLMService.withConnection(
                             model: model,
@@ -282,6 +309,7 @@ enum WiredScripts {
                 case "llm_streaming_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
                         status("Connecting to BiscottiLLM.xpc...")
                         try await LLMService.withConnection(
                             model: model,

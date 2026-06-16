@@ -143,6 +143,10 @@ public enum Tokens {
 
     // MARK: - Home Layout
 
+    /// Maximum width for readable content columns (meeting detail,
+    /// event preview, pinned transport bar).
+    public static let readableContentMaxWidth: CGFloat = 760
+
     /// Maximum width for the Home content column.
     public static let homeColumnMaxWidth: CGFloat = 800
 

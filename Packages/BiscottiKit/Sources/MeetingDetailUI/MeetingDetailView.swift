@@ -12,18 +12,23 @@ import TranscriptionService
 ///
 /// Layout: while loading, shows a centered spinner. Once loaded, a
 /// single outer `ScrollView` containing a chrome section (header,
-/// calendar card, transport, tab bar) measured via a preference key,
-/// and a tab-content area sized to fill the remaining viewport. The
-/// Notes editor scrolls internally; the Transcript tab grows with
-/// content and the outer scroll handles it.
+/// calendar card, tab bar) measured via a preference key, and a
+/// tab-content area sized to fill the remaining viewport. The audio
+/// transport bar is pinned to the bottom of the panel via
+/// `safeAreaInset`, staying fixed regardless of scroll position.
+/// The Notes editor scrolls internally; the Transcript tab grows
+/// with content and the outer scroll handles it.
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
     /// The selected tab: Transcript (default) or Notes.
     @State private var tab: Tab = .transcript
 
-    /// Measured height of the chrome section (header + calendar + transport + tabs).
+    /// Measured height of the chrome section (header + calendar + tabs).
     @State private var chromeHeight: CGFloat = 0
+
+    /// Measured height of the pinned transport bar at the bottom.
+    @State private var transportHeight: CGFloat = 0
 
     /// Focus state for the inline title TextField. Set to false on
     /// submit so the field resigns first responder and deselects.
@@ -124,7 +129,13 @@ public struct MeetingDetailView: View {
     ///
     /// The ScrollView fills the full pane width (scrollbar at the
     /// window's right edge). Inside, the readable content is capped at
-    /// 760pt and left-aligned, with whitespace filling the right.
+    /// `Tokens.readableContentMaxWidth` and left-aligned, with whitespace
+    /// filling the right.
+    ///
+    /// The `AudioTransport` is pinned to the bottom of the panel via
+    /// `safeAreaInset(edge: .bottom)`, which automatically adjusts the
+    /// scroll content inset and scroll indicator so the last line of
+    /// content is never hidden behind the bar.
     private func loadedContent(geo: GeometryProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -138,13 +149,18 @@ public struct MeetingDetailView: View {
             .padding(.horizontal, Tokens.homeHorizontalPadding)
             .padding(.top, Tokens.homeVerticalPadding)
             .padding(.bottom, Tokens.homeVerticalPadding)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
+        .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            pinnedTransportBar
+        }
     }
 
-    /// Height available for tab content after subtracting chrome and padding.
+    /// Height available for tab content after subtracting chrome, padding,
+    /// and the pinned transport bar.
     ///
     /// The caller applies a 250pt floor via `max(250, contentFill(...))` so
     /// the notes editor stays usable in small windows. In normal/large
@@ -154,12 +170,16 @@ public struct MeetingDetailView: View {
     /// **Layout coupling:** the `verticalOverhead` constant mirrors the
     /// padding and divider in `loadedContent(geo:)`. If you change the
     /// padding values or divider there, update this calculation to match.
+    /// The `transportHeight` is measured via `TransportHeightKey` in
+    /// `pinnedTransportBar` — it accounts for the bottom `safeAreaInset`
+    /// that the outer `GeometryReader` does not subtract from its reported
+    /// size.
     private func contentFill(viewportHeight: CGFloat) -> CGFloat {
         let verticalOverhead =
             Tokens.homeVerticalPadding * 2 // top + bottom page padding
             + Tokens.spacingMD * 2 // divider vertical padding
             + 1 // divider pixel height
-        return max(0, viewportHeight - chromeHeight - verticalOverhead)
+        return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
 
     // MARK: - Tabs
@@ -359,8 +379,49 @@ public struct MeetingDetailView: View {
 // MARK: - Chrome sub-views
 
 private extension MeetingDetailView {
-    /// Header + calendar card + transport + tab bar, measured for the
-    /// chrome-height preference key.
+    /// Audio transport pinned to the bottom of the panel. Full-width
+    /// background (Liquid Glass on macOS 26+, vibrancy material on older);
+    /// inner content capped to the readable column width and left-aligned
+    /// to line up with content above. The transport renders without its
+    /// own rounded card (`showCard: false`) since the bar itself provides
+    /// the surface.
+    var pinnedTransportBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            AudioTransport(
+                isPlaying: viewModel.isPlaying,
+                currentTime: viewModel.playbackCurrentTime,
+                duration: viewModel.playbackDuration,
+                isDisabled: !viewModel.canPlay,
+                rate: viewModel.playbackRate,
+                speedOptions: MeetingDetailViewModel.speedOptions,
+                showCard: false,
+                onPlayPause: { viewModel.playPause() },
+                onSeek: { viewModel.seek(to: $0) },
+                onRate: { viewModel.setPlaybackRate($0) }
+            )
+            .padding(.horizontal, Tokens.homeHorizontalPadding)
+            .padding(.vertical, Tokens.spacingSM)
+            .frame(
+                maxWidth: Tokens.readableContentMaxWidth,
+                alignment: .leading
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .pinnedBarBackground()
+        .background(GeometryReader { transportProxy in
+            Color.clear
+                .preference(
+                    key: TransportHeightKey.self,
+                    value: transportProxy.size.height
+                )
+        })
+    }
+
+    /// Header + calendar card + tab bar, measured for the chrome-height
+    /// preference key. AudioTransport is now pinned to the bottom of
+    /// the panel (see `pinnedTransportBar`), outside this scroll region.
     var chrome: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             header
@@ -375,18 +436,6 @@ private extension MeetingDetailView {
                     onOpenInCalendar: { viewModel.openInCalendar() }
                 )
             }
-
-            AudioTransport(
-                isPlaying: viewModel.isPlaying,
-                currentTime: viewModel.playbackCurrentTime,
-                duration: viewModel.playbackDuration,
-                isDisabled: !viewModel.canPlay,
-                rate: viewModel.playbackRate,
-                speedOptions: MeetingDetailViewModel.speedOptions,
-                onPlayPause: { viewModel.playPause() },
-                onSeek: { viewModel.seek(to: $0) },
-                onRate: { viewModel.setPlaybackRate($0) }
-            )
 
             tabBar
         }
@@ -735,12 +784,39 @@ private extension MeetingDetailView {
     }
 }
 
-// MARK: - Chrome height preference key
+// MARK: - Layout preference keys
 
 private struct ChromeHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+private struct TransportHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+// MARK: - Pinned bar background (glass / vibrancy)
+
+/// Applies Liquid Glass on macOS 26+ and falls back to the vibrancy
+/// material on older macOS versions.
+private struct PinnedBarBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: Rectangle())
+        } else {
+            content.background(.ultraThinMaterial)
+        }
+    }
+}
+
+private extension View {
+    func pinnedBarBackground() -> some View {
+        modifier(PinnedBarBackgroundModifier())
     }
 }
 

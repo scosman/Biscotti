@@ -31,9 +31,12 @@ public enum TranscriptContent {
             speaker.foregroundColor = speakerColor(for: segment.speakerLabel)
             result.append(speaker)
 
-            // Two spaces + timestamp
+            // Two spaces + timestamp (+ play glyph when seekable)
             let timeText = TimeFormatting.formatPlaybackTime(segment.startTime)
-            var timestamp = AttributedString("  \(timeText)")
+            let timestampLabel = canSeek
+                ? "  \(timeText) \u{25B6}\u{FE0E}"
+                : "  \(timeText)"
+            var timestamp = AttributedString(timestampLabel)
             timestamp.font = Font.biscottiMono(12)
             timestamp.foregroundColor = Color.inkTertiary
             if canSeek {

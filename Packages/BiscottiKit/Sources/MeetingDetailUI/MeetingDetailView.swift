@@ -30,22 +30,6 @@ public struct MeetingDetailView: View {
     /// Measured height of the pinned transport bar at the bottom.
     @State private var transportHeight: CGFloat = 0
 
-    /// Focus state for the inline title TextField. Set to false on
-    /// submit so the field resigns first responder and deselects.
-    @FocusState private var titleFieldFocused: Bool
-
-    // -- Click-away resign state --
-
-    /// The title field's frame in SwiftUI global coordinates, captured
-    /// via a `GeometryReader` background. Used by the click-away monitor
-    /// to distinguish inside vs outside clicks.
-    @State private var titleFrame: CGRect = .zero
-
-    /// Local event monitor that resigns the title field when the user
-    /// clicks outside its bounds. Installed while `titleFieldFocused` is
-    /// true; removed on unfocus and `onDisappear`.
-    @State private var clickAwayMonitor: Any?
-
     /// Transient "Copied" feedback: true for ~1.5s after a copy action.
     @State private var didCopy = false
 
@@ -88,19 +72,9 @@ public struct MeetingDetailView: View {
             copyResetTask = nil
             didCopy = false
         }
-        // Click-away monitor lifecycle: install on focus, remove on blur.
-        .onChange(of: titleFieldFocused) { _, focused in
-            if focused {
-                installClickAwayMonitor()
-            } else {
-                removeClickAwayMonitor()
-            }
-        }
         .onDisappear {
             copyResetTask?.cancel()
             copyResetTask = nil
-            titleFieldFocused = false
-            removeClickAwayMonitor()
             Task { await viewModel.flushNotes() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
@@ -194,110 +168,14 @@ public struct MeetingDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             HStack(alignment: .top) {
-                // Title: always-present TextField + truncating Text overlay.
-                //
-                // The TextField is ALWAYS in the hierarchy so
-                // @FocusState can move focus to it programmatically.
-                // Its text is `.clear` when not focused so it doesn't
-                // show through the Text overlay.
-                //
-                // The Text overlay (non-edit only) provides tail-
-                // ellipsis truncation AND is the tap-to-edit target.
-                // Tapping it sets focus + selectAll deterministically
-                // (no field editor competes for the click).
-                ZStack(alignment: .leading) {
-                    // ALWAYS present — hidden text when not editing
-                    TextField(
-                        titleFieldFocused ? "Meeting title" : "",
-                        text: $viewModel.editableTitle
-                    )
-                    .font(.biscottiSerif(27))
-                    .tracking(-0.27)
-                    .foregroundStyle(
-                        titleFieldFocused ? Color.ink : Color.clear
-                    )
-                    .textFieldStyle(.plain)
-                    .focused($titleFieldFocused)
-                    .onSubmit {
-                        titleFieldFocused = false
-                        Task { await viewModel.saveTitle() }
-                    }
-
-                    // Truncating display + tap-to-edit (non-edit only)
-                    if !titleFieldFocused {
-                        Text(
-                            viewModel.editableTitle.isEmpty
-                                ? "Untitled meeting"
-                                : viewModel.editableTitle
-                        )
-                        .font(.biscottiSerif(27))
-                        .tracking(-0.27)
-                        .foregroundStyle(
-                            viewModel.editableTitle.isEmpty
-                                ? .inkTertiary : .ink
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            titleFieldFocused = true
-                            DispatchQueue.main.async {
-                                NSApp.sendAction(
-                                    #selector(
-                                        NSResponder.selectAll(_:)
-                                    ),
-                                    to: nil,
-                                    from: nil
-                                )
-                            }
-                        }
-                    }
+                EditableMeetingTitle(
+                    text: $viewModel.editableTitle,
+                    placeholder: "Untitled meeting",
+                    fieldPrompt: "Meeting title",
+                    font: .biscottiSerif(27)
+                ) {
+                    await viewModel.saveTitle()
                 }
-                // Focused styling: white fill + sage outline that bleeds
-                // outward so the text position and sibling layout stay
-                // fixed. Transparent when not focused → no visible box.
-                .padding(.top, 7)
-                .padding(.bottom, 3)
-                .padding(.horizontal, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(
-                            titleFieldFocused
-                                ? Color.white : Color.clear
-                        )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(
-                            titleFieldFocused
-                                ? Color.sage : Color.clear,
-                            lineWidth: 2
-                        )
-                )
-                .padding(.top, -7)
-                .padding(.bottom, -3)
-                .padding(.horizontal, -6)
-                // Capture frame for click-away monitor. On the outer
-                // ZStack so titleFrame is valid in edit mode.
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear {
-                                titleFrame = proxy.frame(
-                                    in: .global
-                                )
-                            }
-                            .onChange(
-                                of: proxy.frame(in: .global)
-                            ) { _, newFrame in
-                                titleFrame = newFrame
-                            }
-                    }
-                )
 
                 Spacer()
 
@@ -324,54 +202,6 @@ public struct MeetingDetailView: View {
             viewModel.hasDisplayableTranscript
         case .notes:
             !viewModel.notes.isEmpty
-        }
-    }
-
-    // MARK: - Click-away monitor helpers
-
-    /// Installs a local event monitor that resigns the title field when
-    /// the user clicks outside its bounds. The event is always returned
-    /// (never consumed) so the click reaches its intended target.
-    ///
-    /// Coordinate conversion: `event.locationInWindow` is in AppKit's
-    /// bottom-left-origin system. We flip it to SwiftUI's top-left-origin
-    /// global coordinates using the window content view's height, then
-    /// hit-test against `titleFrame` (captured in `.global` coordinates
-    /// via a `GeometryReader` background on the title field).
-    ///
-    /// No capture list: the closure reads `self.titleFrame` live each
-    /// invocation so it tracks window resizes / scroll / sidebar toggles.
-    private func installClickAwayMonitor() {
-        removeClickAwayMonitor()
-        clickAwayMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown]
-        ) { event in
-            guard let contentView = event.window?.contentView else {
-                return event
-            }
-            let loc = event.locationInWindow
-            // Flip y: AppKit bottom-left → SwiftUI top-left.
-            let flipped = CGPoint(
-                x: loc.x,
-                y: contentView.bounds.height - loc.y
-            )
-            if !titleFrame.contains(flipped) {
-                // Explicit MainActor hop: local monitors fire on main
-                // in practice but it's not formally guaranteed.
-                Task { @MainActor in
-                    titleFieldFocused = false
-                    await viewModel.saveTitle()
-                }
-            }
-            return event
-        }
-    }
-
-    /// Removes the click-away monitor if installed.
-    private func removeClickAwayMonitor() {
-        if let monitor = clickAwayMonitor {
-            NSEvent.removeMonitor(monitor)
-            clickAwayMonitor = nil
         }
     }
 }

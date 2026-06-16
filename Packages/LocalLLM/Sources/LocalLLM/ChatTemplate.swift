@@ -1,5 +1,4 @@
 import Foundation
-import LlamaSwift
 
 // MARK: - Protocol
 
@@ -95,43 +94,5 @@ public struct GemmaChatTemplate: ChatTemplating {
         }
 
         return result
-    }
-}
-
-// MARK: - Helpers
-
-/// Calls `body` with a C-compatible array of `llama_chat_message` whose string pointers
-/// remain valid for the duration of the closure.
-///
-/// Uses `strdup`/`free` to guarantee pointer stability (no dangling references from
-/// nested `withUnsafeBufferPointer` closures).
-func withChatMessages<R>(
-    _ pairs: [(role: String, content: String)],
-    _ body: (_ messages: UnsafeBufferPointer<llama_chat_message>) -> R
-) -> R {
-    var rolePtrs: [UnsafeMutablePointer<CChar>] = []
-    var contentPtrs: [UnsafeMutablePointer<CChar>] = []
-    defer {
-        for ptr in rolePtrs {
-            free(ptr)
-        }
-        for ptr in contentPtrs {
-            free(ptr)
-        }
-    }
-
-    var messages: [llama_chat_message] = []
-    for pair in pairs {
-        // swiftlint:disable:next force_unwrapping
-        let rolePtr = strdup(pair.role)!
-        // swiftlint:disable:next force_unwrapping
-        let contentPtr = strdup(pair.content)!
-        rolePtrs.append(rolePtr)
-        contentPtrs.append(contentPtr)
-        messages.append(llama_chat_message(role: rolePtr, content: contentPtr))
-    }
-
-    return messages.withUnsafeBufferPointer { buf in
-        body(buf)
     }
 }

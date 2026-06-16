@@ -303,13 +303,9 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             decodedText += piece
             generatedCount += 1
 
-            // Emit token to stream (if streaming). Called synchronously inside the
-            // actor-isolated loop -- consumer back-pressure has no effect (tokens buffer
-            // in the continuation). Bounded by maxTokens; consider a back-pressured
-            // channel if this becomes a bottleneck.
-            onToken?(piece)
-
-            // Check custom stop sequences
+            // Check custom stop sequences BEFORE emitting the token to the stream.
+            // This prevents stop-sequence tokens from leaking to the streaming consumer
+            // (the buffered GenerationResult.text already strips them via OutputParser).
             if let matched = OutputParser.matchesStopSequence(
                 decodedText, stopSequences: options.stopSequences
             ) {
@@ -317,6 +313,12 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
                 finishReason = .stopSequence
                 break
             }
+
+            // Emit token to stream (if streaming). Called synchronously inside the
+            // actor-isolated loop -- consumer back-pressure has no effect (tokens buffer
+            // in the continuation). Bounded by maxTokens; consider a back-pressured
+            // channel if this becomes a bottleneck.
+            onToken?(piece)
 
             // Feed back for next iteration: decode the single new token.
             // Uses a single-element array + withUnsafeMutableBufferPointer, matching the

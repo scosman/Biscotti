@@ -182,16 +182,36 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
                         case let .reasoningToken(piece):
                             reporterBox.value?.reportReasoningToken(piece)
                         case let .done(result):
-                            if let data = try? JSONEncoder().encode(result) {
+                            do {
+                                let data = try JSONEncoder().encode(result)
                                 reporterBox.value?.reportDone(resultData: data)
+                            } catch {
+                                // Encoding the result failed — send a terminal error
+                                // so the client's stream doesn't hang.
+                                let encodeError = LLMServiceError.protocolError(
+                                    "Failed to encode GenerationResult: \(error.localizedDescription)"
+                                )
+                                reporterBox.value?.reportError(
+                                    errorData: (try? JSONEncoder().encode(
+                                        LLMErrorPayload.from(encodeError)
+                                    )) ?? Data()
+                                )
+                                reply(LLMNSErrorBridge.nsError(from: encodeError))
+                                return
                             }
                         }
                     }
                     reply(nil)
-                } catch {
-                    let payload = LLMErrorPayload.from(error)
-                    if let data = try? JSONEncoder().encode(payload) {
+                } catch let streamError {
+                    let payload = LLMErrorPayload.from(streamError)
+                    do {
+                        let data = try JSONEncoder().encode(payload)
                         reporterBox.value?.reportError(errorData: data)
+                    } catch {
+                        // Error-payload encoding itself failed — send the original
+                        // stream error via the reply so the client surfaces something.
+                        reply(LLMNSErrorBridge.nsError(from: streamError))
+                        return
                     }
                     reply(nil)
                 }

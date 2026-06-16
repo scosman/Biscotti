@@ -70,6 +70,10 @@
     "status" : "not-run",
     "stepID" : "llm_action_items_quality"
   },
+  "llm_action_items_run" : {
+    "status" : "not-run",
+    "stepID" : "llm_action_items_run"
+  },
   "llm_ai_tests_passed" : {
     "status" : "not-run",
     "stepID" : "llm_ai_tests_passed"
@@ -90,17 +94,33 @@
     "status" : "not-run",
     "stepID" : "llm_speaker_names_quality"
   },
+  "llm_speaker_names_run" : {
+    "status" : "not-run",
+    "stepID" : "llm_speaker_names_run"
+  },
   "llm_streaming_channels" : {
     "status" : "not-run",
     "stepID" : "llm_streaming_channels"
+  },
+  "llm_streaming_run" : {
+    "status" : "not-run",
+    "stepID" : "llm_streaming_run"
   },
   "llm_summarize_quality" : {
     "status" : "not-run",
     "stepID" : "llm_summarize_quality"
   },
+  "llm_summarize_run" : {
+    "status" : "not-run",
+    "stepID" : "llm_summarize_run"
+  },
   "llm_thinking_mode" : {
     "status" : "not-run",
     "stepID" : "llm_thinking_mode"
+  },
+  "llm_thinking_run" : {
+    "status" : "not-run",
+    "stepID" : "llm_thinking_run"
   },
   "llm_xpc_inference" : {
     "status" : "not-run",

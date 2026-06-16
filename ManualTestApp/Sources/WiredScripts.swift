@@ -188,6 +188,144 @@ enum WiredScripts {
                         status("Response: \(text)")
                     }
 
+                case "llm_summarize_run":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let text = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Summarizing transcript...")
+                            let result = try await conn.generate(
+                                prompt: "Summarize the following meeting transcript "
+                                    + "in a few sentences:\n\n"
+                                    + TestScript.sampleMeetingTranscript,
+                                options: GenerationOptions(maxTokens: 512)
+                            )
+                            return result.text
+                        }
+                        status("Summary:\n\(text)")
+                    }
+
+                case "llm_action_items_run":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let text = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Extracting action items...")
+                            let result = try await conn.generate(
+                                prompt: "Extract all action items from the following "
+                                    + "meeting transcript. For each item list the owner "
+                                    + "and deadline:\n\n"
+                                    + TestScript.sampleMeetingTranscript,
+                                options: GenerationOptions(maxTokens: 512)
+                            )
+                            return result.text
+                        }
+                        status("Action Items:\n\(text)")
+                    }
+
+                case "llm_speaker_names_run":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let text = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Identifying speakers...")
+                            let result = try await conn.generate(
+                                prompt: "Identify all speakers in the following meeting "
+                                    + "transcript. For each speaker, describe their "
+                                    + "responsibilities and include a supporting quote:\n\n"
+                                    + TestScript.sampleMeetingTranscript,
+                                options: GenerationOptions(maxTokens: 512)
+                            )
+                            return result.text
+                        }
+                        status("Speakers:\n\(text)")
+                    }
+
+                case "llm_thinking_run":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let output = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Running thinking-mode inference...")
+                            return try await conn.generate(
+                                prompt: "Analyze the following meeting transcript. "
+                                    + "Think step by step about who has the most "
+                                    + "work and whether all deadlines are realistic, "
+                                    + "then give a final assessment:\n\n"
+                                    + TestScript.sampleMeetingTranscript,
+                                options: GenerationOptions(
+                                    maxTokens: 1024,
+                                    thinking: .auto
+                                )
+                            )
+                        }
+                        var display = ""
+                        if let reasoning = output.reasoning, !reasoning.isEmpty {
+                            display += "Thinking:\n\(reasoning)\n\n"
+                        }
+                        display += "Response:\n\(output.text)"
+                        status(display)
+                    }
+
+                case "llm_streaming_run":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        status("Connecting to BiscottiLLM.xpc...")
+                        try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Streaming tokens...")
+                            var thinking = ""
+                            var response = ""
+
+                            func render() -> String {
+                                var display = ""
+                                if !thinking.isEmpty {
+                                    display += "[Thinking]\n\(thinking)\n\n"
+                                }
+                                if !response.isEmpty {
+                                    display += "[Response]\n\(response)"
+                                }
+                                return display
+                            }
+
+                            let stream = await conn.generateStreaming(
+                                prompt: "Think about what makes a good meeting, "
+                                    + "then list three tips for effective meetings.",
+                                options: GenerationOptions(
+                                    maxTokens: 512,
+                                    thinking: .auto
+                                )
+                            )
+                            for try await event in stream {
+                                switch event {
+                                case let .reasoningToken(piece):
+                                    thinking += piece
+                                    status(render())
+                                case let .token(piece):
+                                    response += piece
+                                    status(render())
+                                case .done:
+                                    break
+                                }
+                            }
+                            // Final display already set by the last token event.
+                        }
+                    }
+
                 default:
                     return step
                 }

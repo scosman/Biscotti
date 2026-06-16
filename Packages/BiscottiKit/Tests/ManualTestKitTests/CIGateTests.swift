@@ -153,8 +153,8 @@ struct CIGateTests {
         // pass/fail results must coexist with a green `make test`. The non-gating
         // `manual-tests-check` is what tracks whether every step has actually run.
         #expect(
-            recordableIDs.count == 27,
-            "Expected 27 recordable step IDs (13 audio + 4 transcription + 10 LLM)"
+            recordableIDs.count == 32,
+            "Expected 32 recordable step IDs (13 audio + 4 transcription + 15 LLM)"
         )
         for id in recordableIDs {
             #expect(results[id] != nil, "Results file is missing an entry for step '\(id)'")

@@ -68,10 +68,12 @@ struct StepView: View {
             }
         }
 
-        if isRunning, let message = statusModel.message {
+        if let message = statusModel.message {
             Text(message)
                 .foregroundStyle(.secondary)
-                .font(.caption)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         if let errorMessage {
@@ -174,7 +176,6 @@ struct StepView: View {
             errorMessage = error.localizedDescription
             onResult(TestResult(stepID: id, status: .fail, note: error.localizedDescription, timestamp: .now))
         }
-        statusModel.message = nil
         isRunning = false
     }
 

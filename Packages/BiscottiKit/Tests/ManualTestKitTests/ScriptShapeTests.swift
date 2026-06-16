@@ -104,9 +104,9 @@ struct ScriptShapeTests {
         #expect(script.id == "local_llm")
     }
 
-    @Test("Local LLM script has exactly 10 steps")
+    @Test("Local LLM script has exactly 16 steps")
     func localLLMStepCount() {
-        #expect(TestScript.localLLM.steps.count == 10)
+        #expect(TestScript.localLLM.steps.count == 16)
     }
 
     @Test("Local LLM step IDs match the canonical set")
@@ -117,10 +117,16 @@ struct ScriptShapeTests {
             "llm_model_disk",
             "llm_ai_tests_passed",
             "llm_xpc_inference",
+            "llm_sample_transcript",
+            "llm_summarize_run",
             "llm_summarize_quality",
+            "llm_action_items_run",
             "llm_action_items_quality",
+            "llm_speaker_names_run",
             "llm_speaker_names_quality",
+            "llm_thinking_run",
             "llm_thinking_mode",
+            "llm_streaming_run",
             "llm_streaming_channels",
             "llm_reclamation"
         ]

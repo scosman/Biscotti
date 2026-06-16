@@ -4,12 +4,16 @@
     "stepID" : "ac_crash_safety_check"
   },
   "ac_files_exist" : {
-    "status" : "not-run",
-    "stepID" : "ac_files_exist"
+    "note" : "Both .aac files exist with sane sizes",
+    "status" : "pass",
+    "stepID" : "ac_files_exist",
+    "timestamp" : "2026-06-16T21:52:55Z"
   },
   "ac_meet_close_midcapture" : {
-    "status" : "not-run",
-    "stepID" : "ac_meet_close_midcapture"
+    "note" : "Very strange bug. Mic clean. speaker.aac clean for the duration of recording, but after recodring should stop, it has a buch of extra (4 mins for 29s audio). It's random bits and pices of mic and system interleaved, like garbage buffer got dumped in when done.",
+    "status" : "fail",
+    "stepID" : "ac_meet_close_midcapture",
+    "timestamp" : "2026-06-16T21:57:50Z"
   },
   "ac_meet_open_midcapture" : {
     "status" : "not-run",
@@ -28,28 +32,35 @@
     "stepID" : "ac_playback_mic"
   },
   "ac_playback_system" : {
-    "status" : "not-run",
-    "stepID" : "ac_playback_system"
+    "status" : "pass",
+    "stepID" : "ac_playback_system",
+    "timestamp" : "2026-06-16T21:48:34Z"
   },
   "ac_request_permissions" : {
-    "status" : "not-run",
-    "stepID" : "ac_request_permissions"
+    "status" : "pass",
+    "stepID" : "ac_request_permissions",
+    "timestamp" : "2026-06-16T21:47:53Z"
   },
   "ac_route_change" : {
-    "status" : "not-run",
-    "stepID" : "ac_route_change"
+    "note" : "Very strange bug. Mic clean. speaker.aac clean for the duration of recording, but after recodring should stop, it has a buch of extra (4 mins for 29s audio). It's random bits and pices of mic and system interleaved, like garbage buffer got dumped in when done.",
+    "status" : "fail",
+    "stepID" : "ac_route_change",
+    "timestamp" : "2026-06-16T21:55:55Z"
   },
   "ac_start_recording" : {
-    "status" : "not-run",
-    "stepID" : "ac_start_recording"
+    "status" : "pass",
+    "stepID" : "ac_start_recording",
+    "timestamp" : "2026-06-16T21:56:26Z"
   },
   "ac_stop_recording" : {
-    "status" : "not-run",
-    "stepID" : "ac_stop_recording"
+    "status" : "pass",
+    "stepID" : "ac_stop_recording",
+    "timestamp" : "2026-06-16T21:56:42Z"
   },
   "ac_two_dialogs" : {
-    "status" : "not-run",
-    "stepID" : "ac_two_dialogs"
+    "status" : "pass",
+    "stepID" : "ac_two_dialogs",
+    "timestamp" : "2026-06-16T21:47:54Z"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

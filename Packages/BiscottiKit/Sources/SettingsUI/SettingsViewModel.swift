@@ -46,6 +46,9 @@ public final class SettingsViewModel {
     /// app stays alive in the menu bar.
     public private(set) var exitOnWindowClose: Bool = false
 
+    /// How far before a meeting the menu bar shows the detailed text.
+    public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
+
     // MARK: - Calendar state
 
     /// All calendars grouped by source, for the include/exclude toggles.
@@ -131,6 +134,26 @@ public final class SettingsViewModel {
         } catch {
             // Revert on failure
             exitOnWindowClose = !enabled
+        }
+    }
+
+    /// Updates the "show upcoming meetings in menu bar" lead time.
+    /// Persists to the store and posts `.menuBarLeadTimeDidChange`
+    /// so AppCore refreshes its cached lead time for the menu bar icon.
+    public func setMenuBarLeadTime(_ value: MenuBarLeadTime) async {
+        let previous = menuBarLeadTime
+        menuBarLeadTime = value
+        do {
+            try await core.store.updateSettings { settings in
+                settings.menuBarLeadTimeSeconds = value.rawValue
+            }
+            NotificationCenter.default.post(
+                name: .menuBarLeadTimeDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            menuBarLeadTime = previous
         }
     }
 
@@ -267,6 +290,9 @@ public final class SettingsViewModel {
             let settings = try await core.store.settings()
             enabledCalendarIDs = settings.enabledCalendarIDs
             exitOnWindowClose = settings.exitOnWindowClose
+            menuBarLeadTime = MenuBarLeadTime(
+                seconds: settings.menuBarLeadTimeSeconds
+            )
         } catch {
             enabledCalendarIDs = nil
         }

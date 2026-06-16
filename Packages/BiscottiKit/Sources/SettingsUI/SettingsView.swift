@@ -1,6 +1,7 @@
 import AppCore
 import AppKit
 import Calendar
+import DataStore
 import DesignSystem
 import Permissions
 import SwiftUI
@@ -60,6 +61,14 @@ public struct SettingsView: View {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
+            Picker(
+                "Show upcoming meetings in menu bar",
+                selection: menuBarLeadTimeBinding
+            ) {
+                ForEach(MenuBarLeadTime.allCases) { option in
+                    Text(option.displayText).tag(option)
+                }
+            }
         }
     }
 
@@ -77,6 +86,15 @@ public struct SettingsView: View {
             get: { viewModel.exitOnWindowClose },
             set: { newValue in
                 Task { await viewModel.setExitOnWindowClose(newValue) }
+            }
+        )
+    }
+
+    private var menuBarLeadTimeBinding: Binding<MenuBarLeadTime> {
+        Binding(
+            get: { viewModel.menuBarLeadTime },
+            set: { newValue in
+                Task { await viewModel.setMenuBarLeadTime(newValue) }
             }
         )
     }

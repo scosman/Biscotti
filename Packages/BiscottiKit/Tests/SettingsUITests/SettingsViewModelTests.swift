@@ -1,8 +1,8 @@
 import BiscottiTestSupport
 import Calendar
-import DataStore
 import Permissions
 import Testing
+@testable import DataStore
 @testable import SettingsUI
 
 @Suite("SettingsViewModel")
@@ -332,5 +332,65 @@ struct SettingsViewModelTests {
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
         #expect(viewModel.exitOnWindowClose == true)
+    }
+}
+
+// MARK: - Menu bar lead time
+
+@Suite("SettingsViewModel -- menu bar lead time")
+@MainActor
+struct SettingsMenuBarLeadTimeTests {
+    @Test("menuBarLeadTime defaults to oneHour")
+    func menuBarLeadTimeDefault() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.menuBarLeadTime == .oneHour)
+    }
+
+    @Test("setMenuBarLeadTime persists and reads back")
+    func setMenuBarLeadTimePersists() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.menuBarLeadTime == .oneHour)
+
+        // Change to 5 minutes
+        await viewModel.setMenuBarLeadTime(.fiveMinutes)
+        #expect(viewModel.menuBarLeadTime == .fiveMinutes)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.menuBarLeadTimeSeconds == 300)
+    }
+
+    @Test("setMenuBarLeadTime to never persists zero")
+    func setMenuBarLeadTimeNever() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.setMenuBarLeadTime(.never)
+        #expect(viewModel.menuBarLeadTime == .never)
+
+        let settings = try await fixture.store.settings()
+        #expect(settings.menuBarLeadTimeSeconds == 0)
+    }
+
+    @Test("load reads menuBarLeadTime from store")
+    func menuBarLeadTimeLoadedFromStore() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        // Pre-set the value
+        try await fixture.store.updateSettings { settings in
+            settings.menuBarLeadTimeSeconds = MenuBarLeadTime.sixHours.rawValue
+        }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.menuBarLeadTime == .sixHours)
     }
 }

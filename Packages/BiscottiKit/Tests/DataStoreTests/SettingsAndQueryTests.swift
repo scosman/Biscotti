@@ -41,6 +41,7 @@ struct SettingsTests {
         #expect(result.customVocabulary.isEmpty)
         #expect(result.launchAtLogin == false)
         #expect(result.exitOnWindowClose == false)
+        #expect(result.menuBarLeadTimeSeconds == 3600)
         #expect(result.onboardingComplete == false)
         #expect(result.enabledCalendarIDs == nil)
     }
@@ -59,6 +60,7 @@ struct SettingsTests {
         try await store.updateSettings { settings in
             settings.launchAtLogin = true
             settings.exitOnWindowClose = true
+            settings.menuBarLeadTimeSeconds = 300
             settings.onboardingComplete = true
             settings.customVocabulary = ["Biscotti", "WhisperKit"]
             settings.enabledCalendarIDs = Set(["cal1", "cal2"])
@@ -67,6 +69,7 @@ struct SettingsTests {
         let result = try await store.settings()
         #expect(result.launchAtLogin == true)
         #expect(result.exitOnWindowClose == true)
+        #expect(result.menuBarLeadTimeSeconds == 300)
         #expect(result.onboardingComplete == true)
         #expect(result.customVocabulary == ["Biscotti", "WhisperKit"])
         #expect(result.enabledCalendarIDs == Set(["cal1", "cal2"]))

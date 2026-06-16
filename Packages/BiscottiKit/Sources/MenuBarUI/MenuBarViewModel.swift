@@ -38,13 +38,14 @@ public final class MenuBarViewModel {
     public enum IconState: Equatable {
         /// No recording, no imminent meeting.
         case idle
-        /// A meeting-like event is within 2 hours.
+        /// A meeting-like event is within the configured lead time.
         case nextMeeting(title: String, timeText: String)
         /// Recording is active.
         case recording
     }
 
-    /// The current icon state, derived from core state.
+    /// The current icon state, derived from core state and the menu bar
+    /// lead time setting.
     public var iconState: IconState {
         if case .recording = core.runState {
             return .recording
@@ -53,8 +54,8 @@ public final class MenuBarViewModel {
             return .recording
         }
         if let next = core.displayedUpcoming.first,
-           Self.isWithin2Hours(
-               next.start, relativeTo: core.minuteTick
+           core.menuBarLeadTime.shouldShowDetailedText(
+               meetingStart: next.start, now: core.minuteTick
            )
         {
             let title = Self.truncateTitle(
@@ -174,14 +175,6 @@ public final class MenuBarViewModel {
         TimeFormatting.relativeTimeText(
             event.start, relativeTo: core.minuteTick
         )
-    }
-
-    /// Whether a date is within 2 hours from now.
-    public nonisolated static func isWithin2Hours(
-        _ date: Date, relativeTo now: Date = Date()
-    ) -> Bool {
-        let interval = date.timeIntervalSince(now)
-        return interval > 0 && interval <= 2 * 3600
     }
 
     /// Formats a time interval as "MM:SS" or "H:MM:SS".

@@ -45,7 +45,7 @@ hardware run (the agent cannot run it).
   build-app` builds ManualTestApp with `BiscottiLLM.xpc` embedded; `make ci` green;
   `manual-tests-check` reports `llm_*` not-run (expected).
 
-- [ ] **Phase 4 — Human hardware validation.** (Human-run; agent cannot.)
+- [x] **Phase 4 — Human hardware validation.** (Human-run; agent cannot.)
   `make test-ai` (in-process model suite) green; CLI end-to-end from the new location; the
   `Local LLM` ManualTestApp tab through `BiscottiLLM.xpc` (inference, streaming, thinking, the
   three quality judgments, reclamation). Record + commit `llm_*` results, turning

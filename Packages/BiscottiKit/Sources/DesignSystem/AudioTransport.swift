@@ -1,8 +1,12 @@
 import SwiftUI
 
 /// Standard audio transport card: play/pause + scrubber + elapsed/total +
-/// speed menu, rendered inside a rounded card.
+/// speed menu, optionally rendered inside a rounded card.
 /// Disabled state grays out controls with an explanation.
+///
+/// Set `showCard` to `false` to render the controls without the rounded
+/// card background/stroke — useful when the transport is embedded in a
+/// pinned bar that supplies its own full-width background.
 public struct AudioTransport: View {
     public let isPlaying: Bool
     public let currentTime: TimeInterval
@@ -10,6 +14,7 @@ public struct AudioTransport: View {
     public let isDisabled: Bool
     public let rate: Float
     public let speedOptions: [Float]
+    public let showCard: Bool
     public let onPlayPause: () -> Void
     public let onSeek: (TimeInterval) -> Void
     public let onRate: (Float) -> Void
@@ -23,6 +28,7 @@ public struct AudioTransport: View {
         isDisabled: Bool,
         rate: Float = 1.0,
         speedOptions: [Float] = [0.5, 1.0, 1.25, 1.5, 2.0],
+        showCard: Bool = true,
         onPlayPause: @escaping () -> Void,
         onSeek: @escaping (TimeInterval) -> Void,
         onRate: @escaping (Float) -> Void = { _ in }
@@ -33,6 +39,7 @@ public struct AudioTransport: View {
         self.isDisabled = isDisabled
         self.rate = rate
         self.speedOptions = speedOptions
+        self.showCard = showCard
         self.onPlayPause = onPlayPause
         self.onSeek = onSeek
         self.onRate = onRate
@@ -48,14 +55,18 @@ public struct AudioTransport: View {
         }
         .padding(.horizontal, Tokens.spacingMD)
         .padding(.vertical, Tokens.spacingSM)
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.cardRadius)
-                .fill(Tokens.cardFill)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Tokens.cardRadius)
-                .stroke(Color.cardStroke, lineWidth: 0.5)
-        )
+        .background {
+            if showCard {
+                RoundedRectangle(cornerRadius: Tokens.cardRadius)
+                    .fill(Tokens.cardFill)
+            }
+        }
+        .overlay {
+            if showCard {
+                RoundedRectangle(cornerRadius: Tokens.cardRadius)
+                    .stroke(Color.cardStroke, lineWidth: 0.5)
+            }
+        }
     }
 
     private var enabledContent: some View {

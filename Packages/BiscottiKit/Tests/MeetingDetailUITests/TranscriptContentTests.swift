@@ -155,6 +155,45 @@ struct TranscriptContentAttributedStringTests {
         )
         #expect(attributed.characters.isEmpty)
     }
+
+    @Test("includes play glyph when canSeek is true")
+    func playGlyphPresent() {
+        let segments = [
+            SegmentData(
+                id: UUID(),
+                speakerLabel: "Speaker 0",
+                startTime: 5,
+                endTime: 10,
+                text: "Hello"
+            )
+        ]
+        let attributed = TranscriptContent.attributedString(
+            segments, canSeek: true
+        )
+        let plain = String(attributed.characters)
+
+        // U+25B6 (black right-pointing triangle) + U+FE0E (text presentation)
+        #expect(plain.contains("\u{25B6}\u{FE0E}"))
+    }
+
+    @Test("omits play glyph when canSeek is false")
+    func playGlyphAbsent() {
+        let segments = [
+            SegmentData(
+                id: UUID(),
+                speakerLabel: "Speaker 0",
+                startTime: 5,
+                endTime: 10,
+                text: "Hello"
+            )
+        ]
+        let attributed = TranscriptContent.attributedString(
+            segments, canSeek: false
+        )
+        let plain = String(attributed.characters)
+
+        #expect(!plain.contains("\u{25B6}"))
+    }
 }
 
 // MARK: - Speaker color

@@ -364,7 +364,7 @@ struct HomeViewModelActionTests {
         #expect(fix.fakeRecorder.backing.startCalled)
     }
 
-    @Test("openInCalendar produces ical:// URL with reference date")
+    @Test("openInCalendar produces ical ekevent deep-link URL")
     @MainActor
     func openInCalendar() throws {
         let fix = try makeCoreFixture(testName: "HomeUIOpenCal")
@@ -376,8 +376,9 @@ struct HomeViewModelActionTests {
         }
 
         let eventDate = Date(timeIntervalSinceReferenceDate: 123_456)
+        // Use a realistic composite key: "eventIdentifier|calendarItemIdentifier|timestamp"
         let event = CalendarEvent(
-            id: "ev-cal",
+            id: "EV-42|CI-42|123456",
             title: "Meeting",
             start: eventDate,
             end: eventDate.addingTimeInterval(3600),
@@ -393,7 +394,10 @@ struct HomeViewModelActionTests {
 
         #expect(openedURLs.count == 1)
         #expect(openedURLs[0].scheme == "ical")
-        #expect(openedURLs[0].absoluteString.contains("123456"))
+        // Uses the event identifier extracted from the composite key
+        #expect(openedURLs[0].absoluteString.contains("ekevent/EV-42"))
+        // No fractional timestamp in the URL
+        #expect(!openedURLs[0].absoluteString.contains(".0"))
     }
 }
 

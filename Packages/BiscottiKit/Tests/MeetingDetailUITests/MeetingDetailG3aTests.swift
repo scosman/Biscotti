@@ -441,50 +441,6 @@ struct MeetingDetailReTranscribeHiddenTests {
 
 @Suite("MeetingDetailViewModel -- Open in Calendar")
 struct MeetingDetailOpenInCalendarTests {
-    @Test("showOpenInCalendar false when no calendar context")
-    @MainActor
-    func openInCalHiddenWithoutContext() async throws {
-        let fix = try makeCoreFixture(testName: "G3aOpenCal")
-        defer { fix.cleanup() }
-
-        let meetingID = try await fix.store.createMeeting(
-            title: "No Context"
-        )
-
-        let viewModel = MeetingDetailViewModel(
-            core: fix.core,
-            meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() }
-        )
-        await viewModel.load()
-
-        #expect(viewModel.showOpenInCalendar == false)
-    }
-
-    @Test("showOpenInCalendar true when calendar context exists")
-    @MainActor
-    func openInCalShownWithContext() async throws {
-        let fix = try makeCoreFixture(testName: "G3aOpenCal")
-        defer { fix.cleanup() }
-
-        let meetingID = try await fix.store.createMeeting(
-            title: "Has Context"
-        )
-        try await fix.store.setSnapshot(
-            makeSnapshot(suffix: "opencal", title: "Team Sync"),
-            for: meetingID
-        )
-
-        let viewModel = MeetingDetailViewModel(
-            core: fix.core,
-            meetingID: meetingID,
-            makePlayer: { G3aFakePlayer() }
-        )
-        await viewModel.load()
-
-        #expect(viewModel.showOpenInCalendar == true)
-    }
-
     @Test("openInCalendar uses eventIdentifier URL when available")
     @MainActor
     func openInCalUsesEventIdentifier() async throws {
@@ -617,7 +573,6 @@ struct MeetingDetailAssociationRefreshTests {
         #expect(viewModel.calendarContext?.calendarTitle == "Team")
         #expect(viewModel.calendarContext?.title == "Past Standup")
         #expect(viewModel.editableTitle == "Past Standup")
-        #expect(viewModel.showOpenInCalendar == true)
     }
 
     @Test(
@@ -687,13 +642,11 @@ struct MeetingDetailAssociationRefreshTests {
         await viewModel.load()
 
         #expect(viewModel.hasCalendarContext == true)
-        #expect(viewModel.showOpenInCalendar == true)
 
         await viewModel.removeAssociation()
 
         #expect(viewModel.hasCalendarContext == false)
         #expect(viewModel.calendarContext == nil)
-        #expect(viewModel.showOpenInCalendar == false)
     }
 }
 
@@ -765,7 +718,6 @@ struct CalendarCandidateCacheRaceTests {
         #expect(viewModel.hasCalendarContext == true)
         #expect(viewModel.calendarContext?.title == "Past Standup")
         #expect(viewModel.calendarContext?.calendarTitle == "Team")
-        #expect(viewModel.showOpenInCalendar == true)
     }
 }
 
@@ -1059,6 +1011,7 @@ private final class G3aFakePlayer: AudioPlaybackProviding,
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 120
+    var rate: Float = 1.0
 
     func play() {
         isPlaying = true

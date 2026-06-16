@@ -81,6 +81,6 @@ struct ContentConstructionTests {
         let content = fake.addedRequests[0].content
         #expect(content.title.contains("10"))
         #expect(content.categoryIdentifier == "biscotti.stop-countdown")
-        #expect(content.sound == nil)
+        #expect(content.sound != nil)
     }
 }

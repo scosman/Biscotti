@@ -166,18 +166,12 @@ public final class NotificationService {
     /// presentation options to use when a notification arrives while the app
     /// is in the foreground.
     public func foregroundPresentationOptions(
-        for notification: UNNotification
+        for _: UNNotification
     ) -> UNNotificationPresentationOptions {
-        let categoryID = notification.request.content.categoryIdentifier
-
-        switch categoryID {
-        case CategoryID.stopCountdown:
-            // Countdown: show in list only, no repeated banner.
-            return [.list]
-        default:
-            // Meeting-start and ad-hoc: show banner + sound even when foreground.
-            return [.banner, .sound]
-        }
+        // Always show banner + sound in the foreground.
+        // The stop-countdown notification is the only surface for the "Keep
+        // recording" action — it must be visible even when the app is frontmost.
+        [.banner, .sound]
     }
 
     // MARK: - Private
@@ -313,7 +307,7 @@ private func fillCountdownContent(
 ) {
     content.title = "Recording will stop in \(secondsRemaining)s"
     content.body = "Tap Keep Recording to continue."
-    content.sound = nil
+    content.sound = .default
     content.categoryIdentifier = CategoryID.stopCountdown
     content.userInfo = [
         UserInfoKey.kind: KindValue.countdown,

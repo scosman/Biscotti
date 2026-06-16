@@ -25,9 +25,9 @@ struct ForegroundPresentationTests {
         #expect(options.contains(.sound))
     }
 
-    @Test("Countdown shows list only")
+    @Test("Countdown shows banner and sound (only UI for Keep Recording)")
     @MainActor
-    func foregroundCountdownShowsListOnly() async throws {
+    func foregroundCountdownShowsBannerAndSound() async throws {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         _ = await service.requestAuthorization()
@@ -42,9 +42,8 @@ struct ForegroundPresentationTests {
             coder: FakeNotificationCoder(request: request)
         ))
         let options = service.foregroundPresentationOptions(for: notification)
-        #expect(options.contains(.list))
-        #expect(!options.contains(.banner))
-        #expect(!options.contains(.sound))
+        #expect(options.contains(.banner))
+        #expect(options.contains(.sound))
     }
 }
 

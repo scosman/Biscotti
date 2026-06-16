@@ -1,4 +1,5 @@
 import AppCore
+import AppKit
 import Calendar
 import DataStore
 import Foundation
@@ -319,6 +320,18 @@ public final class MeetingDetailViewModel {
     public func seek(to time: TimeInterval) {
         audioPlayer?.currentTime = time
         syncPlaybackState()
+    }
+
+    /// Copies the displayed transcript to the system pasteboard as plain text.
+    public func copyTranscript() {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else { return }
+
+        let text = TranscriptContent.plainText(transcript.segments)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     /// Stops the playback ticker and cleans up. Called on disappear/flush.

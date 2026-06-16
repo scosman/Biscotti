@@ -165,22 +165,12 @@ public struct AudioTransport: View {
         }
     }
 
-    /// Formats a time interval as "MM:SS" or "H:MM:SS".
+    /// Formats a time interval as "M:SS" or "H:MM:SS".
+    /// Delegates to the shared `TimeFormatting.formatPlaybackTime`.
     public static func formatTime(
         _ interval: TimeInterval
     ) -> String {
-        let total = max(0, Int(interval))
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-
-        if hours > 0 {
-            return String(
-                format: "%d:%02d:%02d",
-                hours, minutes, seconds
-            )
-        }
-        return String(format: "%d:%02d", minutes, seconds)
+        TimeFormatting.formatPlaybackTime(interval)
     }
 
     /// Formats a rate as "0.5x", "1x", "1.25x", "1.5x", "2x".

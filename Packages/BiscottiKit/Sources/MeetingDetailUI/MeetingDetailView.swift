@@ -339,14 +339,13 @@ private extension MeetingDetailView {
         if let transcript = viewModel.displayedTranscript,
            !transcript.segments.isEmpty
         {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(transcript.segments) { segment in
-                    TranscriptSegmentRow(
-                        speakerLabel: segment.speakerLabel,
-                        text: segment.text
-                    )
-                }
-            }
+            SelectableTranscriptView(
+                attributed: TranscriptContent.attributedString(
+                    transcript.segments,
+                    canSeek: viewModel.canPlay
+                ),
+                onSeek: { viewModel.seek(to: $0) }
+            )
         } else {
             Text("No transcript available.")
                 .font(Tokens.metadataFont)

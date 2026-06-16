@@ -17,7 +17,7 @@ contract.
   / `speedOptions` to the view model; restyle `AudioTransport` into a card and
   add the soft-secondary speed `Menu`. Unit-test `setPlaybackRate`.
 
-- [ ] **Phase 2 — Transcript: selectable block, seek links, copy.**
+- [x] **Phase 2 — Transcript: selectable block, seek links, copy.**
   `TranscriptContent` (attributed + plain-text builders, speaker color),
   `SeekLink.seconds` parser, `SelectableTranscriptView` (`.textSelection` +
   `OpenURLAction` → `seek`, `.tint(.inkTertiary)`), and `vm.copyTranscript()`.

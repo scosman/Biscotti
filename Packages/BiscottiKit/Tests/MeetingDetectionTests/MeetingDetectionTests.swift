@@ -341,3 +341,149 @@ struct MicUserTrackingTests {
         #expect(collector.events.isEmpty)
     }
 }
+
+// MARK: - Mic-stop debounce tests
+
+@Suite("MeetingDetection — Mic Stop Debounce")
+@MainActor
+struct MicStopDebounceTests {
+    @Test("brief mic dropout (<5s) then reappearance does not emit allMicUsersStopped")
+    func briefDropoutSuppressed() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // NeverClock: debounce timers never fire, so the brief dropout
+        // remains pending and gets cancelled on reappearance.
+        let detector = makeNeverDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Non-self mic user active
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // Mic user drops out
+        source.emit([])
+        await collector.settle()
+
+        // Mic user comes back before debounce fires
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+
+        // No allMicUsersStopped -- the dropout was too brief
+        #expect(collector.events.isEmpty)
+    }
+
+    @Test("sustained mic stop (>=5s) emits allMicUsersStopped exactly once")
+    func sustainedStopEmitsOnce() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // ImmediateClock: debounce fires instantly, simulating the full
+        // 5s elapsing without interruption.
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Non-self mic user active
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // Mic user stops -- debounce fires immediately with ImmediateClock
+        source.emit([])
+        await collector.waitForEvents(count: 1)
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+
+        #expect(collector.events == [.allMicUsersStopped])
+    }
+
+    @Test("flap then real gap emits allMicUsersStopped once on the real gap")
+    func flapThenRealGapEmitsOnce() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // OneShotImmediateClock: the first sleep (the per-app start
+        // debounce or the first mic-stop debounce that fires) fires
+        // immediately; subsequent ones block. We use this to suppress
+        // the flap's mic debounce while letting the real gap's debounce
+        // resolve after detector.stop() cleanup.
+        //
+        // Actually, for this test we need:
+        // 1. First dropout: mic debounce starts (blocks with NeverClock)
+        //    -> cancelled on reappearance
+        // 2. Second dropout: mic debounce starts (fires with ImmediateClock)
+        //
+        // Use ImmediateClock -- both debounces fire instantly, but the
+        // first one is cancelled before it resolves because the
+        // reappearance snapshot processes before the debounce task runs.
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Non-self mic user active
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // Brief dropout + immediate reappearance (flap)
+        // The reappearance snapshot cancels the pending mic debounce
+        source.emit([])
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // Verify no event from the flap
+        #expect(collector.events.isEmpty)
+
+        // Real sustained gap -- mic user stops for good
+        source.emit([])
+        await collector.waitForEvents(count: 1)
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+
+        // Exactly one allMicUsersStopped from the real gap
+        #expect(collector.events == [.allMicUsersStopped])
+    }
+}

@@ -65,10 +65,15 @@ public final class MeetingDetector {
     /// previous snapshot. Used to detect the >=1 -> 0 transition.
     private var hadNonSelfMicUsers = false
 
+    /// Pending debounce task for the all-mic-users-stopped event.
+    /// Cancelled when a non-self mic user reappears before the debounce elapses.
+    private var micStopDebounceTask: Task<Void, Never>?
+
     // MARK: - Debounce constants
 
     let startDebounce: Duration = .seconds(3)
     let stopDebounce: Duration = .seconds(8)
+    let micStopDebounce: Duration = .seconds(5)
 
     /// The bundle ID prefix of the current app, used to exclude Biscotti's
     /// own mic usage from the "non-self mic users" set. Matches any
@@ -143,6 +148,9 @@ public final class MeetingDetector {
         }
         debounceTasks.removeAll()
 
+        micStopDebounceTask?.cancel()
+        micStopDebounceTask = nil
+
         for (_, state) in appStates {
             switch state.phase {
             case .active, .pendingStop:
@@ -216,7 +224,9 @@ public final class MeetingDetector {
     // MARK: - Non-self mic user tracking
 
     /// Checks whether any non-Biscotti process is using the mic and
-    /// emits `.allMicUsersStopped` on the >=1 -> 0 transition.
+    /// emits `.allMicUsersStopped` after the non-self mic-user set has
+    /// been continuously empty for `micStopDebounce` seconds. Cancels
+    /// any pending debounce if a non-self mic user reappears.
     private func updateMicUserTracking(_ snapshot: [AudioProcess]) {
         let hasNonSelfMicUsers = snapshot.contains { process in
             guard process.isRunningInput else { return false }
@@ -228,10 +238,38 @@ public final class MeetingDetector {
         }
 
         if hadNonSelfMicUsers, !hasNonSelfMicUsers {
-            emit(.allMicUsersStopped)
-            logger.info("All non-self mic users stopped")
+            // Transition to empty -- start debounce timer
+            enterMicStopDebounce()
+        } else if hasNonSelfMicUsers {
+            // A non-self mic user is present -- cancel any pending debounce
+            cancelMicStopDebounce()
         }
         hadNonSelfMicUsers = hasNonSelfMicUsers
+    }
+
+    private func enterMicStopDebounce() {
+        // Cancel any existing debounce (shouldn't normally exist, but
+        // guards against double-fire).
+        micStopDebounceTask?.cancel()
+
+        let clock = clock
+        let debounce = micStopDebounce
+        micStopDebounceTask = Task { [weak self] in
+            try? await clock.sleep(for: debounce)
+            guard !Task.isCancelled else { return }
+            self?.resolveMicStopDebounce()
+        }
+    }
+
+    private func resolveMicStopDebounce() {
+        micStopDebounceTask = nil
+        emit(.allMicUsersStopped)
+        logger.info("All non-self mic users stopped (after debounce)")
+    }
+
+    private func cancelMicStopDebounce() {
+        micStopDebounceTask?.cancel()
+        micStopDebounceTask = nil
     }
 
     // MARK: - State machine transitions

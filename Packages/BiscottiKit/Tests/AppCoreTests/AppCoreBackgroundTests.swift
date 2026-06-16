@@ -190,7 +190,7 @@ struct AppCoreDetectionPipelineTests {
 
 @Suite("AppCore -- detection auto-stop")
 struct AppCoreDetectionAutoStopTests {
-    @Test("auto-stop countdown fires after 15s when last mic user stops during recording")
+    @Test("auto-stop countdown fires after 10s when last mic user stops during recording")
     @MainActor
     func autoStopCountdownFiresAndStops() async throws {
         let fix = try makeCoreFixture(
@@ -240,8 +240,8 @@ struct AppCoreDetectionAutoStopTests {
         }
         #expect(fakeScheduler.pendingCount > 0)
 
-        // Single 15s sleep for the countdown (no per-second loop)
-        fakeScheduler.advance(by: .seconds(15))
+        // Single 10s sleep for the countdown (no per-second loop)
+        fakeScheduler.advance(by: .seconds(10))
         try await pollUntil { fix.core.runState == .idle }
 
         // Auto-stop should have fired: recording stopped
@@ -305,7 +305,7 @@ struct AppCoreDetectionAutoStopTests {
         // Wait for the action to be consumed
         try await Task.sleep(for: .milliseconds(200))
 
-        // Advance past 15s -- countdown should have been cancelled
+        // Advance past 10s -- countdown should have been cancelled
         fakeScheduler.advance(by: .seconds(20))
         try await Task.sleep(for: .milliseconds(100))
 
@@ -368,8 +368,8 @@ struct AppCoreDetectionAutoStopTests {
             fakeScheduler.pendingCount > 0
         }
 
-        // Advance past the 15s countdown
-        fakeScheduler.advance(by: .seconds(15))
+        // Advance past the 10s countdown
+        fakeScheduler.advance(by: .seconds(10))
         try await pollUntil { fix.core.runState == .idle }
 
         // Auto-stop should have fired
@@ -603,7 +603,7 @@ struct AppCoreMicUserAutoStopTests {
             .addedRequests[requestsBefore...]
         // Exactly ONE countdown notification, not per-second updates
         #expect(countdownRequests.count == 1)
-        #expect(countdownRequests.first?.content.title.contains("15") == true)
+        #expect(countdownRequests.first?.content.title.contains("10") == true)
 
         // Advance time partially -- no new notifications should appear
         fakeScheduler.advance(by: .seconds(5))

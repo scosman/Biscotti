@@ -40,9 +40,10 @@ struct DebounceTests {
         await collector.settle()
         collector.cancel()
 
-        // No started/stopped events (debounce suppressed), but
-        // allMicUsersStopped fires on the >=1 -> 0 mic transition.
-        #expect(collector.events == [.allMicUsersStopped])
+        // No started/stopped events (debounce suppressed). The
+        // allMicUsersStopped event is also debounced (5s) and NeverClock
+        // blocks indefinitely, so it never fires either.
+        #expect(collector.events.isEmpty)
     }
 
     @Test("Debounce suppresses flapping")
@@ -135,9 +136,10 @@ struct DebounceTests {
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
+        // The mic-user debounce is cancelled when Zoom's mic resumes,
+        // so .allMicUsersStopped does NOT fire.
         #expect(collector.events == [
             .started(app: zoom),
-            .allMicUsersStopped,
             .stopped(app: zoom)
         ])
     }
@@ -179,11 +181,13 @@ struct StopAndLifecycleTests {
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
-        #expect(collector.events == [
-            .started(app: zoom),
-            .allMicUsersStopped,
-            .stopped(app: zoom)
-        ])
+        // .started always comes first; .allMicUsersStopped and .stopped
+        // resolve via separate debounce Tasks so their relative order is
+        // non-deterministic with ImmediateClock.
+        #expect(collector.events.first == .started(app: zoom))
+        #expect(collector.events.contains(.allMicUsersStopped))
+        #expect(collector.events.contains(.stopped(app: zoom)))
+        #expect(collector.events.count == 3)
         detector.stop()
         collector.cancel()
     }
@@ -215,11 +219,13 @@ struct StopAndLifecycleTests {
         let zoom = DetectedApp(
             bundleID: "us.zoom.xos", displayName: "Zoom"
         )
-        #expect(collector.events == [
-            .started(app: zoom),
-            .allMicUsersStopped,
-            .stopped(app: zoom)
-        ])
+        // .started always comes first; .allMicUsersStopped and .stopped
+        // resolve via separate debounce Tasks so their relative order is
+        // non-deterministic with ImmediateClock.
+        #expect(collector.events.first == .started(app: zoom))
+        #expect(collector.events.contains(.allMicUsersStopped))
+        #expect(collector.events.contains(.stopped(app: zoom)))
+        #expect(collector.events.count == 3)
         detector.stop()
         collector.cancel()
     }

@@ -137,7 +137,7 @@ public final class AppCore {
     package var pendingTranscriptionTask: Task<Void, Never>?
 
     /// Auto-stop countdown duration in seconds.
-    private let autoStopSeconds = 15
+    private let autoStopSeconds = 10
 
     /// De-dup suppression window for ad-hoc detections after calendar prompts.
     private let calendarSuppressionInterval: TimeInterval = 600 // 10 minutes

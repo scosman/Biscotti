@@ -24,6 +24,10 @@ public final class RecordingController {
     /// The last error from a start or stop attempt. Cleared on next start.
     public private(set) var lastError: RecordingError?
 
+    /// In-memory notes captured during the current recording session.
+    /// Oldest-first (insertion order). Reset on `start()`, seeded on `stop()`.
+    public private(set) var notes: [MeetingNote] = []
+
     // MARK: - Dependencies
 
     private let store: DataStore
@@ -75,6 +79,30 @@ public final class RecordingController {
         self.denialCheckDelay = denialCheckDelay
     }
 
+    // MARK: - Notes
+
+    /// Adds a timestamped note to the current session.
+    ///
+    /// Empty or whitespace-only text is ignored. The timestamp is the
+    /// current `state.elapsed` at the moment of the call.
+    public func addNote(text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let note = MeetingNote(text: trimmed, timestamp: state.elapsed)
+        notes.append(note)
+    }
+
+    /// Updates the text of an existing note. The timestamp is preserved.
+    public func updateNote(id: UUID, text: String) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        notes[index].text = text
+    }
+
+    /// Removes a note by its stable ID.
+    public func removeNote(id: UUID) {
+        notes.removeAll(where: { $0.id == id })
+    }
+
     // MARK: - Start
 
     /// Starts a new recording session.
@@ -85,6 +113,7 @@ public final class RecordingController {
     public func start() async {
         lastError = nil
         systemAudioWarning = false
+        notes = []
 
         guard !state.isRecording else {
             lastError = .alreadyRecording
@@ -169,8 +198,21 @@ public final class RecordingController {
             }
         }
 
+        // Seed in-memory notes into the meeting's notes field
+        if let section = NotesMarkdown.generate(notes: notes, meetingID: meetingID) {
+            do {
+                let detail = try await store.meetingDetail(id: meetingID)
+                let existing = detail?.notes ?? ""
+                let merged = NotesMarkdown.merged(existing: existing, section: section)
+                try await store.setNotes(merged, for: meetingID)
+            } catch {
+                Self.logger.warning("Notes seeding failed for \(meetingID): \(error.localizedDescription)")
+            }
+        }
+
         // Reset state
         recorder = nil
+        notes = []
         state = .idle
 
         return meetingID

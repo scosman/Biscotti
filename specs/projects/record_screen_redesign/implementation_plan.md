@@ -17,7 +17,7 @@ order, not a restatement.
   shared `EditableMeetingTitle` (`DesignSystem`) and refactor `MeetingDetailView`
   to use it — behavior-preserving. (Foundation for Phases 3–5.)
 
-- [ ] **Phase 2 — Notes backend + markdown seeding (no UI).**
+- [x] **Phase 2 — Notes backend + markdown seeding (no UI).**
   Add `MeetingNote`; `RecordingController` notes state + `addNote/updateNote/
   removeNote`, reset on `start()`, seed on `stop()`. Add the pure `NotesMarkdown`
   generator (link format `biscotti://meeting/{id}?time=…`, oldest-first, merge).

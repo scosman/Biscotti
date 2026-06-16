@@ -269,6 +269,248 @@ struct RecordingStartStopTests {
     }
 }
 
+// MARK: - Notes tests
+
+@Suite("RecordingController -- in-memory notes")
+struct RecordingNotesTests {
+    @Test("addNote stamps current elapsed and appends")
+    @MainActor
+    func addNoteStampsElapsed() async throws {
+        let captureState = CaptureState(
+            isRecording: true,
+            elapsed: 42.5,
+            micLevel: 0,
+            systemLevel: 0,
+            startTimestamp: 0
+        )
+        let fix = try makeFixture(stateValues: [captureState])
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+
+        // Wait for the elapsed pump to deliver
+        for _ in 0 ..< 200 {
+            if fix.controller.state.elapsed == 42.5 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        fix.controller.addNote(text: "Test note")
+
+        #expect(fix.controller.notes.count == 1)
+        #expect(fix.controller.notes[0].text == "Test note")
+        #expect(fix.controller.notes[0].timestamp == 42.5)
+    }
+
+    @Test("addNote ignores empty and whitespace-only text")
+    @MainActor
+    func addNoteIgnoresBlank() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+
+        fix.controller.addNote(text: "")
+        fix.controller.addNote(text: "   ")
+        fix.controller.addNote(text: "\n\t")
+
+        #expect(fix.controller.notes.isEmpty)
+    }
+
+    @Test("addNote trims whitespace from text")
+    @MainActor
+    func addNoteTrimsWhitespace() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "  hello world  ")
+
+        #expect(fix.controller.notes.count == 1)
+        #expect(fix.controller.notes[0].text == "hello world")
+    }
+
+    @Test("updateNote changes text but preserves timestamp")
+    @MainActor
+    func updateNoteChangesText() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Original")
+
+        let noteID = fix.controller.notes[0].id
+        let originalTimestamp = fix.controller.notes[0].timestamp
+
+        fix.controller.updateNote(id: noteID, text: "Updated")
+
+        #expect(fix.controller.notes[0].text == "Updated")
+        #expect(fix.controller.notes[0].timestamp == originalTimestamp)
+        #expect(fix.controller.notes[0].id == noteID)
+    }
+
+    @Test("updateNote with unknown ID is a no-op")
+    @MainActor
+    func updateNoteUnknownID() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Keep me")
+
+        fix.controller.updateNote(id: UUID(), text: "Nope")
+
+        #expect(fix.controller.notes.count == 1)
+        #expect(fix.controller.notes[0].text == "Keep me")
+    }
+
+    @Test("removeNote removes by ID")
+    @MainActor
+    func removeNote() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Note 1")
+        fix.controller.addNote(text: "Note 2")
+        fix.controller.addNote(text: "Note 3")
+
+        let removeID = fix.controller.notes[1].id
+        fix.controller.removeNote(id: removeID)
+
+        #expect(fix.controller.notes.count == 2)
+        #expect(fix.controller.notes[0].text == "Note 1")
+        #expect(fix.controller.notes[1].text == "Note 3")
+    }
+
+    @Test("removeNote with unknown ID is a no-op")
+    @MainActor
+    func removeNoteUnknownID() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Stay")
+
+        fix.controller.removeNote(id: UUID())
+
+        #expect(fix.controller.notes.count == 1)
+    }
+
+    @Test("start() clears notes from previous session")
+    @MainActor
+    func startClearsNotes() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Leftover note")
+        #expect(fix.controller.notes.count == 1)
+
+        _ = await fix.controller.stop()
+
+        // Start a new session -- notes should be empty
+        await fix.controller.start()
+        #expect(fix.controller.notes.isEmpty)
+    }
+
+    @Test("stop() seeds notes into meeting's notes field")
+    @MainActor
+    func stopSeedsNotes() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        let meetingID = try #require(fix.controller.state.meetingID)
+
+        fix.controller.addNote(text: "First note")
+        fix.controller.addNote(text: "Second note")
+
+        _ = await fix.controller.stop()
+
+        // Verify the meeting's notes field contains the seeded markdown
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let notes = try #require(detail?.notes)
+        #expect(notes.contains("### Notes During Meeting"))
+        #expect(notes.contains("First note"))
+        #expect(notes.contains("Second note"))
+        #expect(notes.contains("biscotti://meeting/\(meetingID.uuidString)"))
+
+        // Verify oldest-first ordering in the seeded output
+        let firstRange = try #require(notes.range(of: "First note"))
+        let secondRange = try #require(notes.range(of: "Second note"))
+        #expect(firstRange.lowerBound < secondRange.lowerBound)
+    }
+
+    @Test("stop() clears in-memory notes")
+    @MainActor
+    func stopClearsNotes() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Will be cleared")
+
+        _ = await fix.controller.stop()
+
+        #expect(fix.controller.notes.isEmpty)
+    }
+
+    @Test("stop() with no notes does not seed meeting notes")
+    @MainActor
+    func stopNoNotesSkipsSeeding() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        let meetingID = try #require(fix.controller.state.meetingID)
+
+        _ = await fix.controller.stop()
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.notes == "")
+    }
+
+    @Test("stop() appends to existing notes")
+    @MainActor
+    func stopAppendsToExistingNotes() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        let meetingID = try #require(fix.controller.state.meetingID)
+
+        // Pre-populate the meeting's notes field
+        try await fix.store.setNotes("Existing content", for: meetingID)
+
+        fix.controller.addNote(text: "New note")
+
+        _ = await fix.controller.stop()
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let notes = try #require(detail?.notes)
+        #expect(notes.hasPrefix("Existing content"))
+        #expect(notes.contains("### Notes During Meeting"))
+        #expect(notes.contains("New note"))
+    }
+
+    @Test("notes maintain insertion order (oldest-first)")
+    @MainActor
+    func notesInsertionOrder() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        fix.controller.addNote(text: "Alpha")
+        fix.controller.addNote(text: "Beta")
+        fix.controller.addNote(text: "Gamma")
+
+        #expect(fix.controller.notes.count == 3)
+        #expect(fix.controller.notes[0].text == "Alpha")
+        #expect(fix.controller.notes[1].text == "Beta")
+        #expect(fix.controller.notes[2].text == "Gamma")
+    }
+}
+
 // MARK: - State, inference, and recovery tests
 
 @Suite("RecordingController -- state and recovery")

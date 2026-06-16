@@ -53,24 +53,37 @@ centered `ProgressView("Loading…")` spinner — no partial skeletons. Once loa
 the real content renders.
 
 One outer `ScrollView`; the Notes editor is sized to fill the height left below
-the chrome **with no minimum floor**, so the chrome looks pinned when it fits and
-the pane scrolls **only when content genuinely exceeds the viewport**:
+the chrome, with a **250pt minimum floor** so the editor stays usable in small
+windows. The chrome looks pinned when it fits and the pane scrolls **only when
+content genuinely exceeds the viewport**:
 
 ```
 ScrollView:
   chrome (measured height): header · calendar card · transport · tab bar
   ─────────────────────────────────────────────────────────────────────
-  Notes tab      → MarkdownEditor, height = max(0, paneH − chromeH − padding),
+  fill = max(250, paneH − chromeH − padding)
+
+  Notes tab      → MarkdownEditor, height = fill,
                    scrolls internally  →  chrome looks pinned when it fits
-  Transcript tab → selectable Text, minHeight = max(0, paneH − chromeH − padding),
+  Transcript tab → selectable Text, minHeight = fill,
                    grows; the outer ScrollView scrolls it (chrome scrolls away)
 ```
 
+**Normal/large window:** the exact fill (paneH minus chrome minus padding)
+exceeds 250, so the floor does not bind. Content fits the viewport exactly — no
+outer scroll, single scroll region.
+
+**Small window:** the exact fill drops below 250, so the floor binds at 250. The
+notes editor stays 250pt (usable) and the outer page scrolls to accommodate.
+This is the acceptable tradeoff — double-scroll only in genuinely cramped
+windows.
+
 This refines the design agent's "whole pane scrolls as one" into a native-reality
 call: the pinned markdown engine exposes no content-height API, so we size the
-editor explicitly. Net effect — **no double scroll**, empty/short content fits
-the viewport without forcing a scroll, and normal scroll-to-read for long
-transcripts. See `architecture.md` for the `ChromeHeightKey` measurement.
+editor explicitly. Net effect — **no double scroll in normal windows**,
+empty/short content fits the viewport without forcing a scroll, and normal
+scroll-to-read for long transcripts. See `architecture.md` for the
+`ChromeHeightKey` measurement.
 
 **Performance note:** the `AttributedString` for the transcript is cached by
 transcript ID + `canPlay` in the view model. It is only rebuilt when the
@@ -221,7 +234,7 @@ Copy hidden for both empty states.
 
 ### Notes (Notes tab)
 `MarkdownEditor` bound to `viewModel.notes`, **filling the remaining viewport**
-and scrolling internally (`.frame(height: max(0, paneH − chromeH − padding))`).
+and scrolling internally (`.frame(height: max(250, paneH − chromeH − padding))`).
 Placeholder "Add notes…". Click anywhere in the notes area — including the empty
 space below the placeholder — to focus the editor (via a `TextViewFocusForwarder`
 `NSViewRepresentable` background that walks the view hierarchy to find and focus

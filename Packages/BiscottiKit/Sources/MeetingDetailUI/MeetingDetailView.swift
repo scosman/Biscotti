@@ -29,6 +29,13 @@ public struct MeetingDetailView: View {
     /// submit so the field resigns first responder and deselects.
     @FocusState private var titleFieldFocused: Bool
 
+    /// Transient "Copied" feedback: true for ~1.5s after a copy action.
+    @State private var didCopy = false
+
+    /// Cancellable timer that reverts `didCopy` after the feedback window.
+    /// Stored so rapid re-clicks restart the window cleanly.
+    @State private var copyResetTask: Task<Void, Never>?
+
     public init(viewModel: MeetingDetailViewModel) {
         self.viewModel = viewModel
     }
@@ -58,7 +65,15 @@ public struct MeetingDetailView: View {
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
         }
+        .onChange(of: tab) { _, _ in
+            // Clear stale "Copied" feedback when switching tabs.
+            copyResetTask?.cancel()
+            copyResetTask = nil
+            didCopy = false
+        }
         .onDisappear {
+            copyResetTask?.cancel()
+            copyResetTask = nil
             Task { await viewModel.flushNotes() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
@@ -92,7 +107,7 @@ public struct MeetingDetailView: View {
                 Divider()
                     .padding(.vertical, Tokens.spacingMD)
 
-                tabContent(fill: contentFill(viewportHeight: geo.size.height))
+                tabContent(fill: max(250, contentFill(viewportHeight: geo.size.height)))
             }
             .padding(.horizontal, Tokens.homeHorizontalPadding)
             .padding(.top, Tokens.homeVerticalPadding)
@@ -103,6 +118,11 @@ public struct MeetingDetailView: View {
     }
 
     /// Height available for tab content after subtracting chrome and padding.
+    ///
+    /// The caller applies a 250pt floor via `max(250, contentFill(...))` so
+    /// the notes editor stays usable in small windows. In normal/large
+    /// windows the exact fill exceeds 250 and the floor does not bind,
+    /// preserving the single-scroll-region behavior.
     ///
     /// **Layout coupling:** the `verticalOverhead` constant mirrors the
     /// padding and divider in `loadedContent(geo:)`. If you change the
@@ -339,12 +359,23 @@ private extension MeetingDetailView {
                 } else {
                     viewModel.copyNotes()
                 }
+                didCopy = true
+                copyResetTask?.cancel()
+                copyResetTask = Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    guard !Task.isCancelled else { return }
+                    didCopy = false
+                }
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(
+                    didCopy ? "Copied" : "Copy",
+                    systemImage: didCopy ? "checkmark" : "doc.on.doc"
+                )
+                .transaction { $0.animation = nil }
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
-            .foregroundStyle(.inkSecondary)
+            .foregroundStyle(didCopy ? .sage : .inkSecondary)
             .disabled(!canCopy)
         }
     }

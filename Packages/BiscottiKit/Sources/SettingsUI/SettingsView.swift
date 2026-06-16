@@ -62,7 +62,7 @@ public struct SettingsView: View {
                     .foregroundStyle(Tokens.secondaryText)
             }
             Picker(
-                "Show upcoming meetings in menu bar",
+                "Show next meeting in menu bar",
                 selection: menuBarLeadTimeBinding
             ) {
                 ForEach(MenuBarLeadTime.allCases) { option in

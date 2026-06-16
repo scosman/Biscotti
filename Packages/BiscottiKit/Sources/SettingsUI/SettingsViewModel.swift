@@ -137,7 +137,7 @@ public final class SettingsViewModel {
         }
     }
 
-    /// Updates the "show upcoming meetings in menu bar" lead time.
+    /// Updates the "show next meeting in menu bar" lead time.
     /// Persists to the store and posts `.menuBarLeadTimeDidChange`
     /// so AppCore refreshes its cached lead time for the menu bar icon.
     public func setMenuBarLeadTime(_ value: MenuBarLeadTime) async {

@@ -65,12 +65,45 @@ public final class LiveEventStore: EventStoreProviding, @unchecked Sendable {
             guard let event = store.event(withIdentifier: eventIdentifier) else {
                 return nil
             }
-            // For recurring events, verify the occurrence date matches
-            if abs(event.occurrenceDate.timeIntervalSince(occurrenceStart)) > 1 {
-                return nil
+            // For non-recurring events (or the first occurrence),
+            // the occurrence date matches directly.
+            if abs(event.occurrenceDate.timeIntervalSince(occurrenceStart)) <= 1 {
+                return Self.mapEvent(event)
             }
-            return Self.mapEvent(event)
+            // For recurring events, event(withIdentifier:) returns only
+            // the first occurrence (Apple API limitation — see
+            // research/eventkit/README.md). Fall back to a narrow
+            // date-range predicate to locate the specific occurrence.
+            return Self.findOccurrence(
+                eventIdentifier: eventIdentifier,
+                near: occurrenceStart,
+                in: store
+            )
         }
+    }
+
+    /// Finds a specific occurrence of a recurring event by searching a
+    /// narrow window around the expected start date and matching on
+    /// `eventIdentifier` + `occurrenceDate`.
+    private static func findOccurrence(
+        eventIdentifier: String,
+        near date: Date,
+        in store: EKEventStore
+    ) -> EKEventDTO? {
+        // Search ±2 seconds around the expected occurrence start.
+        let predicate = store.predicateForEvents(
+            withStart: date.addingTimeInterval(-2),
+            end: date.addingTimeInterval(2),
+            calendars: nil
+        )
+        let matches = store.events(matching: predicate)
+        guard let match = matches.first(where: {
+            $0.eventIdentifier == eventIdentifier
+                && abs($0.occurrenceDate.timeIntervalSince(date)) <= 1
+        }) else {
+            return nil
+        }
+        return mapEvent(match)
     }
 
     // MARK: - Mapping helpers

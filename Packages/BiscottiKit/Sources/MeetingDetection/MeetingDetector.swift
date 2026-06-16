@@ -61,10 +61,20 @@ public final class MeetingDetector {
     private var appStates: [String: AppCallState] = [:]
     private var debounceTasks: [String: Task<Void, Never>] = [:]
 
+    /// Whether at least one non-self process was using the mic in the
+    /// previous snapshot. Used to detect the >=1 -> 0 transition.
+    private var hadNonSelfMicUsers = false
+
     // MARK: - Debounce constants
 
     let startDebounce: Duration = .seconds(3)
     let stopDebounce: Duration = .seconds(8)
+
+    /// The bundle ID prefix of the current app, used to exclude Biscotti's
+    /// own mic usage from the "non-self mic users" set. Matches any
+    /// bundle ID that starts with this prefix (covers the main app and
+    /// helper XPC services like the transcriber).
+    private let selfBundlePrefix: String
 
     // MARK: - Init
 
@@ -72,11 +82,13 @@ public final class MeetingDetector {
     public init(
         catalog: any MeetingCatalog,
         source: any ActivitySource,
-        clock: AnyClock
+        clock: AnyClock,
+        selfBundlePrefix: String = "net.scosman.biscotti"
     ) {
         self.catalog = catalog
         self.source = source
         self.clock = clock
+        self.selfBundlePrefix = selfBundlePrefix
     }
 
     /// Creates a detector using `ContinuousClock` and the default live
@@ -140,6 +152,7 @@ public final class MeetingDetector {
             }
         }
         appStates.removeAll()
+        hadNonSelfMicUsers = false
 
         eventContinuation?.finish()
         eventContinuation = nil
@@ -148,6 +161,10 @@ public final class MeetingDetector {
     // MARK: - Snapshot processing pipeline
 
     private func processSnapshot(_ snapshot: [AudioProcess]) {
+        // Track non-self mic users across ALL processes (not just watchlist).
+        // Fires .allMicUsersStopped on the >=1 -> 0 transition.
+        updateMicUserTracking(snapshot)
+
         // Step 1 & 2: Filter to watchlist, resolve helpers, OR-merge
         // raw input/output flags for processes that share a parent.
         var merged: [String: MergedFlags] = [:]
@@ -194,6 +211,27 @@ public final class MeetingDetector {
                 isInCall: false
             )
         }
+    }
+
+    // MARK: - Non-self mic user tracking
+
+    /// Checks whether any non-Biscotti process is using the mic and
+    /// emits `.allMicUsersStopped` on the >=1 -> 0 transition.
+    private func updateMicUserTracking(_ snapshot: [AudioProcess]) {
+        let hasNonSelfMicUsers = snapshot.contains { process in
+            guard process.isRunningInput else { return false }
+            guard let bundleID = process.bundleID else {
+                // Unknown-bundle processes count as non-self
+                return true
+            }
+            return !bundleID.hasPrefix(selfBundlePrefix)
+        }
+
+        if hadNonSelfMicUsers, !hasNonSelfMicUsers {
+            emit(.allMicUsersStopped)
+            logger.info("All non-self mic users stopped")
+        }
+        hadNonSelfMicUsers = hasNonSelfMicUsers
     }
 
     // MARK: - State machine transitions

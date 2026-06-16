@@ -26,9 +26,9 @@ struct RequestIdentifierTests {
         #expect(id1.contains("xyz"))
     }
 
-    @Test("Countdown update reuses same identifier")
+    @Test("Countdown present reuses same identifier for same meeting")
     @MainActor
-    func countdownUpdateReusesIdentifier() async {
+    func countdownPresentReusesIdentifier() async {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         _ = await service.requestAuthorization()
@@ -37,8 +37,8 @@ struct RequestIdentifierTests {
         await service.present(
             .stopCountdown(meetingID: meetingID, secondsRemaining: 15)
         )
-        await service.updateCountdown(
-            meetingID: meetingID, secondsRemaining: 10
+        await service.present(
+            .stopCountdown(meetingID: meetingID, secondsRemaining: 10)
         )
 
         #expect(fake.addedRequests.count == 2)
@@ -46,7 +46,7 @@ struct RequestIdentifierTests {
             fake.addedRequests[0].identifier
                 == fake.addedRequests[1].identifier
         )
-        // Second content should have updated seconds
+        // Second present carries the updated seconds in its title
         #expect(fake.addedRequests[1].content.title.contains("10"))
     }
 

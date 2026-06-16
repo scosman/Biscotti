@@ -56,8 +56,8 @@ func requestIdentifier(for kind: NotificationKind) -> String {
     }
 }
 
-/// Standalone countdown ID builder for `updateCountdown` / `cancelCountdown` which
-/// don't receive a full `NotificationKind`.
+/// Standalone countdown ID builder for `cancelCountdown` which
+/// doesn't receive a full `NotificationKind`.
 func countdownRequestIdentifier(meetingID: UUID) -> String {
     "biscotti.notif.countdown.\(meetingID.uuidString)"
 }

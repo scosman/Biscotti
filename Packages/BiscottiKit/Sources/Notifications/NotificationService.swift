@@ -2,7 +2,7 @@ import Foundation
 import os
 import UserNotifications
 
-/// Manages notification lifecycle: authorization, presentation, countdown updates,
+/// Manages notification lifecycle: authorization, presentation, countdown cancellation,
 /// and the typed action stream consumed by AppCore.
 ///
 /// This module **presents and reports intent only**; `AppCore` performs the action.
@@ -15,7 +15,7 @@ public final class NotificationService {
     )
 
     /// Cached authorization status. Updated after `requestAuthorization()` and
-    /// before each `present` / `updateCountdown` call.
+    /// before each `present` call.
     private var cachedAuthStatus: UNAuthorizationStatus?
 
     /// The stream continuation for `actions()`. Created lazily on first call.
@@ -96,29 +96,6 @@ public final class NotificationService {
         }
     }
 
-    /// Refreshes the stop-countdown notification with a new seconds-remaining value.
-    /// Re-adds a request with the same stable identifier so the existing banner
-    /// is replaced in-place.
-    public func updateCountdown(
-        meetingID: UUID,
-        secondsRemaining: Int
-    ) async {
-        guard await isAuthorized() else {
-            return
-        }
-
-        let kind = NotificationKind.stopCountdown(
-            meetingID: meetingID,
-            secondsRemaining: secondsRemaining
-        )
-        let request = makeRequest(for: kind)
-        do {
-            try await provider.add(request)
-        } catch {
-            logger.error("Failed to update countdown: \(error)")
-        }
-    }
-
     /// Removes the stop-countdown notification.
     /// Always executes regardless of auth status (cleanup is always valid).
     public func cancelCountdown(meetingID: UUID) async {
@@ -195,7 +172,7 @@ public final class NotificationService {
 
         switch categoryID {
         case CategoryID.stopCountdown:
-            // Silent update; no repeated banner pop while user is in the app.
+            // Countdown: show in list only, no repeated banner.
             return [.list]
         default:
             // Meeting-start and ad-hoc: show banner + sound even when foreground.
@@ -334,7 +311,7 @@ private func fillCountdownContent(
     meetingID: UUID,
     secondsRemaining: Int
 ) {
-    content.title = "Audio stopped \u{2014} stopping in \(secondsRemaining)s"
+    content.title = "Recording will stop in \(secondsRemaining)s"
     content.body = "Tap Keep Recording to continue."
     content.sound = nil
     content.categoryIdentifier = CategoryID.stopCountdown

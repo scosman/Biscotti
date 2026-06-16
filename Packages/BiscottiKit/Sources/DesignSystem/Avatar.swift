@@ -86,24 +86,27 @@ public struct AvatarCluster: View {
     private let showLeadingRecordingAvatar: Bool
 
     /// Maximum number of avatars rendered before the "+N" badge.
-    private static let maxShown = 3
+    /// Defaults to 3. Callers can raise this (e.g. 8 for expanded views).
+    private let maxShown: Int
 
     public init(
         people: [AvatarPerson],
         totalCount: Int,
         size: CGFloat = Tokens.avatarSize,
         columnWidth: CGFloat = Tokens.avatarColumnWidth,
-        showLeadingRecordingAvatar: Bool = false
+        showLeadingRecordingAvatar: Bool = false,
+        maxShown: Int = 3
     ) {
         self.people = people
         self.totalCount = totalCount
         self.size = size
         self.columnWidth = columnWidth
         self.showLeadingRecordingAvatar = showLeadingRecordingAvatar
+        self.maxShown = maxShown
     }
 
     private var shownPeople: [AvatarPerson] {
-        Array(people.prefix(Self.maxShown))
+        Array(people.prefix(maxShown))
     }
 
     private var overflowCount: Int {

@@ -116,10 +116,59 @@ public enum TimeFormatting {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    /// Formats a date range as "Mon, Jun 11 · 4:18 - 4:50 PM" (same day)
+    /// or "Mon, Jun 11 4:18 PM - Tue, Jun 12 5:00 PM" (cross-day).
+    ///
+    /// Returns `nil` when `start` is nil. When `end` is nil, shows just
+    /// the start date and time.
+    ///
+    /// Shared across MeetingDetailViewModel and EventPreviewViewModel.
+    public static func whenText(start: Date?, end: Date?) -> String? {
+        guard let start else { return nil }
+
+        guard let end else {
+            return whenDateFormatter.string(from: start) + " \u{00B7} "
+                + whenEndTimeFormatter.string(from: start)
+        }
+
+        let cal = Foundation.Calendar.current
+        if cal.isDate(start, inSameDayAs: end) {
+            return whenDateFormatter.string(from: start) + " \u{00B7} "
+                + whenTimeFormatter.string(from: start) + " \u{2013} "
+                + whenEndTimeFormatter.string(from: end)
+        }
+
+        return whenDateFormatter.string(from: start) + " "
+            + whenEndTimeFormatter.string(from: start)
+            + " \u{2013} " + whenDateFormatter.string(from: end) + " "
+            + whenEndTimeFormatter.string(from: end)
+    }
+
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
+        return formatter
+    }()
+
+    /// Locale-aware short date with weekday (e.g. "Wed, Jun 11" in en_US).
+    private static let whenDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
+        return formatter
+    }()
+
+    /// Locale-aware start time for same-day ranges (before the en-dash).
+    private static let whenTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("j:mm")
+        return formatter
+    }()
+
+    /// Locale-aware end time (e.g. "4:50 PM" in en_US, "16:50" in de_DE).
+    private static let whenEndTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("j:mm a")
         return formatter
     }()
 }

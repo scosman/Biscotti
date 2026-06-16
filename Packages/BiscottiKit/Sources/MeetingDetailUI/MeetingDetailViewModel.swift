@@ -541,7 +541,7 @@ public extension MeetingDetailViewModel {
             summary: Self.attendeeSummary(
                 organizer: ctx.organizer, attendees: ctx.attendees
             ),
-            whenText: Self.whenText(start: ctx.startDate, end: ctx.endDate),
+            whenText: TimeFormatting.whenText(start: ctx.startDate, end: ctx.endDate),
             platform: ctx.conferencePlatform,
             conferenceURL: ctx.conferenceURL,
             location: ctx.location,
@@ -613,26 +613,14 @@ public extension MeetingDetailViewModel {
         isLoadingNearbyEvents = false
     }
 
-    /// Opens the associated calendar event in Calendar.app.
-    ///
-    /// Tries the `ical://` deep-link scheme with the snapshot's
-    /// `eventIdentifier` first. Falls back to opening Calendar.app at
-    /// the event's start date if the identifier is unavailable.
+    /// Opens the associated calendar event in Calendar.app via the
+    /// shared `CalendarDeepLink` helper.
     func openInCalendar() {
-        if let eventID = calendarContext?.eventIdentifier,
-           let url = URL(
-               string: "ical://ekevent/\(eventID)?method=show&options=more"
-           )
-        {
+        if let url = CalendarDeepLink.calendarAppURL(
+            eventIdentifier: calendarContext?.eventIdentifier,
+            startDate: calendarContext?.startDate
+        ) {
             urlOpener(url)
-        } else if let startDate = calendarContext?.startDate,
-                  let calURL = URL(string: "ical://\(startDate.timeIntervalSinceReferenceDate)") ?? URL(string: "ical://")
-        {
-            // Fall back to opening Calendar.app at the event's date.
-            urlOpener(calURL)
-        } else if let calURL = URL(string: "ical://") {
-            // Last resort: just open Calendar.app.
-            urlOpener(calURL)
         }
     }
 
@@ -767,32 +755,6 @@ extension MeetingDetailViewModel {
 // MARK: - Calendar card helpers
 
 extension MeetingDetailViewModel {
-    /// Formats a date range as "Mon, Jun 11 \u{00B7} 4:18 \u{2013} 4:50 PM".
-    ///
-    /// - For same-day events: "EEE, MMM d \u{00B7} h:mm \u{2013} h:mm a"
-    /// - For multi-day or date-only: full date/time on each.
-    /// - Returns nil when no start date is available.
-    static func whenText(start: Date?, end: Date?) -> String? {
-        guard let start else { return nil }
-        let dateF = whenDateFormatter
-        let timeF = whenTimeFormatter
-        let endTimeF = whenEndTimeFormatter
-
-        guard let end else {
-            return dateF.string(from: start) + " \u{00B7} " + endTimeF.string(from: start)
-        }
-
-        let cal = Foundation.Calendar.current
-        if cal.isDate(start, inSameDayAs: end) {
-            return dateF.string(from: start) + " \u{00B7} "
-                + timeF.string(from: start) + " \u{2013} "
-                + endTimeF.string(from: end)
-        }
-
-        return dateF.string(from: start) + " " + endTimeF.string(from: start)
-            + " \u{2013} " + dateF.string(from: end) + " " + endTimeF.string(from: end)
-    }
-
     /// Builds a summary like "Steve (organizer) \u{00B7} Alex \u{00B7} Jay \u{00B7} +2".
     ///
     /// - Cap visible names at 5; overflow shown as "+N".
@@ -870,29 +832,6 @@ extension MeetingDetailViewModel {
 
         return result
     }
-
-    private static let whenDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        // Locale-aware short date with weekday (e.g. "Wed, Jun 11" in en_US).
-        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
-        return formatter
-    }()
-
-    private static let whenTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        // Locale-aware start time for same-day ranges (before the en-dash).
-        // In 12-hour locales this resolves to "h:mm a" (e.g. "4:18 PM");
-        // in 24-hour locales it resolves to "HH:mm" (e.g. "16:18").
-        formatter.setLocalizedDateFormatFromTemplate("j:mm")
-        return formatter
-    }()
-
-    private static let whenEndTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        // Locale-aware end time (e.g. "4:50 PM" in en_US, "16:50" in de_DE).
-        formatter.setLocalizedDateFormatFromTemplate("j:mm a")
-        return formatter
-    }()
 }
 
 // MARK: - Delete meeting

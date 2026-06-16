@@ -94,6 +94,28 @@ public enum TimeFormatting {
         return "\(dateStr) \u{00B7} \(compactDuration(duration))"
     }
 
+    /// Formats a playback time interval as "M:SS" or "H:MM:SS".
+    ///
+    /// Used by the audio transport scrubber and transcript timestamps.
+    /// Nonisolated so it can be called from pure builders outside
+    /// `@MainActor`.
+    public static func formatPlaybackTime(
+        _ interval: TimeInterval
+    ) -> String {
+        let total = max(0, Int(interval))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+
+        if hours > 0 {
+            return String(
+                format: "%d:%02d:%02d",
+                hours, minutes, seconds
+            )
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

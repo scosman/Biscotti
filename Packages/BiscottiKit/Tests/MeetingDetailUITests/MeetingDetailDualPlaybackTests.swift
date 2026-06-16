@@ -29,6 +29,7 @@ private final class DualFakePlayer: AudioPlaybackProviding,
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 120
+    var rate: Float = 1.0
     var loadedURLs: [URL] = []
     var loadShouldThrow = false
     var playCalls: Int = 0

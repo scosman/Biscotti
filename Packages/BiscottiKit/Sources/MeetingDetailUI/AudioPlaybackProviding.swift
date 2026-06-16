@@ -11,6 +11,11 @@ public protocol AudioPlaybackProviding: AnyObject {
     var currentTime: TimeInterval { get set }
     var duration: TimeInterval { get }
 
+    /// Playback speed multiplier. Default 1.0. Applies to all loaded tracks.
+    /// Setting while playing applies immediately without changing play/pause
+    /// state; while paused it persists to the next `play()`.
+    var rate: Float { get set }
+
     func play()
     func pause()
 
@@ -26,6 +31,9 @@ public protocol AudioPlaybackProviding: AnyObject {
 /// tracks the primary (first) player.
 public final class AVAudioPlayerWrapper: AudioPlaybackProviding {
     private var players: [AVAudioPlayer] = []
+
+    /// Stored rate so it survives player reloads and applies to new players.
+    private var currentRate: Float = 1.0
 
     /// Small lead time (50ms) for synced start via `play(atTime:)`.
     private static let syncLeadTime: TimeInterval = 0.05
@@ -47,6 +55,16 @@ public final class AVAudioPlayerWrapper: AudioPlaybackProviding {
 
     public var duration: TimeInterval {
         players.map(\.duration).max() ?? 0
+    }
+
+    public var rate: Float {
+        get { players.first?.rate ?? currentRate }
+        set {
+            currentRate = newValue
+            for player in players {
+                player.rate = newValue
+            }
+        }
     }
 
     public func play() {
@@ -74,7 +92,9 @@ public final class AVAudioPlayerWrapper: AudioPlaybackProviding {
         var loaded: [AVAudioPlayer] = []
         for url in urls {
             let player = try AVAudioPlayer(contentsOf: url)
+            player.enableRate = true
             player.prepareToPlay()
+            player.rate = currentRate
             loaded.append(player)
         }
         players = loaded

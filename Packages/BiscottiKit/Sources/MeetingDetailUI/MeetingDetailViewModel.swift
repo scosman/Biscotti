@@ -1,6 +1,8 @@
 import AppCore
+import AppKit
 import Calendar
 import DataStore
+import DesignSystem
 import Foundation
 import TranscriptionService
 
@@ -77,6 +79,12 @@ public final class MeetingDetailViewModel {
     /// Stored total duration of the loaded audio.
     public private(set) var playbackDuration: TimeInterval = 0
 
+    /// Current playback speed multiplier. Default 1.0.
+    public private(set) var playbackRate: Float = 1.0
+
+    /// Available speed options for the transport speed menu.
+    public static let speedOptions: [Float] = [0.5, 1.0, 1.25, 1.5, 2.0]
+
     /// The periodic ticker task that syncs player state into stored
     /// `@Observable` properties. Runs while playing; cancelled on
     /// pause, stop, end-of-playback, flush, or dealloc.
@@ -95,6 +103,24 @@ public final class MeetingDetailViewModel {
 
     /// The loaded transcript for the selected (non-preferred) version.
     public private(set) var selectedTranscript: TranscriptData?
+
+    // MARK: - Cached attributed transcript
+
+    /// Cached `AttributedString` for the displayed transcript. Building the
+    /// attributed string synchronously for long transcripts (~hundreds of
+    /// segments) is expensive enough to cause a visible load delay. We cache
+    /// it keyed by transcript ID + canPlay so it is only rebuilt when the
+    /// underlying data actually changes, not on every SwiftUI render.
+    public private(set) var cachedTranscriptAttributed: AttributedString?
+
+    /// The transcript ID + canPlay state that the cached attributed string
+    /// was built for. When either changes we rebuild.
+    private var cachedTranscriptKey: CachedTranscriptKey?
+
+    private struct CachedTranscriptKey: Equatable {
+        let transcriptID: UUID
+        let canPlay: Bool
+    }
 
     // MARK: - Phase 8: Notes
 
@@ -211,18 +237,6 @@ public final class MeetingDetailViewModel {
         calendarContext != nil
     }
 
-    /// Whether to show the quiet "Link a calendar event..." prompt.
-    public var showLinkEventPrompt: Bool {
-        !hasCalendarContext
-    }
-
-    /// Whether the "Open in Calendar" button should be shown.
-    /// Visible when there is an associated calendar event (i.e. calendar
-    /// context exists).
-    public var showOpenInCalendar: Bool {
-        calendarContext != nil
-    }
-
     /// Calendar events available for association correction. Populated
     /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
     /// window around the meeting's recording time instead of the
@@ -264,6 +278,7 @@ public final class MeetingDetailViewModel {
             notes = detail?.notes ?? ""
             versions = detail?.versions ?? []
             await loadAudioPlayer()
+            rebuildTranscriptCacheIfNeeded()
         } catch {
             detail = nil
             calendarContext = nil
@@ -279,48 +294,14 @@ public final class MeetingDetailViewModel {
                 versions = detail?.versions ?? []
                 selectedVersionID = nil
                 selectedTranscript = nil
+                // Rebuild cached attributed string for the new transcript.
+                cachedTranscriptKey = nil
+                rebuildTranscriptCacheIfNeeded()
             } catch {
                 // Non-fatal.
             }
             await core.reloadSummaries()
         }
-    }
-
-    /// Triggers a re-transcription of the meeting.
-    public func reTranscribe() async {
-        await core.transcription.reTranscribe(meetingID: meetingID)
-        await load()
-    }
-
-    /// Retries a failed transcription.
-    public func retry() async {
-        await core.transcription.transcribe(meetingID: meetingID)
-        await load()
-    }
-
-    /// Corrects the association to a new event (or removes it if nil).
-    public func correctAssociation(eventKey: String?) async {
-        await core.correctAssociation(
-            meetingID: meetingID, eventKey: eventKey
-        )
-        await load()
-        await core.reloadSummaries()
-        showEventPicker = false
-        // TODO(re-transcribe-prompt): restore setting
-        // showReTranscribeAfterCorrection = true when vocab support
-        // (Phase 9) lands. Suppressed because re-transcription without
-        // vocabulary changes has no user-visible benefit.
-    }
-
-    /// Removes the calendar association.
-    public func removeAssociation() async {
-        await correctAssociation(eventKey: nil)
-        showReTranscribeAfterCorrection = false
-    }
-
-    /// Dismisses the re-transcribe prompt.
-    public func dismissReTranscribePrompt() {
-        showReTranscribeAfterCorrection = false
     }
 
     // MARK: - Phase 8: Audio playback actions
@@ -340,10 +321,36 @@ public final class MeetingDetailViewModel {
         }
     }
 
+    /// Sets the playback speed. Applies immediately if playing.
+    public func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        audioPlayer?.rate = rate
+    }
+
     /// Seeks the audio player to the specified time.
     public func seek(to time: TimeInterval) {
         audioPlayer?.currentTime = time
         syncPlaybackState()
+    }
+
+    /// Copies the displayed transcript to the system pasteboard as plain text.
+    public func copyTranscript() {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else { return }
+
+        let text = TranscriptContent.plainText(transcript.segments)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// Copies the current notes to the system pasteboard as plain text.
+    public func copyNotes() {
+        guard !notes.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(notes, forType: .string)
     }
 
     /// Stops the playback ticker and cleans up. Called on disappear/flush.
@@ -395,16 +402,21 @@ public final class MeetingDetailViewModel {
         playbackTickerTask?.cancel()
         playbackTickerTask = nil
     }
+}
 
-    // MARK: - Phase 8: Transcript version actions
+// MARK: - Version selection, notes autosave, re-transcribe
 
+public extension MeetingDetailViewModel {
     /// Selects and loads a specific transcript version.
-    public func selectVersion(_ versionID: UUID) async {
+    func selectVersion(_ versionID: UUID) async {
         selectedVersionID = versionID
+        // Invalidate cache key so rebuild picks up the new version.
+        cachedTranscriptKey = nil
 
         // If selecting the preferred version, clear the override
         if versionID == detail?.preferredTranscript?.id {
             selectedTranscript = nil
+            rebuildTranscriptCacheIfNeeded()
             return
         }
 
@@ -415,16 +427,15 @@ public final class MeetingDetailViewModel {
         } catch {
             selectedTranscript = nil
         }
+        rebuildTranscriptCacheIfNeeded()
     }
-
-    // MARK: - Phase 8: Notes autosave
 
     /// Updates notes and debounces autosave to the store.
     ///
     /// Uses `[weak self]` for the short debounce window. If the VM
     /// deallocs mid-debounce, `flushNotes()` (called in `onDisappear`)
     /// is the guarantee that pending edits are persisted before teardown.
-    public func updateNotes(_ text: String) {
+    func updateNotes(_ text: String) {
         notes = text
         notesAutosaveTask?.cancel()
         notesAutosaveTask = Task { [weak self] in
@@ -441,7 +452,7 @@ public final class MeetingDetailViewModel {
     /// Flushes any pending notes and title changes immediately and stops
     /// playback. Called on navigation away (onDisappear) to prevent
     /// leaked timers and lost edits.
-    public func flushNotes() async {
+    func flushNotes() async {
         notesAutosaveTask?.cancel()
         notesAutosaveTask = nil
         stopPlayback()
@@ -449,12 +460,137 @@ public final class MeetingDetailViewModel {
         await saveTitle()
     }
 
-    // MARK: - Phase 8: Re-transcribe after correction
-
     /// Dismisses the re-transcribe prompt and triggers re-transcription.
-    public func reTranscribeAfterCorrection() async {
+    func reTranscribeAfterCorrection() async {
         showReTranscribeAfterCorrection = false
         await reTranscribe()
+    }
+}
+
+// MARK: - Cached attributed transcript
+
+public extension MeetingDetailViewModel {
+    /// Whether the meeting has ever been transcribed (has at least one
+    /// transcript version), even if the transcript is empty.
+    var hasBeenTranscribed: Bool {
+        !versions.isEmpty
+    }
+
+    /// Non-mutating check: true when the displayed transcript has segments
+    /// and a cached `AttributedString` is available. Safe to call during
+    /// SwiftUI `body` evaluation (no state mutation).
+    var hasDisplayableTranscript: Bool {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else { return false }
+        return cachedTranscriptAttributed != nil
+    }
+
+    /// Rebuilds the cached `AttributedString` from the current displayed
+    /// transcript. Called reactively when inputs change (job status,
+    /// version switch, canPlay flip) -- never during `body` evaluation.
+    func rebuildTranscriptCacheIfNeeded() {
+        guard let transcript = displayedTranscript,
+              !transcript.segments.isEmpty
+        else {
+            cachedTranscriptKey = nil
+            cachedTranscriptAttributed = nil
+            return
+        }
+
+        let key = CachedTranscriptKey(
+            transcriptID: transcript.id, canPlay: canPlay
+        )
+        guard key != cachedTranscriptKey else { return }
+
+        cachedTranscriptAttributed = TranscriptContent.attributedString(
+            transcript.segments, canSeek: canPlay
+        )
+        cachedTranscriptKey = key
+    }
+}
+
+// MARK: - Calendar card mapping
+
+public extension MeetingDetailViewModel {
+    /// Whether audio files are present on disk for this meeting.
+    var hasAudioFiles: Bool {
+        isAudioAvailable
+    }
+
+    /// Builds `CalendarCardData` from the loaded calendar context, or nil
+    /// if no event is linked. Pure mapping; the helpers are testable.
+    var calendarCard: CalendarCardData? {
+        guard let ctx = calendarContext else { return nil }
+
+        // Deduplicate: organizer first, then attendees not already included.
+        var seenIDs: Set<UUID> = []
+        var people: [AvatarPerson] = []
+        if let org = ctx.organizer {
+            seenIDs.insert(org.id)
+            people.append(AvatarPerson(displayName: org.name, email: org.email))
+        }
+        for att in ctx.attendees where seenIDs.insert(att.id).inserted {
+            people.append(AvatarPerson(displayName: att.name, email: att.email))
+        }
+        let total = people.count
+
+        return CalendarCardData(
+            attendees: people,
+            attendeeTotal: total,
+            summary: Self.attendeeSummary(
+                organizer: ctx.organizer, attendees: ctx.attendees
+            ),
+            whenText: Self.whenText(start: ctx.startDate, end: ctx.endDate),
+            platform: ctx.conferencePlatform,
+            conferenceURL: ctx.conferenceURL,
+            location: ctx.location,
+            eventNotes: ctx.eventNotes,
+            invitedText: Self.invitedText(
+                organizer: ctx.organizer, attendees: ctx.attendees
+            )
+        )
+    }
+}
+
+// MARK: - Transcription & association actions
+
+public extension MeetingDetailViewModel {
+    /// Triggers a re-transcription of the meeting.
+    func reTranscribe() async {
+        await core.transcription.reTranscribe(meetingID: meetingID)
+        await load()
+    }
+
+    /// Retries a failed transcription.
+    func retry() async {
+        await core.transcription.transcribe(meetingID: meetingID)
+        await load()
+    }
+
+    /// Corrects the association to a new event (or removes it if nil).
+    func correctAssociation(eventKey: String?) async {
+        await core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+        await load()
+        await core.reloadSummaries()
+        showEventPicker = false
+        // TODO(re-transcribe-prompt): restore setting
+        // showReTranscribeAfterCorrection = true when vocab support
+        // (Phase 9) lands. Suppressed because re-transcription without
+        // vocabulary changes has no user-visible benefit.
+    }
+
+    /// Removes the calendar association.
+    func removeAssociation() async {
+        await correctAssociation(eventKey: nil)
+        showReTranscribeAfterCorrection = false
+    }
+
+    /// Dismisses the re-transcribe prompt.
+    func dismissReTranscribePrompt() {
+        showReTranscribeAfterCorrection = false
     }
 }
 
@@ -497,6 +633,23 @@ public extension MeetingDetailViewModel {
         } else if let calURL = URL(string: "ical://") {
             // Last resort: just open Calendar.app.
             urlOpener(calURL)
+        }
+    }
+
+    /// Reveals the meeting's audio files in Finder. No-op if no files exist.
+    func revealInFinder() {
+        guard isAudioAvailable else { return }
+        Task {
+            do {
+                let refs = try await core.store.audioFileRefs(
+                    meetingID: meetingID
+                )
+                let urls = [refs.mic, refs.system].compactMap(\.self)
+                guard !urls.isEmpty else { return }
+                NSWorkspace.shared.activateFileViewerSelecting(urls)
+            } catch {
+                // Non-fatal; Finder reveal is best-effort.
+            }
         }
     }
 
@@ -609,6 +762,137 @@ extension MeetingDetailViewModel {
         }
         return "\(seconds)s"
     }
+}
+
+// MARK: - Calendar card helpers
+
+extension MeetingDetailViewModel {
+    /// Formats a date range as "Mon, Jun 11 \u{00B7} 4:18 \u{2013} 4:50 PM".
+    ///
+    /// - For same-day events: "EEE, MMM d \u{00B7} h:mm \u{2013} h:mm a"
+    /// - For multi-day or date-only: full date/time on each.
+    /// - Returns nil when no start date is available.
+    static func whenText(start: Date?, end: Date?) -> String? {
+        guard let start else { return nil }
+        let dateF = whenDateFormatter
+        let timeF = whenTimeFormatter
+        let endTimeF = whenEndTimeFormatter
+
+        guard let end else {
+            return dateF.string(from: start) + " \u{00B7} " + endTimeF.string(from: start)
+        }
+
+        let cal = Foundation.Calendar.current
+        if cal.isDate(start, inSameDayAs: end) {
+            return dateF.string(from: start) + " \u{00B7} "
+                + timeF.string(from: start) + " \u{2013} "
+                + endTimeF.string(from: end)
+        }
+
+        return dateF.string(from: start) + " " + endTimeF.string(from: start)
+            + " \u{2013} " + dateF.string(from: end) + " " + endTimeF.string(from: end)
+    }
+
+    /// Builds a summary like "Steve (organizer) \u{00B7} Alex \u{00B7} Jay \u{00B7} +2".
+    ///
+    /// - Cap visible names at 5; overflow shown as "+N".
+    /// - Returns nil when both organizer and attendees are empty.
+    static func invitedText(
+        organizer: PersonData?, attendees: [PersonData]
+    ) -> String? {
+        var parts: [String] = []
+
+        if let org = organizer {
+            parts.append("\(org.name) (organizer)")
+        }
+
+        // Dedup attendees against organizer
+        let organizerID = organizer?.id
+        let filteredAttendees = attendees.filter { $0.id != organizerID }
+
+        let maxVisible = 5
+        let remaining = max(0, parts.count + filteredAttendees.count - maxVisible)
+        let attendeesToShow = filteredAttendees.prefix(maxVisible - parts.count)
+
+        parts.append(contentsOf: attendeesToShow.map(\.name))
+
+        if remaining > 0 {
+            parts.append("+\(remaining)")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    /// Builds the attendee summary `AttributedString` for Row A of the card.
+    ///
+    /// Organizer name is medium weight / `.ink`; remaining names are
+    /// `.inkSecondary`.
+    static func attendeeSummary(
+        organizer: PersonData?, attendees: [PersonData]
+    ) -> AttributedString {
+        var result = AttributedString()
+
+        if let org = organizer {
+            var orgStr = AttributedString(org.name)
+            orgStr.font = .system(size: 13, weight: .medium)
+            orgStr.foregroundColor = .ink
+            result.append(orgStr)
+
+            let organizerID = org.id
+            let others = attendees.filter { $0.id != organizerID }
+            if !others.isEmpty {
+                let otherNames = others.prefix(2).map(\.name)
+                let remaining = others.count - otherNames.count
+                let suffix = if remaining > 0 {
+                    ", " + otherNames.joined(separator: ", ")
+                        + " and \(remaining) other\(remaining == 1 ? "" : "s")"
+                } else {
+                    ", " + otherNames.joined(separator: ", ")
+                }
+                var suffixStr = AttributedString(suffix)
+                suffixStr.font = .system(size: 13)
+                suffixStr.foregroundColor = .inkSecondary
+                result.append(suffixStr)
+            }
+        } else if !attendees.isEmpty {
+            let names = attendees.prefix(3).map(\.name)
+            let remaining = attendees.count - names.count
+            var text = names.joined(separator: ", ")
+            if remaining > 0 {
+                text += " and \(remaining) other\(remaining == 1 ? "" : "s")"
+            }
+            var str = AttributedString(text)
+            str.font = .system(size: 13)
+            str.foregroundColor = .inkSecondary
+            result.append(str)
+        }
+
+        return result
+    }
+
+    private static let whenDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware short date with weekday (e.g. "Wed, Jun 11" in en_US).
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
+        return formatter
+    }()
+
+    private static let whenTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware start time for same-day ranges (before the en-dash).
+        // In 12-hour locales this resolves to "h:mm a" (e.g. "4:18 PM");
+        // in 24-hour locales it resolves to "HH:mm" (e.g. "16:18").
+        formatter.setLocalizedDateFormatFromTemplate("j:mm")
+        return formatter
+    }()
+
+    private static let whenEndTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware end time (e.g. "4:50 PM" in en_US, "16:50" in de_DE).
+        formatter.setLocalizedDateFormatFromTemplate("j:mm a")
+        return formatter
+    }()
 }
 
 // MARK: - Delete meeting

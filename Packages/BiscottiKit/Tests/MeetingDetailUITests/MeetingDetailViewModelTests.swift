@@ -478,7 +478,6 @@ struct MeetingDetailCalendarContextTests {
         await detailVM.load()
 
         #expect(detailVM.hasCalendarContext == true)
-        #expect(detailVM.showLinkEventPrompt == false)
         #expect(detailVM.calendarContext?.title == "Design Review")
         #expect(detailVM.calendarContext?.conferencePlatform == "Zoom")
         #expect(detailVM.calendarContext?.calendarTitle == "Work")
@@ -496,7 +495,6 @@ struct MeetingDetailCalendarContextTests {
         await detailVM.load()
 
         #expect(detailVM.hasCalendarContext == false)
-        #expect(detailVM.showLinkEventPrompt == true)
         #expect(detailVM.calendarContext == nil)
     }
 

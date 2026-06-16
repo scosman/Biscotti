@@ -926,6 +926,143 @@ struct AppCoreAssociationCorrectionTests {
         #expect(detail?.calendar?.title == "New Event")
     }
 
+    @Test(
+        "correctAssociation via eventsNear succeeds (recurring-event regression)"
+    )
+    @MainActor
+    func correctAssociationViaEventsNearSucceeds() async throws {
+        // Regression: recurring calendar events share an eventIdentifier
+        // across occurrences. The old LiveEventStore.refreshEvent used
+        // event(withIdentifier:) which returns only the FIRST occurrence,
+        // causing the occurrence-date check to fail and snapshot(forKey:)
+        // to return nil. The fix falls back to a date-range search.
+        //
+        // This test exercises the eventsNear -> correctAssociation path
+        // (the exact flow from the "Link calendar event" picker) and
+        // verifies the association persists correctly. With the
+        // FakeEventStore the refresh always succeeds, so this guards
+        // against regressions in the CalendarService / AppCore plumbing.
+        let now = Date()
+        let recurringDTO = EKEventDTO(
+            eventIdentifier: "ev-recurring",
+            calendarItemIdentifier: "ci-recurring",
+            calendarItemExternalIdentifier: "ext-recurring",
+            occurrenceDate: now,
+            title: "Weekly Standup",
+            startDate: now,
+            endDate: now.addingTimeInterval(1800),
+            isAllDay: false,
+            location: "https://zoom.us/j/recurring",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Team",
+            calendarColorHex: "#33CC33",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 4,
+            attendees: [],
+            organizer: nil
+        )
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [recurringDTO],
+            calendarRefreshResult: recurringDTO,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Past Recording"
+        )
+
+        // Use eventsNear (the picker path), NOT onLaunch/refreshUpcoming.
+        // This populates candidateDTOs, the exact flow that was broken.
+        let nearby = await fix.core.eventsNear(now)
+        #expect(nearby.count == 1)
+
+        let eventKey = try #require(nearby.first?.id)
+        await fix.core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+
+        // Verify the association was persisted
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar != nil)
+        #expect(detail?.calendar?.title == "Weekly Standup")
+        #expect(detail?.calendar?.calendarTitle == "Team")
+    }
+
+    @Test(
+        "correctAssociation fails gracefully when refreshEvent returns nil"
+    )
+    @MainActor
+    func correctAssociationFailsWhenRefreshNil() async throws {
+        // When the provider's refreshEvent returns nil (e.g. the old
+        // LiveEventStore behavior for recurring-event occurrences),
+        // correctAssociation should leave the existing association intact
+        // and not crash or corrupt data.
+        let now = Date()
+        let dto = EKEventDTO(
+            eventIdentifier: "ev-gone",
+            calendarItemIdentifier: "ci-gone",
+            calendarItemExternalIdentifier: "ext-gone",
+            occurrenceDate: now,
+            title: "Vanished Event",
+            startDate: now,
+            endDate: now.addingTimeInterval(3600),
+            isAllDay: false,
+            location: "https://zoom.us/j/gone",
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 2,
+            attendees: [],
+            organizer: nil
+        )
+
+        // calendarRefreshResult defaults to nil -- simulates the old
+        // broken behavior where refreshEvent returned nil for a
+        // non-first occurrence of a recurring event.
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Linked Meeting"
+        )
+        // Pre-populate an existing association
+        let existingSnapshot = Self.makeOldSnapshot(at: now)
+        try await fix.store.setSnapshot(existingSnapshot, for: meetingID)
+
+        // Use eventsNear to populate candidateDTOs
+        let nearby = await fix.core.eventsNear(now)
+        #expect(nearby.count == 1)
+
+        let eventKey = try #require(nearby.first?.id)
+        await fix.core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+
+        // Association should be preserved (old snapshot intact),
+        // because the lookup failed gracefully.
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar != nil)
+        #expect(detail?.calendar?.title == "Old Event")
+    }
+
     // MARK: - Helpers
 
     private static func makeReplacementDTO(at now: Date) -> EKEventDTO {

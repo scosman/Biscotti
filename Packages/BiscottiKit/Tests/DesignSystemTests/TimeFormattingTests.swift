@@ -211,3 +211,26 @@ struct CoarseRelativeTimeTextTests {
         #expect(coarse(0) == "now")
     }
 }
+
+// MARK: - formatPlaybackTime
+
+@Suite("TimeFormatting -- formatPlaybackTime")
+struct FormatPlaybackTimeTests {
+    @Test("formats seconds as M:SS")
+    func minutesSeconds() {
+        #expect(TimeFormatting.formatPlaybackTime(14) == "0:14")
+        #expect(TimeFormatting.formatPlaybackTime(65) == "1:05")
+        #expect(TimeFormatting.formatPlaybackTime(0) == "0:00")
+    }
+
+    @Test("formats hours as H:MM:SS")
+    func hoursMinutesSeconds() {
+        #expect(TimeFormatting.formatPlaybackTime(3723) == "1:02:03")
+        #expect(TimeFormatting.formatPlaybackTime(7200) == "2:00:00")
+    }
+
+    @Test("negative interval clamps to zero")
+    func negativeClamps() {
+        #expect(TimeFormatting.formatPlaybackTime(-10) == "0:00")
+    }
+}

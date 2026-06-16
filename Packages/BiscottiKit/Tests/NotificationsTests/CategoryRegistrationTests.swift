@@ -71,7 +71,7 @@ struct CategoryRegistrationTests {
         #expect(!category.actions[0].options.contains(.foreground))
     }
 
-    @Test("Stop-countdown category has Keep Recording action without foreground")
+    @Test("Stop-countdown category has Keep Recording action with foreground")
     @MainActor
     func stopCountdownActions() throws {
         let fake = FakeNotificationCenter()
@@ -83,6 +83,6 @@ struct CategoryRegistrationTests {
         })
         #expect(category.actions.count == 1)
         #expect(category.actions[0].identifier == "biscotti.action.keep-recording")
-        #expect(!category.actions[0].options.contains(.foreground))
+        #expect(category.actions[0].options.contains(.foreground))
     }
 }

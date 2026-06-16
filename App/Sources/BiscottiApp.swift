@@ -509,8 +509,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         }
 
         // Activate the app for foreground actions.
+        let isKeepRecording = actionID == "biscotti.action.keep-recording"
+            || (actionID == UNNotificationDefaultActionIdentifier
+                && categoryID == "biscotti.stop-countdown")
         if actionID == "biscotti.action.open-and-record"
             || actionID == "biscotti.action.record"
+            || isKeepRecording
         {
             showMainWindow()
         }

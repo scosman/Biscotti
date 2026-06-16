@@ -145,11 +145,12 @@ struct ResponseMappingTests {
         #expect(action == .openAndRecord(eventKey: nil))
     }
 
-    @Test("Default action on countdown is ignored")
+    @Test("Default action on countdown maps to keepRecording")
     @MainActor
-    func defaultActionOnCountdownIsIgnored() {
+    func defaultActionOnCountdownMapsToKeepRecording() async {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
+        let stream = service.actions()
 
         let meetingID = UUID()
         let result = service.handleResponseValues(
@@ -161,9 +162,13 @@ struct ResponseMappingTests {
             ]
         )
 
-        // Banner tap on countdown is intentionally ignored; only the explicit
-        // "Keep Recording" button cancels auto-stop.
-        #expect(result == false)
+        // Tapping the notification body triggers keepRecording (cancels
+        // auto-stop and navigates to the recording screen).
+        #expect(result == true)
+
+        var iterator = stream.makeAsyncIterator()
+        let action = await iterator.next()
+        #expect(action == .keepRecording(meetingID: meetingID))
     }
 
     @Test("Dismiss action is not enqueued")

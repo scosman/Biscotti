@@ -152,6 +152,11 @@ public final class AppCore {
         category: "AppCore"
     )
 
+    private let detectionLogger = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "Detection"
+    )
+
     // MARK: - Init
 
     /// Creates an `AppCore` from pre-built services (used by tests and the
@@ -554,18 +559,33 @@ extension AppCore {
     private func handleDetectionStarted(
         app: DetectedApp
     ) async {
-        // Suppress if already recording
-        if case .recording = runState { return }
+        detectionLogger.info(
+            "Received .started for \(app.bundleID)"
+        )
 
-        // Suppress if a calendar notification was recently presented (de-dup)
-        if let lastCal = lastCalendarNotificationDate,
-           Date().timeIntervalSince(lastCal) < calendarSuppressionInterval
-        {
-            logger.debug(
-                "Suppressing ad-hoc detection; calendar prompt within window"
+        // Suppress if already recording
+        if case .recording = runState {
+            detectionLogger.info(
+                "Suppressed: already recording"
             )
             return
         }
+
+        // Suppress if a calendar notification was recently presented (de-dup)
+        if let lastCal = lastCalendarNotificationDate {
+            let elapsed = Date().timeIntervalSince(lastCal)
+            let window = calendarSuppressionInterval
+            if elapsed < window {
+                detectionLogger.info(
+                    "Suppressed: calendar prompt \(Int(elapsed))s ago (window \(Int(window))s)"
+                )
+                return
+            }
+        }
+
+        detectionLogger.info(
+            "Presenting ad-hoc notification for \(app.bundleID)"
+        )
 
         // Present notification
         await notifications.present(
@@ -668,6 +688,7 @@ extension AppCore {
 
             case let .keepRecording(meetingID):
                 cancelAutoStopCountdown(meetingID: meetingID)
+                route = .recording
             }
         }
     }

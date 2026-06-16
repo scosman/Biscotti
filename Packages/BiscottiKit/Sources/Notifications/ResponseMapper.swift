@@ -77,7 +77,8 @@ private func mapCountdownResponse(
     userInfo: [AnyHashable: Any]
 ) -> NotificationAction? {
     switch actionID {
-    case ActionID.keepRecording:
+    case ActionID.keepRecording,
+         UNNotificationDefaultActionIdentifier:
         guard let idString = userInfo[UserInfoKey.meetingID] as? String,
               let meetingID = UUID(uuidString: idString)
         else {
@@ -85,7 +86,6 @@ private func mapCountdownResponse(
         }
         return .keepRecording(meetingID: meetingID)
     default:
-        // Banner tap on countdown is ignored (countdown continues).
         return nil
     }
 }

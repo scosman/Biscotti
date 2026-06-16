@@ -249,7 +249,7 @@ struct AppCoreDetectionAutoStopTests {
         #expect(fix.core.recording.state.isRecording == false)
     }
 
-    @Test("keepRecording cancels an active auto-stop countdown")
+    @Test("keepRecording cancels countdown and routes to recording")
     @MainActor
     func keepRecordingCancelsActiveCountdown() async throws {
         let fix = try makeCoreFixture(
@@ -302,22 +302,21 @@ struct AppCoreDetectionAutoStopTests {
             ]
         )
 
-        // Wait for the action to be consumed
         try await Task.sleep(for: .milliseconds(200))
+
+        // keepRecording cancels countdown AND routes to recording screen
+        #expect(fix.core.route == .recording)
 
         // Advance past 10s -- countdown should have been cancelled
         fakeScheduler.advance(by: .seconds(20))
         try await Task.sleep(for: .milliseconds(100))
 
-        // Should STILL be recording
+        // Should STILL be recording (keepRecording prevented auto-stop)
         #expect(fix.core.recording.state.isRecording == true)
-        if case .recording = fix.core.runState {
-            // Good -- keepRecording prevented auto-stop
-        } else {
+        if case .recording = fix.core.runState {} else {
             Issue.record("Expected still recording")
         }
 
-        // Clean up
         _ = await fix.core.stopRecording()
     }
 

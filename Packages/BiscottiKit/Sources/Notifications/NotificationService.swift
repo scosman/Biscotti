@@ -91,6 +91,9 @@ public final class NotificationService {
         let request = makeRequest(for: kind)
         do {
             try await provider.add(request)
+            logger.info(
+                "present: added \(request.content.categoryIdentifier) request \(request.identifier)"
+            )
         } catch {
             logger.error("Failed to add notification: \(error)")
         }
@@ -195,7 +198,7 @@ public final class NotificationService {
         let keepRecording = UNNotificationAction(
             identifier: ActionID.keepRecording,
             title: "Keep Recording",
-            options: []
+            options: [.foreground]
         )
 
         let meetingStart = UNNotificationCategory(
@@ -306,7 +309,7 @@ private func fillCountdownContent(
     secondsRemaining: Int
 ) {
     content.title = "Recording will stop in \(secondsRemaining)s"
-    content.body = "Tap Keep Recording to continue."
+    content.body = "Tap to keep recording"
     content.sound = .default
     content.categoryIdentifier = CategoryID.stopCountdown
     content.userInfo = [

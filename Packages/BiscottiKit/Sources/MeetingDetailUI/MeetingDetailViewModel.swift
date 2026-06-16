@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import Calendar
 import DataStore
+import DesignSystem
 import Foundation
 import TranscriptionService
 
@@ -446,6 +447,49 @@ public final class MeetingDetailViewModel {
     }
 }
 
+// MARK: - Calendar card mapping
+
+public extension MeetingDetailViewModel {
+    /// Whether audio files are present on disk for this meeting.
+    var hasAudioFiles: Bool {
+        isAudioAvailable
+    }
+
+    /// Builds `CalendarCardData` from the loaded calendar context, or nil
+    /// if no event is linked. Pure mapping; the helpers are testable.
+    var calendarCard: CalendarCardData? {
+        guard let ctx = calendarContext else { return nil }
+
+        // Deduplicate: organizer first, then attendees not already included.
+        var seenIDs: Set<UUID> = []
+        var people: [AvatarPerson] = []
+        if let org = ctx.organizer {
+            seenIDs.insert(org.id)
+            people.append(AvatarPerson(displayName: org.name, email: org.email))
+        }
+        for att in ctx.attendees where seenIDs.insert(att.id).inserted {
+            people.append(AvatarPerson(displayName: att.name, email: att.email))
+        }
+        let total = people.count
+
+        return CalendarCardData(
+            attendees: people,
+            attendeeTotal: total,
+            summary: Self.attendeeSummary(
+                organizer: ctx.organizer, attendees: ctx.attendees
+            ),
+            whenText: Self.whenText(start: ctx.startDate, end: ctx.endDate),
+            platform: ctx.conferencePlatform,
+            conferenceURL: ctx.conferenceURL,
+            location: ctx.location,
+            eventNotes: ctx.eventNotes,
+            invitedText: Self.invitedText(
+                organizer: ctx.organizer, attendees: ctx.attendees
+            )
+        )
+    }
+}
+
 // MARK: - Transcription & association actions
 
 public extension MeetingDetailViewModel {
@@ -526,6 +570,23 @@ public extension MeetingDetailViewModel {
         } else if let calURL = URL(string: "ical://") {
             // Last resort: just open Calendar.app.
             urlOpener(calURL)
+        }
+    }
+
+    /// Reveals the meeting's audio files in Finder. No-op if no files exist.
+    func revealInFinder() {
+        guard isAudioAvailable else { return }
+        Task {
+            do {
+                let refs = try await core.store.audioFileRefs(
+                    meetingID: meetingID
+                )
+                let urls = [refs.mic, refs.system].compactMap(\.self)
+                guard !urls.isEmpty else { return }
+                NSWorkspace.shared.activateFileViewerSelecting(urls)
+            } catch {
+                // Non-fatal; Finder reveal is best-effort.
+            }
         }
     }
 
@@ -638,6 +699,137 @@ extension MeetingDetailViewModel {
         }
         return "\(seconds)s"
     }
+}
+
+// MARK: - Calendar card helpers
+
+extension MeetingDetailViewModel {
+    /// Formats a date range as "Mon, Jun 11 \u{00B7} 4:18 \u{2013} 4:50 PM".
+    ///
+    /// - For same-day events: "EEE, MMM d \u{00B7} h:mm \u{2013} h:mm a"
+    /// - For multi-day or date-only: full date/time on each.
+    /// - Returns nil when no start date is available.
+    static func whenText(start: Date?, end: Date?) -> String? {
+        guard let start else { return nil }
+        let dateF = whenDateFormatter
+        let timeF = whenTimeFormatter
+        let endTimeF = whenEndTimeFormatter
+
+        guard let end else {
+            return dateF.string(from: start) + " \u{00B7} " + endTimeF.string(from: start)
+        }
+
+        let cal = Foundation.Calendar.current
+        if cal.isDate(start, inSameDayAs: end) {
+            return dateF.string(from: start) + " \u{00B7} "
+                + timeF.string(from: start) + " \u{2013} "
+                + endTimeF.string(from: end)
+        }
+
+        return dateF.string(from: start) + " " + endTimeF.string(from: start)
+            + " \u{2013} " + dateF.string(from: end) + " " + endTimeF.string(from: end)
+    }
+
+    /// Builds a summary like "Steve (organizer) \u{00B7} Alex \u{00B7} Jay \u{00B7} +2".
+    ///
+    /// - Cap visible names at 5; overflow shown as "+N".
+    /// - Returns nil when both organizer and attendees are empty.
+    static func invitedText(
+        organizer: PersonData?, attendees: [PersonData]
+    ) -> String? {
+        var parts: [String] = []
+
+        if let org = organizer {
+            parts.append("\(org.name) (organizer)")
+        }
+
+        // Dedup attendees against organizer
+        let organizerID = organizer?.id
+        let filteredAttendees = attendees.filter { $0.id != organizerID }
+
+        let maxVisible = 5
+        let remaining = max(0, parts.count + filteredAttendees.count - maxVisible)
+        let attendeesToShow = filteredAttendees.prefix(maxVisible - parts.count)
+
+        parts.append(contentsOf: attendeesToShow.map(\.name))
+
+        if remaining > 0 {
+            parts.append("+\(remaining)")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    /// Builds the attendee summary `AttributedString` for Row A of the card.
+    ///
+    /// Organizer name is medium weight / `.ink`; remaining names are
+    /// `.inkSecondary`.
+    static func attendeeSummary(
+        organizer: PersonData?, attendees: [PersonData]
+    ) -> AttributedString {
+        var result = AttributedString()
+
+        if let org = organizer {
+            var orgStr = AttributedString(org.name)
+            orgStr.font = .system(size: 13, weight: .medium)
+            orgStr.foregroundColor = .ink
+            result.append(orgStr)
+
+            let organizerID = org.id
+            let others = attendees.filter { $0.id != organizerID }
+            if !others.isEmpty {
+                let otherNames = others.prefix(2).map(\.name)
+                let remaining = others.count - otherNames.count
+                let suffix = if remaining > 0 {
+                    ", " + otherNames.joined(separator: ", ")
+                        + " and \(remaining) other\(remaining == 1 ? "" : "s")"
+                } else {
+                    ", " + otherNames.joined(separator: ", ")
+                }
+                var suffixStr = AttributedString(suffix)
+                suffixStr.font = .system(size: 13)
+                suffixStr.foregroundColor = .inkSecondary
+                result.append(suffixStr)
+            }
+        } else if !attendees.isEmpty {
+            let names = attendees.prefix(3).map(\.name)
+            let remaining = attendees.count - names.count
+            var text = names.joined(separator: ", ")
+            if remaining > 0 {
+                text += " and \(remaining) other\(remaining == 1 ? "" : "s")"
+            }
+            var str = AttributedString(text)
+            str.font = .system(size: 13)
+            str.foregroundColor = .inkSecondary
+            result.append(str)
+        }
+
+        return result
+    }
+
+    private static let whenDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware short date with weekday (e.g. "Wed, Jun 11" in en_US).
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
+        return formatter
+    }()
+
+    private static let whenTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware start time for same-day ranges (before the en-dash).
+        // In 12-hour locales this resolves to "h:mm a" (e.g. "4:18 PM");
+        // in 24-hour locales it resolves to "HH:mm" (e.g. "16:18").
+        formatter.setLocalizedDateFormatFromTemplate("j:mm")
+        return formatter
+    }()
+
+    private static let whenEndTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Locale-aware end time (e.g. "4:50 PM" in en_US, "16:50" in de_DE).
+        formatter.setLocalizedDateFormatFromTemplate("j:mm a")
+        return formatter
+    }()
 }
 
 // MARK: - Delete meeting

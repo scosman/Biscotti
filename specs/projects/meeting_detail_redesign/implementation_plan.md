@@ -24,7 +24,7 @@ contract.
   Unit-test the builders + parser + color stability. Verify drag-select and
   tap-to-seek coexist on macOS 15.
 
-- [ ] **Phase 3 — Calendar card + data.**
+- [x] **Phase 3 — Calendar card + data.**
   Add `eventNotes` to `CalendarContextData` and populate it from
   `CalendarSnapshot` in the DataStore read query. Build `CalendarInfoCard`
   (avatar cluster, summary, "Open in Calendar", `DisclosureGroup` definition list

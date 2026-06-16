@@ -77,6 +77,12 @@ public final class MeetingDetailViewModel {
     /// Stored total duration of the loaded audio.
     public private(set) var playbackDuration: TimeInterval = 0
 
+    /// Current playback speed multiplier. Default 1.0.
+    public private(set) var playbackRate: Float = 1.0
+
+    /// Available speed options for the transport speed menu.
+    public static let speedOptions: [Float] = [0.5, 1.0, 1.25, 1.5, 2.0]
+
     /// The periodic ticker task that syncs player state into stored
     /// `@Observable` properties. Runs while playing; cancelled on
     /// pause, stop, end-of-playback, flush, or dealloc.
@@ -286,43 +292,6 @@ public final class MeetingDetailViewModel {
         }
     }
 
-    /// Triggers a re-transcription of the meeting.
-    public func reTranscribe() async {
-        await core.transcription.reTranscribe(meetingID: meetingID)
-        await load()
-    }
-
-    /// Retries a failed transcription.
-    public func retry() async {
-        await core.transcription.transcribe(meetingID: meetingID)
-        await load()
-    }
-
-    /// Corrects the association to a new event (or removes it if nil).
-    public func correctAssociation(eventKey: String?) async {
-        await core.correctAssociation(
-            meetingID: meetingID, eventKey: eventKey
-        )
-        await load()
-        await core.reloadSummaries()
-        showEventPicker = false
-        // TODO(re-transcribe-prompt): restore setting
-        // showReTranscribeAfterCorrection = true when vocab support
-        // (Phase 9) lands. Suppressed because re-transcription without
-        // vocabulary changes has no user-visible benefit.
-    }
-
-    /// Removes the calendar association.
-    public func removeAssociation() async {
-        await correctAssociation(eventKey: nil)
-        showReTranscribeAfterCorrection = false
-    }
-
-    /// Dismisses the re-transcribe prompt.
-    public func dismissReTranscribePrompt() {
-        showReTranscribeAfterCorrection = false
-    }
-
     // MARK: - Phase 8: Audio playback actions
 
     /// Toggles play/pause on the audio player and starts/stops the
@@ -338,6 +307,12 @@ public final class MeetingDetailViewModel {
             startPlaybackTicker()
             syncPlaybackState()
         }
+    }
+
+    /// Sets the playback speed. Applies immediately if playing.
+    public func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        audioPlayer?.rate = rate
     }
 
     /// Seeks the audio player to the specified time.
@@ -455,6 +430,47 @@ public final class MeetingDetailViewModel {
     public func reTranscribeAfterCorrection() async {
         showReTranscribeAfterCorrection = false
         await reTranscribe()
+    }
+}
+
+// MARK: - Transcription & association actions
+
+public extension MeetingDetailViewModel {
+    /// Triggers a re-transcription of the meeting.
+    func reTranscribe() async {
+        await core.transcription.reTranscribe(meetingID: meetingID)
+        await load()
+    }
+
+    /// Retries a failed transcription.
+    func retry() async {
+        await core.transcription.transcribe(meetingID: meetingID)
+        await load()
+    }
+
+    /// Corrects the association to a new event (or removes it if nil).
+    func correctAssociation(eventKey: String?) async {
+        await core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+        await load()
+        await core.reloadSummaries()
+        showEventPicker = false
+        // TODO(re-transcribe-prompt): restore setting
+        // showReTranscribeAfterCorrection = true when vocab support
+        // (Phase 9) lands. Suppressed because re-transcription without
+        // vocabulary changes has no user-visible benefit.
+    }
+
+    /// Removes the calendar association.
+    func removeAssociation() async {
+        await correctAssociation(eventKey: nil)
+        showReTranscribeAfterCorrection = false
+    }
+
+    /// Dismisses the re-transcribe prompt.
+    func dismissReTranscribePrompt() {
+        showReTranscribeAfterCorrection = false
     }
 }
 

@@ -1059,6 +1059,7 @@ private final class G3aFakePlayer: AudioPlaybackProviding,
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 120
+    var rate: Float = 1.0
 
     func play() {
         isPlaying = true

@@ -35,6 +35,7 @@ final class FakeAudioPlayer: AudioPlaybackProviding, @unchecked Sendable {
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 120 // 2 minutes
+    var rate: Float = 1.0
     var loadedURLs: [URL] = []
     var loadShouldThrow = false
 
@@ -327,6 +328,108 @@ struct MeetingDetailAudioPlaybackTests {
         viewModel.stopPlayback()
         #expect(viewModel.isPlaying == false)
         #expect(fakePlayer.isPlaying == false)
+    }
+}
+
+// MARK: - Playback rate tests
+
+@Suite("MeetingDetailViewModel -- playback rate")
+struct MeetingDetailPlaybackRateTests {
+    @Test("default playbackRate is 1.0")
+    @MainActor
+    func defaultPlaybackRate() async throws {
+        let fix = try makeCoreFixture(testName: "PlaybackRate")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.playbackRate == 1.0)
+    }
+
+    @Test("setPlaybackRate updates VM property and calls through to player")
+    @MainActor
+    func setPlaybackRateUpdatesVMAndPlayer() async throws {
+        let fix = try makeCoreFixture(testName: "PlaybackRate")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        viewModel.setPlaybackRate(1.5)
+
+        #expect(viewModel.playbackRate == 1.5)
+        #expect(fakePlayer.rate == 1.5)
+    }
+
+    @Test("setPlaybackRate persists rate across play/pause")
+    @MainActor
+    func setPlaybackRatePersistsAcrossPlayPause() async throws {
+        let fix = try makeCoreFixture(testName: "PlaybackRate")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        viewModel.setPlaybackRate(2.0)
+        viewModel.playPause() // play
+        viewModel.playPause() // pause
+
+        #expect(viewModel.playbackRate == 2.0)
+        #expect(fakePlayer.rate == 2.0)
+    }
+
+    @Test("speedOptions contains expected values")
+    @MainActor
+    func speedOptionsContainsExpectedValues() {
+        #expect(
+            MeetingDetailViewModel.speedOptions
+                == [0.5, 1.0, 1.25, 1.5, 2.0]
+        )
+    }
+
+    @Test("setPlaybackRate with each speed option")
+    @MainActor
+    func setPlaybackRateAllOptions() async throws {
+        let fix = try makeCoreFixture(testName: "PlaybackRate")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        for speed in MeetingDetailViewModel.speedOptions {
+            viewModel.setPlaybackRate(speed)
+            #expect(viewModel.playbackRate == speed)
+            #expect(fakePlayer.rate == speed)
+        }
     }
 }
 

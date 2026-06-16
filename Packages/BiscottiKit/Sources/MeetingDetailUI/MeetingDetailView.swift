@@ -48,8 +48,11 @@ public struct MeetingDetailView: View {
                     currentTime: viewModel.playbackCurrentTime,
                     duration: viewModel.playbackDuration,
                     isDisabled: !viewModel.canPlay,
+                    rate: viewModel.playbackRate,
+                    speedOptions: MeetingDetailViewModel.speedOptions,
                     onPlayPause: { viewModel.playPause() },
-                    onSeek: { viewModel.seek(to: $0) }
+                    onSeek: { viewModel.seek(to: $0) },
+                    onRate: { viewModel.setPlaybackRate($0) }
                 )
                 .padding(.bottom, Tokens.spacingMD)
 

@@ -487,3 +487,149 @@ struct MicStopDebounceTests {
         #expect(collector.events == [.allMicUsersStopped])
     }
 }
+
+// MARK: - Start flap tolerance tests
+
+@Suite("MeetingDetection — Start Flap Tolerance")
+@MainActor
+struct StartFlapToleranceTests {
+    @Test("flap during start window then steady in-call emits started")
+    func flapDuringStartWindowThenSteady() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // ImmediateClock: debounce fires quickly but not before buffered
+        // snapshots are processed (the for-await loop drains the
+        // buffered snapshots before yielding to the debounce Task).
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Sequence: in-call -> flap (not in-call) -> back to in-call
+        // Emit all three rapidly so they're buffered before the start
+        // debounce Task resolves.
+        source.emit([makeProcess(
+            bundleID: "us.zoom.xos",
+            isRunningInput: true,
+            isRunningOutput: true
+        )])
+        source.emit([makeProcess(
+            bundleID: "us.zoom.xos",
+            isRunningInput: false,
+            isRunningOutput: true
+        )])
+        source.emit([makeProcess(
+            bundleID: "us.zoom.xos",
+            isRunningInput: true,
+            isRunningOutput: true
+        )])
+        await collector.waitForEvents(count: 1)
+
+        let zoom = DetectedApp(
+            bundleID: "us.zoom.xos", displayName: "Zoom"
+        )
+        #expect(collector.events == [.started(app: zoom)])
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+
+    @Test("in-call briefly then genuinely idle at resolve does not emit started")
+    func genuinelyIdleAtResolveNoStarted() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // ImmediateClock so the debounce fires quickly.
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Brief in-call then immediately idle — debounce should see
+        // latestIsInCall == false and not emit .started.
+        source.emit([makeProcess(
+            bundleID: "us.zoom.xos",
+            isRunningInput: true,
+            isRunningOutput: true
+        )])
+        source.emit([makeProcess(
+            bundleID: "us.zoom.xos",
+            isRunningInput: false,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // No .started because the app was idle at resolve time
+        let startedEvents = collector.events.filter {
+            if case .started = $0 { return true }; return false
+        }
+        #expect(startedEvents.isEmpty)
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+}
+
+// MARK: - Mic-stop debounce self-verify tests
+
+@Suite("MeetingDetection — Mic Stop Self-Verify")
+@MainActor
+struct MicStopSelfVerifyTests {
+    @Test("mic-stop debounce does not emit if non-self mic user reappears at resolve")
+    func micStopSuppressedWhenMicReappears() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        // ImmediateClock: the debounce fires quickly. The key is that
+        // we re-add a mic user before the debounce resolves. Because
+        // the AsyncStream for-await loop processes buffered snapshots
+        // before yielding to the debounce Task, the hadNonSelfMicUsers
+        // flag is restored to true before resolveMicStopDebounce runs.
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Non-self mic user active
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // Mic user drops then reappears in rapid succession.
+        // The drop triggers the debounce; the reappearance both cancels
+        // the debounce (primary guard) AND sets hadNonSelfMicUsers=true
+        // (self-verify guard).
+        source.emit([])
+        source.emit([makeProcess(
+            bundleID: "com.spotify.client",
+            isRunningInput: true,
+            isRunningOutput: false
+        )])
+        await collector.settle()
+
+        // No allMicUsersStopped because the mic user is present
+        #expect(collector.events.isEmpty)
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+}

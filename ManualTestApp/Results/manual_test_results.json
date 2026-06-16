@@ -1,70 +1,55 @@
 {
   "ac_crash_safety_check" : {
-    "status" : "pass",
-    "stepID" : "ac_crash_safety_check",
-    "timestamp" : "2026-06-10T21:33:39Z"
+    "status" : "not-run",
+    "stepID" : "ac_crash_safety_check"
   },
   "ac_files_exist" : {
-    "note" : "Both .aac files exist with sane sizes",
-    "status" : "pass",
-    "stepID" : "ac_files_exist",
-    "timestamp" : "2026-06-10T03:50:23Z"
+    "status" : "not-run",
+    "stepID" : "ac_files_exist"
   },
   "ac_meet_close_midcapture" : {
-    "status" : "pass",
-    "stepID" : "ac_meet_close_midcapture",
-    "timestamp" : "2026-06-10T03:50:34Z"
+    "status" : "not-run",
+    "stepID" : "ac_meet_close_midcapture"
   },
   "ac_meet_open_midcapture" : {
-    "status" : "pass",
-    "stepID" : "ac_meet_open_midcapture",
-    "timestamp" : "2026-06-10T21:28:37Z"
+    "status" : "not-run",
+    "stepID" : "ac_meet_open_midcapture"
   },
   "ac_mega_timing" : {
-    "status" : "pass",
-    "stepID" : "ac_mega_timing",
-    "timestamp" : "2026-06-10T21:32:56Z"
+    "status" : "not-run",
+    "stepID" : "ac_mega_timing"
   },
   "ac_mega_voice" : {
-    "note" : "some jitter as devices changed, but always stabilized. all modes work",
-    "status" : "pass",
-    "stepID" : "ac_mega_voice",
-    "timestamp" : "2026-06-10T21:32:53Z"
+    "status" : "not-run",
+    "stepID" : "ac_mega_voice"
   },
   "ac_playback_mic" : {
-    "status" : "pass",
-    "stepID" : "ac_playback_mic",
-    "timestamp" : "2026-06-10T03:50:26Z"
+    "status" : "not-run",
+    "stepID" : "ac_playback_mic"
   },
   "ac_playback_system" : {
-    "status" : "pass",
-    "stepID" : "ac_playback_system",
-    "timestamp" : "2026-06-10T03:50:27Z"
+    "status" : "not-run",
+    "stepID" : "ac_playback_system"
   },
   "ac_request_permissions" : {
-    "status" : "pass",
-    "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-06-10T03:49:34Z"
+    "status" : "not-run",
+    "stepID" : "ac_request_permissions"
   },
   "ac_route_change" : {
-    "status" : "pass",
-    "stepID" : "ac_route_change",
-    "timestamp" : "2026-06-10T03:50:31Z"
+    "status" : "not-run",
+    "stepID" : "ac_route_change"
   },
   "ac_start_recording" : {
-    "status" : "pass",
-    "stepID" : "ac_start_recording",
-    "timestamp" : "2026-06-10T21:33:14Z"
+    "status" : "not-run",
+    "stepID" : "ac_start_recording"
   },
   "ac_stop_recording" : {
-    "status" : "pass",
-    "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-06-10T21:30:29Z"
+    "status" : "not-run",
+    "stepID" : "ac_stop_recording"
   },
   "ac_two_dialogs" : {
-    "status" : "pass",
-    "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-06-10T03:49:37Z"
+    "status" : "not-run",
+    "stepID" : "ac_two_dialogs"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

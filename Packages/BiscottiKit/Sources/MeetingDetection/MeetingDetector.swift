@@ -25,6 +25,9 @@ private enum CallPhase {
 private struct AppCallState {
     let app: DetectedApp
     var phase: CallPhase = .idle
+    /// Tracks the most recent in-call flag so debounce resolution can
+    /// decide based on current reality, not stale state at entry time.
+    var latestIsInCall: Bool = false
 }
 
 /// Accumulates OR-merged input/output flags across processes sharing a parent.
@@ -263,6 +266,14 @@ public final class MeetingDetector {
 
     private func resolveMicStopDebounce() {
         micStopDebounceTask = nil
+        // Self-verify: only emit if non-self mic users are still absent.
+        // A snapshot arriving between timer-start and resolve may have
+        // restored mic users (cancellation is the primary guard, but
+        // this is the belt-and-suspenders check).
+        guard !hadNonSelfMicUsers else {
+            logger.debug("Mic-stop debounce resolved but non-self mic users reappeared — suppressing")
+            return
+        }
         emit(.allMicUsersStopped)
         logger.info("All non-self mic users stopped (after debounce)")
     }
@@ -288,13 +299,14 @@ public final class MeetingDetector {
             }
 
         case .pendingStarted:
+            // Track the latest in-call state so the debounce resolution
+            // can decide based on current reality rather than the state
+            // at the moment pendingStarted began. A brief !isInCall flap
+            // no longer aborts detection — the timer checks at resolve.
+            appStates[parentID]?.latestIsInCall = isInCall
             if !isInCall {
-                // Flap suppressed: go back to idle
-                cancelDebounce(for: parentID)
-                appStates.removeValue(forKey: parentID)
-                logger.debug("Flap suppressed for \(app.displayName)")
+                logger.debug("Start-window flap for \(app.displayName) — waiting for debounce resolve")
             }
-            // If still isInCall, the debounce timer handles the transition
 
         case .active:
             if !isInCall {
@@ -321,7 +333,7 @@ public final class MeetingDetector {
         app: DetectedApp
     ) {
         let now = ContinuousClock.now
-        appStates[parentID] = AppCallState(app: app)
+        appStates[parentID] = AppCallState(app: app, latestIsInCall: true)
         appStates[parentID]?.phase = .pendingStarted(since: now)
 
         let clock = clock
@@ -338,12 +350,19 @@ public final class MeetingDetector {
               case .pendingStarted = state.phase
         else { return }
 
-        appStates[parentID]?.phase = .active
         debounceTasks.removeValue(forKey: parentID)
-        emit(.started(app: state.app))
-        logger.info(
-            "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
-        )
+
+        if state.latestIsInCall {
+            appStates[parentID]?.phase = .active
+            emit(.started(app: state.app))
+            logger.info(
+                "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
+            )
+        } else {
+            // App was not in-call at resolve time — genuine blip, not a meeting
+            appStates.removeValue(forKey: parentID)
+            logger.debug("Start debounce resolved idle for \(state.app.displayName)")
+        }
     }
 
     private func enterPendingStop(

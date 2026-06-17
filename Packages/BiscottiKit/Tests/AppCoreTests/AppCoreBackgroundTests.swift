@@ -190,7 +190,7 @@ struct AppCoreDetectionPipelineTests {
 
 @Suite("AppCore -- detection auto-stop")
 struct AppCoreDetectionAutoStopTests {
-    @Test("auto-stop countdown fires after 15s when detected app stops during recording")
+    @Test("auto-stop countdown fires after 10s when last mic user stops during recording")
     @MainActor
     func autoStopCountdownFiresAndStops() async throws {
         let fix = try makeCoreFixture(
@@ -227,35 +227,29 @@ struct AppCoreDetectionAutoStopTests {
         }
         #expect(fix.core.recording.state.isRecording == true)
 
-        // Now Zoom's audio stops
+        // Now Zoom's audio stops -- allMicUsersStopped fires,
+        // triggering auto-stop countdown
         fix.fakeActivitySource.emit([
             makeAudioProcess(
                 bundleID: "us.zoom.xos",
                 input: false, output: false
             )
         ])
-        // Wait for stop debounce to resolve and AppCore consumer
-        // to call beginAutoStopCountdown
         try await pollUntil {
             fakeScheduler.pendingCount > 0
         }
         #expect(fakeScheduler.pendingCount > 0)
 
-        // The countdown loops 15 times (one sleep(1s) per tick).
-        // Each iteration registers a new sleep after the previous
-        // one fires, so we must advance repeatedly to drain the loop.
-        for _ in 0 ..< 20 {
-            fakeScheduler.advance(by: .seconds(1))
-            try await Task.sleep(for: .milliseconds(20))
-            if fix.core.runState == .idle { break }
-        }
+        // Single 10s sleep for the countdown (no per-second loop)
+        fakeScheduler.advance(by: .seconds(10))
+        try await pollUntil { fix.core.runState == .idle }
 
         // Auto-stop should have fired: recording stopped
         #expect(fix.core.runState == .idle)
         #expect(fix.core.recording.state.isRecording == false)
     }
 
-    @Test("keepRecording cancels an active auto-stop countdown")
+    @Test("keepRecording cancels countdown and routes to recording")
     @MainActor
     func keepRecordingCancelsActiveCountdown() async throws {
         let fix = try makeCoreFixture(
@@ -275,7 +269,7 @@ struct AppCoreDetectionAutoStopTests {
         }
         await fix.core.onLaunch()
 
-        // Drive detection -> recording -> detection stop -> countdown
+        // Drive detection -> recording -> mic stop -> countdown
         fix.fakeActivitySource.emit([
             makeAudioProcess(
                 bundleID: "us.zoom.xos",
@@ -289,7 +283,7 @@ struct AppCoreDetectionAutoStopTests {
             return
         }
 
-        // Zoom stops -> triggers countdown
+        // All mic users stop -> triggers countdown
         fix.fakeActivitySource.emit([
             makeAudioProcess(
                 bundleID: "us.zoom.xos",
@@ -308,28 +302,27 @@ struct AppCoreDetectionAutoStopTests {
             ]
         )
 
-        // Wait for the action to be consumed
         try await Task.sleep(for: .milliseconds(200))
 
-        // Advance past 15s -- countdown should have been cancelled
+        // keepRecording cancels countdown AND routes to recording screen
+        #expect(fix.core.route == .recording)
+
+        // Advance past 10s -- countdown should have been cancelled
         fakeScheduler.advance(by: .seconds(20))
         try await Task.sleep(for: .milliseconds(100))
 
-        // Should STILL be recording
+        // Should STILL be recording (keepRecording prevented auto-stop)
         #expect(fix.core.recording.state.isRecording == true)
-        if case .recording = fix.core.runState {
-            // Good -- keepRecording prevented auto-stop
-        } else {
+        if case .recording = fix.core.runState {} else {
             Issue.record("Expected still recording")
         }
 
-        // Clean up
         _ = await fix.core.stopRecording()
     }
 
-    @Test("manual recording does NOT auto-stop on detection stop")
+    @Test("manual recording auto-stops when last non-self mic user stops")
     @MainActor
-    func manualRecordingIgnoresDetectionStop() async throws {
+    func manualRecordingAutoStopsOnMicUserStop() async throws {
         let fix = try makeCoreFixture(
             useFakeScheduler: true,
             useImmediateDetectorClock: true,
@@ -354,10 +347,7 @@ struct AppCoreDetectionAutoStopTests {
             return
         }
 
-        // Capture baseline pending count (minute-tick may have registered)
-        let baselinePending = fakeScheduler.pendingCount
-
-        // Emit Zoom in-call then idle -> detection events fire
+        // Emit another app using mic, then have it stop
         fix.fakeActivitySource.emit([
             makeAudioProcess(
                 bundleID: "us.zoom.xos",
@@ -371,20 +361,24 @@ struct AppCoreDetectionAutoStopTests {
                 input: false, output: false
             )
         ])
-        try await Task.sleep(for: .milliseconds(200))
 
-        // No countdown should have been scheduled (pending count unchanged)
-        #expect(fakeScheduler.pendingCount == baselinePending)
+        // allMicUsersStopped fires -> countdown begins
+        try await pollUntil {
+            fakeScheduler.pendingCount > 0
+        }
 
-        // Recording should still be active
-        #expect(fix.core.recording.state.isRecording == true)
+        // Advance past the 10s countdown
+        fakeScheduler.advance(by: .seconds(10))
+        try await pollUntil { fix.core.runState == .idle }
 
-        _ = await fix.core.stopRecording()
+        // Auto-stop should have fired
+        #expect(fix.core.runState == .idle)
+        #expect(fix.core.recording.state.isRecording == false)
     }
 
-    @Test("detection stop for different bundle ID is ignored")
+    @Test("no auto-stop while another mic user remains active")
     @MainActor
-    func detectionStopDifferentBundleIDIgnored() async throws {
+    func noAutoStopWhileMicUserRemains() async throws {
         let fix = try makeCoreFixture(
             useFakeScheduler: true,
             useImmediateDetectorClock: true,
@@ -439,11 +433,188 @@ struct AppCoreDetectionAutoStopTests {
         ])
         try await Task.sleep(for: .milliseconds(200))
 
-        // No countdown -- the stopped app was Teams, not Zoom
+        // No countdown -- Zoom still has mic input, allMicUsersStopped hasn't fired
         #expect(fakeScheduler.pendingCount == baselinePending)
         #expect(fix.core.recording.state.isRecording == true)
 
         _ = await fix.core.stopRecording()
+    }
+}
+
+// MARK: - Mic-user auto-stop (broad trigger)
+
+@Suite("AppCore -- mic-user auto-stop")
+struct AppCoreMicUserAutoStopTests {
+    @Test("no auto-stop for recording that never had another mic user")
+    @MainActor
+    func noAutoStopWithoutMicUsers() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "Pipeline"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        let baselinePending = fakeScheduler.pendingCount
+
+        // Start a manual recording with no other mic users present
+        await fix.core.startRecording()
+        guard case .recording = fix.core.runState else {
+            Issue.record("Expected recording")
+            return
+        }
+
+        // Emit empty snapshots (no mic users at all)
+        fix.fakeActivitySource.emit([])
+        try await Task.sleep(for: .milliseconds(200))
+        fix.fakeActivitySource.emit([])
+        try await Task.sleep(for: .milliseconds(200))
+
+        // No countdown -- there was no >=1 -> 0 mic user transition
+        #expect(fakeScheduler.pendingCount == baselinePending)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("Biscotti's own process is excluded from mic user tracking")
+    @MainActor
+    func selfProcessExcludedFromMicUsers() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "Pipeline"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Start recording while Zoom is using mic
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: true, output: true
+            ),
+            makeAudioProcess(
+                bundleID: "net.scosman.biscotti",
+                input: true, output: false, pid: 99
+            )
+        ])
+        try await Task.sleep(for: .milliseconds(200))
+        await fix.core.startRecording()
+        guard case .recording = fix.core.runState else {
+            Issue.record("Expected recording")
+            return
+        }
+
+        let baselinePending = fakeScheduler.pendingCount
+
+        // Zoom stops but Biscotti still has mic -- should still trigger
+        // auto-stop because Biscotti is excluded from mic user tracking
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "net.scosman.biscotti",
+                input: true, output: false, pid: 99
+            )
+        ])
+
+        // allMicUsersStopped should fire (only Biscotti remains, which
+        // is excluded) -> countdown begins
+        try await pollUntil {
+            fakeScheduler.pendingCount > baselinePending
+        }
+        #expect(fakeScheduler.pendingCount > baselinePending)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("auto-stop presents single notification, no per-second updates")
+    @MainActor
+    func singleNotificationNoPerSecondUpdates() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "Pipeline"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Start recording while Zoom has mic
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: true, output: true
+            )
+        ])
+        try await pollUntil { fix.core.runState == .detectedPending }
+        await fix.core.recordDetectedEvent(eventKey: nil)
+        guard case .recording = fix.core.runState else {
+            Issue.record("Expected recording")
+            return
+        }
+
+        let requestsBefore = fix.fakeNotificationCenter.addedRequests.count
+
+        // Zoom stops -> countdown begins
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: false, output: false
+            )
+        ])
+        try await pollUntil {
+            fakeScheduler.pendingCount > 0
+        }
+
+        // Wait for notification to be posted
+        try await pollUntil {
+            fix.fakeNotificationCenter.addedRequests.count > requestsBefore
+        }
+
+        let countdownRequests = fix.fakeNotificationCenter
+            .addedRequests[requestsBefore...]
+        // Exactly ONE countdown notification, not per-second updates
+        #expect(countdownRequests.count == 1)
+        #expect(countdownRequests.first?.content.title.contains("10") == true)
+
+        // Advance time partially -- no new notifications should appear
+        fakeScheduler.advance(by: .seconds(5))
+        try await Task.sleep(for: .milliseconds(100))
+
+        let countdownRequestsAfter = fix.fakeNotificationCenter
+            .addedRequests[requestsBefore...]
+        #expect(countdownRequestsAfter.count == 1)
+
+        // Finish countdown
+        fakeScheduler.advance(by: .seconds(10))
+        try await pollUntil { fix.core.runState == .idle }
     }
 }
 

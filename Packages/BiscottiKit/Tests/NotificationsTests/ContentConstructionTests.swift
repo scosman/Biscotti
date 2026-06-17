@@ -74,13 +74,13 @@ struct ContentConstructionTests {
 
         let id = UUID()
         await service.present(
-            .stopCountdown(meetingID: id, secondsRemaining: 15)
+            .stopCountdown(meetingID: id, secondsRemaining: 10)
         )
 
         #expect(fake.addedRequests.count == 1)
         let content = fake.addedRequests[0].content
-        #expect(content.title.contains("15"))
+        #expect(content.title.contains("10"))
         #expect(content.categoryIdentifier == "biscotti.stop-countdown")
-        #expect(content.sound == nil)
+        #expect(content.sound != nil)
     }
 }

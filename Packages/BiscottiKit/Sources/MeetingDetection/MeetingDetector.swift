@@ -25,6 +25,9 @@ private enum CallPhase {
 private struct AppCallState {
     let app: DetectedApp
     var phase: CallPhase = .idle
+    /// Tracks the most recent in-call flag so debounce resolution can
+    /// decide based on current reality, not stale state at entry time.
+    var latestIsInCall: Bool = false
 }
 
 /// Accumulates OR-merged input/output flags across processes sharing a parent.
@@ -61,10 +64,25 @@ public final class MeetingDetector {
     private var appStates: [String: AppCallState] = [:]
     private var debounceTasks: [String: Task<Void, Never>] = [:]
 
+    /// Whether at least one non-self process was using the mic in the
+    /// previous snapshot. Used to detect the >=1 -> 0 transition.
+    private var hadNonSelfMicUsers = false
+
+    /// Pending debounce task for the all-mic-users-stopped event.
+    /// Cancelled when a non-self mic user reappears before the debounce elapses.
+    private var micStopDebounceTask: Task<Void, Never>?
+
     // MARK: - Debounce constants
 
     let startDebounce: Duration = .seconds(3)
     let stopDebounce: Duration = .seconds(8)
+    let micStopDebounce: Duration = .seconds(5)
+
+    /// The bundle ID prefix of the current app, used to exclude Biscotti's
+    /// own mic usage from the "non-self mic users" set. Matches any
+    /// bundle ID that starts with this prefix (covers the main app and
+    /// helper XPC services like the transcriber).
+    private let selfBundlePrefix: String
 
     // MARK: - Init
 
@@ -72,11 +90,13 @@ public final class MeetingDetector {
     public init(
         catalog: any MeetingCatalog,
         source: any ActivitySource,
-        clock: AnyClock
+        clock: AnyClock,
+        selfBundlePrefix: String = "net.scosman.biscotti"
     ) {
         self.catalog = catalog
         self.source = source
         self.clock = clock
+        self.selfBundlePrefix = selfBundlePrefix
     }
 
     /// Creates a detector using `ContinuousClock` and the default live
@@ -131,6 +151,9 @@ public final class MeetingDetector {
         }
         debounceTasks.removeAll()
 
+        micStopDebounceTask?.cancel()
+        micStopDebounceTask = nil
+
         for (_, state) in appStates {
             switch state.phase {
             case .active, .pendingStop:
@@ -140,6 +163,7 @@ public final class MeetingDetector {
             }
         }
         appStates.removeAll()
+        hadNonSelfMicUsers = false
 
         eventContinuation?.finish()
         eventContinuation = nil
@@ -148,6 +172,10 @@ public final class MeetingDetector {
     // MARK: - Snapshot processing pipeline
 
     private func processSnapshot(_ snapshot: [AudioProcess]) {
+        // Track non-self mic users across ALL processes (not just watchlist).
+        // Fires .allMicUsersStopped on the >=1 -> 0 transition.
+        updateMicUserTracking(snapshot)
+
         // Step 1 & 2: Filter to watchlist, resolve helpers, OR-merge
         // raw input/output flags for processes that share a parent.
         var merged: [String: MergedFlags] = [:]
@@ -196,6 +224,65 @@ public final class MeetingDetector {
         }
     }
 
+    // MARK: - Non-self mic user tracking
+
+    /// Checks whether any non-Biscotti process is using the mic and
+    /// emits `.allMicUsersStopped` after the non-self mic-user set has
+    /// been continuously empty for `micStopDebounce` seconds. Cancels
+    /// any pending debounce if a non-self mic user reappears.
+    private func updateMicUserTracking(_ snapshot: [AudioProcess]) {
+        let hasNonSelfMicUsers = snapshot.contains { process in
+            guard process.isRunningInput else { return false }
+            guard let bundleID = process.bundleID else {
+                // Unknown-bundle processes count as non-self
+                return true
+            }
+            return !bundleID.hasPrefix(selfBundlePrefix)
+        }
+
+        if hadNonSelfMicUsers, !hasNonSelfMicUsers {
+            // Transition to empty -- start debounce timer
+            enterMicStopDebounce()
+        } else if hasNonSelfMicUsers {
+            // A non-self mic user is present -- cancel any pending debounce
+            cancelMicStopDebounce()
+        }
+        hadNonSelfMicUsers = hasNonSelfMicUsers
+    }
+
+    private func enterMicStopDebounce() {
+        // Cancel any existing debounce (shouldn't normally exist, but
+        // guards against double-fire).
+        micStopDebounceTask?.cancel()
+
+        let clock = clock
+        let debounce = micStopDebounce
+        micStopDebounceTask = Task { [weak self] in
+            try? await clock.sleep(for: debounce)
+            guard !Task.isCancelled else { return }
+            self?.resolveMicStopDebounce()
+        }
+    }
+
+    private func resolveMicStopDebounce() {
+        micStopDebounceTask = nil
+        // Self-verify: only emit if non-self mic users are still absent.
+        // A snapshot arriving between timer-start and resolve may have
+        // restored mic users (cancellation is the primary guard, but
+        // this is the belt-and-suspenders check).
+        guard !hadNonSelfMicUsers else {
+            logger.debug("Mic-stop debounce resolved but non-self mic users reappeared — suppressing")
+            return
+        }
+        emit(.allMicUsersStopped)
+        logger.info("All non-self mic users stopped (after debounce)")
+    }
+
+    private func cancelMicStopDebounce() {
+        micStopDebounceTask?.cancel()
+        micStopDebounceTask = nil
+    }
+
     // MARK: - State machine transitions
 
     private func feedStateMachine(
@@ -212,13 +299,14 @@ public final class MeetingDetector {
             }
 
         case .pendingStarted:
+            // Track the latest in-call state so the debounce resolution
+            // can decide based on current reality rather than the state
+            // at the moment pendingStarted began. A brief !isInCall flap
+            // no longer aborts detection — the timer checks at resolve.
+            appStates[parentID]?.latestIsInCall = isInCall
             if !isInCall {
-                // Flap suppressed: go back to idle
-                cancelDebounce(for: parentID)
-                appStates.removeValue(forKey: parentID)
-                logger.debug("Flap suppressed for \(app.displayName)")
+                logger.debug("Start-window flap for \(app.displayName) — waiting for debounce resolve")
             }
-            // If still isInCall, the debounce timer handles the transition
 
         case .active:
             if !isInCall {
@@ -245,7 +333,7 @@ public final class MeetingDetector {
         app: DetectedApp
     ) {
         let now = ContinuousClock.now
-        appStates[parentID] = AppCallState(app: app)
+        appStates[parentID] = AppCallState(app: app, latestIsInCall: true)
         appStates[parentID]?.phase = .pendingStarted(since: now)
 
         let clock = clock
@@ -262,12 +350,19 @@ public final class MeetingDetector {
               case .pendingStarted = state.phase
         else { return }
 
-        appStates[parentID]?.phase = .active
         debounceTasks.removeValue(forKey: parentID)
-        emit(.started(app: state.app))
-        logger.info(
-            "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
-        )
+
+        if state.latestIsInCall {
+            appStates[parentID]?.phase = .active
+            emit(.started(app: state.app))
+            logger.info(
+                "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
+            )
+        } else {
+            // App was not in-call at resolve time — genuine blip, not a meeting
+            appStates.removeValue(forKey: parentID)
+            logger.debug("Start debounce resolved idle for \(state.app.displayName)")
+        }
     }
 
     private func enterPendingStop(

@@ -1,68 +1,66 @@
 {
   "ac_crash_safety_check" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_crash_safety_check",
     "timestamp" : "2026-06-17T02:00:18Z"
   },
   "ac_files_exist" : {
-    "note" : "Both .aac files exist with sane sizes",
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_files_exist",
     "timestamp" : "2026-06-17T01:42:55Z"
   },
   "ac_meet_close_midcapture" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_meet_close_midcapture",
     "timestamp" : "2026-06-17T01:49:03Z"
   },
   "ac_meet_open_midcapture" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_meet_open_midcapture",
     "timestamp" : "2026-06-17T01:49:54Z"
   },
   "ac_mega_timing" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_mega_timing",
     "timestamp" : "2026-06-17T02:00:13Z"
   },
   "ac_mega_voice" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_mega_voice",
     "timestamp" : "2026-06-17T02:00:10Z"
   },
   "ac_playback_mic" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_playback_mic",
     "timestamp" : "2026-06-17T01:43:26Z"
   },
   "ac_playback_system" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_playback_system",
     "timestamp" : "2026-06-17T01:43:27Z"
   },
   "ac_request_permissions" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_request_permissions",
     "timestamp" : "2026-06-17T01:42:38Z"
   },
   "ac_route_change" : {
-    "note" : "this fails, but I learned this never worked, past passes were poor testing. Okay to check in this failure, it's real failure. The input device isn't updating on new default input device.",
-    "status" : "fail",
+    "status" : "not-run",
     "stepID" : "ac_route_change",
     "timestamp" : "2026-06-17T01:46:20Z"
   },
   "ac_start_recording" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_start_recording",
     "timestamp" : "2026-06-17T01:50:04Z"
   },
   "ac_stop_recording" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_stop_recording",
     "timestamp" : "2026-06-17T01:51:03Z"
   },
   "ac_two_dialogs" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "ac_two_dialogs",
     "timestamp" : "2026-06-17T01:42:39Z"
   },

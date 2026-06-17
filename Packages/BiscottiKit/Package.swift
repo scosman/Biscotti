@@ -158,6 +158,7 @@ let package = Package(
                 "DataStore",
                 "DesignSystem",
                 "MeetingCatalog",
+                "MeetingDetailUI",
                 "MeetingDetection",
                 "Notifications",
                 "Permissions",

@@ -573,9 +573,11 @@ private struct SearchFieldFocuser: NSViewRepresentable {
     }
 }
 
-#Preview("App Shell") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = AppShellViewModel(core: core)
-    AppShellView(viewModel: viewModel)
-        .frame(width: 700, height: 500)
-}
+#if DEBUG
+    #Preview("App Shell") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = AppShellViewModel(core: core)
+        AppShellView(viewModel: viewModel)
+            .frame(width: 700, height: 500)
+    }
+#endif

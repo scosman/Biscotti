@@ -380,10 +380,12 @@ private extension RecordingView {
     }
 }
 
-#Preview("Recording Screen") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = RecordingViewModel(core: core)
-    RecordingView(viewModel: viewModel)
-        .frame(width: 600, height: 700)
-        .background(Tokens.contentBackground)
-}
+#if DEBUG
+    #Preview("Recording Screen") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = RecordingViewModel(core: core)
+        RecordingView(viewModel: viewModel)
+            .frame(width: 600, height: 700)
+            .background(Tokens.contentBackground)
+    }
+#endif

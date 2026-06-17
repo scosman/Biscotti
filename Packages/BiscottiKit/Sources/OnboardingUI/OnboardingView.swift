@@ -74,9 +74,11 @@ public struct OnboardingView: View {
     }
 }
 
-#Preview("Onboarding") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = OnboardingViewModel(core: core)
-    OnboardingView(viewModel: viewModel)
-        .frame(width: 600, height: 500)
-}
+#if DEBUG
+    #Preview("Onboarding") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = OnboardingViewModel(core: core)
+        OnboardingView(viewModel: viewModel)
+            .frame(width: 600, height: 500)
+    }
+#endif

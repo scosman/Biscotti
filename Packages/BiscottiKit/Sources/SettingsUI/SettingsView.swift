@@ -240,9 +240,11 @@ public struct SettingsView: View {
 
 // Color(hex:) initializer is in DesignSystem/CalendarContextBlock.swift
 
-#Preview("Settings") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = SettingsViewModel(core: core)
-    SettingsView(viewModel: viewModel)
-        .frame(width: 500, height: 600)
-}
+#if DEBUG
+    #Preview("Settings") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = SettingsViewModel(core: core)
+        SettingsView(viewModel: viewModel)
+            .frame(width: 500, height: 600)
+    }
+#endif

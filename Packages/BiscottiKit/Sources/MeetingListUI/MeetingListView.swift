@@ -121,17 +121,19 @@ public struct MeetingListView: View {
     }
 }
 
-#Preview("Meeting List - Browse Empty") {
-    MeetingListView(viewModel: .previewEmpty())
-        .frame(width: 280, height: 400)
-}
+#if DEBUG
+    #Preview("Meeting List - Browse Empty") {
+        MeetingListView(viewModel: .previewEmpty())
+            .frame(width: 280, height: 400)
+    }
 
-#Preview("Meeting List - Browse Populated") {
-    MeetingListView(viewModel: .previewBrowse())
-        .frame(width: 280, height: 400)
-}
+    #Preview("Meeting List - Browse Populated") {
+        MeetingListView(viewModel: .previewBrowse())
+            .frame(width: 280, height: 400)
+    }
 
-#Preview("Meeting List - Search") {
-    MeetingListView(viewModel: .previewSearch())
-        .frame(width: 280, height: 400)
-}
+    #Preview("Meeting List - Search") {
+        MeetingListView(viewModel: .previewSearch())
+            .frame(width: 280, height: 400)
+    }
+#endif

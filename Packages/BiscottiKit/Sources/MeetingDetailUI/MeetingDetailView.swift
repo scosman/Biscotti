@@ -733,9 +733,11 @@ private final class FocusForwarderView: NSView {
 
 // MARK: - Event Picker Sheet (uses shared DesignSystem.EventPickerSheet)
 
-#Preview("Meeting Detail - Processing") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = MeetingDetailViewModel(core: core, meetingID: UUID())
-    MeetingDetailView(viewModel: viewModel)
-        .frame(width: 800, height: 600)
-}
+#if DEBUG
+    #Preview("Meeting Detail - Processing") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = MeetingDetailViewModel(core: core, meetingID: UUID())
+        MeetingDetailView(viewModel: viewModel)
+            .frame(width: 800, height: 600)
+    }
+#endif

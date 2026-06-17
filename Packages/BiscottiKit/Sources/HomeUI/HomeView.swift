@@ -447,16 +447,18 @@ private enum HomeSharedViews {
     }()
 }
 
-#Preview("Home - Populated") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = HomeViewModel(core: core)
-    HomeView(viewModel: viewModel)
-        .frame(width: 700, height: 600)
-}
+#if DEBUG
+    #Preview("Home - Populated") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = HomeViewModel(core: core)
+        HomeView(viewModel: viewModel)
+            .frame(width: 700, height: 600)
+    }
 
-#Preview("Home - Empty") {
-    let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
-    let viewModel = HomeViewModel(core: core)
-    HomeView(viewModel: viewModel)
-        .frame(width: 700, height: 500)
-}
+    #Preview("Home - Empty") {
+        let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
+        let viewModel = HomeViewModel(core: core)
+        HomeView(viewModel: viewModel)
+            .frame(width: 700, height: 500)
+    }
+#endif

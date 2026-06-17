@@ -1,7 +1,6 @@
 import AudioCapture
 import BiscottiTestSupport
 import Calendar
-import CoreAudio
 import DataStore
 import Foundation
 import MeetingDetection
@@ -1288,6 +1287,187 @@ struct AppCoreRecordingRunStateTests {
     }
 }
 
+// MARK: - Recording startup state (Phase 8)
+
+@Suite("AppCore -- recording startup state")
+struct AppCoreRecordingStartupTests {
+    @Test("startRecording sets startup to .loading then .started on success")
+    @MainActor
+    func startupSuccessTransitions() async throws {
+        let fix = try makeCoreFixture(testName: "StartupState")
+        defer { fix.cleanup() }
+
+        #expect(fix.core.recordingStartup == nil)
+
+        await fix.core.startRecording()
+
+        #expect(fix.core.recordingStartup == .started)
+        #expect(fix.core.route == .recording)
+        #expect(fix.core.recording.state.isRecording == true)
+    }
+
+    @Test("startRecording sets startup to .failed on error")
+    @MainActor
+    func startupFailureTransitions() async throws {
+        let fix = try makeCoreFixture(
+            micStatus: .denied,
+            micRequestResult: false,
+            testName: "StartupStateFail"
+        )
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+
+        if case let .failed(msg) = fix.core.recordingStartup {
+            #expect(msg.contains("Microphone"))
+        } else {
+            Issue.record(
+                "Expected .failed, got \(String(describing: fix.core.recordingStartup))"
+            )
+        }
+        // Route should still be .recording (showing the error state)
+        #expect(fix.core.route == .recording)
+        #expect(fix.core.recording.state.isRecording == false)
+    }
+
+    @Test("cancelRecordingStartup reverts route to home")
+    @MainActor
+    func cancelRecordingStartupRevertsRoute() async throws {
+        let fix = try makeCoreFixture(
+            micStatus: .denied,
+            micRequestResult: false,
+            testName: "StartupCancel"
+        )
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.route == .recording)
+
+        fix.core.cancelRecordingStartup()
+
+        #expect(fix.core.recordingStartup == nil)
+        #expect(fix.core.route == .home)
+        #expect(fix.core.runState == .idle)
+    }
+
+    @Test("stopRecording clears startup state")
+    @MainActor
+    func stopClearsStartup() async throws {
+        let fix = try makeCoreFixture(testName: "StartupClear")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.recordingStartup == .started)
+
+        _ = await fix.core.stopRecording()
+        #expect(fix.core.recordingStartup == nil)
+    }
+
+    @Test("retryRecordingStartup re-attempts from failed state")
+    @MainActor
+    func retryFromFailedState() async throws {
+        let fix = try makeCoreFixture(
+            startError: NSError(
+                domain: "test", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "transient"]
+            ),
+            testName: "StartupRetry"
+        )
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.recordingStartup?.isFailed == true)
+
+        // Clear the error for retry
+        fix.fakeRecorder.backing.startError = nil
+
+        await fix.core.retryRecordingStartup()
+        #expect(fix.core.recordingStartup == .started)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("retryRecordingStartup preserves original eventKey for association")
+    @MainActor
+    func retryPreservesEventKey() async throws {
+        let now = Date()
+        let dto = makeMeetingDTO(
+            title: "Retry Meeting",
+            start: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(1500)
+        )
+
+        // First attempt fails with an engine error
+        let fix = try makeCoreFixture(
+            startError: NSError(
+                domain: "test", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "transient"]
+            ),
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "StartupRetryKey"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        let eventKey = fix.core.upcoming.first?.id
+
+        // Start recording with an explicit eventKey -- should fail
+        await fix.core.startRecording(eventKey: eventKey)
+        #expect(fix.core.recordingStartup?.isFailed == true)
+
+        // Clear the error and retry -- the original eventKey should be
+        // preserved and used for calendar association.
+        fix.fakeRecorder.backing.startError = nil
+        await fix.core.retryRecordingStartup()
+
+        #expect(fix.core.recordingStartup == .started)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        guard let meetingID = fix.core.recording.state.meetingID
+        else {
+            Issue.record("Expected meeting ID")
+            return
+        }
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(detail?.calendar?.title == "Retry Meeting")
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("stopRecording during started state bumps generation and clears startup")
+    @MainActor
+    func stopDuringStartedClearsStartupAndGeneration() async throws {
+        let fix = try makeCoreFixture(testName: "StartupStopClean")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.recordingStartup == .started)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        // Stop the recording while startup state is .started
+        _ = await fix.core.stopRecording()
+
+        // Startup state must be cleared
+        #expect(fix.core.recordingStartup == nil)
+        #expect(fix.core.runState == .idle)
+        #expect(fix.core.recording.state.isRecording == false)
+
+        // A new recording should start fresh (no stale generation interference)
+        await fix.core.startRecording()
+        #expect(fix.core.recordingStartup == .started)
+        #expect(fix.core.recording.state.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+    }
+}
+
 // MARK: - Calendar auto-association
 
 @Suite("AppCore -- calendar auto-association")
@@ -1487,32 +1667,6 @@ struct FakeSchedulerTests {
 }
 
 // MARK: - Helpers
-
-/// Polls a condition until true, up to 2 seconds.
-private func pollUntil(
-    _ condition: @MainActor () -> Bool
-) async throws {
-    for _ in 0 ..< 40 {
-        try await Task.sleep(for: .milliseconds(50))
-        if await condition() { return }
-    }
-}
-
-/// Creates an `AudioProcess` test stub for pipeline tests.
-private func makeAudioProcess(
-    bundleID: String,
-    input: Bool,
-    output: Bool,
-    pid: pid_t = 1
-) -> AudioProcess {
-    AudioProcess(
-        id: AudioObjectID(pid),
-        bundleID: bundleID,
-        pid: pid,
-        isRunningInput: input,
-        isRunningOutput: output
-    )
-}
 
 private func makeMeetingDTO(
     eventIdentifier: String = "ev-1",

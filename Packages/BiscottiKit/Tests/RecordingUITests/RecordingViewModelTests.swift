@@ -1,7 +1,6 @@
 import AudioCapture
 import BiscottiTestSupport
 import Calendar
-import CoreAudio
 import DataStore
 import Foundation
 import MeetingDetection
@@ -1064,30 +1063,175 @@ struct EventLinkUnlinkTests {
     }
 }
 
-// MARK: - Helpers (Phase 4)
+// Shared helpers `pollUntil` and `makeAudioProcess` are imported
+// from BiscottiTestSupport (TestHelpers.swift).
 
-/// Polls a condition until true, up to 2 seconds.
-private func pollUntil(
-    _ condition: @MainActor () -> Bool
-) async throws {
-    for _ in 0 ..< 40 {
-        try await Task.sleep(for: .milliseconds(50))
-        if await condition() { return }
+// MARK: - Phase 8: Recording startup state tests
+
+@Suite("RecordingViewModel recording startup state")
+struct RecordingStartupStateTests {
+    @Test("startup state transitions from loading to started on success")
+    @MainActor
+    func startupTransitionsToStarted() async throws {
+        let fix = try makeCoreFixture(testName: "StartupState")
+        defer { fix.cleanup() }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+        #expect(viewModel.recordingStartup == nil)
+
+        await fix.core.startRecording()
+
+        // After a successful start, should be .started
+        #expect(viewModel.recordingStartup == .started)
+        #expect(viewModel.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+
+        // After stop, startup state is cleared
+        #expect(viewModel.recordingStartup == nil)
+    }
+
+    @Test("startup state shows failed on permission denied")
+    @MainActor
+    func startupShowsFailedOnPermissionDenied() async throws {
+        let fix = try makeCoreFixture(
+            micStatus: .denied,
+            micRequestResult: false,
+            testName: "StartupStateFail"
+        )
+        defer { fix.cleanup() }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        await fix.core.startRecording()
+
+        // Should be .failed (mic permission denied)
+        #expect(viewModel.recordingStartup == .failed(
+            "Microphone access is required to record."
+        ))
+        #expect(viewModel.isRecording == false)
+    }
+
+    @Test("startup state shows failed on engine error")
+    @MainActor
+    func startupShowsFailedOnEngineError() async throws {
+        struct FakeEngineError: Error, LocalizedError {
+            var errorDescription: String? {
+                "test engine failure"
+            }
+        }
+        let fix = try makeCoreFixture(
+            startError: FakeEngineError(),
+            testName: "StartupStateEngine"
+        )
+        defer { fix.cleanup() }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        await fix.core.startRecording()
+
+        // Should be .failed with engine error
+        if case let .failed(msg) = viewModel.recordingStartup {
+            #expect(msg.contains("Audio engine error"))
+        } else {
+            Issue.record(
+                "Expected .failed, got \(String(describing: viewModel.recordingStartup))"
+            )
+        }
+        #expect(viewModel.isRecording == false)
+    }
+
+    @Test("cancelRecordingStartup resets state and route")
+    @MainActor
+    func cancelResetStateAndRoute() async throws {
+        let fix = try makeCoreFixture(
+            micStatus: .denied,
+            micRequestResult: false,
+            testName: "StartupCancel"
+        )
+        defer { fix.cleanup() }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        await fix.core.startRecording()
+        #expect(fix.core.route == .recording)
+
+        viewModel.cancelStartRecording()
+
+        #expect(viewModel.recordingStartup == nil)
+        #expect(fix.core.route == .home)
+    }
+
+    @Test("retryRecordingStartup re-attempts after failure")
+    @MainActor
+    func retryReattemptsAfterFailure() async throws {
+        // Use an engine error that will fail once, then succeed on retry.
+        // The FakeRecorder allows clearing startError between attempts.
+        let fix = try makeCoreFixture(
+            startError: NSError(
+                domain: "test", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "transient"]
+            ),
+            testName: "StartupRetry"
+        )
+        defer { fix.cleanup() }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        await fix.core.startRecording()
+        #expect(viewModel.recordingStartup?.isFailed == true)
+
+        // "Fix" the engine error for the retry
+        fix.fakeRecorder.backing.startError = nil
+
+        await viewModel.retryStartRecording()
+
+        #expect(viewModel.recordingStartup == .started)
+        #expect(viewModel.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("route is .recording immediately after startRecording")
+    @MainActor
+    func routeIsRecordingImmediately() async throws {
+        let fix = try makeCoreFixture(testName: "StartupRoute")
+        defer { fix.cleanup() }
+
+        // We need to verify that route is set synchronously.
+        // After startRecording, route should be .recording regardless
+        // of whether the heavy work is done.
+        await fix.core.startRecording()
+        #expect(fix.core.route == .recording)
+    }
+
+    @Test("startupErrorMessage covers all error cases")
+    @MainActor
+    func startupErrorMessageCoverage() {
+        #expect(AppCore.startupErrorMessage(
+            for: .permissionDenied(.microphone)
+        ).contains("Microphone"))
+
+        #expect(AppCore.startupErrorMessage(
+            for: .permissionDenied(.systemAudio)
+        ).contains("System audio"))
+
+        #expect(AppCore.startupErrorMessage(
+            for: .permissionDenied(.calendar)
+        ).contains("permission"))
+
+        #expect(AppCore.startupErrorMessage(
+            for: .engineFailed("boom")
+        ).contains("boom"))
+
+        #expect(AppCore.startupErrorMessage(
+            for: .storageFailed("disk")
+        ).contains("disk"))
+
+        #expect(AppCore.startupErrorMessage(
+            for: .alreadyRecording
+        ).contains("already"))
     }
 }
 
-/// Creates an `AudioProcess` test stub for pipeline tests.
-private func makeAudioProcess(
-    bundleID: String,
-    input: Bool,
-    output: Bool,
-    pid: pid_t = 1
-) -> AudioProcess {
-    AudioProcess(
-        id: AudioObjectID(pid),
-        bundleID: bundleID,
-        pid: pid,
-        isRunningInput: input,
-        isRunningOutput: output
-    )
-}
+// RecordingStartupState.isFailed is imported from BiscottiTestSupport.

@@ -143,7 +143,7 @@ struct AppCoreRecordingTests {
         #expect(fix.fakeRecorder.backing.startCalled == true)
     }
 
-    @Test("startRecording with denied mic stays on current route")
+    @Test("startRecording with denied mic routes to recording with failed startup")
     @MainActor
     func startRecordingDeniedMic() async throws {
         let fix = try makeCoreFixture(
@@ -155,12 +155,20 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .home)
+        // Route is .recording (showing the error state in the pane)
+        #expect(fix.core.route == .recording)
         #expect(fix.core.recording.state.isRecording == false)
         #expect(fix.core.recording.lastError == .permissionDenied(.microphone))
+        if case .failed = fix.core.recordingStartup {
+            // Good -- startup failed with an error message
+        } else {
+            Issue.record(
+                "Expected .failed, got \(String(describing: fix.core.recordingStartup))"
+            )
+        }
     }
 
-    @Test("startRecording with engine failure stays on current route")
+    @Test("startRecording with engine failure routes to recording with failed startup")
     @MainActor
     func startRecordingEngineFailed() async throws {
         let fix = try makeCoreFixture(
@@ -171,8 +179,16 @@ struct AppCoreRecordingTests {
 
         await fix.core.startRecording()
 
-        #expect(fix.core.route == .home)
+        // Route is .recording (showing the error state in the pane)
+        #expect(fix.core.route == .recording)
         #expect(fix.core.recording.state.isRecording == false)
+        if case .failed = fix.core.recordingStartup {
+            // Good -- startup failed
+        } else {
+            Issue.record(
+                "Expected .failed, got \(String(describing: fix.core.recordingStartup))"
+            )
+        }
     }
 
     @Test("stopRecording returns meeting ID and routes to meetings with selection")

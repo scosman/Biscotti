@@ -135,11 +135,6 @@ public struct AppShellView: View {
                 .padding(.horizontal, Tokens.spacingSM)
                 .padding(.bottom, Tokens.spacingSM)
 
-            // RECORDING NOW section (above Home while recording)
-            if viewModel.isRecording {
-                RecordingNowSection(viewModel: viewModel)
-            }
-
             // Home row
             homeRow
                 .padding(.horizontal, Tokens.spacingSM)
@@ -150,6 +145,11 @@ public struct AppShellView: View {
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
+
+            // RECORDING NOW section (above Upcoming while recording)
+            if viewModel.isRecording {
+                RecordingNowSection(viewModel: viewModel)
+            }
 
             // Upcoming section
             if viewModel.hasCalendarAccess,
@@ -413,23 +413,28 @@ private struct RecordingToolbarButton: View {
                     .fill(Color.signalRed)
                     .frame(width: 8, height: 8)
                     .opacity(pulsing ? 0.4 : 1.0)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.8)
+                            .repeatForever(autoreverses: true),
+                        value: pulsing
+                    )
 
                 Text("REC \(viewModel.recordingElapsedText)")
                     .font(.monoMetaMedium)
+                    .contentTransition(.identity)
+                    .animation(nil, value: viewModel.recordingElapsedText)
             }
             .padding(.horizontal, 16)
             .frame(height: 34)
         }
         .buttonStyle(LightAlertButtonStyle())
         .help("Go to recording")
+        .animation(nil, value: viewModel.isRecording)
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(
-                .easeInOut(duration: 0.8)
-                    .repeatForever(autoreverses: true)
-            ) {
-                pulsing = true
-            }
+            pulsing = true
         }
     }
 }
@@ -449,7 +454,7 @@ private struct RecordingNowSection: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("RECORDING NOW")
                 .kicker()
-                .foregroundStyle(Color.signalRed)
+                .foregroundStyle(Color.inkSecondary)
                 .padding(.horizontal, Tokens.spacingMD)
                 .padding(.bottom, Tokens.spacingXS)
 
@@ -469,6 +474,7 @@ private struct RecordingNowSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, Tokens.spacingXS)
                 .padding(.horizontal, Tokens.spacingSM)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .background(

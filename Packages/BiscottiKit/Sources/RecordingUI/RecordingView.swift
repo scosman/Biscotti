@@ -27,29 +27,19 @@ public struct RecordingView: View {
     }
 
     public var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
+        Group {
+            switch viewModel.recordingStartup {
+            case .loading:
+                startupLoadingView
 
-                    mainColumn
+            case let .failed(message):
+                startupFailedView(message: message)
 
-                    Spacer(minLength: 0)
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: geometry.size.height,
-                    alignment: .center
-                )
+            case .started, nil:
+                recordingContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: viewModel.meetingID) {
-            await viewModel.load()
-        }
-        .onChange(of: viewModel.summariesVersion) {
-            Task { await viewModel.reloadDetail() }
-        }
         .sheet(isPresented: $viewModel.showEventPicker) {
             EventPickerSheet(
                 events: viewModel.nearbyEventPickerItems,
@@ -71,6 +61,80 @@ public struct RecordingView: View {
                     viewModel.showEventPicker = false
                 }
             )
+        }
+    }
+
+    // MARK: - Startup states
+
+    private var startupLoadingView: some View {
+        VStack(spacing: Tokens.spacingMD) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Starting recording\u{2026}")
+                .font(.body)
+                .foregroundStyle(Color.inkSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func startupFailedView(message: String) -> some View {
+        VStack(spacing: Tokens.spacingMD) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.signalRed)
+
+            Text("Could not start recording")
+                .font(.serifHeadline)
+                .foregroundStyle(Color.ink)
+
+            Text(message)
+                .font(.body)
+                .foregroundStyle(Color.inkSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
+
+            HStack(spacing: Tokens.spacingSM) {
+                Button("Cancel") {
+                    viewModel.cancelStartRecording()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.inkSecondary)
+
+                Button {
+                    Task { await viewModel.retryStartRecording() }
+                } label: {
+                    Text("Retry")
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.sage)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var recordingContent: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+
+                    mainColumn
+
+                    Spacer(minLength: 0)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: geometry.size.height,
+                    alignment: .center
+                )
+            }
+        }
+        .task(id: viewModel.meetingID) {
+            await viewModel.load()
+        }
+        .onChange(of: viewModel.summariesVersion) {
+            Task { await viewModel.reloadDetail() }
         }
     }
 

@@ -46,6 +46,22 @@ public struct TranscriptJump: Sendable, Equatable {
     }
 }
 
+// MARK: - Recording startup state
+
+/// Observable state for the recording startup phase.
+///
+/// Lets the UI show a loading spinner immediately when the user clicks
+/// "Record", decoupled from the heavy async startup (audio engine init,
+/// calendar association, etc.).
+public enum RecordingStartupState: Sendable, Equatable {
+    /// The recording pane is showing but the audio pipeline hasn't started yet.
+    case loading
+    /// The audio pipeline started successfully; the pane shows live recording UI.
+    case started
+    /// Startup failed; the pane shows an error with the given message.
+    case failed(String)
+}
+
 // MARK: - Auto-stop observable state
 
 /// Observable state published while an auto-stop countdown is active.
@@ -131,6 +147,11 @@ public final class AppCore {
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
 
+    /// Recording startup progress. Non-nil from the moment the user
+    /// clicks Record until the pane dismisses or transitions to live.
+    /// Drives loading/error states on the recording pane.
+    public private(set) var recordingStartup: RecordingStartupState?
+
     /// Observable auto-stop countdown state. Non-nil while a countdown
     /// is active; the view layer renders a countdown card from this.
     public private(set) var autoStop: AutoStopState?
@@ -177,6 +198,15 @@ public final class AppCore {
 
     /// Timestamp of the most recent calendar-start notification, for de-dup.
     private var lastCalendarNotificationDate: Date?
+
+    /// Monotonic generation counter for recording startup. Incremented
+    /// on cancel/retry/stop so an in-flight `completeRecordingStartup`
+    /// can detect that its generation is stale and bail out.
+    private var startupGeneration: UInt = 0
+
+    /// The eventKey passed to `startRecording(eventKey:)`. Stashed so
+    /// `retryRecordingStartup()` can re-attempt with the original key.
+    private var pendingStartupEventKey: String?
 
     /// The auto-stop countdown task. Cancelled on keepRecording or manual stop.
     private var countdownTask: Task<Void, Never>?
@@ -337,37 +367,30 @@ public final class AppCore {
 
     /// Starts a new recording session, optionally associated with a
     /// specific calendar event.
+    ///
+    /// Navigation to the recording pane happens synchronously so the UI
+    /// is responsive. The heavy startup (audio engine init, calendar
+    /// association, summaries reload) runs asynchronously; the recording
+    /// pane observes `recordingStartup` to show loading/started/failed.
     public func startRecording(eventKey: String? = nil) async {
         // One-recording-at-a-time guard
         guard runState == .idle || runState == .detectedPending else {
             return
         }
 
-        // Resolve the calendar event before starting
-        let resolvedEvent: CalendarEvent? = if let eventKey {
-            calendar.event(forKey: eventKey)
-        } else {
-            calendar.bestMatch(at: Date())
-        }
+        // Stash the eventKey so retry can re-use it.
+        pendingStartupEventKey = eventKey
 
-        await recording.start()
-        guard recording.state.isRecording,
-              let meetingID = recording.state.meetingID
-        else {
-            return
-        }
-
-        runState = .recording(meetingID)
+        // Navigate instantly -- the recording pane shows a loading state.
+        startupGeneration &+= 1
+        recordingStartup = .loading
         route = .recording
 
-        // Associate with the calendar event if resolved
-        if let resolvedEvent {
-            await associateEvent(resolvedEvent, with: meetingID)
-        }
-
-        // Reload summaries so the recording VM picks up the calendar
-        // context and the sidebar/home titles are fresh.
-        await reloadSummaries()
+        // Heavy startup runs in-line (callers already `await` this).
+        await completeRecordingStartup(
+            eventKey: eventKey,
+            generation: startupGeneration
+        )
     }
 
     /// Stops the current recording, reloads the sidebar, routes to the
@@ -383,8 +406,11 @@ public final class AppCore {
             return nil
         }
 
-        // Clear detection tracking
+        // Clear detection tracking and startup state
         activeDetectedBundleID = nil
+        pendingStartupEventKey = nil
+        startupGeneration &+= 1
+        recordingStartup = nil
 
         await reloadSummaries()
         runState = .idle
@@ -539,6 +565,121 @@ public final class AppCore {
             summaries = []
         }
         summariesVersion &+= 1
+    }
+}
+
+// MARK: - Recording startup lifecycle
+
+extension AppCore {
+    /// The async heavy-lift portion of `startRecording`. Separated so
+    /// the route/loading state are set synchronously before this runs.
+    ///
+    /// Checks `startupGeneration` after each `await` to detect a
+    /// concurrent cancel/retry/stop. If the generation is stale, any
+    /// partially-started recording is torn down and the method bails.
+    private func completeRecordingStartup(
+        eventKey: String? = nil,
+        generation: UInt
+    ) async {
+        // Resolve the calendar event before starting
+        let resolvedEvent: CalendarEvent? = if let eventKey {
+            calendar.event(forKey: eventKey)
+        } else {
+            calendar.bestMatch(at: Date())
+        }
+
+        await recording.start()
+
+        // Bail if cancelled/retried/stopped while start() was in flight.
+        guard generation == startupGeneration else {
+            await tearDownPartialRecording()
+            return
+        }
+
+        guard recording.state.isRecording,
+              let meetingID = recording.state.meetingID
+        else {
+            // Startup failed -- surface the error in the pane.
+            let message = recording.lastError.map {
+                Self.startupErrorMessage(for: $0)
+            } ?? "Recording failed to start."
+            recordingStartup = .failed(message)
+            return
+        }
+
+        runState = .recording(meetingID)
+        recordingStartup = .started
+        pendingStartupEventKey = nil
+
+        // Associate with the calendar event if resolved
+        if let resolvedEvent {
+            await associateEvent(resolvedEvent, with: meetingID)
+        }
+
+        guard generation == startupGeneration else {
+            // Stale after association -- stop the orphan recording.
+            await tearDownPartialRecording()
+            return
+        }
+
+        // Reload summaries so the recording VM picks up the calendar
+        // context and the sidebar/home titles are fresh.
+        await reloadSummaries()
+    }
+
+    /// Stops and discards a recording that was started by a now-stale
+    /// startup generation (cancel or retry raced with the in-flight start).
+    private func tearDownPartialRecording() async {
+        if recording.state.isRecording {
+            _ = await recording.stop()
+        }
+    }
+
+    /// Maps `RecordingError` to a user-facing message for the startup
+    /// failure pane.
+    nonisolated static func startupErrorMessage(
+        for error: RecordingError
+    ) -> String {
+        switch error {
+        case .permissionDenied(.microphone):
+            "Microphone access is required to record."
+        case .permissionDenied(.systemAudio):
+            "System audio access is required."
+        case let .permissionDenied(kind):
+            "\(kind) permission is required."
+        case let .engineFailed(detail):
+            "Audio engine error: \(detail)"
+        case let .storageFailed(detail):
+            "Storage error: \(detail)"
+        case .alreadyRecording:
+            "A recording is already in progress."
+        }
+    }
+
+    /// Cancels a pending recording startup and returns to the previous
+    /// screen. Called when the user dismisses a failed startup.
+    public func cancelRecordingStartup() {
+        startupGeneration &+= 1
+        pendingStartupEventKey = nil
+        recordingStartup = nil
+        // Only revert route if we're still on the recording screen
+        // and no actual recording is running.
+        if route == .recording, !recording.state.isRecording {
+            route = .home
+            runState = .idle
+        }
+    }
+
+    /// Retries a failed recording startup from scratch, re-using the
+    /// original eventKey from the initial `startRecording` call.
+    public func retryRecordingStartup() async {
+        let eventKey = pendingStartupEventKey
+        startupGeneration &+= 1
+        recordingStartup = .loading
+        await completeRecordingStartup(
+            eventKey: eventKey,
+            generation: startupGeneration
+        )
     }
 }
 

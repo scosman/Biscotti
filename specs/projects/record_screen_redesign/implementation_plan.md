@@ -62,3 +62,12 @@ order, not a restatement.
   that removes the event association and updates the UI. Pure-logic/VM unit tests
   where applicable. Depends on 3 (recording pane) + the existing meeting-detail
   link flow.
+
+- [x] **Phase 8 — UI polish & responsiveness.**
+  Post-review refinements: (1) sidebar "RECORDING NOW" kicker uses standard
+  section-title color (`.inkSecondary`, matching "UPCOMING") and section moves
+  above "Upcoming" instead of above "Home"; (2) toolbar record button animation
+  scoped to the dot only — text/frame no longer animate; (3) record-click
+  responsiveness — clicking Record navigates instantly to a loading state, heavy
+  startup runs async, failure surfaces in-pane; (4) dedup `pollUntil` /
+  `makeAudioProcess` test helpers into `BiscottiTestSupport`.

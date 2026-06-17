@@ -81,6 +81,23 @@ public final class RecordingViewModel {
         Self.formatElapsed(core.recording.state.elapsed)
     }
 
+    /// The recording startup state. Non-nil during the startup phase
+    /// (loading -> started/failed). The view shows a spinner or error
+    /// based on this.
+    public var recordingStartup: RecordingStartupState? {
+        core.recordingStartup
+    }
+
+    /// Retries a failed recording startup.
+    public func retryStartRecording() async {
+        await core.retryRecordingStartup()
+    }
+
+    /// Cancels a pending/failed recording startup and navigates away.
+    public func cancelStartRecording() {
+        core.cancelRecordingStartup()
+    }
+
     /// Whether the system-audio denial banner should be shown.
     public var showSystemAudioWarning: Bool {
         core.recording.systemAudioWarning

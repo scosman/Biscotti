@@ -185,11 +185,13 @@ content, `recordingHoverFill` on hover). Factor this into a reusable
 
 ## 7. Sidebar — RECORDING NOW
 
-Placed at the **top of the sidebar**, just below the brand lockup and above the
-Home row; only while recording.
+Placed **above the Upcoming section** (after the Home/Past Meetings rows and
+divider); only while recording. _(Phase 8 review: moved from above Home to above
+Upcoming to match standard sidebar section placement.)_
 
-- Section kicker `"RECORDING NOW"` (`.kicker()`, `signalRed`), `spacingMD`
-  leading / `spacingXS` bottom (matching the UPCOMING section).
+- Section kicker `"RECORDING NOW"` (`.kicker()`, `inkSecondary`), `spacingMD`
+  leading / `spacingXS` bottom (matching the UPCOMING section). _(Phase 8
+  review: uses standard section-title color, not `signalRed`.)_
 - One row (two-line, like `UpcomingEventRow`): title (`.body`, `ink`, 1 line) +
   "Recording" subtitle (`.monoMeta`, `signalRed`). **No** platform badge, timer,
   or dot.

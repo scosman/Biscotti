@@ -1,5 +1,6 @@
 import BiscottiTestSupport
 import Calendar
+import DataStore
 import Foundation
 import Testing
 @testable import AppCore
@@ -523,6 +524,85 @@ struct AppShellSearchFocusTests {
         #expect(shellVM.searchFocusToken == 1)
         shellVM.focusSearch()
         #expect(shellVM.searchFocusToken == 2)
+    }
+}
+
+// MARK: - Recording meeting title tests
+
+@Suite("AppShellViewModel -- recordingMeetingTitle")
+struct AppShellRecordingMeetingTitleTests {
+    @Test("deriveRecordingMeetingTitle returns fallback when meetingID is nil")
+    func fallbackWhenNil() {
+        let result = AppShellViewModel.deriveRecordingMeetingTitle(
+            meetingID: nil,
+            summaries: []
+        )
+        #expect(result == "Untitled Meeting")
+    }
+
+    @Test("deriveRecordingMeetingTitle returns matching summary title")
+    func matchingSummaryTitle() {
+        let id = UUID()
+        let summaries = [
+            MeetingSummary(
+                id: UUID(), title: "Other Meeting", date: Date(),
+                hasTranscript: false
+            ),
+            MeetingSummary(
+                id: id, title: "My Recording", date: Date(),
+                hasTranscript: false
+            )
+        ]
+        let result = AppShellViewModel.deriveRecordingMeetingTitle(
+            meetingID: id,
+            summaries: summaries
+        )
+        #expect(result == "My Recording")
+    }
+
+    @Test("deriveRecordingMeetingTitle returns fallback when summary not found")
+    func fallbackWhenNotFound() {
+        let id = UUID()
+        let summaries = [
+            MeetingSummary(
+                id: UUID(), title: "Some Meeting", date: Date(),
+                hasTranscript: false
+            )
+        ]
+        let result = AppShellViewModel.deriveRecordingMeetingTitle(
+            meetingID: id,
+            summaries: summaries
+        )
+        #expect(result == "Untitled Meeting")
+    }
+
+    @Test("recordingMeetingTitle returns fallback when not recording")
+    @MainActor
+    func vmFallbackWhenNotRecording() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.recordingMeetingTitle == "Untitled Meeting")
+    }
+
+    @Test("recordingMeetingTitle returns distinctive title when recording")
+    @MainActor
+    func vmTitleWhenRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+
+        // Set a distinctive title on the in-progress meeting so we can
+        // verify the lookup actually matched the right summary (not just
+        // returned the fallback, which is also a valid string).
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        try await fix.store.setTitle("Team Sync", for: meetingID)
+        await fix.core.reloadSummaries()
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.recordingMeetingTitle == "Team Sync")
     }
 }
 

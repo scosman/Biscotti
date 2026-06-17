@@ -1,6 +1,7 @@
 import AppCore
 import AppKit
 import Calendar
+import DataStore
 import DesignSystem
 import Foundation
 import HomeUI
@@ -102,7 +103,7 @@ public final class AppShellViewModel {
         core.route == .onboarding
     }
 
-    // MARK: - Recording state (toolbar button)
+    // MARK: - Recording state (toolbar button + sidebar)
 
     /// Whether a recording is currently in progress.
     public var isRecording: Bool {
@@ -113,6 +114,30 @@ public final class AppShellViewModel {
     /// or "1:02:14" for recordings over an hour).
     public var recordingElapsedText: String {
         Self.formatElapsed(core.recording.state.elapsed)
+    }
+
+    /// The title of the meeting currently being recorded, for the sidebar
+    /// "RECORDING NOW" row. Falls back to "Untitled Meeting" when not
+    /// recording or when the summary is not yet loaded.
+    public var recordingMeetingTitle: String {
+        Self.deriveRecordingMeetingTitle(
+            meetingID: core.recording.state.meetingID,
+            summaries: core.summaries
+        )
+    }
+
+    /// Pure derivation of the recording meeting title from meeting ID and
+    /// summaries. Extracted for testability.
+    nonisolated static func deriveRecordingMeetingTitle(
+        meetingID: UUID?,
+        summaries: [MeetingSummary]
+    ) -> String {
+        guard let id = meetingID,
+              let summary = summaries.first(where: { $0.id == id })
+        else {
+            return "Untitled Meeting"
+        }
+        return summary.title
     }
 
     /// Formats a time interval as "M:SS" (under an hour) or "H:MM:SS".

@@ -285,6 +285,7 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "Calendar",
+                "DataStore",
                 "DesignSystem",
                 "HomeUI",
                 "MeetingListUI",

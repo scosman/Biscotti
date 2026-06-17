@@ -40,7 +40,7 @@ order, not a restatement.
   Update existing auto-stop tests; add `autoStop`/`keepRecording` tests. Depends
   on 1 + 3.
 
-- [ ] **Phase 5 — Chrome: header button + sidebar RECORDING NOW.**
+- [x] **Phase 5 — Chrome: header button + sidebar RECORDING NOW.**
   Restyle the toolbar record button's recording state (lighter + bigger, pulsing
   dot, "REC m:ss") via `LightAlertButtonStyle`; idle unchanged. Add the sidebar
   "RECORDING NOW" section/row (tint, no badge, navigates to the pane) +

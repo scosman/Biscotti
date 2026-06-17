@@ -161,6 +161,64 @@ public final class RecordingViewModel {
         }
     }
 
+    // MARK: - Event linking
+
+    /// Whether to show the event picker sheet.
+    public var showEventPicker: Bool = false
+
+    /// Calendar events near this meeting's recording time, fetched on
+    /// demand when the picker opens.
+    public private(set) var nearbyEvents: [CalendarEvent] = []
+
+    /// Nearby events mapped to `EventPickerItem` for the shared picker sheet.
+    /// Keeps the `Calendar` → `DesignSystem` mapping in the VM so the view
+    /// does not need `import Calendar`.
+    public var nearbyEventPickerItems: [EventPickerItem] {
+        nearbyEvents.map { event in
+            EventPickerItem(
+                id: event.id,
+                title: event.title,
+                start: event.start,
+                conferencePlatform: event.conferencePlatform
+            )
+        }
+    }
+
+    /// Whether calendar access has been granted.
+    public var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
+    }
+
+    /// Opens the event picker and fetches events near the meeting's
+    /// recording time.
+    public func presentLinkEvent() async {
+        showEventPicker = true
+        await loadNearbyEvents()
+    }
+
+    /// Fetches calendar events near the meeting's recording time.
+    public func loadNearbyEvents() async {
+        guard let referenceDate = detail?.date else { return }
+        nearbyEvents = await core.eventsNear(referenceDate)
+    }
+
+    /// Associates the meeting with a calendar event (or removes the
+    /// association when `eventKey` is nil).
+    public func correctAssociation(eventKey: String?) async {
+        guard let meetingID else { return }
+        await core.correctAssociation(
+            meetingID: meetingID, eventKey: eventKey
+        )
+        await reloadDetail()
+        await core.reloadSummaries()
+        showEventPicker = false
+    }
+
+    /// Removes the calendar event association.
+    public func removeAssociation() async {
+        await correctAssociation(eventKey: nil)
+    }
+
     // MARK: - Submeta
 
     /// Whether the meeting has a linked calendar event.

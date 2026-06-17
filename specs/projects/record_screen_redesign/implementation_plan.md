@@ -53,7 +53,7 @@ order, not a restatement.
   Transcript + seek, clamped, deferring until audio loads). Unit tests for
   parsing + jump application. Depends on 2.
 
-- [ ] **Phase 7 — Recording pane event link/unlink.**
+- [x] **Phase 7 — Recording pane event link/unlink.**
   Add a "Link event" affordance in the recording pane's submeta when there is NO
   associated calendar event, reusing the existing meeting-screen "Link Calendar
   Event" flow (the popup that offers event options) — extract that flow into

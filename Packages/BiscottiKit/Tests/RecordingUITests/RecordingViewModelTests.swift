@@ -813,6 +813,257 @@ struct EventTitleSeedingTests {
     }
 }
 
+// MARK: - Phase 7: Event link/unlink
+
+@Suite("RecordingViewModel event link/unlink")
+struct EventLinkUnlinkTests {
+    /// Helper: creates an EKEventDTO for association tests.
+    private static func makeDTO(
+        title: String = "Team Standup",
+        start: Date? = nil,
+        end: Date? = nil
+    ) -> EKEventDTO {
+        let now = Date()
+        let eventStart = start ?? now.addingTimeInterval(-300)
+        let eventEnd = end ?? now.addingTimeInterval(1500)
+        return EKEventDTO(
+            eventIdentifier: "ev-link-test",
+            calendarItemIdentifier: "ci-link-test",
+            calendarItemExternalIdentifier: "ext-link-test",
+            occurrenceDate: eventStart,
+            title: title,
+            startDate: eventStart,
+            endDate: eventEnd,
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            notes: nil,
+            status: nil,
+            availability: nil,
+            calendarIdentifier: "cal-1",
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: 2,
+            attendees: [],
+            organizer: nil
+        )
+    }
+
+    @Test("link event switches submeta from ad-hoc to event mode")
+    @MainActor
+    func linkEventSwitchesToEventMode() async throws {
+        let dto = Self.makeDTO(title: "Weekly Sync")
+
+        // Start with NO calendar events so bestMatch returns nil,
+        // giving us a genuinely ad-hoc recording.
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [],
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Start an ad-hoc recording (bestMatch finds nothing)
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        await viewModel.load()
+
+        // Initially ad-hoc
+        #expect(viewModel.hasEvent == false)
+
+        // Now inject the DTO so eventsNear can find it
+        fix.fakeEventStore.eventDTOs = [dto]
+        fix.fakeEventStore.refreshResult = dto
+
+        // Load nearby events and associate
+        await viewModel.loadNearbyEvents()
+        #expect(viewModel.nearbyEvents.count >= 1)
+
+        guard let eventKey = viewModel.nearbyEvents.first?.id else {
+            Issue.record("Expected nearby event")
+            return
+        }
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        // Now should be in event mode
+        #expect(viewModel.hasEvent == true)
+        #expect(viewModel.detail?.calendar != nil)
+        #expect(viewModel.scheduleText != nil)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("unlink event switches submeta back to ad-hoc mode")
+    @MainActor
+    func unlinkEventSwitchesToAdHoc() async throws {
+        let dto = Self.makeDTO(title: "Design Review")
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Start recording WITH an event association
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        await viewModel.load()
+        await viewModel.reloadDetail()
+
+        // Verify event is linked
+        #expect(viewModel.hasEvent == true)
+
+        // Unlink the event
+        await viewModel.removeAssociation()
+
+        // Should be back to ad-hoc
+        #expect(viewModel.hasEvent == false)
+        #expect(viewModel.detail?.calendar == nil)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("presentLinkEvent sets showEventPicker and loads events")
+    @MainActor
+    func presentLinkEventSetsPickerAndLoadsEvents() async throws {
+        let dto = Self.makeDTO(title: "Standup")
+
+        // Start with no events so recording is ad-hoc
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [],
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        await viewModel.load()
+
+        #expect(viewModel.showEventPicker == false)
+        #expect(viewModel.nearbyEvents.isEmpty)
+
+        // Inject the DTO so eventsNear finds it
+        fix.fakeEventStore.eventDTOs = [dto]
+        fix.fakeEventStore.refreshResult = dto
+
+        await viewModel.presentLinkEvent()
+
+        #expect(viewModel.showEventPicker == true)
+        #expect(viewModel.nearbyEvents.count >= 1)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("hasCalendarAccess delegates to core.calendar.auth")
+    @MainActor
+    func hasCalendarAccessDelegates() throws {
+        let fix = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+        let viewModel = RecordingViewModel(core: fix.core)
+        #expect(viewModel.hasCalendarAccess == true)
+
+        let fixDenied = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            testName: "EventLinkUnlinkDenied"
+        )
+        defer { fixDenied.cleanup() }
+        let vmDenied = RecordingViewModel(core: fixDenied.core)
+        #expect(vmDenied.hasCalendarAccess == false)
+    }
+
+    @Test("correctAssociation dismisses the picker")
+    @MainActor
+    func correctAssociationDismissesPicker() async throws {
+        let dto = Self.makeDTO(title: "Team Chat")
+
+        // Start with no events so recording is ad-hoc
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [],
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        await viewModel.load()
+
+        // Inject DTO for picker
+        fix.fakeEventStore.eventDTOs = [dto]
+        fix.fakeEventStore.refreshResult = dto
+
+        await viewModel.presentLinkEvent()
+        #expect(viewModel.showEventPicker == true)
+
+        guard let eventKey = viewModel.nearbyEvents.first?.id else {
+            Issue.record("Expected nearby event")
+            return
+        }
+        await viewModel.correctAssociation(eventKey: eventKey)
+
+        // Picker should be dismissed
+        #expect(viewModel.showEventPicker == false)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("removeAssociation also dismisses the picker")
+    @MainActor
+    func removeAssociationDismissesPicker() async throws {
+        let dto = Self.makeDTO(title: "Standup")
+
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto],
+            calendarRefreshResult: dto,
+            testName: "EventLinkUnlink"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        await viewModel.load()
+        await viewModel.reloadDetail()
+
+        viewModel.showEventPicker = true
+        await viewModel.removeAssociation()
+
+        #expect(viewModel.showEventPicker == false)
+        #expect(viewModel.hasEvent == false)
+
+        _ = await fix.core.stopRecording()
+    }
+}
+
 // MARK: - Helpers (Phase 4)
 
 /// Polls a condition until true, up to 2 seconds.

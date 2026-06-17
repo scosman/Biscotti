@@ -50,6 +50,28 @@ public struct RecordingView: View {
         .onChange(of: viewModel.summariesVersion) {
             Task { await viewModel.reloadDetail() }
         }
+        .sheet(isPresented: $viewModel.showEventPicker) {
+            EventPickerSheet(
+                events: viewModel.nearbyEventPickerItems,
+                hasCalendarAccess: viewModel.hasCalendarAccess,
+                hasExistingAssociation: viewModel.hasEvent,
+                onSelect: { eventKey in
+                    Task {
+                        await viewModel.correctAssociation(
+                            eventKey: eventKey
+                        )
+                    }
+                },
+                onRemove: {
+                    Task {
+                        await viewModel.removeAssociation()
+                    }
+                },
+                onCancel: {
+                    viewModel.showEventPicker = false
+                }
+            )
+        }
     }
 
     // MARK: - Main column
@@ -193,8 +215,16 @@ public struct RecordingView: View {
             adHocSubmeta
         }
     }
+}
 
-    private var eventSubmeta: some View {
+// MARK: - Submeta sub-views
+
+private extension RecordingView {
+    /// Note: the dot separator before "Open in calendar" renders
+    /// unconditionally. In practice both scheduleText and platformText
+    /// are always present for event-linked meetings, so the orphan-dot
+    /// edge case does not arise. Accepted per CR review.
+    var eventSubmeta: some View {
         HStack(spacing: 0) {
             if let schedule = viewModel.scheduleText {
                 Text(schedule)
@@ -227,10 +257,27 @@ public struct RecordingView: View {
                 .foregroundStyle(Color.sage)
             }
             .buttonStyle(.plain)
+
+            Text(" \u{00B7} ")
+                .font(.monoMeta)
+                .foregroundStyle(Color.inkTertiary)
+
+            Button {
+                Task { await viewModel.removeAssociation() }
+            } label: {
+                HStack(spacing: 3) {
+                    Text("Unlink event")
+                        .font(.body)
+                    Image(systemName: "calendar.badge.minus")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(Color.sage)
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private var adHocSubmeta: some View {
+    var adHocSubmeta: some View {
         HStack(spacing: 0) {
             if let clockText = viewModel.startedClockText {
                 Text(clockText)
@@ -242,15 +289,22 @@ public struct RecordingView: View {
                 .font(.monoMeta)
                 .foregroundStyle(Color.inkTertiary)
 
-            Text("No calendar event")
-                .font(.monoMeta)
-                .foregroundStyle(Color.inkTertiary)
+            Button {
+                Task { await viewModel.presentLinkEvent() }
+            } label: {
+                HStack(spacing: 3) {
+                    Text("Link event")
+                        .font(.body)
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(Color.sage)
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    // MARK: - System audio banner
-
-    private var systemAudioBanner: some View {
+    var systemAudioBanner: some View {
         Banner(
             "System audio may be denied",
             style: .warning,

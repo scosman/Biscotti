@@ -260,6 +260,20 @@ public final class MeetingDetailViewModel {
         nearbyEvents
     }
 
+    /// Available events mapped to `EventPickerItem` for the shared picker
+    /// sheet. Keeps the `Calendar` → `DesignSystem` mapping in the VM so
+    /// the view does not need `import Calendar`.
+    public var availableEventPickerItems: [EventPickerItem] {
+        availableEvents.map { event in
+            EventPickerItem(
+                id: event.id,
+                title: event.title,
+                start: event.start,
+                conferencePlatform: event.conferencePlatform
+            )
+        }
+    }
+
     /// Whether calendar access has been granted. Used to decide between
     /// "no events near this time" vs "grant calendar access" in the picker.
     public var hasCalendarAccess: Bool {

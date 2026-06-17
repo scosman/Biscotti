@@ -1,6 +1,5 @@
 import AppCore
 import AppKit
-import Calendar
 import DataStore
 import DesignSystem
 import MarkdownEditorUI
@@ -79,7 +78,26 @@ public struct MeetingDetailView: View {
             Task { await viewModel.flushNotes() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
-            EventPickerSheet(viewModel: viewModel)
+            EventPickerSheet(
+                events: viewModel.availableEventPickerItems,
+                hasCalendarAccess: viewModel.hasCalendarAccess,
+                hasExistingAssociation: viewModel.hasCalendarContext,
+                onSelect: { eventKey in
+                    Task {
+                        await viewModel.correctAssociation(
+                            eventKey: eventKey
+                        )
+                    }
+                },
+                onRemove: {
+                    Task {
+                        await viewModel.removeAssociation()
+                    }
+                },
+                onCancel: {
+                    viewModel.showEventPicker = false
+                }
+            )
         }
         .confirmationDialog(
             "Delete this meeting?",
@@ -705,110 +723,7 @@ private final class FocusForwarderView: NSView {
     }
 }
 
-// MARK: - Event Picker Sheet
-
-/// Small internal sheet for association correction: lists upcoming
-/// meeting-like events and a "Remove association" option.
-struct EventPickerSheet: View {
-    @Bindable var viewModel: MeetingDetailViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacingMD) {
-            Text("Choose a calendar event")
-                .font(.headline)
-
-            if viewModel.availableEvents.isEmpty {
-                if viewModel.hasCalendarAccess {
-                    Text(
-                        "No calendar events near this recording\u{2019}s time."
-                    )
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(.inkSecondary)
-                } else {
-                    Text(
-                        "Calendar access is required to link events. Grant access in System Settings \u{2192} Privacy & Security \u{2192} Calendars."
-                    )
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(.inkSecondary)
-                }
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(viewModel.availableEvents) { event in
-                            Button {
-                                Task {
-                                    await viewModel.correctAssociation(
-                                        eventKey: event.id
-                                    )
-                                    dismiss()
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(event.title)
-                                        .font(.body)
-                                    HStack {
-                                        Text(Self.formatEventTime(event))
-                                            .font(.monoMeta)
-                                            .foregroundStyle(
-                                                Tokens.secondaryText
-                                            )
-                                        if let platform =
-                                            event.conferencePlatform
-                                        {
-                                            Text(platform)
-                                                .font(.caption2)
-                                                .foregroundStyle(
-                                                    Tokens.secondaryText
-                                                )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, Tokens.spacingXS)
-                                .frame(
-                                    maxWidth: .infinity,
-                                    alignment: .leading
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .frame(maxHeight: 300)
-            }
-
-            Divider()
-
-            HStack {
-                if viewModel.hasCalendarContext {
-                    Button("Remove association") {
-                        Task {
-                            await viewModel.removeAssociation()
-                            dismiss()
-                        }
-                    }
-                    .foregroundStyle(.signalRed)
-                }
-                Spacer()
-                Button("Cancel") { dismiss() }
-            }
-        }
-        .padding(Tokens.spacingLG)
-        .frame(minWidth: 350)
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    static func formatEventTime(_ event: CalendarEvent) -> String {
-        timeFormatter.string(from: event.start)
-    }
-}
+// MARK: - Event Picker Sheet (uses shared DesignSystem.EventPickerSheet)
 
 #Preview("Meeting Detail - Processing") {
     let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try

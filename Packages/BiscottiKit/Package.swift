@@ -199,6 +199,8 @@ let package = Package(
             name: "RecordingUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
+                "DataStore",
                 "DesignSystem",
                 "Permissions",
                 "Recording"
@@ -211,7 +213,9 @@ let package = Package(
                 "RecordingUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingDetection",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -281,6 +285,7 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "Calendar",
+                "DataStore",
                 "DesignSystem",
                 "HomeUI",
                 "MeetingListUI",

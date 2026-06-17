@@ -148,6 +148,21 @@ public final class MeetingDetailViewModel {
     /// The user-editable title, two-way bound to the inline TextField.
     public var editableTitle: String = ""
 
+    // MARK: - Tab state (lifted from view for deep-link jump)
+
+    /// The body tabs of the meeting detail screen.
+    public enum Tab: String, CaseIterable, Sendable {
+        case transcript = "Transcript"
+        case notes = "Notes"
+    }
+
+    /// The currently selected tab, bindable from the view.
+    public var selectedTab: Tab = .transcript
+
+    /// A pending seek time set by a deep-link jump that arrived before
+    /// the audio player was loaded. Applied at the end of `loadAudioPlayer`.
+    private var pendingSeek: TimeInterval?
+
     // MARK: - Phase 11: Delete meeting
 
     /// Whether the delete confirmation dialog is presented.
@@ -243,6 +258,20 @@ public final class MeetingDetailViewModel {
     /// forward-only `core.upcoming`.
     public var availableEvents: [CalendarEvent] {
         nearbyEvents
+    }
+
+    /// Available events mapped to `EventPickerItem` for the shared picker
+    /// sheet. Keeps the `Calendar` → `DesignSystem` mapping in the VM so
+    /// the view does not need `import Calendar`.
+    public var availableEventPickerItems: [EventPickerItem] {
+        availableEvents.map { event in
+            EventPickerItem(
+                id: event.id,
+                title: event.title,
+                start: event.start,
+                conferencePlatform: event.conferencePlatform
+            )
+        }
     }
 
     /// Whether calendar access has been granted. Used to decide between
@@ -510,6 +539,47 @@ public extension MeetingDetailViewModel {
     }
 }
 
+// MARK: - Deep-link jump
+
+public extension MeetingDetailViewModel {
+    /// Token that changes whenever `core.pendingTranscriptJump` changes.
+    /// The view observes this via `.onChange` to trigger
+    /// `applyPendingJumpIfNeeded`.
+    var pendingJumpToken: TranscriptJump? {
+        core.pendingTranscriptJump
+    }
+
+    /// Checks for a pending transcript jump targeting this meeting.
+    /// If found, switches to the Transcript tab, seeks to the requested
+    /// time (clamped to duration), and consumes the jump. If audio
+    /// is not yet loaded, stores the seek as `pendingSeek` to be
+    /// applied when `loadAudioPlayer()` completes.
+    func applyPendingJumpIfNeeded() async {
+        guard let jump = core.pendingTranscriptJump,
+              jump.meetingID == meetingID
+        else { return }
+
+        selectedTab = .transcript
+        pendingSeek = jump.time
+        applySeekIfReady()
+        core.consumeTranscriptJump()
+    }
+
+    /// Applies `pendingSeek` if the audio player is loaded and has a
+    /// known duration. Clamps the seek time to `[0, duration]`.
+    internal func applySeekIfReady() {
+        guard let seekTime = pendingSeek else { return }
+        guard audioPlayer != nil, playbackDuration > 0 else {
+            // Audio not loaded yet; pendingSeek will be applied
+            // after loadAudioPlayer() completes.
+            return
+        }
+        let clamped = min(max(0, seekTime), playbackDuration)
+        seek(to: clamped)
+        pendingSeek = nil
+    }
+}
+
 // MARK: - Calendar card mapping
 
 public extension MeetingDetailViewModel {
@@ -706,6 +776,10 @@ private extension MeetingDetailViewModel {
             try player.load(urls: urls)
             audioPlayer = player
             syncPlaybackState()
+
+            // Apply any pending deep-link seek that arrived before
+            // the audio player was loaded.
+            applySeekIfReady()
         } catch {
             audioPlayer = nil
             isAudioAvailable = false

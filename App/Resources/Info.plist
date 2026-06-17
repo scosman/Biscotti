@@ -29,5 +29,16 @@
     <string>Biscotti needs system audio access to record other meeting participants.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Biscotti reads your calendar to show upcoming meetings and enrich recordings with event details.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>net.scosman.biscotti</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>biscotti</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

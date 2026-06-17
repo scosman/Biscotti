@@ -84,21 +84,7 @@ public struct AppShellView: View {
                         .fixedSize()
 
                         if viewModel.isRecording {
-                            Button {
-                                viewModel.showRecording()
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "record.circle")
-                                    Text(
-                                        "Recording\u{2026} \(viewModel.recordingElapsedText)"
-                                    )
-                                    .font(.monoMeta)
-                                }
-                            }
-                            .buttonStyle(
-                                ToolbarRecordButtonStyle(fill: Tokens.recordingRed)
-                            )
-                            .help("Go to recording")
+                            RecordingToolbarButton(viewModel: viewModel)
                         } else {
                             Button {
                                 Task { await viewModel.startRecording() }
@@ -159,6 +145,11 @@ public struct AppShellView: View {
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
+
+            // RECORDING NOW section (above Upcoming while recording)
+            if viewModel.isRecording {
+                RecordingNowSection(viewModel: viewModel)
+            }
 
             // Upcoming section
             if viewModel.hasCalendarAccess,
@@ -399,6 +390,116 @@ private struct MeetingsSplitView: View {
             }
             .frame(minWidth: 360, maxWidth: .infinity)
             .background(Tokens.contentBackground)
+        }
+    }
+}
+
+// MARK: - Recording toolbar button (light alert style)
+
+/// The toolbar recording button: light alert style with a pulsing dot
+/// and "REC m:ss" label. Extracted to keep `AppShellView` under the
+/// type-body-length limit.
+private struct RecordingToolbarButton: View {
+    let viewModel: AppShellViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulsing = false
+
+    var body: some View {
+        Button {
+            viewModel.showRecording()
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.signalRed)
+                    .frame(width: 8, height: 8)
+                    .opacity(pulsing ? 0.4 : 1.0)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.8)
+                            .repeatForever(autoreverses: true),
+                        value: pulsing
+                    )
+
+                Text("REC \(viewModel.recordingElapsedText)")
+                    .font(.monoMetaMedium)
+                    .contentTransition(.identity)
+                    .animation(nil, value: viewModel.recordingElapsedText)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 34)
+        }
+        .buttonStyle(LightAlertButtonStyle())
+        .help("Go to recording")
+        .animation(nil, value: viewModel.isRecording)
+        .onAppear {
+            guard !reduceMotion else { return }
+            pulsing = true
+        }
+    }
+}
+
+// MARK: - Sidebar RECORDING NOW section
+
+/// A sidebar section showing the in-progress recording's title with a
+/// "Recording" subtitle. Tapping navigates to the recording pane.
+private struct RecordingNowSection: View {
+    let viewModel: AppShellViewModel
+
+    private var isSelected: Bool {
+        viewModel.route == .recording
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("RECORDING NOW")
+                .kicker()
+                .foregroundStyle(Color.inkSecondary)
+                .padding(.horizontal, Tokens.spacingMD)
+                .padding(.bottom, Tokens.spacingXS)
+
+            Button {
+                viewModel.showRecording()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.recordingMeetingTitle)
+                        .font(.body)
+                        .foregroundStyle(Color.ink)
+                        .lineLimit(1)
+
+                    Text("Recording")
+                        .font(.monoMeta)
+                        .foregroundStyle(Color.signalRed)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, Tokens.spacingXS)
+                .padding(.horizontal, Tokens.spacingSM)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(
+                        isSelected
+                            ? Tokens.recordingTintStrong
+                            : Tokens.recordingTintSoft
+                    )
+            )
+            .overlay(
+                Group {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(
+                                Color.recordingOutlineStrong,
+                                lineWidth: 0.5
+                            )
+                    }
+                }
+            )
+            .padding(.horizontal, Tokens.spacingSM)
+
+            Divider()
+                .padding(.vertical, Tokens.spacingSM)
         }
     }
 }

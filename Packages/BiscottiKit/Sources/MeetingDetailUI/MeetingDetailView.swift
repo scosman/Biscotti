@@ -1,6 +1,5 @@
 import AppCore
 import AppKit
-import Calendar
 import DataStore
 import DesignSystem
 import MarkdownEditorUI
@@ -21,30 +20,11 @@ import TranscriptionService
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
-    /// The selected tab: Transcript (default) or Notes.
-    @State private var tab: Tab = .transcript
-
     /// Measured height of the chrome section (header + calendar + tabs).
     @State private var chromeHeight: CGFloat = 0
 
     /// Measured height of the pinned transport bar at the bottom.
     @State private var transportHeight: CGFloat = 0
-
-    /// Focus state for the inline title TextField. Set to false on
-    /// submit so the field resigns first responder and deselects.
-    @FocusState private var titleFieldFocused: Bool
-
-    // -- Click-away resign state --
-
-    /// The title field's frame in SwiftUI global coordinates, captured
-    /// via a `GeometryReader` background. Used by the click-away monitor
-    /// to distinguish inside vs outside clicks.
-    @State private var titleFrame: CGRect = .zero
-
-    /// Local event monitor that resigns the title field when the user
-    /// clicks outside its bounds. Installed while `titleFieldFocused` is
-    /// true; removed on unfocus and `onDisappear`.
-    @State private var clickAwayMonitor: Any?
 
     /// Transient "Copied" feedback: true for ~1.5s after a copy action.
     @State private var didCopy = false
@@ -79,32 +59,45 @@ public struct MeetingDetailView: View {
             alignment: .topLeading
         )
         .task { await viewModel.load() }
+        .task { await viewModel.applyPendingJumpIfNeeded() }
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
         }
-        .onChange(of: tab) { _, _ in
+        .onChange(of: viewModel.pendingJumpToken) { _, _ in
+            Task { await viewModel.applyPendingJumpIfNeeded() }
+        }
+        .onChange(of: viewModel.selectedTab) { _, _ in
             // Clear stale "Copied" feedback when switching tabs.
             copyResetTask?.cancel()
             copyResetTask = nil
             didCopy = false
         }
-        // Click-away monitor lifecycle: install on focus, remove on blur.
-        .onChange(of: titleFieldFocused) { _, focused in
-            if focused {
-                installClickAwayMonitor()
-            } else {
-                removeClickAwayMonitor()
-            }
-        }
         .onDisappear {
             copyResetTask?.cancel()
             copyResetTask = nil
-            titleFieldFocused = false
-            removeClickAwayMonitor()
             Task { await viewModel.flushNotes() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
-            EventPickerSheet(viewModel: viewModel)
+            EventPickerSheet(
+                events: viewModel.availableEventPickerItems,
+                hasCalendarAccess: viewModel.hasCalendarAccess,
+                hasExistingAssociation: viewModel.hasCalendarContext,
+                onSelect: { eventKey in
+                    Task {
+                        await viewModel.correctAssociation(
+                            eventKey: eventKey
+                        )
+                    }
+                },
+                onRemove: {
+                    Task {
+                        await viewModel.removeAssociation()
+                    }
+                },
+                onCancel: {
+                    viewModel.showEventPicker = false
+                }
+            )
         }
         .confirmationDialog(
             "Delete this meeting?",
@@ -182,122 +175,19 @@ public struct MeetingDetailView: View {
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
 
-    // MARK: - Tabs
-
-    enum Tab: String, CaseIterable {
-        case transcript = "Transcript"
-        case notes = "Notes"
-    }
-
     // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             HStack(alignment: .top) {
-                // Title: always-present TextField + truncating Text overlay.
-                //
-                // The TextField is ALWAYS in the hierarchy so
-                // @FocusState can move focus to it programmatically.
-                // Its text is `.clear` when not focused so it doesn't
-                // show through the Text overlay.
-                //
-                // The Text overlay (non-edit only) provides tail-
-                // ellipsis truncation AND is the tap-to-edit target.
-                // Tapping it sets focus + selectAll deterministically
-                // (no field editor competes for the click).
-                ZStack(alignment: .leading) {
-                    // ALWAYS present — hidden text when not editing
-                    TextField(
-                        titleFieldFocused ? "Meeting title" : "",
-                        text: $viewModel.editableTitle
-                    )
-                    .font(.biscottiSerif(27))
-                    .tracking(-0.27)
-                    .foregroundStyle(
-                        titleFieldFocused ? Color.ink : Color.clear
-                    )
-                    .textFieldStyle(.plain)
-                    .focused($titleFieldFocused)
-                    .onSubmit {
-                        titleFieldFocused = false
-                        Task { await viewModel.saveTitle() }
-                    }
-
-                    // Truncating display + tap-to-edit (non-edit only)
-                    if !titleFieldFocused {
-                        Text(
-                            viewModel.editableTitle.isEmpty
-                                ? "Untitled meeting"
-                                : viewModel.editableTitle
-                        )
-                        .font(.biscottiSerif(27))
-                        .tracking(-0.27)
-                        .foregroundStyle(
-                            viewModel.editableTitle.isEmpty
-                                ? .inkTertiary : .ink
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            titleFieldFocused = true
-                            DispatchQueue.main.async {
-                                NSApp.sendAction(
-                                    #selector(
-                                        NSResponder.selectAll(_:)
-                                    ),
-                                    to: nil,
-                                    from: nil
-                                )
-                            }
-                        }
-                    }
+                EditableMeetingTitle(
+                    text: $viewModel.editableTitle,
+                    placeholder: "Untitled meeting",
+                    fieldPrompt: "Meeting title",
+                    font: .biscottiSerif(27)
+                ) {
+                    await viewModel.saveTitle()
                 }
-                // Focused styling: white fill + sage outline that bleeds
-                // outward so the text position and sibling layout stay
-                // fixed. Transparent when not focused → no visible box.
-                .padding(.top, 7)
-                .padding(.bottom, 3)
-                .padding(.horizontal, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(
-                            titleFieldFocused
-                                ? Color.white : Color.clear
-                        )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(
-                            titleFieldFocused
-                                ? Color.sage : Color.clear,
-                            lineWidth: 2
-                        )
-                )
-                .padding(.top, -7)
-                .padding(.bottom, -3)
-                .padding(.horizontal, -6)
-                // Capture frame for click-away monitor. On the outer
-                // ZStack so titleFrame is valid in edit mode.
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear {
-                                titleFrame = proxy.frame(
-                                    in: .global
-                                )
-                            }
-                            .onChange(
-                                of: proxy.frame(in: .global)
-                            ) { _, newFrame in
-                                titleFrame = newFrame
-                            }
-                    }
-                )
 
                 Spacer()
 
@@ -319,59 +209,11 @@ public struct MeetingDetailView: View {
     /// `hasDisplayableTranscript` instead of calling the cache-building
     /// method, so it is safe during `body` evaluation.
     private var canCopy: Bool {
-        switch tab {
+        switch viewModel.selectedTab {
         case .transcript:
             viewModel.hasDisplayableTranscript
         case .notes:
             !viewModel.notes.isEmpty
-        }
-    }
-
-    // MARK: - Click-away monitor helpers
-
-    /// Installs a local event monitor that resigns the title field when
-    /// the user clicks outside its bounds. The event is always returned
-    /// (never consumed) so the click reaches its intended target.
-    ///
-    /// Coordinate conversion: `event.locationInWindow` is in AppKit's
-    /// bottom-left-origin system. We flip it to SwiftUI's top-left-origin
-    /// global coordinates using the window content view's height, then
-    /// hit-test against `titleFrame` (captured in `.global` coordinates
-    /// via a `GeometryReader` background on the title field).
-    ///
-    /// No capture list: the closure reads `self.titleFrame` live each
-    /// invocation so it tracks window resizes / scroll / sidebar toggles.
-    private func installClickAwayMonitor() {
-        removeClickAwayMonitor()
-        clickAwayMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown]
-        ) { event in
-            guard let contentView = event.window?.contentView else {
-                return event
-            }
-            let loc = event.locationInWindow
-            // Flip y: AppKit bottom-left → SwiftUI top-left.
-            let flipped = CGPoint(
-                x: loc.x,
-                y: contentView.bounds.height - loc.y
-            )
-            if !titleFrame.contains(flipped) {
-                // Explicit MainActor hop: local monitors fire on main
-                // in practice but it's not formally guaranteed.
-                Task { @MainActor in
-                    titleFieldFocused = false
-                    await viewModel.saveTitle()
-                }
-            }
-            return event
-        }
-    }
-
-    /// Removes the click-away monitor if installed.
-    private func removeClickAwayMonitor() {
-        if let monitor = clickAwayMonitor {
-            NSEvent.removeMonitor(monitor)
-            clickAwayMonitor = nil
         }
     }
 }
@@ -554,8 +396,8 @@ private extension MeetingDetailView {
 
     var tabBar: some View {
         HStack {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { option in
+            Picker("", selection: $viewModel.selectedTab) {
+                ForEach(MeetingDetailViewModel.Tab.allCases, id: \.self) { option in
                     Text(option.rawValue).tag(option)
                 }
             }
@@ -564,12 +406,12 @@ private extension MeetingDetailView {
 
             Spacer()
 
-            if tab == .transcript, viewModel.versions.count > 1 {
+            if viewModel.selectedTab == .transcript, viewModel.versions.count > 1 {
                 versionPicker
             }
 
             Button {
-                if tab == .transcript {
+                if viewModel.selectedTab == .transcript {
                     viewModel.copyTranscript()
                 } else {
                     viewModel.copyNotes()
@@ -656,7 +498,7 @@ private extension MeetingDetailView {
 private extension MeetingDetailView {
     @ViewBuilder
     func tabContent(fill: CGFloat) -> some View {
-        switch tab {
+        switch viewModel.selectedTab {
         case .notes:
             notesTabContent(fill: fill)
 
@@ -889,110 +731,7 @@ private final class FocusForwarderView: NSView {
     }
 }
 
-// MARK: - Event Picker Sheet
-
-/// Small internal sheet for association correction: lists upcoming
-/// meeting-like events and a "Remove association" option.
-struct EventPickerSheet: View {
-    @Bindable var viewModel: MeetingDetailViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.spacingMD) {
-            Text("Choose a calendar event")
-                .font(.headline)
-
-            if viewModel.availableEvents.isEmpty {
-                if viewModel.hasCalendarAccess {
-                    Text(
-                        "No calendar events near this recording\u{2019}s time."
-                    )
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(.inkSecondary)
-                } else {
-                    Text(
-                        "Calendar access is required to link events. Grant access in System Settings \u{2192} Privacy & Security \u{2192} Calendars."
-                    )
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(.inkSecondary)
-                }
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(viewModel.availableEvents) { event in
-                            Button {
-                                Task {
-                                    await viewModel.correctAssociation(
-                                        eventKey: event.id
-                                    )
-                                    dismiss()
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(event.title)
-                                        .font(.body)
-                                    HStack {
-                                        Text(Self.formatEventTime(event))
-                                            .font(.monoMeta)
-                                            .foregroundStyle(
-                                                Tokens.secondaryText
-                                            )
-                                        if let platform =
-                                            event.conferencePlatform
-                                        {
-                                            Text(platform)
-                                                .font(.caption2)
-                                                .foregroundStyle(
-                                                    Tokens.secondaryText
-                                                )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, Tokens.spacingXS)
-                                .frame(
-                                    maxWidth: .infinity,
-                                    alignment: .leading
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .frame(maxHeight: 300)
-            }
-
-            Divider()
-
-            HStack {
-                if viewModel.hasCalendarContext {
-                    Button("Remove association") {
-                        Task {
-                            await viewModel.removeAssociation()
-                            dismiss()
-                        }
-                    }
-                    .foregroundStyle(.signalRed)
-                }
-                Spacer()
-                Button("Cancel") { dismiss() }
-            }
-        }
-        .padding(Tokens.spacingLG)
-        .frame(minWidth: 350)
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    static func formatEventTime(_ event: CalendarEvent) -> String {
-        timeFormatter.string(from: event.start)
-    }
-}
+// MARK: - Event Picker Sheet (uses shared DesignSystem.EventPickerSheet)
 
 #Preview("Meeting Detail - Processing") {
     let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try

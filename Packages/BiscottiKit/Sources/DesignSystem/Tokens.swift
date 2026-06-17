@@ -43,6 +43,34 @@ public enum Tokens {
     /// Accent wash (strong, 14%) -- selection background.
     public static let accentWashStrong = Color.accentWashStrong
 
+    // MARK: - Recording redesign tokens
+
+    /// Sidebar RECORDING NOW row fill; auto-stop card wash.
+    public static let recordingTintSoft = Color.recordingTintSoft
+
+    /// Selected sidebar recording row fill.
+    public static let recordingTintStrong = Color.recordingTintStrong
+
+    /// Light Stop/REC button hairline.
+    public static let recordingOutline = Color.recordingOutline
+
+    /// Selected recording row inset stroke.
+    public static let recordingOutlineStrong = Color.recordingOutlineStrong
+
+    /// Light Stop/REC button hover.
+    public static let recordingHoverFill = Color.recordingHoverFill
+
+    /// Left chip amber fill (<=5 min / overtime). Reuses `warningBackground`
+    /// (warningOchre @ 0.15) per ui_design.md guidance -- close enough to
+    /// the spec's 0.16 to avoid a near-duplicate token.
+    public static let warningChipFill = warningBackground
+
+    /// Left chip amber kicker + value text color.
+    public static let warningChipText = Color.warningChipText
+
+    /// "Add note" + "Keep Recording" button fill.
+    public static let softSageFill = Color.softSageFill
+
     /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
     public static let liveGreen = Color.sage
 

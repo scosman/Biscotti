@@ -92,6 +92,29 @@ public extension Color {
 
     /// Sidebar tint: translucent ivory overlay (rgba 250,249,244 @ 82%).
     static let sidebarTint = Color(red: 0.980, green: 0.976, blue: 0.957).opacity(0.82)
+
+    // MARK: - Recording redesign tokens
+
+    /// Sidebar RECORDING NOW row fill; auto-stop card wash: signalRed @ 8%.
+    static let recordingTintSoft = signalRed.opacity(0.08)
+
+    /// Selected sidebar recording row fill: signalRed @ 12%.
+    static let recordingTintStrong = signalRed.opacity(0.12)
+
+    /// Light Stop/REC button hairline: signalRed @ 32%.
+    static let recordingOutline = signalRed.opacity(0.32)
+
+    /// Selected recording row inset stroke: signalRed @ 20%.
+    static let recordingOutlineStrong = signalRed.opacity(0.20)
+
+    /// Light Stop/REC button hover: signalRed @ 5%.
+    static let recordingHoverFill = signalRed.opacity(0.05)
+
+    /// Left chip amber kicker + value text color.
+    static let warningChipText = warningOchre
+
+    /// "Add note" + "Keep Recording" button fill: sage @ 12%.
+    static let softSageFill = sage.opacity(0.12)
 }
 
 // MARK: - ShapeStyle sugar

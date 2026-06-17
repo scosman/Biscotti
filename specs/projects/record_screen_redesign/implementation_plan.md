@@ -46,7 +46,7 @@ order, not a restatement.
   "RECORDING NOW" section/row (tint, no badge, navigates to the pane) +
   `AppShellViewModel.recordingMeetingTitle`. Depends on 1.
 
-- [ ] **Phase 6 — `biscotti://meeting` deep link end-to-end.**
+- [x] **Phase 6 — `biscotti://meeting` deep link end-to-end.**
   Register the `biscotti` URL scheme (Info.plist); `BiscottiApp.onOpenURL` →
   `AppDelegate` → `AppCore.handleDeepLink` + `pendingTranscriptJump`/`consume`;
   lift `MeetingDetailView.Tab` into its VM and apply the pending jump (switch to

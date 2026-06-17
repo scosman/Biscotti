@@ -30,6 +30,22 @@ public extension Notification.Name {
     )
 }
 
+// MARK: - Deep-link jump state
+
+/// A pending transcript jump parsed from a `biscotti://meeting/{id}?time=…` URL.
+///
+/// Set by `handleDeepLink(_:)` and consumed by `MeetingDetailViewModel` once
+/// the target meeting's detail view has applied the jump (tab switch + seek).
+public struct TranscriptJump: Sendable, Equatable {
+    public let meetingID: UUID
+    public let time: TimeInterval
+
+    public init(meetingID: UUID, time: TimeInterval) {
+        self.meetingID = meetingID
+        self.time = time
+    }
+}
+
 // MARK: - Auto-stop observable state
 
 /// Observable state published while an auto-stop countdown is active.
@@ -118,6 +134,11 @@ public final class AppCore {
     /// Observable auto-stop countdown state. Non-nil while a countdown
     /// is active; the view layer renders a countdown card from this.
     public private(set) var autoStop: AutoStopState?
+
+    /// A pending transcript jump from a deep link. Set by
+    /// `handleDeepLink(_:)`, consumed by `MeetingDetailViewModel`
+    /// after applying the tab switch + seek.
+    public private(set) var pendingTranscriptJump: TranscriptJump?
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -545,6 +566,53 @@ extension AppCore {
                 }
             }
         }
+    }
+}
+
+// MARK: - Deep-link handling
+
+public extension AppCore {
+    /// Handles a `biscotti://meeting/{id}?time={seconds}` deep link.
+    ///
+    /// Validates the URL components: scheme must be `biscotti`, host must
+    /// be `meeting`, the path must contain a valid UUID, the `time` query
+    /// parameter must parse as a number, and the meeting must exist in
+    /// the store. On success, navigates to the meeting and sets
+    /// `pendingTranscriptJump` for the detail VM to consume. Invalid
+    /// or unresolvable URLs are silently ignored (no-op).
+    func handleDeepLink(_ url: URL) async {
+        guard url.scheme == "biscotti",
+              url.host == "meeting"
+        else { return }
+
+        // Path is "/{uuid}" — strip the leading slash.
+        let pathID = url.path.hasPrefix("/")
+            ? String(url.path.dropFirst())
+            : url.path
+        guard let meetingID = UUID(uuidString: pathID) else { return }
+
+        // Parse the `time` query parameter.
+        guard let components = URLComponents(
+            url: url, resolvingAgainstBaseURL: false
+        ),
+            let timeString = components.queryItems?
+            .first(where: { $0.name == "time" })?.value,
+            let seconds = Double(timeString)
+        else { return }
+
+        // Verify the meeting exists.
+        let exists = await (try? store.meetingExists(id: meetingID)) ?? false
+        guard exists else { return }
+
+        select(meetingID)
+        pendingTranscriptJump = TranscriptJump(
+            meetingID: meetingID, time: seconds
+        )
+    }
+
+    /// Clears the pending transcript jump after the detail VM has applied it.
+    func consumeTranscriptJump() {
+        pendingTranscriptJump = nil
     }
 }
 

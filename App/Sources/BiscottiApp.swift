@@ -155,6 +155,9 @@ private struct WindowRootView: View {
                 captured(id: "main")
             }
         }
+        .onOpenURL { url in
+            launchState.deepLinkHandler?(url)
+        }
         .background(WindowTitleHider())
     }
 
@@ -231,6 +234,11 @@ final class LaunchState: @unchecked Sendable {
     /// notification actions). Set once on first `.onAppear`; nil until
     /// then (harmless: `showMainWindow` falls back to AppKit activate).
     @ObservationIgnored var sceneOpener: (@MainActor () -> Void)?
+
+    /// Closure that handles a deep-link URL (`biscotti://meeting/…`).
+    /// Set during `buildCore` so `WindowRootView.onOpenURL` can forward
+    /// the URL to `AppDelegate.handleOpenURL`. Nil until core is built.
+    @ObservationIgnored var deepLinkHandler: (@MainActor (URL) -> Void)?
 
     /// Nonisolated init so `AppDelegate` (an `NSObject` subclass whose
     /// stored-property initializers run in a nonisolated context) can
@@ -347,6 +355,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         }
     }
 
+    // MARK: - Deep link handling
+
+    /// Handles an incoming URL opened via the registered `biscotti` scheme.
+    /// Brings the app to the foreground and forwards the URL to AppCore
+    /// for parsing and navigation.
+    @MainActor
+    func handleOpenURL(_ url: URL) {
+        showMainWindow()
+        Task { @MainActor in
+            await core?.handleDeepLink(url)
+        }
+    }
+
     // MARK: - Quit-while-recording
 
     func applicationShouldTerminate(
@@ -397,6 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             core = appCore
             notificationService = appCore.notifications
 
+            launchState.deepLinkHandler = { [weak self] url in
+                self?.handleOpenURL(url)
+            }
             launchState.shellViewModel = AppShellViewModel(core: appCore)
             launchState.menuBarViewModel = MenuBarViewModel(
                 core: appCore,

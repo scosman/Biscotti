@@ -21,9 +21,6 @@ import TranscriptionService
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
-    /// The selected tab: Transcript (default) or Notes.
-    @State private var tab: Tab = .transcript
-
     /// Measured height of the chrome section (header + calendar + tabs).
     @State private var chromeHeight: CGFloat = 0
 
@@ -63,10 +60,14 @@ public struct MeetingDetailView: View {
             alignment: .topLeading
         )
         .task { await viewModel.load() }
+        .task { await viewModel.applyPendingJumpIfNeeded() }
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
         }
-        .onChange(of: tab) { _, _ in
+        .onChange(of: viewModel.pendingJumpToken) { _, _ in
+            Task { await viewModel.applyPendingJumpIfNeeded() }
+        }
+        .onChange(of: viewModel.selectedTab) { _, _ in
             // Clear stale "Copied" feedback when switching tabs.
             copyResetTask?.cancel()
             copyResetTask = nil
@@ -156,13 +157,6 @@ public struct MeetingDetailView: View {
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
 
-    // MARK: - Tabs
-
-    enum Tab: String, CaseIterable {
-        case transcript = "Transcript"
-        case notes = "Notes"
-    }
-
     // MARK: - Header
 
     private var header: some View {
@@ -197,7 +191,7 @@ public struct MeetingDetailView: View {
     /// `hasDisplayableTranscript` instead of calling the cache-building
     /// method, so it is safe during `body` evaluation.
     private var canCopy: Bool {
-        switch tab {
+        switch viewModel.selectedTab {
         case .transcript:
             viewModel.hasDisplayableTranscript
         case .notes:
@@ -384,8 +378,8 @@ private extension MeetingDetailView {
 
     var tabBar: some View {
         HStack {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { option in
+            Picker("", selection: $viewModel.selectedTab) {
+                ForEach(MeetingDetailViewModel.Tab.allCases, id: \.self) { option in
                     Text(option.rawValue).tag(option)
                 }
             }
@@ -394,12 +388,12 @@ private extension MeetingDetailView {
 
             Spacer()
 
-            if tab == .transcript, viewModel.versions.count > 1 {
+            if viewModel.selectedTab == .transcript, viewModel.versions.count > 1 {
                 versionPicker
             }
 
             Button {
-                if tab == .transcript {
+                if viewModel.selectedTab == .transcript {
                     viewModel.copyTranscript()
                 } else {
                     viewModel.copyNotes()
@@ -486,7 +480,7 @@ private extension MeetingDetailView {
 private extension MeetingDetailView {
     @ViewBuilder
     func tabContent(fill: CGFloat) -> some View {
-        switch tab {
+        switch viewModel.selectedTab {
         case .notes:
             notesTabContent(fill: fill)
 

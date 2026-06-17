@@ -4,15 +4,7 @@ import Calendar
 import DataStore
 import DesignSystem
 import Foundation
-import os
 import TranscriptionService
-
-// MARK: - SEEKLOOP diagnostic logger (temporary -- remove after diagnosis)
-
-private let seekLogger = Logger(
-    subsystem: "net.scosman.biscotti",
-    category: "SEEKLOOP"
-)
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
@@ -100,10 +92,6 @@ public final class MeetingDetailViewModel {
 
     /// Ticker interval (250ms = ~4 updates/sec for smooth scrubbing).
     private static let tickerInterval: Duration = .milliseconds(250)
-
-    // SEEKLOOP diagnostic counters (temporary -- remove after diagnosis)
-    private var seekCallCount: UInt64 = 0
-    private var syncCallCount: UInt64 = 0
 
     // MARK: - Phase 8: Transcript versions
 
@@ -323,12 +311,10 @@ public final class MeetingDetailViewModel {
     public func playPause() {
         guard let player = audioPlayer else { return }
         if player.isPlaying {
-            seekLogger.warning("SEEKLOOP playPause -> PAUSE")
             player.pause()
             stopPlaybackTicker()
             syncPlaybackState()
         } else {
-            seekLogger.warning("SEEKLOOP playPause -> PLAY")
             player.play()
             startPlaybackTicker()
             syncPlaybackState()
@@ -343,19 +329,6 @@ public final class MeetingDetailViewModel {
 
     /// Seeks the audio player to the specified time.
     public func seek(to time: TimeInterval) {
-        seekCallCount += 1
-        let delta = time - playbackCurrentTime
-        let playerTime = audioPlayer?.currentTime ?? -1
-        seekLogger.warning(
-            """
-            SEEKLOOP seek(to:) #\(seekCallCount) \
-            requested=\(time, format: .fixed(precision: 6)) \
-            stored=\(playbackCurrentTime, format: .fixed(precision: 6)) \
-            delta=\(delta, format: .fixed(precision: 6)) \
-            playerBefore=\(playerTime, format: .fixed(precision: 6)) \
-            isPlaying=\(isPlaying)
-            """
-        )
         audioPlayer?.currentTime = time
         syncPlaybackState()
     }
@@ -395,10 +368,6 @@ public final class MeetingDetailViewModel {
     /// is often very wrong. The player-derived value is the fallback for
     /// legacy recordings that pre-date the stored field.
     private func syncPlaybackState() {
-        syncCallCount += 1
-        let oldTime = playbackCurrentTime
-        let oldPlaying = isPlaying
-        let oldDuration = playbackDuration
         isPlaying = audioPlayer?.isPlaying ?? false
         playbackCurrentTime = audioPlayer?.currentTime ?? 0
         if let recDur = detail?.recordingDuration, recDur > 0 {
@@ -406,27 +375,12 @@ public final class MeetingDetailViewModel {
         } else {
             playbackDuration = audioPlayer?.duration ?? 0
         }
-        let timeChanged = playbackCurrentTime != oldTime
-        let playingChanged = isPlaying != oldPlaying
-        let durationChanged = playbackDuration != oldDuration
-        seekLogger.warning(
-            """
-            SEEKLOOP syncPlaybackState #\(syncCallCount) \
-            time=\(oldTime, format: .fixed(precision: 6))\
-            ->\(playbackCurrentTime, format: .fixed(precision: 6)) \
-            playing=\(oldPlaying)->\(isPlaying) \
-            duration=\(oldDuration, format: .fixed(precision: 2))\
-            ->\(playbackDuration, format: .fixed(precision: 2)) \
-            changed=\(timeChanged)||\(playingChanged)||\(durationChanged)
-            """
-        )
     }
 
     /// Starts the periodic ticker that polls the player ~4x/sec.
     private func startPlaybackTicker() {
         stopPlaybackTicker()
         playbackTickerTask = Task { [weak self] in
-            var tickCount: UInt64 = 0
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: Self.tickerInterval)
@@ -434,10 +388,6 @@ public final class MeetingDetailViewModel {
                     break
                 }
                 guard let self, !Task.isCancelled else { break }
-                tickCount += 1
-                seekLogger.warning(
-                    "SEEKLOOP ticker fire #\(tickCount)"
-                )
                 syncPlaybackState()
                 // Stop the ticker if the player reached the end
                 if !(audioPlayer?.isPlaying ?? false) {

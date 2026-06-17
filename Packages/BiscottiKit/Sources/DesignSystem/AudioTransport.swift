@@ -1,12 +1,4 @@
-import os
 import SwiftUI
-
-// MARK: - SEEKLOOP diagnostic logger (temporary -- remove after diagnosis)
-
-private let transportLogger = Logger(
-    subsystem: "net.scosman.biscotti",
-    category: "SEEKLOOP"
-)
 
 /// Standard audio transport card: play/pause + scrubber + elapsed/total +
 /// speed menu, optionally rendered inside a rounded card.
@@ -54,7 +46,6 @@ public struct AudioTransport: View {
     }
 
     public var body: some View {
-        _ = Self._printChanges() // SEEKLOOP diagnostic -- remove after diagnosis
         Group {
             if isDisabled {
                 disabledContent
@@ -90,17 +81,7 @@ public struct AudioTransport: View {
             Slider(
                 value: Binding(
                     get: { currentTime },
-                    set: { newValue in
-                        transportLogger.warning(
-                            """
-                            SEEKLOOP Slider.set \
-                            new=\(newValue, format: .fixed(precision: 6)) \
-                            current=\(currentTime, format: .fixed(precision: 6)) \
-                            delta=\(newValue - currentTime, format: .fixed(precision: 6))
-                            """
-                        )
-                        onSeek(newValue)
-                    }
+                    set: { onSeek($0) }
                 ),
                 in: 0 ... max(duration, 0.01)
             )

@@ -718,11 +718,19 @@ private extension MeetingDetailView {
     func transcriptReadyContent(fill: CGFloat) -> some View {
         // A: read the pre-built cached attributed string (rebuilt reactively
         // by the VM when inputs change -- never mutated during render).
-        if let attributed = viewModel.cachedTranscriptAttributed {
+        // Invariant: non-nil cachedTranscriptAttributed implies non-nil
+        // activeVersionID -- the cache is only populated when a version
+        // exists. The guard unwraps both to satisfy the type system.
+        if let attributed = viewModel.cachedTranscriptAttributed,
+           let transcriptID = viewModel.activeVersionID
+        {
             SelectableTranscriptView(
+                transcriptID: transcriptID,
+                canSeek: viewModel.canPlay,
                 attributed: attributed,
                 onSeek: { viewModel.seek(to: $0) }
             )
+            .equatable()
             .frame(minHeight: fill, alignment: .topLeading)
         } else if viewModel.hasBeenTranscribed {
             // C: transcription ran but produced no text.

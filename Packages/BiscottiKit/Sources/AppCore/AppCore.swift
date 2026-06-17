@@ -30,6 +30,25 @@ public extension Notification.Name {
     )
 }
 
+// MARK: - Auto-stop observable state
+
+/// Observable state published while an auto-stop countdown is active.
+///
+/// The view layer reads `deadline` against a `TimelineView` clock to
+/// derive the remaining time and bar fraction. `total` is the original
+/// duration so the bar starts full and decreases to zero.
+public struct AutoStopState: Sendable, Equatable {
+    public let meetingID: UUID
+    public let deadline: Date
+    public let total: TimeInterval
+
+    public init(meetingID: UUID, deadline: Date, total: TimeInterval) {
+        self.meetingID = meetingID
+        self.deadline = deadline
+        self.total = total
+    }
+}
+
 /// Thin MVP coordinator that wires Recording, TranscriptionService,
 /// CalendarService, MeetingDetector, NotificationService, Permissions,
 /// and DataStore into a single observable surface for the UI.
@@ -95,6 +114,10 @@ public final class AppCore {
 
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
+
+    /// Observable auto-stop countdown state. Non-nil while a countdown
+    /// is active; the view layer renders a countdown card from this.
+    public private(set) var autoStop: AutoStopState?
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -534,6 +557,12 @@ package extension AppCore {
         await pendingTranscriptionTask?.value
         pendingTranscriptionTask = nil
     }
+
+    /// Injects an `AutoStopState` for tests that need to verify the
+    /// view model guard against mismatched meeting IDs.
+    func setAutoStopForTesting(_ state: AutoStopState?) {
+        autoStop = state
+    }
 }
 
 // MARK: - Meetings search
@@ -683,12 +712,29 @@ extension AppCore {
 // MARK: - Auto-stop countdown
 
 extension AppCore {
+    /// Cancels the active auto-stop countdown (if any) so recording
+    /// continues. Called from both the notification action and the
+    /// on-screen "Keep Recording" button.
+    public func keepRecording() {
+        if case let .recording(id) = runState {
+            cancelAutoStopCountdown(meetingID: id)
+        }
+    }
+
     private func beginAutoStopCountdown(meetingID: UUID) {
         countdownTask?.cancel()
 
         let seconds = autoStopSeconds
         let sched = scheduler
         let notif = notifications
+
+        // Publish observable state so the recording pane can render
+        // the countdown card alongside the existing notification.
+        autoStop = AutoStopState(
+            meetingID: meetingID,
+            deadline: Date().addingTimeInterval(TimeInterval(seconds)),
+            total: TimeInterval(seconds)
+        )
 
         countdownTask = Task { [weak self] in
             // Present a single static notification (no per-second updates).
@@ -715,6 +761,7 @@ extension AppCore {
     private func cancelAutoStopCountdown(meetingID: UUID) {
         countdownTask?.cancel()
         countdownTask = nil
+        autoStop = nil
         // Fire-and-forget: removing the countdown notification is a
         // best-effort UI cleanup (remove pending + delivered banners).
         // If this races with quit-while-recording, the app terminates
@@ -748,8 +795,8 @@ extension AppCore {
                 // the URL or forward to a callback.
                 break
 
-            case let .keepRecording(meetingID):
-                cancelAutoStopCountdown(meetingID: meetingID)
+            case .keepRecording:
+                keepRecording()
                 route = .recording
             }
         }

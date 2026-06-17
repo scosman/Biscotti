@@ -1,7 +1,10 @@
+import AudioCapture
 import BiscottiTestSupport
 import Calendar
+import CoreAudio
 import DataStore
 import Foundation
+import MeetingDetection
 import Recording
 import Testing
 @testable import AppCore
@@ -457,6 +460,154 @@ struct ElapsedFromStartDateTests {
     }
 }
 
+// MARK: - Phase 4: Auto-stop countdown
+
+@Suite("RecordingViewModel autoStopCountdown")
+struct AutoStopCountdownViewModelTests {
+    @Test("returns nil when no countdown active")
+    @MainActor
+    func nilWhenNoCountdown() async throws {
+        let fix = try makeCoreFixture(testName: "AutoStopVM")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+        #expect(viewModel.autoStopCountdown == nil)
+    }
+
+    @Test("returns nil when countdown is for a different meeting")
+    @MainActor
+    func nilForDifferentMeeting() async throws {
+        let fix = try makeCoreFixture(testName: "AutoStopVM")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        // Inject an autoStop state for a DIFFERENT meeting ID
+        let mismatchedID = UUID()
+        fix.core.setAutoStopForTesting(AutoStopState(
+            meetingID: mismatchedID,
+            deadline: Date().addingTimeInterval(10),
+            total: 10
+        ))
+
+        // core.autoStop is set, but the VM should filter it out
+        #expect(fix.core.autoStop != nil)
+        #expect(viewModel.autoStopCountdown == nil)
+    }
+
+    @Test("returns state when countdown matches current meeting")
+    @MainActor
+    func returnsStateForMatchingMeeting() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "AutoStopVM"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Start recording with Zoom active, then stop Zoom
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: true, output: true
+            )
+        ])
+        try await pollUntil {
+            fix.core.runState == .detectedPending
+        }
+        await fix.core.recordDetectedEvent(eventKey: nil)
+        guard case .recording = fix.core.runState else {
+            Issue.record("Expected recording")
+            return
+        }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+        #expect(viewModel.autoStopCountdown == nil)
+
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: false, output: false
+            )
+        ])
+        try await pollUntil { fakeScheduler.pendingCount > 0 }
+
+        let countdown = viewModel.autoStopCountdown
+        #expect(countdown != nil)
+        #expect(countdown?.total == 10)
+
+        _ = await fix.core.stopRecording()
+    }
+
+    @Test("keepRecording() delegates to AppCore and clears countdown")
+    @MainActor
+    func keepRecordingDelegates() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "AutoStopVM"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        try await fix.store.updateSettings {
+            $0.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: true, output: true
+            )
+        ])
+        try await pollUntil {
+            fix.core.runState == .detectedPending
+        }
+        await fix.core.recordDetectedEvent(eventKey: nil)
+        guard case .recording = fix.core.runState else {
+            Issue.record("Expected recording")
+            return
+        }
+
+        let viewModel = RecordingViewModel(core: fix.core)
+
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: false, output: false
+            )
+        ])
+        try await pollUntil { fakeScheduler.pendingCount > 0 }
+        #expect(viewModel.autoStopCountdown != nil)
+
+        viewModel.keepRecording()
+        #expect(viewModel.autoStopCountdown == nil)
+        #expect(fix.core.autoStop == nil)
+
+        // Still recording
+        #expect(viewModel.isRecording == true)
+
+        _ = await fix.core.stopRecording()
+    }
+}
+
 // MARK: - Phase 3: Note timestamp formatting
 
 @Suite("RecordingViewModel.formatNoteTimestamp")
@@ -660,4 +811,32 @@ struct EventTitleSeedingTests {
         let detail = try await fix.store.meetingDetail(id: meetingID)
         #expect(detail?.title == "My Custom Meeting")
     }
+}
+
+// MARK: - Helpers (Phase 4)
+
+/// Polls a condition until true, up to 2 seconds.
+private func pollUntil(
+    _ condition: @MainActor () -> Bool
+) async throws {
+    for _ in 0 ..< 40 {
+        try await Task.sleep(for: .milliseconds(50))
+        if await condition() { return }
+    }
+}
+
+/// Creates an `AudioProcess` test stub for pipeline tests.
+private func makeAudioProcess(
+    bundleID: String,
+    input: Bool,
+    output: Bool,
+    pid: pid_t = 1
+) -> AudioProcess {
+    AudioProcess(
+        id: AudioObjectID(pid),
+        bundleID: bundleID,
+        pid: pid,
+        isRunningInput: input,
+        isRunningOutput: output
+    )
 }

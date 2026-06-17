@@ -273,6 +273,23 @@ public final class RecordingViewModel {
         core.recording.removeNote(id: id)
     }
 
+    // MARK: - Auto-stop
+
+    /// The auto-stop countdown state, if active for THIS recording.
+    /// Returns nil when there is no countdown or when the countdown
+    /// belongs to a different meeting (defensive).
+    public var autoStopCountdown: AutoStopState? {
+        guard let state = core.autoStop,
+              state.meetingID == core.recording.state.meetingID
+        else { return nil }
+        return state
+    }
+
+    /// Cancels the auto-stop countdown so recording continues.
+    public func keepRecording() {
+        core.keepRecording()
+    }
+
     // MARK: - Actions
 
     /// Commits any pending composer text, then stops the recording.

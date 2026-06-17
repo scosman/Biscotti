@@ -42,7 +42,7 @@ definition.
 | `recordingHoverFill` | `signalRed` @ 0.05 | light Stop/REC button hover |
 | `warningChipFill` | `warningOchre` @ 0.16 | Left chip amber fill (≤5 min / overtime) |
 | `warningChipText` | `warningOchre` | Left chip amber kicker + value |
-| `softSageFill` | `sage` @ 0.12 | "Add note" + "Keep Recording" buttons |
+| `softSageFill` | `sage` @ 0.12 | "Add note" button _(Keep Recording moved to `neutralChip` per Phase 4 UI review)_ |
 
 (If `Tokens.warningBackground` already equals `warningOchre @ ~0.16`, reuse it for
 `warningChipFill` rather than adding a duplicate.)
@@ -60,7 +60,8 @@ definition.
 | Note timestamp | `biscottiMono(11.5)`, `sage` |
 | Note text | system `13.5`, `ink`, line spacing ~3 |
 | Composer placeholder | system `13.5`, `inkTertiary` |
-| "Add note" / "Keep Recording" label | system `13`, weight 600, `sage` |
+| "Add note" label | system `13`, weight 600, `sage` |
+| "Keep Recording" label | system `13`, weight 600, `ink` _(Phase 4 UI review: neutral grey, not sage)_ |
 | Header REC label | `biscottiMono(12.5, .medium)`, `signalRed` |
 | Sidebar "RECORDING NOW" kicker | `.kicker()` tinted `signalRed` |
 | Sidebar row title / subtitle | `.body` `ink` / `.monoMeta` `signalRed` |
@@ -79,9 +80,10 @@ A prominent full-width card, only while a countdown is active.
   `signalRed` `Capsule` fill whose width = `remaining / total`. The fill width
   **decreases each second**; animate width linearly (`.linear(duration: 1)`)
   unless Reduce Motion (then step, no tween).
-- Row 3 (or trailing on row 1): **Keep Recording** button — `softSageFill`
-  background, `sage` label weight 600, height ~32, `buttonRadius`. Comfortable hit
-  target (this is the safe/primary action).
+- Row 3 (right-aligned): **Keep Recording** button — `neutralChip` fill,
+  `hairline` 0.5pt border, `ink` label weight 600, `buttonRadius`. Right-aligned
+  (trailing edge) within the card. _(Phase 4 UI review: changed from sage-green
+  to neutral grey -- green-on-red read poorly; right-aligned to balance the card.)_
 
 ### 4.1 Status row
 

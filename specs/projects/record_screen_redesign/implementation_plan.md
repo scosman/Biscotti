@@ -33,7 +33,7 @@ order, not a restatement.
   `reloadSummaries()` after calendar association in `startRecording`. Pure-logic
   unit tests (chips, submeta builders). Depends on 1 + 2.
 
-- [ ] **Phase 4 — Auto-stop "Auto-stopping soon" section.**
+- [x] **Phase 4 — Auto-stop "Auto-stopping soon" section.**
   Additive `AppCore.autoStop` state + `keepRecording()` (leave the merged
   notification/sleep path intact); render the top-of-column countdown card with
   the `TimelineView` decreasing bar + Keep Recording (reduced-motion aware).

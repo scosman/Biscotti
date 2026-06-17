@@ -56,6 +56,13 @@ public struct RecordingView: View {
 
     private var mainColumn: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingLG) {
+            if let autoStop = viewModel.autoStopCountdown {
+                AutoStopCountdownCard(
+                    state: autoStop,
+                    onKeepRecording: { viewModel.keepRecording() }
+                )
+            }
+
             statusRow
 
             titleSection

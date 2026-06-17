@@ -4,8 +4,16 @@ import Calendar
 import DataStore
 import DesignSystem
 import MarkdownEditorUI
+import os
 import SwiftUI
 import TranscriptionService
+
+// MARK: - SEEKLOOP diagnostic logger (temporary -- remove after diagnosis)
+
+private let seekViewLogger = Logger(
+    subsystem: "net.scosman.biscotti",
+    category: "SEEKLOOP"
+)
 
 /// The Meeting Detail screen showing metadata, transcript, calendar
 /// context, audio playback, notes, and status.
@@ -58,6 +66,7 @@ public struct MeetingDetailView: View {
     }
 
     public var body: some View {
+        _ = Self._printChanges() // SEEKLOOP diagnostic -- remove after diagnosis
         GeometryReader { geo in
             if viewModel.isLoading {
                 // B: unified loading state — one centered spinner for the
@@ -152,8 +161,22 @@ public struct MeetingDetailView: View {
             .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
-        .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
+        .onPreferenceChange(ChromeHeightKey.self) { newVal in
+            if newVal != chromeHeight {
+                seekViewLogger.warning(
+                    "SEEKLOOP chromeHeight \(chromeHeight)->\(newVal)"
+                )
+            }
+            chromeHeight = newVal
+        }
+        .onPreferenceChange(TransportHeightKey.self) { newVal in
+            if newVal != transportHeight {
+                seekViewLogger.warning(
+                    "SEEKLOOP transportHeight \(transportHeight)->\(newVal)"
+                )
+            }
+            transportHeight = newVal
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             pinnedTransportBar
         }
@@ -718,11 +741,15 @@ private extension MeetingDetailView {
     func transcriptReadyContent(fill: CGFloat) -> some View {
         // A: read the pre-built cached attributed string (rebuilt reactively
         // by the VM when inputs change -- never mutated during render).
-        if let attributed = viewModel.cachedTranscriptAttributed {
+        if let attributed = viewModel.cachedTranscriptAttributed,
+           let transcriptID = viewModel.activeVersionID
+        {
             SelectableTranscriptView(
+                transcriptID: transcriptID,
                 attributed: attributed,
                 onSeek: { viewModel.seek(to: $0) }
             )
+            .equatable()
             .frame(minHeight: fill, alignment: .topLeading)
         } else if viewModel.hasBeenTranscribed {
             // C: transcription ran but produced no text.

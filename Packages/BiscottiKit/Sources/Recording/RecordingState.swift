@@ -9,15 +9,29 @@ public struct RecordingState: Sendable, Equatable {
     public var elapsed: TimeInterval
     /// The meeting ID for the current or most-recently-completed recording.
     public var meetingID: UUID?
+    /// The wall-clock time when the recording started. `nil` when idle.
+    ///
+    /// Used by the UI to compute elapsed time from a shared `now` reference
+    /// (e.g. inside a `TimelineView`), keeping all chips in sync on the
+    /// same frame rather than relying on the engine's async elapsed pump.
+    public var startDate: Date?
 
-    public init(isRecording: Bool, elapsed: TimeInterval, meetingID: UUID?) {
+    public init(
+        isRecording: Bool,
+        elapsed: TimeInterval,
+        meetingID: UUID?,
+        startDate: Date? = nil
+    ) {
         self.isRecording = isRecording
         self.elapsed = elapsed
         self.meetingID = meetingID
+        self.startDate = startDate
     }
 
     /// The resting state before any recording.
-    public static let idle = RecordingState(isRecording: false, elapsed: 0, meetingID: nil)
+    public static let idle = RecordingState(
+        isRecording: false, elapsed: 0, meetingID: nil
+    )
 }
 
 /// Errors surfaced by `RecordingController`.

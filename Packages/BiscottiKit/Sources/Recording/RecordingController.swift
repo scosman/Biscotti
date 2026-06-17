@@ -147,7 +147,10 @@ public final class RecordingController {
         }
 
         recorder = newRecorder
-        state = RecordingState(isRecording: true, elapsed: 0, meetingID: setup.meetingID)
+        state = RecordingState(
+            isRecording: true, elapsed: 0,
+            meetingID: setup.meetingID, startDate: Date()
+        )
         startStateStreamPump(recorder: newRecorder)
         scheduleDenialCheck(recorder: newRecorder)
     }

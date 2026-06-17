@@ -199,6 +199,8 @@ let package = Package(
             name: "RecordingUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
+                "DataStore",
                 "DesignSystem",
                 "Permissions",
                 "Recording"

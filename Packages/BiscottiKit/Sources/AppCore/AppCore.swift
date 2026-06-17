@@ -50,6 +50,14 @@ public final class AppCore {
     /// All meetings, newest first (uncapped — the Meetings list uses lazy rendering).
     public package(set) var summaries: [MeetingSummary] = []
 
+    /// Monotonically increasing token that increments every time
+    /// `reloadSummaries()` runs. Observers (e.g. `RecordingViewModel`)
+    /// watch this to trigger a detail reload after any summaries refresh,
+    /// regardless of whether the count or content changed. More robust
+    /// than watching `summaries.count` which misses same-count changes
+    /// like title updates from calendar association.
+    public private(set) var summariesVersion: Int = 0
+
     // MARK: - Meetings screen state
 
     /// The selected meeting shown in the detail pane, or nil (placeholder).
@@ -312,6 +320,10 @@ public final class AppCore {
         if let resolvedEvent {
             await associateEvent(resolvedEvent, with: meetingID)
         }
+
+        // Reload summaries so the recording VM picks up the calendar
+        // context and the sidebar/home titles are fresh.
+        await reloadSummaries()
     }
 
     /// Stops the current recording, reloads the sidebar, routes to the
@@ -472,12 +484,17 @@ public final class AppCore {
     // MARK: - Data refresh
 
     /// Reloads all meeting summaries from the store (uncapped).
+    ///
+    /// Increments `summariesVersion` on every call so observers
+    /// (e.g. `RecordingViewModel`) detect the refresh even when the
+    /// count or content is unchanged.
     public func reloadSummaries() async {
         do {
             summaries = try await store.meetingSummaries()
         } catch {
             summaries = []
         }
+        summariesVersion &+= 1
     }
 }
 

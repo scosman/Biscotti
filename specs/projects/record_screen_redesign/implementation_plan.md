@@ -24,7 +24,7 @@ order, not a restatement.
   Unit tests for generator + controller notes/seeding. (Produces the deep-link
   URLs consumed in Phase 6.)
 
-- [ ] **Phase 3 — Recording pane core (view model + view).**
+- [x] **Phase 3 — Recording pane core (view model + view).**
   Rework `RecordingViewModel` (load detail, title via shared control, submeta,
   Elapsed/Left/Over chips with the amber warning, notes proxy, `stop` committing
   the composer) and rebuild `RecordingView` (center-then-scroll layout, RECORDING
@@ -52,3 +52,13 @@ order, not a restatement.
   lift `MeetingDetailView.Tab` into its VM and apply the pending jump (switch to
   Transcript + seek, clamped, deferring until audio loads). Unit tests for
   parsing + jump application. Depends on 2.
+
+- [ ] **Phase 7 — Recording pane event link/unlink.**
+  Add a "Link event" affordance in the recording pane's submeta when there is NO
+  associated calendar event, reusing the existing meeting-screen "Link Calendar
+  Event" flow (the popup that offers event options) — extract that flow into
+  shared code if needed rather than duplicating it; update the pane UI once
+  linked. Add an "Unlink event" link next to "Open in calendar" (same link style)
+  that removes the event association and updates the UI. Pure-logic/VM unit tests
+  where applicable. Depends on 3 (recording pane) + the existing meeting-detail
+  link flow.

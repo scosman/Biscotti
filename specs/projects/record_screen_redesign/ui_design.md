@@ -118,8 +118,9 @@ Single line, dot-separated (`·` in `inkTertiary`):
 ### 4.4 Time chips
 
 `HStack(spacing: 9)` of soft pills. Each pill: height 34, radius 10, padding
-`0 14`, fill `neutralChip`; a `VStack(alignment:.leading, spacing: 2)` of kicker
-over value.
+`0 14`, fill `neutralChip`; an `HStack(spacing: 6)` of kicker beside value
+(side-by-side layout, e.g. "ELAPSED 2:34"). _Originally specified as a
+`VStack` (kicker over value); changed to `HStack` per Phase 3 UI review._
 
 - **ELAPSED** — always; kicker `inkTertiary`, value `ink`. Never recolors.
 - **LEFT** — only with a scheduled end; default same neutral treatment.

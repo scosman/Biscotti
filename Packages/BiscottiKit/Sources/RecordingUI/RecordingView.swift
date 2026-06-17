@@ -1,87 +1,247 @@
 import AppCore
 import DesignSystem
+import Recording
 import SwiftUI
 
-/// The active-recording screen: elapsed time, meeting title, stop button,
-/// and an optional system-audio denial banner.
-///
-/// Big, calm, single-purpose. Centered layout with a blinking record dot
-/// (opacity pulse -- the "VCR LED" option from app_overview.md).
+/// The active-recording screen: a calm, centered, document-style surface
+/// with RECORDING badge, Stop & Save, editable title, submeta, time chips,
+/// note composer, notes list, and system-audio banner.
 public struct RecordingView: View {
-    @Bindable private var viewModel: RecordingViewModel
-    @State private var dotOpacity: Double = 1.0
+    @Bindable var viewModel: RecordingViewModel
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+
+    /// Pending composer text, shared with `RecordingNotesView` so
+    /// Stop & Save can commit it.
+    @State private var pendingComposerText: String = ""
+
+    /// Inline note edit state, shared with `RecordingNotesView` so
+    /// Stop & Save can commit any in-progress edit before stopping.
+    @State private var editingNoteID: UUID?
+    @State private var editingNoteText: String = ""
+
+    /// Ripple animation state
+    @State private var rippleActive: Bool = false
 
     public init(viewModel: RecordingViewModel) {
         self.viewModel = viewModel
     }
 
     public var body: some View {
-        VStack(spacing: Tokens.spacingLG) {
-            Spacer()
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
 
-            recordingIndicator
+                    mainColumn
 
-            elapsedTime
-
-            if let title = viewModel.meetingTitle {
-                Text(title)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                    Spacer(minLength: 0)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: geometry.size.height,
+                    alignment: .center
+                )
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: viewModel.meetingID) {
+            await viewModel.load()
+        }
+        .onChange(of: viewModel.summariesVersion) {
+            Task { await viewModel.reloadDetail() }
+        }
+    }
 
-            stopButton
+    // MARK: - Main column
+
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingLG) {
+            statusRow
+
+            titleSection
+
+            timeChipsRow
+
+            Divider()
+                .padding(.vertical, Tokens.spacingMD)
+
+            RecordingNotesView(
+                viewModel: viewModel,
+                pendingComposerText: $pendingComposerText,
+                editingNoteID: $editingNoteID,
+                editingNoteText: $editingNoteText
+            )
 
             if viewModel.showSystemAudioWarning {
                 systemAudioBanner
             }
+        }
+        .padding(.vertical, 40)
+        .padding(.horizontal, Tokens.spacingXL)
+        .frame(maxWidth: 600)
+    }
 
+    // MARK: - Status row
+
+    private var statusRow: some View {
+        HStack {
+            recordingBadge
             Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(Tokens.spacingXL)
-    }
-
-    // MARK: - Subviews
-
-    private var recordingIndicator: some View {
-        HStack(spacing: Tokens.spacingSM) {
-            Circle()
-                .fill(Tokens.recordingRed)
-                .frame(width: 12, height: 12)
-                .opacity(dotOpacity)
-                .animation(
-                    .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                    value: dotOpacity
-                )
-                .onAppear { dotOpacity = 0.3 }
-
-            Text("Recording")
-                .font(Tokens.meetingTitleFont)
+            stopButton
         }
     }
 
-    private var elapsedTime: some View {
-        Text(viewModel.elapsedText)
-            .font(Tokens.elapsedTimeFont)
+    private var recordingBadge: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                // Ripple rings (reduced motion: hidden)
+                if !reduceMotion {
+                    ForEach(0 ..< 2, id: \.self) { index in
+                        Circle()
+                            .stroke(Color.signalRed, lineWidth: 1)
+                            .frame(width: 11, height: 11)
+                            .scaleEffect(rippleActive ? 2.6 : 0.6)
+                            .opacity(rippleActive ? 0 : 0.4)
+                            .animation(
+                                .easeOut(duration: 2.0)
+                                    .repeatForever(autoreverses: false)
+                                    .delay(Double(index) * 1.0),
+                                value: rippleActive
+                            )
+                    }
+                }
+
+                // Solid dot
+                Circle()
+                    .fill(Color.signalRed)
+                    .frame(width: 11, height: 11)
+            }
+            .onAppear { rippleActive = true }
+
+            Text("RECORDING")
+                .font(.biscottiMono(12.5, weight: .medium))
+                .tracking(1.5)
+                .foregroundStyle(Color.signalRed)
+        }
     }
 
     private var stopButton: some View {
         Button {
-            Task { await viewModel.stop() }
-        } label: {
-            Label {
-                Text("Stop")
-                    .fontWeight(.semibold)
-            } icon: {
-                Image(systemName: "stop.fill")
+            Task {
+                // Commit any in-progress inline note edit
+                commitPendingNoteEdit()
+                await viewModel.stop(
+                    pendingComposer: pendingComposerText
+                )
             }
-            .padding(.horizontal, Tokens.spacingMD)
-            .padding(.vertical, Tokens.spacingSM)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 9))
+                Text("Stop & Save")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, 15)
+            .frame(height: 34)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(Tokens.recordingRed)
-        .controlSize(.large)
+        .buttonStyle(LightAlertButtonStyle())
     }
+
+    /// Commits any in-progress inline note edit so Stop & Save
+    /// does not discard the user's unsaved changes.
+    private func commitPendingNoteEdit() {
+        guard let noteID = editingNoteID else { return }
+        let trimmed = editingNoteText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            viewModel.removeNote(id: noteID)
+        } else {
+            viewModel.updateNote(id: noteID, text: trimmed)
+        }
+        editingNoteID = nil
+        editingNoteText = ""
+    }
+
+    // MARK: - Title + submeta
+
+    private var titleSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            EditableMeetingTitle(
+                text: $viewModel.editableTitle,
+                placeholder: "Untitled recording",
+                font: .biscottiSerif(26)
+            ) {
+                await viewModel.saveTitle()
+            }
+
+            submetaLine
+        }
+    }
+
+    @ViewBuilder
+    private var submetaLine: some View {
+        if viewModel.hasEvent {
+            eventSubmeta
+        } else {
+            adHocSubmeta
+        }
+    }
+
+    private var eventSubmeta: some View {
+        HStack(spacing: 0) {
+            if let schedule = viewModel.scheduleText {
+                Text(schedule)
+                    .font(.monoMeta)
+                    .foregroundStyle(Color.inkSecondary)
+            }
+
+            if let platform = viewModel.platformText {
+                Text(" \u{00B7} ")
+                    .font(.monoMeta)
+                    .foregroundStyle(Color.inkTertiary)
+                Text(platform)
+                    .font(.monoMeta)
+                    .foregroundStyle(Color.inkSecondary)
+            }
+
+            Text(" \u{00B7} ")
+                .font(.monoMeta)
+                .foregroundStyle(Color.inkTertiary)
+
+            Button {
+                viewModel.openInCalendar()
+            } label: {
+                HStack(spacing: 3) {
+                    Text("Open in calendar")
+                        .font(.body)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(Color.sage)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var adHocSubmeta: some View {
+        HStack(spacing: 0) {
+            if let clockText = viewModel.startedClockText {
+                Text(clockText)
+                    .font(.monoMeta)
+                    .foregroundStyle(Color.inkSecondary)
+            }
+
+            Text(" \u{00B7} ")
+                .font(.monoMeta)
+                .foregroundStyle(Color.inkTertiary)
+
+            Text("No calendar event")
+                .font(.monoMeta)
+                .foregroundStyle(Color.inkTertiary)
+        }
+    }
+
+    // MARK: - System audio banner
 
     private var systemAudioBanner: some View {
         Banner(
@@ -99,5 +259,6 @@ public struct RecordingView: View {
     let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
     let viewModel = RecordingViewModel(core: core)
     RecordingView(viewModel: viewModel)
-        .frame(width: 500, height: 400)
+        .frame(width: 600, height: 700)
+        .background(Tokens.contentBackground)
 }

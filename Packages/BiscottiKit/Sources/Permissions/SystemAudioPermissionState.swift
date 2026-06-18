@@ -29,23 +29,15 @@ public enum SystemAudioPermissionState: String, Sendable, CaseIterable, Equatabl
         }
     }
 
-    /// Temporary adapter mapping to `PermissionState` for UI call sites
-    /// that still use the shared permission row helper.
-    ///
-    /// - `.notRequested` -> `.notDetermined` (shows "Request Access")
-    /// - `.requestedNotVerified` -> `.notDetermined` (shows "Request Access"
-    ///   rather than the misleading "Open Settings / denied" prompt, since the
-    ///   state is intentionally ambiguous -- user may have granted but we
-    ///   couldn't verify, or may not have granted yet)
-    /// - `.approved` -> `.authorized` (shows checkmark)
-    ///
-    /// - Note: TODO Phase 3 — remove this adapter when the system-audio row
-    ///   gets its own dedicated UI with Retry / Validate / Fix permissions.
-    public var asPermissionState: PermissionState {
-        switch self {
-        case .notRequested: .notDetermined
-        case .requestedNotVerified: .notDetermined
-        case .approved: .authorized
-        }
-    }
+    // MARK: - Fix-permissions alert copy (shared by Settings, Onboarding, and Stage 3)
+
+    /// Alert title for the "Fix permissions" flow.
+    public static let fixPermissionsAlertTitle = "Allow Biscotti to record system audio"
+
+    /// Alert body for the "Fix permissions" flow.
+    public static let fixPermissionsAlertBody =
+        "Biscotti couldn\u{2019}t confirm permission to record your computer\u{2019}s audio. "
+            + "macOS doesn\u{2019}t let apps re-ask directly \u{2014} turn it on in "
+            + "System Settings: Privacy & Security \u{2192} System Audio Recording, "
+            + "enable Biscotti, then return and tap Retry."
 }

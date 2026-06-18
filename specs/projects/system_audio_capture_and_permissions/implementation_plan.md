@@ -34,7 +34,7 @@ before its gate is green on real Apple-silicon hardware.**
     `requestedNotVerified` when denied/revoked (incl. first-time prompt → Retry); tune tone params.
   - Depends on: Phase 1.
 
-- [ ] **Phase 3 — Stage 2b: Permission UI** (`SettingsUI` + `OnboardingUI`)
+- [x] **Phase 3 — Stage 2b: Permission UI** (`SettingsUI` + `OnboardingUI`)
   - Settings system-audio row: 4 states (incl. transient "Validating…"); Request Access / Retry /
     Validate / Fix permissions; no probe on view appear.
   - Onboarding step: same affordance, non-blocking, no Validate.

@@ -394,3 +394,106 @@ struct SettingsMenuBarLeadTimeTests {
         #expect(viewModel.menuBarLeadTime == .sixHours)
     }
 }
+
+// MARK: - System audio permission row
+
+@Suite("SettingsViewModel -- system audio permission")
+@MainActor
+struct SettingsSystemAudioTests {
+    @Test("system audio state reflects notRequested from core")
+    func systemAudioNotRequested() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.systemAudioState == .notRequested)
+        #expect(viewModel.isValidatingSystemAudio == false)
+    }
+
+    @Test("system audio state reflects approved from core")
+    func systemAudioApproved() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.permissions.setSystemAudio(.approved)
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.systemAudioState == .approved)
+    }
+
+    @Test("system audio state reflects requestedNotVerified from core")
+    func systemAudioRequestedNotVerified() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.permissions.setSystemAudio(.requestedNotVerified)
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.systemAudioState == .requestedNotVerified)
+    }
+
+    @Test("requestSystemAudio toggles isValidating and invokes core")
+    func requestSystemAudioTogglesValidating() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.isValidatingSystemAudio == false)
+
+        // requestSystemAudio calls core.requestSystemAudioPermission()
+        // which goes through FakeRecorder's probeSystemAudioWithTone
+        await viewModel.requestSystemAudio()
+
+        // After completing, validating should be false again
+        #expect(viewModel.isValidatingSystemAudio == false)
+        // FakeRecorder's probeSystemAudioWithTone was called
+        #expect(fixture.fakeRecorder.backing.probeSystemAudioWithToneCalled == true)
+    }
+
+    @Test("no auto-probe on load")
+    func noAutoProbeOnLoad() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        await viewModel.load()
+
+        // No probe should have been triggered
+        #expect(viewModel.isValidatingSystemAudio == false)
+        #expect(fixture.fakeRecorder.backing.probeSystemAudioWithToneCalled == false)
+    }
+
+    @Test("showFixPermissionsAlert toggles on and off")
+    func fixPermissionsAlertToggle() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.showFixPermissionsAlert == false)
+        viewModel.showFixPermissionsAlert = true
+        #expect(viewModel.showFixPermissionsAlert == true)
+        viewModel.showFixPermissionsAlert = false
+        #expect(viewModel.showFixPermissionsAlert == false)
+    }
+
+    @Test("requestSystemAudio updates state to approved when probe succeeds")
+    func requestSystemAudioUpdatesToApproved() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.fakeRecorder.backing.probeResult = true
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        #expect(viewModel.systemAudioState == .notRequested)
+
+        await viewModel.requestSystemAudio()
+
+        #expect(viewModel.systemAudioState == .approved)
+    }
+
+    @Test("requestSystemAudio stays requestedNotVerified when probe fails")
+    func requestSystemAudioStaysRequestedNotVerified() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        fixture.fakeRecorder.backing.probeResult = false
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        await viewModel.requestSystemAudio()
+
+        #expect(viewModel.systemAudioState == .requestedNotVerified)
+    }
+}

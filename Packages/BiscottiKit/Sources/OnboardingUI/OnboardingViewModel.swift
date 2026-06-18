@@ -80,6 +80,12 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
     public private(set) var calendarResult: PermissionState = .notDetermined
     public private(set) var notificationsGranted: Bool = false
 
+    /// True while a system-audio tone-probe is running.
+    public private(set) var isValidatingSystemAudio: Bool = false
+
+    /// True when the "Fix permissions" alert should be presented.
+    public var showFixPermissionsAlert: Bool = false
+
     /// Calendar selection (reuses the grouped pattern).
     public private(set) var calendarGroups: [OnboardingCalendarGroup] = []
     public private(set) var enabledCalendarIDs: Set<String>?
@@ -252,8 +258,10 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
             let granted = await core.permissions.requestMicrophone()
             microphoneResult = granted ? .authorized : .denied
         case .systemAudio:
+            isValidatingSystemAudio = true
             await core.requestSystemAudioPermission()
             systemAudioResult = core.permissions.systemAudio
+            isValidatingSystemAudio = false
         case .calendar:
             // Request through CalendarService (which owns the EventKit
             // seam) and map to PermissionState for the UI.
@@ -344,6 +352,12 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         NSWorkspace.shared.open(url)
     }
 
+    /// Opens System Settings to the system-audio privacy pane.
+    /// Delegates to the shared deeplink helper on `Permissions`.
+    public func openSystemAudioSettings() {
+        core.permissions.openSystemAudioSettings()
+    }
+
     /// Set the launch-at-login preference. Persists to settings and
     /// updates `SMAppService` registration (same path as SettingsViewModel).
     public func setLaunchAtLogin(_ enabled: Bool) async {
@@ -382,6 +396,8 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         systemAudioResult = .notRequested
         calendarResult = .notDetermined
         notificationsGranted = false
+        isValidatingSystemAudio = false
+        showFixPermissionsAlert = false
         calendarGroups = []
         enabledCalendarIDs = nil
         downloadStatus = nil

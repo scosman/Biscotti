@@ -216,7 +216,7 @@ struct PermissionsTests {
         let fake = FakeMicAuthorizer()
         let permissions = Permissions(mic: fake)
         let url = permissions.settingsURL(for: .systemAudio)
-        #expect(url.absoluteString.contains("Privacy_ScreenCapture"))
+        #expect(url.absoluteString.contains("Privacy_AudioCapture"))
     }
 
     @Test("settingsURL for calendar returns correct URL")

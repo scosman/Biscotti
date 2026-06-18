@@ -30,6 +30,10 @@ public final class Permissions {
     private var notif: (any NotificationAuthorizing)?
     private let systemAudioStore: any SystemAudioPermissionStore
 
+    /// System Settings deeplink for System Audio Recording privacy pane.
+    private static let systemAudioSettingsURL =
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
+
     /// Creates a Permissions instance.
     /// - Parameters:
     ///   - mic: The microphone authorization seam (defaults to the live implementation).
@@ -138,6 +142,27 @@ public final class Permissions {
         notifications = state
     }
 
+    // MARK: - System Audio deeplink
+
+    /// Opens System Settings to the system-audio privacy pane.
+    /// Falls back to the Privacy & Security root if the anchored URL
+    /// cannot be opened.
+    ///
+    /// Shared entry point for Settings, Onboarding, and (later) the
+    /// in-recording hint (Stage 3).
+    public func openSystemAudioSettings() {
+        // Both URL strings are static and always parse; guard-let avoids
+        // force_unwrapping lint while keeping the fallback chain intact.
+        guard let primary = URL(string: Self.systemAudioSettingsURL) else { return }
+        if NSWorkspace.shared.open(primary) {
+            return
+        }
+        guard let fallback = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy"
+        ) else { return }
+        _ = NSWorkspace.shared.open(fallback)
+    }
+
     // MARK: - Settings deep links
 
     /// Returns a URL that opens the correct System Settings pane for the given permission.
@@ -147,7 +172,7 @@ public final class Permissions {
             case .microphone:
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
             case .systemAudio:
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                Self.systemAudioSettingsURL
             case .calendar:
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
             case .notifications:

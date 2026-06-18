@@ -68,6 +68,12 @@ public final class SettingsViewModel {
         core.permissions.systemAudio
     }
 
+    /// True while a system-audio tone-probe is running.
+    public private(set) var isValidatingSystemAudio: Bool = false
+
+    /// True when the "Fix permissions" alert should be presented.
+    public var showFixPermissionsAlert: Bool = false
+
     public var calendarState: PermissionState {
         core.permissions.calendar
     }
@@ -238,6 +244,22 @@ public final class SettingsViewModel {
             // Revert UI on failure
             enabledCalendarIDs = nil
         }
+    }
+
+    // MARK: - System Audio actions
+
+    /// Runs the tone-probe to check system-audio permission.
+    /// Used by Request Access, Retry, and Validate buttons.
+    public func requestSystemAudio() async {
+        isValidatingSystemAudio = true
+        await core.requestSystemAudioPermission()
+        isValidatingSystemAudio = false
+    }
+
+    /// Opens System Settings to the system-audio privacy pane.
+    /// Delegates to the shared deeplink helper on `Permissions`.
+    public func openSystemAudioSettings() {
+        core.permissions.openSystemAudioSettings()
     }
 
     // MARK: - Permission actions

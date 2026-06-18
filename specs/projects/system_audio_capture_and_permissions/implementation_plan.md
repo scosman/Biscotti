@@ -23,7 +23,7 @@ before its gate is green on real Apple-silicon hardware.**
   - *Status:* engine work already implemented on-branch (uncommitted); mid HW-verification.
   - Depends on: — .
 
-- [ ] **Phase 2 — Stage 2a: Permission mechanism (no UI)** (`AudioCapture` + `Permissions`)
+- [x] **Phase 2 — Stage 2a: Permission mechanism (no UI)** (`AudioCapture` + `Permissions`)
   - `ProbeTonePlayer`; expose `observedNonZero`/`observedSystemAudio()`; add
     `AudioRecorder.probeSystemAudioWithTone(timeout:) -> Bool`.
   - `SystemAudioPermissionState`, `SystemAudioPermissionStore` (+ `UserDefaults` impl), `Permissions`

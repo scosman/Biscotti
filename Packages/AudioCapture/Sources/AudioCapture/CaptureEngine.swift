@@ -82,6 +82,18 @@ public protocol DeviceChangeProvider: Sendable {
 /// Tests: return a canned Bool.
 public protocol SystemPermissionChecker: Sendable {
     func probableDenied() async -> Bool
+
+    /// `true` as soon as any non-zero sample has been observed.
+    ///
+    /// Unlike `probableDenied()` (which waits for a full 2 s window),
+    /// this is an instantaneous check used by the tone-probe to detect
+    /// permission approval as early as possible.
+    var observedNonZero: Bool { get }
+
+    /// Resets accumulated state so a subsequent probe starts with a clean
+    /// slate. Called before each tone-probe to avoid false positives from
+    /// prior session data.
+    func reset()
 }
 
 /// Seam for mic permission preflight.

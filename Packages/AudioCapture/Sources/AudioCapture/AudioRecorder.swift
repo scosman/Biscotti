@@ -386,16 +386,6 @@ public actor AudioRecorder {
         }
     }
 
-    // MARK: - Permission inference
-
-    /// Returns `true` if the system audio buffers in the first ~2 s were
-    /// all-zero, indicating a probable missing screen-recording permission.
-    ///
-    /// The library reports; it does not own TCC prompts.
-    public func probableSystemAudioDenied() async -> Bool {
-        await permissionChecker.probableDenied()
-    }
-
     // MARK: - Internal helpers
 
     private var currentState: CaptureState {
@@ -439,6 +429,104 @@ public actor AudioRecorder {
                 await self?.emitState()
             }
         }
+    }
+}
+
+// MARK: - Permission inference & tone probe
+
+public extension AudioRecorder {
+    /// Returns `true` if the system audio buffers in the first ~2 s were
+    /// all-zero, indicating a probable missing screen-recording permission.
+    ///
+    /// The library reports; it does not own TCC prompts.
+    func probableSystemAudioDenied() async -> Bool {
+        await permissionChecker.probableDenied()
+    }
+
+    /// Returns `true` if any non-zero system audio sample has been observed.
+    ///
+    /// Used by the tone-probe to detect permission approval as early as
+    /// possible (no 2 s wait). Wraps the checker's instantaneous flag.
+    func observedSystemAudio() -> Bool {
+        permissionChecker.observedNonZero
+    }
+
+    /// Default timeout for the system audio tone probe.
+    static let defaultProbeTimeout: Duration = .seconds(5)
+
+    /// Poll interval for checking observedSystemAudio during a tone probe.
+    internal static let probePollInterval: Duration = .milliseconds(50)
+
+    /// Starts a fresh system tap + plays the probe tone; returns `true` as
+    /// soon as non-zero system audio is observed, `false` after `timeout`.
+    /// Always tears down the tap and tone before returning.
+    ///
+    /// Each call creates a fresh tap so a Retry after a first-time grant
+    /// works (a pre-grant tap may stay silent). Never throws across this
+    /// boundary -- probe failures return `false` and are logged `.public`.
+    func probeSystemAudioWithTone(
+        timeout: Duration = defaultProbeTimeout
+    ) async -> Bool {
+        // Reset the checker so prior session data doesn't cause a false positive.
+        permissionChecker.reset()
+
+        // The system engine requires a write path; the probe discards this file.
+        let probePath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("biscotti_probe_\(UUID().uuidString).aac")
+        let tonePlayer = ProbeTonePlayer()
+
+        // Start the system engine (creates a fresh tap -> TCC prompt on first use).
+        do {
+            try await systemEngine.start(writingTo: probePath)
+        } catch {
+            logger.error(
+                "Probe: system engine start failed: \(error.localizedDescription, privacy: .public)"
+            )
+            try? FileManager.default.removeItem(at: probePath)
+            return false
+        }
+
+        // Start the probe tone.
+        do {
+            try tonePlayer.start()
+        } catch {
+            logger.error(
+                "Probe: tone player start failed: \(error.localizedDescription, privacy: .public)"
+            )
+            await systemEngine.stop()
+            try? FileManager.default.removeItem(at: probePath)
+            return false
+        }
+
+        // Poll for non-zero audio or timeout.
+        let observed = await pollForObservedAudio(timeout: timeout)
+
+        // ALWAYS tear down: tone first (so the last tap buffers are silence),
+        // then engine.
+        tonePlayer.stop()
+        await systemEngine.stop()
+        try? FileManager.default.removeItem(at: probePath)
+
+        logger.info(
+            "Probe complete: observed=\(observed, privacy: .public)"
+        )
+        return observed
+    }
+
+    /// Polls `observedSystemAudio()` at short intervals until `true` or timeout.
+    private func pollForObservedAudio(timeout: Duration) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if observedSystemAudio() {
+                return true
+            }
+            do {
+                try await Task.sleep(for: Self.probePollInterval)
+            } catch {
+                return false // Task cancelled
+            }
+        }
+        return observedSystemAudio() // One final check
     }
 }
 

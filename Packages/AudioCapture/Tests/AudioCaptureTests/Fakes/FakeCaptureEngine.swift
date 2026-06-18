@@ -33,6 +33,11 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// calling `simulateFirstBuffer(anchor:)` exercises the alignment path.
     private var onFirstBuffer: (@Sendable (Double) -> Void)?
 
+    /// Optional callback fired after each successful `start()`. Used by
+    /// probe tests to simulate audio arriving once the engine is running
+    /// (e.g. setting `observedNonZero` on the permission checker).
+    var onStart: (@Sendable () -> Void)?
+
     func setOnFirstBuffer(_ callback: (@Sendable (Double) -> Void)?) {
         onFirstBuffer = callback
     }
@@ -133,6 +138,9 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         // timeout. Real engines fire this from the actual audio tap.
         let callback = onFirstBuffer
         callback?(anchor)
+
+        // Notify test hooks that the engine started successfully.
+        onStart?()
     }
 
     func stop() async {

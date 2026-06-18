@@ -70,7 +70,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PermissionsTests",
-            dependencies: ["Permissions"],
+            dependencies: ["Permissions", "BiscottiTestSupport"],
             swiftSettings: warningsAsErrors
         ),
         .target(

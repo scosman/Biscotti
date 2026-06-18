@@ -64,7 +64,7 @@ public final class SettingsViewModel {
         core.permissions.microphone
     }
 
-    public var systemAudioState: PermissionState {
+    public var systemAudioState: SystemAudioPermissionState {
         core.permissions.systemAudio
     }
 

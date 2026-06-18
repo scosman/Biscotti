@@ -154,8 +154,14 @@ public struct SettingsView: View {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
+            // TODO: Phase 3 — redesign the system-audio row with 4-state
+            // affordance (Request Access / Retry / Validate / Fix permissions).
+            // For now, map SystemAudioPermissionState to PermissionState for
+            // the existing row helper.
             permissionRow(
-                "System Audio", state: viewModel.systemAudioState, kind: .systemAudio
+                "System Audio",
+                state: viewModel.systemAudioState.asPermissionState,
+                kind: .systemAudio
             )
             permissionRow(
                 "Calendar", state: viewModel.calendarState, kind: .calendar

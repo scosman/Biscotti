@@ -33,7 +33,10 @@ private func makeFixture(
 ) throws -> RecordingTestFixture {
     let store = try DataStore(storage: .inMemory)
     let micAuth = FakeMicAuthorizer(status: micStatus, requestResult: micRequestResult)
-    let permissions = Permissions(mic: micAuth)
+    let permissions = Permissions(
+        mic: micAuth,
+        systemAudioStore: InMemorySystemAudioPermissionStore()
+    )
 
     let storageRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("RecordingTests-\(UUID().uuidString)")
@@ -106,7 +109,10 @@ struct RecordingStartStopTests {
     func startRequestsMicPermission() async throws {
         let store = try DataStore(storage: .inMemory)
         let micAuth = FakeMicAuthorizer(status: .notDetermined, requestResult: true)
-        let permissions = Permissions(mic: micAuth)
+        let permissions = Permissions(
+            mic: micAuth,
+            systemAudioStore: InMemorySystemAudioPermissionStore()
+        )
         let storageRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("RecordingTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: storageRoot, withIntermediateDirectories: true)
@@ -532,7 +538,7 @@ struct RecordingStateRecoveryTests {
 
         #expect(fix.controller.systemAudioWarning == true)
         // Stage 1: denial check is neutered — no durable permission state written.
-        #expect(fix.permissions.systemAudio == .notDetermined)
+        #expect(fix.permissions.systemAudio == .notRequested)
     }
 
     @Test("System audio authorized inference does NOT write permission state")
@@ -546,9 +552,9 @@ struct RecordingStateRecoveryTests {
         // Give the denial check task time to complete.
         try await Task.sleep(for: .milliseconds(200))
 
-        // Stage 1: denial check is neutered — permission state stays .notDetermined.
+        // Stage 1: denial check is neutered — permission state stays .notRequested.
         #expect(fix.controller.systemAudioWarning == false)
-        #expect(fix.permissions.systemAudio == .notDetermined)
+        #expect(fix.permissions.systemAudio == .notRequested)
     }
 
     @Test("Recover orphans reconciles stale markers")

@@ -1,3 +1,4 @@
+import BiscottiTestSupport
 import Permissions
 import Testing
 
@@ -60,7 +61,7 @@ struct PermissionsTests {
         let fake = FakeMicAuthorizer(status: .notDetermined)
         let permissions = Permissions(mic: fake)
         #expect(permissions.microphone == .notDetermined)
-        #expect(permissions.systemAudio == .notDetermined)
+        #expect(permissions.systemAudio == .notRequested)
     }
 
     @Test("Initial state authorized when seam reports authorized")
@@ -128,18 +129,76 @@ struct PermissionsTests {
         #expect(fake.requestWasCalled == false)
     }
 
-    @Test("noteSystemAudio updates systemAudio state")
+    @Test("setSystemAudio updates state and persists")
     @MainActor
-    func noteSystemAudio() {
+    func setSystemAudioUpdatesAndPersists() {
         let fake = FakeMicAuthorizer(status: .authorized)
-        let permissions = Permissions(mic: fake)
-        #expect(permissions.systemAudio == .notDetermined)
+        let store = InMemorySystemAudioPermissionStore()
+        let permissions = Permissions(mic: fake, systemAudioStore: store)
+        #expect(permissions.systemAudio == .notRequested)
 
-        permissions.noteSystemAudio(.denied)
-        #expect(permissions.systemAudio == .denied)
+        permissions.setSystemAudio(.requestedNotVerified)
+        #expect(permissions.systemAudio == .requestedNotVerified)
+        #expect(store.load() == .requestedNotVerified)
 
-        permissions.noteSystemAudio(.authorized)
-        #expect(permissions.systemAudio == .authorized)
+        permissions.setSystemAudio(.approved)
+        #expect(permissions.systemAudio == .approved)
+        #expect(store.load() == .approved)
+    }
+
+    @Test("init restores system audio state from store")
+    @MainActor
+    func initRestoresSystemAudioFromStore() {
+        let store = InMemorySystemAudioPermissionStore()
+        store.save(.approved)
+
+        let fake = FakeMicAuthorizer(status: .authorized)
+        let permissions = Permissions(mic: fake, systemAudioStore: store)
+        #expect(permissions.systemAudio == .approved)
+    }
+
+    @Test("setSystemAudio transition: requestedNotVerified -> approved")
+    @MainActor
+    func systemAudioTransitionToApproved() {
+        let store = InMemorySystemAudioPermissionStore()
+        let permissions = Permissions(
+            mic: FakeMicAuthorizer(status: .authorized),
+            systemAudioStore: store
+        )
+
+        // Simulate probe start
+        permissions.setSystemAudio(.requestedNotVerified)
+        #expect(permissions.systemAudio == .requestedNotVerified)
+
+        // Simulate tone observed
+        permissions.setSystemAudio(.approved)
+        #expect(permissions.systemAudio == .approved)
+        #expect(store.load() == .approved)
+    }
+
+    @Test("setSystemAudio transition: timeout stays requestedNotVerified")
+    @MainActor
+    func systemAudioTransitionTimeoutStaysRequestedNotVerified() {
+        let store = InMemorySystemAudioPermissionStore()
+        let permissions = Permissions(
+            mic: FakeMicAuthorizer(status: .authorized),
+            systemAudioStore: store
+        )
+
+        permissions.setSystemAudio(.requestedNotVerified)
+        #expect(permissions.systemAudio == .requestedNotVerified)
+
+        // Simulate timeout: state remains requestedNotVerified
+        permissions.setSystemAudio(.requestedNotVerified)
+        #expect(permissions.systemAudio == .requestedNotVerified)
+        #expect(store.load() == .requestedNotVerified)
+    }
+
+    @Test("displayText returns expected strings")
+    func displayTextValues() {
+        #expect(SystemAudioPermissionState.notRequested.displayText == "Not Requested")
+        #expect(SystemAudioPermissionState.requestedNotVerified.displayText == "Not approved")
+        #expect(SystemAudioPermissionState.approved.displayText == "Granted")
     }
 
     @Test("settingsURL for microphone returns correct URL")

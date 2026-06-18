@@ -60,8 +60,10 @@ extension OnboardingView {
                     .controlSize(.large)
                 }
 
+                // TODO: Phase 3 — redesign system-audio step with
+                // dedicated state-driven affordance (Retry / Fix permissions).
                 denialGuidance(
-                    state: viewModel.systemAudioResult,
+                    state: viewModel.systemAudioResult.asPermissionState,
                     kind: .systemAudio
                 )
             }

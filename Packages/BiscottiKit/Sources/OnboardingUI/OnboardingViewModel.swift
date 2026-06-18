@@ -76,7 +76,7 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
 
     /// Permission results (updated after each request).
     public private(set) var microphoneResult: PermissionState = .notDetermined
-    public private(set) var systemAudioResult: PermissionState = .notDetermined
+    public private(set) var systemAudioResult: SystemAudioPermissionState = .notRequested
     public private(set) var calendarResult: PermissionState = .notDetermined
     public private(set) var notificationsGranted: Bool = false
 
@@ -98,7 +98,7 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
 
     /// Whether the system audio permission has been granted in this session.
     public var systemAudioGranted: Bool {
-        systemAudioResult == .authorized
+        systemAudioResult == .approved
     }
 
     /// Whether calendar access has been granted in this session.
@@ -379,7 +379,7 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
     public func resetForReplay() {
         currentStep = .welcome
         microphoneResult = .notDetermined
-        systemAudioResult = .notDetermined
+        systemAudioResult = .notRequested
         calendarResult = .notDetermined
         notificationsGranted = false
         calendarGroups = []

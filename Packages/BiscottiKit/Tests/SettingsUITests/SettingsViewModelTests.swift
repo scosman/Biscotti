@@ -72,7 +72,7 @@ struct SettingsViewModelTests {
         let fixture = try makeCoreFixture()
         let viewModel = SettingsViewModel(core: fixture.core)
         #expect(viewModel.microphoneState == .authorized)
-        #expect(viewModel.systemAudioState == .notDetermined)
+        #expect(viewModel.systemAudioState == .notRequested)
         #expect(viewModel.calendarState == .notDetermined)
         #expect(viewModel.notificationsState == .notDetermined)
         fixture.cleanup()

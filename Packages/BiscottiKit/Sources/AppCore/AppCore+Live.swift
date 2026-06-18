@@ -126,6 +126,14 @@ private struct LiveRecorderAdapter: RecorderControlling {
     func probableSystemAudioDenied() async -> Bool {
         await recorder.probableSystemAudioDenied()
     }
+
+    func observedSystemAudio() async -> Bool {
+        await recorder.observedSystemAudio()
+    }
+
+    func probeSystemAudioWithTone(timeout: Duration) async -> Bool {
+        await recorder.probeSystemAudioWithTone(timeout: timeout)
+    }
 }
 
 // MARK: - Notification authorizer adapter

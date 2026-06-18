@@ -140,6 +140,66 @@ struct RouteChangeTests {
         #expect(ctx.micEngine.reconnectCount == 0)
     }
 
+    // MARK: - Reconnect retry
+
+    @Test("Transient reconnect failure retries and succeeds")
+    func transientReconnectFailureRetries() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        try await ctx.deviceChangeProvider.waitUntilReady()
+
+        // First reconnect will fail, second will succeed.
+        ctx.systemEngine.setTransientReconnectError(
+            CaptureError.tapCreationFailed(-1), failureCount: 1
+        )
+
+        ctx.deviceChangeProvider.send(.outputChanged)
+        // Fake engine has no settle delay — only the retry delay (300ms) applies.
+        // Generous wait to avoid flakiness.
+        try await Task.sleep(for: .seconds(1))
+
+        // Should have retried: 1 failure + 1 success = 2 reconnect calls.
+        #expect(ctx.systemEngine.reconnectCount == 2)
+
+        // Still recording (retry succeeded).
+        let stream = await ctx.recorder.stateStream()
+        for await state in stream {
+            #expect(state.isRecording == true)
+            break
+        }
+
+        ctx.deviceChangeProvider.finish()
+    }
+
+    @Test("Permanent reconnect failure exhausts retries — mic continues")
+    func permanentReconnectFailureExhaustsRetries() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        try await ctx.deviceChangeProvider.waitUntilReady()
+
+        // All reconnect attempts will fail.
+        ctx.systemEngine.setReconnectError(CaptureError.tapCreationFailed(-1))
+
+        ctx.deviceChangeProvider.send(.outputChanged)
+        // 3 attempts with 2 retry delays (300ms each). Fake engine has no settle
+        // delay — only the retry delays apply. Generous wait to avoid flakiness.
+        try await Task.sleep(for: .milliseconds(1500))
+
+        // Should have tried 1 + maxRetries = 3 total reconnect calls.
+        let expectedAttempts = AudioRecorder.systemReconnectMaxRetries + 1
+        #expect(ctx.systemEngine.reconnectCount == expectedAttempts)
+
+        // Mic engine was not touched.
+        #expect(ctx.micEngine.stopCount == 0)
+        #expect(ctx.micEngine.reconnectCount == 0)
+
+        ctx.deviceChangeProvider.finish()
+    }
+
     @Test("Reconnect distinguishes from initial start -- only start creates file")
     func reconnectDistinguishedFromStart() async throws {
         let ctx = try TestRecorderFactory.make()

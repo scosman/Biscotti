@@ -107,9 +107,10 @@ public final class RecordingController {
 
     /// Starts a new recording session.
     ///
-    /// Flow: request mic permission (JIT) -> trigger system-audio prompt ->
-    /// create meeting -> write marker -> create directory -> attach audio refs ->
-    /// start engine -> pump elapsed -> schedule system-audio denial check.
+    /// Flow: request mic permission (JIT) -> create meeting -> write marker ->
+    /// create directory -> attach audio refs -> start engine -> pump elapsed ->
+    /// schedule system-audio denial check. The real system tap surfaces the TCC
+    /// prompt on first use — no pre-record probe.
     public func start() async {
         lastError = nil
         systemAudioWarning = false
@@ -127,9 +128,7 @@ public final class RecordingController {
             return
         }
 
-        // Trigger the system-audio TCC prompt before creating any meeting state.
         let newRecorder = makeRecorder()
-        await probeSystemAudioPermission(recorder: newRecorder)
 
         // Create meeting + directory + marker + audio refs
         guard let setup = await setupMeetingStorage() else {
@@ -398,7 +397,12 @@ public final class RecordingController {
     }
 
     /// After a delay, checks if the engine thinks system audio is denied.
+    ///
+    /// Sets the in-memory `systemAudioWarning` flag only — does **not** write
+    /// any durable/persisted permission state. The all-zero detection infra is
+    /// retained for potential Stage 3 reuse (in-recording hint).
     private func scheduleDenialCheck(recorder: any RecorderControlling) {
+        // TODO: Stage 3 — the all-zero detection infra here may power the in-recording hint
         let delay = denialCheckDelay
         denialCheckTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
@@ -407,9 +411,6 @@ public final class RecordingController {
             guard let self else { return }
             if denied {
                 systemAudioWarning = true
-                permissions.noteSystemAudio(.denied)
-            } else {
-                permissions.noteSystemAudio(.authorized)
             }
         }
     }

@@ -79,8 +79,8 @@ struct RecordingStartStopTests {
         #expect(fix.controller.lastError == nil)
         #expect(fix.fakeRecorder.backing.startCalled == true)
 
-        // System-audio prompt must be triggered before recording starts
-        #expect(fix.fakeRecorder.backing.requestPermissionsCalled == true)
+        // Pre-record probe is removed — the real tap surfaces the TCC prompt.
+        #expect(fix.fakeRecorder.backing.requestPermissionsCalled == false)
 
         // Verify meeting was created in the store
         let meetingID = try #require(fix.controller.state.meetingID)
@@ -515,7 +515,7 @@ struct RecordingNotesTests {
 
 @Suite("RecordingController -- state and recovery")
 struct RecordingStateRecoveryTests {
-    @Test("System audio denial inference sets warning and notifies permissions")
+    @Test("System audio denial inference sets warning but does NOT write permission state")
     @MainActor
     func systemAudioDenialInference() async throws {
         let fix = try makeFixture(probableDenied: true, denialCheckDelay: .milliseconds(50))
@@ -531,10 +531,11 @@ struct RecordingStateRecoveryTests {
         }
 
         #expect(fix.controller.systemAudioWarning == true)
-        #expect(fix.permissions.systemAudio == .denied)
+        // Stage 1: denial check is neutered — no durable permission state written.
+        #expect(fix.permissions.systemAudio == .notDetermined)
     }
 
-    @Test("System audio authorized inference notifies permissions")
+    @Test("System audio authorized inference does NOT write permission state")
     @MainActor
     func systemAudioAuthorizedInference() async throws {
         let fix = try makeFixture(probableDenied: false, denialCheckDelay: .milliseconds(50))
@@ -542,14 +543,12 @@ struct RecordingStateRecoveryTests {
 
         await fix.controller.start()
 
-        // Poll until the denial check task completes and reports authorized.
-        for _ in 0 ..< 200 {
-            if fix.permissions.systemAudio == .authorized { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        // Give the denial check task time to complete.
+        try await Task.sleep(for: .milliseconds(200))
 
+        // Stage 1: denial check is neutered — permission state stays .notDetermined.
         #expect(fix.controller.systemAudioWarning == false)
-        #expect(fix.permissions.systemAudio == .authorized)
+        #expect(fix.permissions.systemAudio == .notDetermined)
     }
 
     @Test("Recover orphans reconciles stale markers")

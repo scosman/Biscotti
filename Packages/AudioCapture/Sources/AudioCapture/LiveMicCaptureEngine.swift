@@ -7,19 +7,6 @@ import Synchronization
 
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "LiveMicCapture")
 
-// MIC_RELEASE_DIAG — Temporary diagnostic logging for hardware validation of
-// the config-change / teardown fixes. Every log message includes the literal
-// substring "MIC_RELEASE_DIAG" so Console can be filtered to just these lines.
-// Every source line is also tagged with a `// MIC_RELEASE_DIAG` comment so
-// cleanup is `grep -r MIC_RELEASE_DIAG` + delete. Route all diagnostics
-// through `micReleaseDiag(_:)` for one-shot removal.
-private let diagLogger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "MIC_RELEASE_DIAG") // MIC_RELEASE_DIAG
-private let diagCounter = Atomic<Int>(0) // MIC_RELEASE_DIAG
-private func micReleaseDiag(_ message: String) { // MIC_RELEASE_DIAG
-    let seq = diagCounter.wrappingAdd(1, ordering: .relaxed).oldValue // MIC_RELEASE_DIAG
-    diagLogger.info("MIC_RELEASE_DIAG [\(seq)] \(message)") // MIC_RELEASE_DIAG
-} // MIC_RELEASE_DIAG
-
 /// Live microphone capture via **VoiceProcessingIO** (`AVAudioEngine`
 /// with `inputNode.setVoiceProcessingEnabled(true)`).
 ///
@@ -93,7 +80,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     /// `handleConfigurationChange` (on `engineQueue`) to decide whether to
     /// absorb or honour a config-change. Written atomically from the audio
     /// thread, read on `engineQueue` — Atomic avoids any data race.
-    private let currentEngineBufferDelivered = Atomic<Bool>(false) // MIC_RELEASE_DIAG: also used for settle logic
+    private let currentEngineBufferDelivered = Atomic<Bool>(false)
 
     init(encoder: EncoderSettings = .voice) {
         self.encoder = encoder
@@ -118,8 +105,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         setExtFile(file)
         capturingFlag.store(true, ordering: .releasing)
 
-        micReleaseDiag("start(writingTo:) — file created, building engine") // MIC_RELEASE_DIAG
-
         // Run the initial engine build on engineQueue via a continuation so
         // we don't block a cooperative thread. The build (including the ~1 s
         // output-device reclock poll) completes before start() returns, so
@@ -142,10 +127,8 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                     do {
                         try buildAndStartEngineOrThrow()
                         installConfigChangeObserver()
-                        micReleaseDiag("engine built + observer installed, returning from start()") // MIC_RELEASE_DIAG
                         cont.resume()
                     } catch {
-                        micReleaseDiag("engine build FAILED: \(error.localizedDescription)") // MIC_RELEASE_DIAG
                         teardownEngine()
                         restoreOutputRate()
                         cont.resume(throwing: error)
@@ -166,8 +149,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
             return
         }
 
-        micReleaseDiag("stop() — beginning teardown") // MIC_RELEASE_DIAG
-
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             engineQueue.async { [self] in
                 isTearingDown = true
@@ -175,7 +156,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                 teardownEngine()
                 restoreOutputRate()
                 closeExtFile()
-                micReleaseDiag("stop() — teardown complete") // MIC_RELEASE_DIAG
                 cont.resume()
             }
         }
@@ -189,7 +169,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                     cont.resume()
                     return
                 }
-                micReleaseDiag("reconnect() — teardown + rebuild") // MIC_RELEASE_DIAG
                 teardownEngine()
                 buildAndStartEngine(context: "reconnect")
                 cont.resume()
@@ -213,7 +192,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
         // Reset the per-build buffer-delivered flag so the config-change
         // handler knows this is a fresh engine that hasn't settled yet.
-        currentEngineBufferDelivered.store(false, ordering: .releasing) // MIC_RELEASE_DIAG: settle logic
+        currentEngineBufferDelivered.store(false, ordering: .releasing)
 
         ensureOutputRateMatchesInput()
 
@@ -242,7 +221,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
         newEngine.prepare()
         try newEngine.start()
-        micReleaseDiag("engine.start() OK — isRunning=\(newEngine.isRunning)") // MIC_RELEASE_DIAG
     }
 
     /// Non-throwing wrapper for route-change rebuilds.
@@ -251,7 +229,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
             try buildAndStartEngineOrThrow()
         } catch {
             logger.error("VPIO engine setup failed (\(context)): \(error.localizedDescription)")
-            micReleaseDiag("rebuild FAILED (\(context)): \(error.localizedDescription)") // MIC_RELEASE_DIAG
             teardownEngine()
             restoreOutputRate()
             closeExtFile()
@@ -318,10 +295,17 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         silenceNode = node
     }
 
-    /// Tears down the current engine. Crash-safe: disables voice processing
-    /// and removes the input tap BEFORE stopping, so `AVAudioEngine.dealloc`
-    /// does not encounter a live VPIO input block. Guards against re-entrancy
-    /// (the same engine being torn down twice).
+    /// Tears down the current engine. Crash-safe sequence based on WWDC19
+    /// Session 510 ("What's New in AVAudioEngine"): VP toggling requires the
+    /// engine to be in a **stopped** state. The previous code called
+    /// `setVoiceProcessingEnabled(false)` while the engine was still running,
+    /// which threw on every teardown — leaving VPIO enabled for dealloc.
+    ///
+    /// Correct order:
+    ///   1. Remove the input tap (stop the real-time callback).
+    ///   2. Stop the engine (required before VP can be toggled).
+    ///   3. Disable voice processing (engine is stopped → succeeds).
+    ///   4. Detach the silence node and nil out references.
     private func teardownEngine() {
         guard let eng = engine else {
             silenceNode = nil
@@ -330,38 +314,36 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
             return
         }
 
-        micReleaseDiag("teardownEngine BEGIN — isRunning=\(eng.isRunning)") // MIC_RELEASE_DIAG
-
         // 1. Remove the input tap first — this stops the real-time callback
         //    from firing and prevents new writes to the file.
         eng.inputNode.removeTap(onBus: 0)
 
-        // 2. Disable voice processing BEFORE stop/dealloc. The crash in
-        //    Failure Mode A shows AVAudioEngine.dealloc hitting
-        //    AUGraphNodeIOV3::DeallocateInputBlock on a node that still has
-        //    VPIO enabled. Disabling VP first tears down the AUVoiceProcessor
-        //    graph cleanly under our control (not inside dealloc).
-        do {
-            try eng.inputNode.setVoiceProcessingEnabled(false) // MIC_RELEASE_DIAG: crash-safety
-            micReleaseDiag("teardownEngine — VP disabled OK") // MIC_RELEASE_DIAG
-        } catch {
-            // Not fatal — we're tearing down anyway. Log for diagnostics.
-            micReleaseDiag("teardownEngine — VP disable failed: \(error.localizedDescription)") // MIC_RELEASE_DIAG
-        }
-
-        // 3. Stop the engine.
+        // 2. Stop the engine. WWDC19-510: "Voice processing cannot be enabled
+        //    dynamically … the engine needs to be in a stop state."
         if eng.isRunning { eng.stop() }
 
-        // 4. Detach the silence node.
-        if let node = silenceNode { eng.detach(node) }
+        // 3. Disable voice processing AFTER stop. The crash in Failure Mode A
+        //    shows AVAudioEngine.dealloc hitting
+        //    AUGraphNodeIOV3::DeallocateInputBlock on a node that still has
+        //    VPIO enabled. Disabling VP while stopped tears down the
+        //    AUVoiceProcessor graph cleanly under our control (not in dealloc).
+        //    The previous code tried this before stop() — which always threw
+        //    because VP toggling requires a stopped engine.
+        do {
+            try eng.inputNode.setVoiceProcessingEnabled(false)
+            logger.notice("Teardown: voice processing disabled")
+        } catch {
+            // Not fatal — we're tearing down anyway, but a failure here means
+            // VPIO is still enabled at dealloc, which risks the original crash.
+            logger.error("Teardown: setVoiceProcessingEnabled(false) failed: \(error.localizedDescription, privacy: .public)")
+        }
 
-        // 5. Nil out references. The engine may dealloc here (on engineQueue).
+        // 4. Detach the silence node and nil out references.
+        if let node = silenceNode { eng.detach(node) }
         silenceNode = nil
         engine = nil
         cachedConverter = nil
         cachedConverterSourceHash = 0
-
-        micReleaseDiag("teardownEngine END") // MIC_RELEASE_DIAG
     }
 
     // MARK: - Config-change observer
@@ -407,15 +389,15 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         engineQueue.async { [weak self] in
             guard let self, !isTearingDown else { return }
 
-            let settled = currentEngineBufferDelivered.load(ordering: .acquiring) // MIC_RELEASE_DIAG: settle check
+            let settled = currentEngineBufferDelivered.load(ordering: .acquiring)
 
-            if !settled { // MIC_RELEASE_DIAG
+            if !settled {
                 // Absorb: this is the VPIO startup-settle config change.
-                micReleaseDiag("config-change ABSORBED (no buffer yet — startup settle)") // MIC_RELEASE_DIAG
-                return // MIC_RELEASE_DIAG
-            } // MIC_RELEASE_DIAG
+                logger.info("Config-change absorbed during startup settle (no buffer yet)")
+                return
+            }
 
-            micReleaseDiag("config-change HONOURED (buffer was delivered) — rebuilding") // MIC_RELEASE_DIAG
+            logger.notice("Config-change honoured — rebuilding (route change)")
             teardownEngine()
             buildAndStartEngine(context: "route change")
         }
@@ -427,14 +409,16 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         // Mark that this engine build has delivered a buffer. This arms the
         // config-change handler to honour subsequent notifications (the
         // startup-settle window is over). The store is idempotent after the
-        // first buffer — a relaxed store is fine since the engineQueue reader
-        // only needs eventual visibility (a single extra absorbed notification
-        // is harmless; a missed genuine route change is impossible because
-        // route changes fire repeatedly until honoured).
-        if !currentEngineBufferDelivered.load(ordering: .relaxed) { // MIC_RELEASE_DIAG: settle logic
-            currentEngineBufferDelivered.store(true, ordering: .releasing) // MIC_RELEASE_DIAG: settle logic
-            micReleaseDiag("first buffer for this engine build — settle window closed") // MIC_RELEASE_DIAG
-        } // MIC_RELEASE_DIAG
+        // first buffer. The `.releasing` store pairs with the `.acquiring`
+        // load in `handleConfigurationChange` for a proper release/acquire
+        // edge, though even a relaxed store would suffice for correctness
+        // here: the engineQueue reader only needs eventual visibility (a
+        // single extra absorbed notification is harmless; a missed genuine
+        // route change is impossible because route changes fire repeatedly
+        // until honoured).
+        if !currentEngineBufferDelivered.load(ordering: .relaxed) {
+            currentEngineBufferDelivered.store(true, ordering: .releasing)
+        }
 
         notifyFirstBufferIfNeeded(when)
         guard let mono = VPIOBufferHelper.extractChannel0(buffer) else { return }
@@ -466,7 +450,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     /// Fires `onFirstBuffer` exactly once with the host-clock seconds of the
     /// first delivered buffer. Derives the anchor from `when.hostTime` via
     /// `AudioConvertHostTimeToNanos` -- the same clock base the system engine
-    /// uses to pad the system track, so the two stays aligned.
+    /// uses to pad the system track, so the two stay aligned.
     private func notifyFirstBufferIfNeeded(_ when: AVAudioTime) {
         guard !didNotifyFirstBuffer.exchange(true, ordering: .acquiringAndReleasing) else { return }
         let anchor: Double = if when.isHostTimeValid {
@@ -475,7 +459,6 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
             0
         }
         logger.info("First mic buffer delivered -- anchor=\(anchor)s")
-        micReleaseDiag("first-buffer-delivered (session anchor) anchor=\(anchor)s") // MIC_RELEASE_DIAG
         onFirstBuffer?(anchor)
     }
 

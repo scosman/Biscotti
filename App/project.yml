@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
+  fileTypes:
+    icon:
+      file: true
 
 settings:
   base:

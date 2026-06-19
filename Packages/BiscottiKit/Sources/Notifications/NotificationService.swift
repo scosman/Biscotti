@@ -22,6 +22,10 @@ public final class NotificationService {
     private var continuation: AsyncStream<NotificationAction>.Continuation?
     private var stream: AsyncStream<NotificationAction>?
 
+    /// Tracks presented ad-hoc notification identifiers so `cancelAdHocDetected()`
+    /// can remove them from both pending and delivered.
+    private var presentedAdHocIDs: Set<String> = []
+
     /// Creates the service, registers categories, and prepares the action stream.
     ///
     /// - Parameter provider: The notification center seam (defaults to the live
@@ -78,6 +82,19 @@ public final class NotificationService {
         return status == .denied
     }
 
+    // MARK: - Alert style
+
+    /// Returns the current macOS notification alert style for Biscotti,
+    /// mapped to the app's `NotificationAlertStyle` enum.
+    public func currentAlertStyle() async -> NotificationAlertStyle {
+        switch await provider.alertStyle() {
+        case .none: .none
+        case .banner: .banner
+        case .alert: .alert
+        @unknown default: .banner
+        }
+    }
+
     // MARK: - Presentation
 
     /// Posts a notification for the given kind.
@@ -94,6 +111,9 @@ public final class NotificationService {
             logger.info(
                 "present: added \(request.content.categoryIdentifier) request \(request.identifier)"
             )
+            if case .adHocDetected = kind {
+                presentedAdHocIDs.insert(request.identifier)
+            }
         } catch {
             logger.error("Failed to add notification: \(error)")
         }
@@ -105,6 +125,16 @@ public final class NotificationService {
         let identifier = countdownRequestIdentifier(meetingID: meetingID)
         provider.removePendingRequests(withIdentifiers: [identifier])
         provider.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    /// Removes any lingering meeting-detected notifications (pending + delivered).
+    /// Called when a recording starts so stale ad-hoc banners don't persist on screen.
+    public func cancelAdHocDetected() async {
+        guard !presentedAdHocIDs.isEmpty else { return }
+        let ids = Array(presentedAdHocIDs)
+        provider.removePendingRequests(withIdentifiers: ids)
+        provider.removeDeliveredNotifications(withIdentifiers: ids)
+        presentedAdHocIDs.removeAll()
     }
 
     // MARK: - Action stream
@@ -180,15 +210,10 @@ public final class NotificationService {
     // MARK: - Private
 
     private func registerCategories() {
-        let openAndRecord = UNNotificationAction(
-            identifier: ActionID.openAndRecord,
-            title: "Open & Record",
-            options: [.foreground]
-        )
-        let join = UNNotificationAction(
-            identifier: ActionID.join,
-            title: "Join",
-            options: [.foreground]
+        let recordAndJoin = UNNotificationAction(
+            identifier: ActionID.recordAndJoin,
+            title: "Record & Join",
+            options: []
         )
         let record = UNNotificationAction(
             identifier: ActionID.record,
@@ -203,12 +228,12 @@ public final class NotificationService {
 
         let meetingStart = UNNotificationCategory(
             identifier: CategoryID.meetingStarting,
-            actions: [openAndRecord],
+            actions: [record],
             intentIdentifiers: []
         )
         let meetingStartWithJoin = UNNotificationCategory(
             identifier: CategoryID.meetingStartingWithJoin,
-            actions: [openAndRecord, join],
+            actions: [recordAndJoin],
             intentIdentifiers: []
         )
         let adHoc = UNNotificationCategory(
@@ -260,8 +285,10 @@ private func makeRequest(for kind: NotificationKind) -> UNNotificationRequest {
         )
 
     case let .adHocDetected(bundleID, appName):
-        content.title = "Meeting detected in \(appName)"
-        content.body = "Tap Record to start capturing."
+        content.title = "Meeting detected"
+        content.subtitle = "App: \(appName)"
+        content.body = ""
+        content.interruptionLevel = .timeSensitive
         content.sound = .default
         content.categoryIdentifier = CategoryID.adHocDetected
         content.userInfo = [
@@ -288,6 +315,7 @@ private func fillMeetingStartContent(
 ) {
     content.title = title
     content.body = ""
+    content.interruptionLevel = .timeSensitive
     content.sound = .default
     content.categoryIdentifier = joinURL != nil
         ? CategoryID.meetingStartingWithJoin

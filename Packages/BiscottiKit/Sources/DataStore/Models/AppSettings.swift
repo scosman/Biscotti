@@ -31,6 +31,16 @@ import SwiftData
     /// Default: 3600 (1 hour before).
     public var menuBarLeadTimeSeconds: Int = 3600
 
+    /// Whether meeting-detected notifications are presented.
+    public var monitorForMeetings: Bool = true
+
+    /// Whether recording auto-stops when all mic users leave.
+    public var stopRecordingAutomatically: Bool = true
+
+    /// Raw string backing for `CalendarNotificationMode`. Stored as a
+    /// String for SwiftData safety (same pattern as other enum-backed fields).
+    public var calendarNotificationModeRaw: String = "allMeetings"
+
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
@@ -64,6 +74,9 @@ import SwiftData
         exitOnWindowClose: Bool = false,
         globalRecordShortcutEnabled: Bool = true,
         menuBarLeadTimeSeconds: Int = 3600,
+        monitorForMeetings: Bool = true,
+        stopRecordingAutomatically: Bool = true,
+        calendarNotificationModeRaw: String = "allMeetings",
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
@@ -72,6 +85,9 @@ import SwiftData
         self.exitOnWindowClose = exitOnWindowClose
         self.globalRecordShortcutEnabled = globalRecordShortcutEnabled
         self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
+        self.monitorForMeetings = monitorForMeetings
+        self.stopRecordingAutomatically = stopRecordingAutomatically
+        self.calendarNotificationModeRaw = calendarNotificationModeRaw
         self.onboardingComplete = onboardingComplete
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()

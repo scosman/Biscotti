@@ -20,6 +20,7 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
         var authRequestCount = 0
         var authorizationGranted = true
         var currentStatus: UNAuthorizationStatus = .authorized
+        var scriptedAlertStyle: UNAlertStyle = .banner
     }
 
     let backing = Backing()
@@ -51,6 +52,10 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
         backing.currentStatus
     }
 
+    func alertStyle() async -> UNAlertStyle {
+        backing.scriptedAlertStyle
+    }
+
     // MARK: - Test accessors
 
     var setCategoriesCalls: [Set<UNNotificationCategory>] {
@@ -77,5 +82,10 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
     var currentStatus: UNAuthorizationStatus {
         get { backing.currentStatus }
         set { backing.currentStatus = newValue }
+    }
+
+    var scriptedAlertStyle: UNAlertStyle {
+        get { backing.scriptedAlertStyle }
+        set { backing.scriptedAlertStyle = newValue }
     }
 }

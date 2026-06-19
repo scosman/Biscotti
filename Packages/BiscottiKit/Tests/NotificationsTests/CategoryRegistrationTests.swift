@@ -21,7 +21,7 @@ struct CategoryRegistrationTests {
         #expect(ids.contains("biscotti.stop-countdown"))
     }
 
-    @Test("Meeting-starting category has Open & Record action with foreground")
+    @Test("Meeting-starting category has Record action without foreground")
     @MainActor
     func meetingStartingActions() throws {
         let fake = FakeNotificationCenter()
@@ -30,11 +30,12 @@ struct CategoryRegistrationTests {
         let categories = fake.setCategoriesCalls[0]
         let category = try #require(categories.first { $0.identifier == "biscotti.meeting-starting" })
         #expect(category.actions.count == 1)
-        #expect(category.actions[0].identifier == "biscotti.action.open-and-record")
-        #expect(category.actions[0].options.contains(.foreground))
+        #expect(category.actions[0].identifier == "biscotti.action.record")
+        #expect(category.actions[0].title == "Record")
+        #expect(!category.actions[0].options.contains(.foreground))
     }
 
-    @Test("Meeting-starting-with-join has Open & Record and Join actions")
+    @Test("Meeting-starting-with-join has Record & Join action without foreground")
     @MainActor
     func meetingStartingWithJoinActions() throws {
         let fake = FakeNotificationCenter()
@@ -44,16 +45,10 @@ struct CategoryRegistrationTests {
         let category = try #require(categories.first {
             $0.identifier == "biscotti.meeting-starting-with-join"
         })
-        #expect(category.actions.count == 2)
-
-        let actionIDs = category.actions.map(\.identifier)
-        #expect(actionIDs.contains("biscotti.action.open-and-record"))
-        #expect(actionIDs.contains("biscotti.action.join"))
-
-        // Both should have foreground option
-        for action in category.actions {
-            #expect(action.options.contains(.foreground))
-        }
+        #expect(category.actions.count == 1)
+        #expect(category.actions[0].identifier == "biscotti.action.record-and-join")
+        #expect(category.actions[0].title == "Record & Join")
+        #expect(!category.actions[0].options.contains(.foreground))
     }
 
     @Test("Ad-hoc category has Record action without foreground")

@@ -42,17 +42,10 @@ private func mapMeetingStartResponse(
     let eventKey = userInfo[UserInfoKey.eventKey] as? String
 
     switch actionID {
-    case ActionID.openAndRecord,
+    case ActionID.recordAndJoin,
+         ActionID.record,
          UNNotificationDefaultActionIdentifier:
         return .openAndRecord(eventKey: eventKey)
-
-    case ActionID.join:
-        guard let urlString = userInfo[UserInfoKey.joinURL] as? String,
-              let url = URL(string: urlString)
-        else {
-            return nil
-        }
-        return .join(url)
 
     default:
         return nil

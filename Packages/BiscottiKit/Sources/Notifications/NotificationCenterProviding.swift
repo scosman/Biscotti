@@ -22,4 +22,7 @@ public protocol NotificationCenterProviding: Sendable {
 
     /// Current authorization status.
     func authorizationStatus() async -> UNAuthorizationStatus
+
+    /// Current on-screen alert style (banner vs. alert vs. none).
+    func alertStyle() async -> UNAlertStyle
 }

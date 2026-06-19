@@ -5,16 +5,16 @@ import UserNotifications
 
 @Suite("Delegate response mapping")
 struct ResponseMappingTests {
-    @Test("Open & Record on meeting-starting maps to openAndRecord")
+    @Test("Record & Join on meeting-starting-with-join maps to openAndRecord")
     @MainActor
-    func delegateResponseMapsToOpenAndRecord() async {
+    func recordAndJoinMapsToOpenAndRecord() async {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         let stream = service.actions()
 
         let result = service.handleResponseValues(
-            categoryID: "biscotti.meeting-starting",
-            actionID: "biscotti.action.open-and-record",
+            categoryID: "biscotti.meeting-starting-with-join",
+            actionID: "biscotti.action.record-and-join",
             userInfo: [
                 "biscotti.kind": "meeting-starting",
                 "biscotti.eventKey": "ev-123"
@@ -28,20 +28,19 @@ struct ResponseMappingTests {
         #expect(action == .openAndRecord(eventKey: "ev-123"))
     }
 
-    @Test("Join action maps to join URL")
+    @Test("Record on meeting-starting (no link) maps to openAndRecord")
     @MainActor
-    func joinActionMapsToJoinURL() async throws {
+    func recordOnMeetingStartingMapsToOpenAndRecord() async {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         let stream = service.actions()
 
-        let url = "https://zoom.us/j/999"
         let result = service.handleResponseValues(
-            categoryID: "biscotti.meeting-starting-with-join",
-            actionID: "biscotti.action.join",
+            categoryID: "biscotti.meeting-starting",
+            actionID: "biscotti.action.record",
             userInfo: [
                 "biscotti.kind": "meeting-starting",
-                "biscotti.joinURL": url
+                "biscotti.eventKey": "ev-456"
             ]
         )
 
@@ -49,7 +48,32 @@ struct ResponseMappingTests {
 
         var iterator = stream.makeAsyncIterator()
         let action = await iterator.next()
-        #expect(try action == .join(#require(URL(string: url))))
+        #expect(action == .openAndRecord(eventKey: "ev-456"))
+    }
+
+    @Test("Record & Join on meeting-starting (no-link) still maps to openAndRecord")
+    @MainActor
+    func recordAndJoinOnNoLinkCategoryMapsToOpenAndRecord() async {
+        let fake = FakeNotificationCenter()
+        let service = NotificationService(provider: fake)
+        let stream = service.actions()
+
+        // recordAndJoin is only registered on the with-join category, but
+        // the mapper accepts it on both -- verify the cross-category case.
+        let result = service.handleResponseValues(
+            categoryID: "biscotti.meeting-starting",
+            actionID: "biscotti.action.record-and-join",
+            userInfo: [
+                "biscotti.kind": "meeting-starting",
+                "biscotti.eventKey": "ev-cross"
+            ]
+        )
+
+        #expect(result == true)
+
+        var iterator = stream.makeAsyncIterator()
+        let action = await iterator.next()
+        #expect(action == .openAndRecord(eventKey: "ev-cross"))
     }
 
     @Test("Ad-hoc record maps to openAndRecord with nil key")
@@ -99,7 +123,7 @@ struct ResponseMappingTests {
         #expect(action == .keepRecording(meetingID: meetingID))
     }
 
-    @Test("Default action on meeting-start maps to openAndRecord")
+    @Test("Default action on meeting-starting maps to openAndRecord")
     @MainActor
     func defaultActionOnMeetingStartMapsToOpenAndRecord() async {
         let fake = FakeNotificationCenter()
@@ -120,6 +144,29 @@ struct ResponseMappingTests {
         var iterator = stream.makeAsyncIterator()
         let action = await iterator.next()
         #expect(action == .openAndRecord(eventKey: "ev-default"))
+    }
+
+    @Test("Default action on meeting-starting-with-join maps to openAndRecord")
+    @MainActor
+    func defaultActionOnMeetingStartWithJoinMapsToOpenAndRecord() async {
+        let fake = FakeNotificationCenter()
+        let service = NotificationService(provider: fake)
+        let stream = service.actions()
+
+        let result = service.handleResponseValues(
+            categoryID: "biscotti.meeting-starting-with-join",
+            actionID: UNNotificationDefaultActionIdentifier,
+            userInfo: [
+                "biscotti.kind": "meeting-starting",
+                "biscotti.eventKey": "ev-join-default"
+            ]
+        )
+
+        #expect(result == true)
+
+        var iterator = stream.makeAsyncIterator()
+        let action = await iterator.next()
+        #expect(action == .openAndRecord(eventKey: "ev-join-default"))
     }
 
     @Test("Default action on ad-hoc maps to openAndRecord with nil key")

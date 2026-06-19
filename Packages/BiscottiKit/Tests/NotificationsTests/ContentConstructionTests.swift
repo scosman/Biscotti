@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Content construction")
 struct ContentConstructionTests {
-    @Test("Meeting-starting content uses event title")
+    @Test("Meeting-starting content uses event title and timeSensitive")
     @MainActor
     func meetingStartingContentUsesEventTitle() async {
         let fake = FakeNotificationCenter()
@@ -19,12 +19,13 @@ struct ContentConstructionTests {
         let content = fake.addedRequests[0].content
         #expect(content.title == "Standup")
         #expect(content.categoryIdentifier == "biscotti.meeting-starting")
+        #expect(content.interruptionLevel == .timeSensitive)
         #expect(content.sound != nil)
         #expect(content.userInfo["biscotti.eventKey"] as? String == "k")
         #expect(content.userInfo["biscotti.kind"] as? String == "meeting-starting")
     }
 
-    @Test("Meeting-starting with joinURL uses join category")
+    @Test("Meeting-starting with joinURL uses join category and timeSensitive")
     @MainActor
     func meetingStartingWithJoinUsesJoinCategory() async throws {
         let fake = FakeNotificationCenter()
@@ -41,15 +42,16 @@ struct ContentConstructionTests {
         #expect(
             content.categoryIdentifier == "biscotti.meeting-starting-with-join"
         )
+        #expect(content.interruptionLevel == .timeSensitive)
         #expect(
             content.userInfo["biscotti.joinURL"] as? String
                 == "https://zoom.us/j/123"
         )
     }
 
-    @Test("Ad-hoc content names the app")
+    @Test("Ad-hoc content uses new copy format and timeSensitive")
     @MainActor
-    func adHocContentNamesApp() async {
+    func adHocContentUsesNewCopy() async {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         _ = await service.requestAuthorization()
@@ -60,7 +62,10 @@ struct ContentConstructionTests {
 
         #expect(fake.addedRequests.count == 1)
         let content = fake.addedRequests[0].content
-        #expect(content.title.contains("Zoom"))
+        #expect(content.title == "Meeting detected")
+        #expect(content.subtitle == "App: Zoom")
+        #expect(content.body == "")
+        #expect(content.interruptionLevel == .timeSensitive)
         #expect(content.categoryIdentifier == "biscotti.ad-hoc-detected")
         #expect(content.userInfo["biscotti.bundleID"] as? String == "us.zoom.xos")
     }

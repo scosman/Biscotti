@@ -581,11 +581,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         let userInfo = response.notification.request.content.userInfo
 
         // Forward the typed action to NotificationService's actions() stream.
-        // NOTE: Join URL opening is handled HERE in the delegate (below),
-        // not via the actions() stream. AppCore's consumer intentionally
-        // `break`s on .join to stay AppKit-free. If this delegate is ever
-        // refactored to stop opening URLs directly, update AppCore's
-        // .join case to handle it instead.
         let recognized = notificationService?.handleResponseValues(
             categoryID: categoryID,
             actionID: actionID,
@@ -594,21 +589,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
 
         // If the action was not a recognized notification category, bail.
         if !recognized { return }
-        if actionID == "biscotti.action.join",
+
+        // Open the call link for Record & Join (button or body-tap on a
+        // link-bearing calendar notification).
+        if categoryID == "biscotti.meeting-starting-with-join",
+           actionID == "biscotti.action.record-and-join"
+           || actionID == UNNotificationDefaultActionIdentifier,
            let urlString = userInfo["biscotti.joinURL"] as? String,
            let url = URL(string: urlString)
         {
             NSWorkspace.shared.open(url)
         }
 
-        // Activate the app for foreground actions.
+        // Foreground Biscotti only for ad-hoc Record and Keep-Recording --
+        // never for calendar notifications (the browser/meeting app is
+        // foregrounded by the link-open instead).
+        let isAdHocRecord = categoryID == "biscotti.ad-hoc-detected"
+            && (actionID == "biscotti.action.record"
+                || actionID == UNNotificationDefaultActionIdentifier)
         let isKeepRecording = actionID == "biscotti.action.keep-recording"
             || (actionID == UNNotificationDefaultActionIdentifier
                 && categoryID == "biscotti.stop-countdown")
-        if actionID == "biscotti.action.open-and-record"
-            || actionID == "biscotti.action.record"
-            || isKeepRecording
-        {
+        if isAdHocRecord || isKeepRecording {
             showMainWindow()
         }
     }

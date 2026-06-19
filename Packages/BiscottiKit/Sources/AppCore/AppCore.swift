@@ -607,6 +607,13 @@ public final class AppCore {
 // stored properties (which must live in the class body for @Observable).
 
 public extension AppCore {
+    /// Whether Biscotti's macOS notification style is currently "Banners"
+    /// (auto-dismiss after ~5s). Used by the settings UI to show a
+    /// guidance row nudging the user to switch to "Alerts".
+    func notificationsUseBannerStyle() async -> Bool {
+        await notifications.currentAlertStyle() == .banner
+    }
+
     /// Routes to the Home screen.
     func showHome() {
         route = .home

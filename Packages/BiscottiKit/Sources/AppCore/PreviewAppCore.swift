@@ -162,5 +162,9 @@
         func removeDeliveredNotifications(withIdentifiers _: [String]) {}
 
         func setCategories(_: Set<UNNotificationCategory>) {}
+
+        func alertStyle() async -> UNAlertStyle {
+            .banner
+        }
     }
 #endif

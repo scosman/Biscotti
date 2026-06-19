@@ -10,6 +10,7 @@ import SwiftUI
 /// with inline request/grant actions, and calendar include/exclude.
 public struct SettingsView: View {
     @Bindable private var viewModel: SettingsViewModel
+    @State private var showAlertsHelp = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -305,6 +306,40 @@ private extension SettingsView {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
+
+            // Row 4: Notifications Stay Visible (only when alertStyle == .banner)
+            if viewModel.showStayVisibleRow {
+                stayVisibleRow
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            Task { await viewModel.refreshAlertStyle() }
+        }
+        .sheet(isPresented: $showAlertsHelp) {
+            AlertsHelpSheet(viewModel: viewModel)
+        }
+    }
+
+    var stayVisibleRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Notifications Stay Visible")
+                Text(
+                    "Make notifications stay open until clicked or dismissed."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+            Spacer()
+            Button("Enable") {
+                showAlertsHelp = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 

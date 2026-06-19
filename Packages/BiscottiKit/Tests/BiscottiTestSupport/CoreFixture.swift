@@ -205,6 +205,7 @@ public final class FakeTestNotificationCenter: NotificationCenterProviding,
         public var removedPendingIDs: [String] = []
         public var removedDeliveredIDs: [String] = []
         public var registeredCategories: Set<UNNotificationCategory> = []
+        public var scriptedAlertStyle: UNAlertStyle = .banner
     }
 
     public let backing = Backing()
@@ -237,6 +238,10 @@ public final class FakeTestNotificationCenter: NotificationCenterProviding,
         _ categories: Set<UNNotificationCategory>
     ) {
         backing.registeredCategories = categories
+    }
+
+    public func alertStyle() async -> UNAlertStyle {
+        backing.scriptedAlertStyle
     }
 
     /// Convenience accessors

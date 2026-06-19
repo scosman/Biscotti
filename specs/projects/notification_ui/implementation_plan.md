@@ -22,7 +22,7 @@ Three phases, each a coherent, independently reviewable unit. Details live in `f
   - App target: `AppDelegate` URL-open / window-foreground rewrite (arch §5).
   - Tests: `ResponseMapper`; `NotificationService` (copy, interruption level, categories, `cancelAdHocDetected`) (arch §7).
 
-- [ ] **Phase 3 — "Notifications Stay Visible" row.**
+- [x] **Phase 3 — "Notifications Stay Visible" row.**
   The self-hiding Alerts-style nudge.
   - `Notifications`: `NotificationAlertStyle`; provider `alertStyle()`; `NotificationService.currentAlertStyle()` (arch §2.1).
   - `AppCore`: `notificationsUseBannerStyle()` (arch §3.2).

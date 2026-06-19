@@ -63,6 +63,12 @@ public final class SettingsViewModel {
     /// Whether recording auto-stops when all mic users leave.
     public private(set) var stopRecordingAutomatically: Bool = true
 
+    /// Whether the "Notifications Stay Visible" row should be shown.
+    /// True only when the macOS alert style is `.banner` (notifications
+    /// are enabled but auto-dismiss). Hidden for `.alert` (goal met)
+    /// and `.none` (notifications disabled entirely).
+    public private(set) var showStayVisibleRow = false
+
     /// Whether the calendar notification picker should be disabled
     /// (calendar access not authorized).
     public var calendarNotificationsDisabled: Bool {
@@ -343,6 +349,8 @@ public final class SettingsViewModel {
         // SMAppService is the source of truth for launch-at-login
         launchAtLogin = readLaunchAtLoginStatus()
 
+        showStayVisibleRow = await core.notificationsUseBannerStyle()
+
         let infos = await core.calendar.calendars()
         calendarGroups = Self.groupCalendars(infos)
     }
@@ -406,6 +414,22 @@ public extension SettingsViewModel {
         } catch {
             calendarNotificationMode = previous
         }
+    }
+
+    /// Re-reads the macOS notification alert style and updates
+    /// `showStayVisibleRow`. Called on `NSApplication.didBecomeActive`
+    /// so the row disappears right after the user switches to Alerts
+    /// in System Settings.
+    func refreshAlertStyle() async {
+        showStayVisibleRow = await core.notificationsUseBannerStyle()
+    }
+
+    /// Opens System Settings to the Notifications pane so the user can
+    /// change Biscotti's notification style to Alerts.
+    func openNotificationSettings() {
+        NSWorkspace.shared.open(
+            core.permissions.settingsURL(for: .notifications)
+        )
     }
 
     /// Toggles the "stop recording automatically" setting. Persists to

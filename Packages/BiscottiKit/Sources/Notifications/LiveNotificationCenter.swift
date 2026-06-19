@@ -49,4 +49,8 @@ public struct LiveNotificationCenter: NotificationCenterProviding, Sendable {
         )
         return settings.authorizationStatus
     }
+
+    public func alertStyle() async -> UNAlertStyle {
+        await UNUserNotificationCenter.current().notificationSettings().alertStyle
+    }
 }

@@ -82,6 +82,19 @@ public final class NotificationService {
         return status == .denied
     }
 
+    // MARK: - Alert style
+
+    /// Returns the current macOS notification alert style for Biscotti,
+    /// mapped to the app's `NotificationAlertStyle` enum.
+    public func currentAlertStyle() async -> NotificationAlertStyle {
+        switch await provider.alertStyle() {
+        case .none: .none
+        case .banner: .banner
+        case .alert: .alert
+        @unknown default: .banner
+        }
+    }
+
     // MARK: - Presentation
 
     /// Posts a notification for the given kind.

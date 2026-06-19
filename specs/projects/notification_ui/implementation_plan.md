@@ -12,7 +12,7 @@ Three phases, each a coherent, independently reviewable unit. Details live in `f
   The three settings end-to-end, including the behavior they gate.
   - `DataStore`: new `CalendarNotificationMode` enum; `AppSettings` + `AppSettingsData` + read/write mapping (arch §1).
   - `AppCore`: 3 `Notification.Name`s, cached settings + loader, live observers (arch §3.1–3.3); the three gates — monitor guard in `handleDetectionStarted`, auto-stop guard in `handleAllMicUsersStopped`, `eventsToNotify(_:mode:)` + calendar-timer gating/re-check (arch §3.5–3.7).
-  - `SettingsUI`: `SettingsViewModel` props/setters/`load`; `SettingsView` "Notifications" section — two toggles + the calendar-mode `Picker` with the disabled/"Requires Calendar Access" badge (arch §4.1–4.2, ui_design §Rows 1–3).
+  - `SettingsUI`: `SettingsViewModel` props/setters/`load`; `SettingsView` "Notifications" section — Monitor for Meetings toggle + the calendar-mode `Picker` with the disabled/"Requires Calendar Access" badge; "Stop Recording Automatically" toggle in the General section (arch §4.1–4.2, ui_design).
   - Tests: `DataStore` round-trip + enum; `eventsToNotify`; detection-notification + auto-stop gating; live-toggle wiring; ViewModel setters/load (arch §7).
 
 - [x] **Phase 2 — Notification presentation & copy.**
@@ -26,7 +26,7 @@ Three phases, each a coherent, independently reviewable unit. Details live in `f
   The self-hiding Alerts-style nudge.
   - `Notifications`: `NotificationAlertStyle`; provider `alertStyle()`; `NotificationService.currentAlertStyle()` (arch §2.1).
   - `AppCore`: `notificationsUseBannerStyle()` (arch §3.2).
-  - `SettingsUI`: `showStayVisibleRow` + `refreshAlertStyle()` + `openNotificationSettings()`; the conditional row, the help sheet, and the `didBecomeActive` re-check (arch §4.1–4.3, ui_design §Row 4 + dialog).
+  - `SettingsUI`: `showStayVisibleRow` + `refreshAlertStyle()` + `openNotificationSettings()`; the conditional row, the help sheet, and the `didBecomeActive` re-check (arch §4.1–4.3, ui_design §Row 3 + dialog).
   - Tests: `currentAlertStyle()` mapping; ViewModel `showStayVisibleRow` per scripted style (arch §7).
 
 ## Notes

@@ -19,6 +19,10 @@ Calendars
 
 Rationale: these are behavioral preferences (siblings of General), and grouping all notification controls together keeps them discoverable. The "Notifications" permission row stays in Permissions as today.
 
+### "Stop Recording Automatically" in General
+
+The "Stop Recording Automatically" toggle + subtitle lives in the **General** section (after the global-shortcut toggle, before the menu-bar lead-time picker). It is a general recording behavior, not a notification setting.
+
 ## "Notifications" section layout
 
 ```
@@ -31,9 +35,6 @@ Rationale: these are behavioral preferences (siblings of General), and grouping 
 │ Calendar Event Notifications        [ All Meetings    ▾ ]    │
 │ Show a notification to record and join when a calendar       │
 │ event starts.                                                │
-│                                                              │
-│ Stop Recording Automatically                      [ ●  ]     │
-│ Stop recording when we detect your meeting has ended.        │
 │                                                              │
 │ Notifications Stay Visible                       [ Enable ]  │  ← only when alertStyle == .banner
 │ Make notifications stay open until clicked or dismissed.     │
@@ -58,10 +59,7 @@ Rationale: these are behavioral preferences (siblings of General), and grouping 
     ```
   - Badge = small capsule, `exclamationmark.triangle.fill` + "Requires Calendar Access", using `Tokens.warningChipFill` background + `Tokens.warningChipText` foreground (warning-ochre). Reuse/adapt the existing `StatChip`-style capsule; architecture decides reuse vs. a small inline helper.
 
-### Row 3 — Stop Recording Automatically
-Same shape as Row 1: `Toggle` + subtitle.
-
-### Row 4 — Notifications Stay Visible (conditional helper)
+### Row 3 — Notifications Stay Visible (conditional helper)
 Only rendered when `viewModel.alertStyle == .banner` (hidden for `.alert` and `.none`). Layout like a settings row with a trailing action button:
 - Leading `VStack`: title **"Notifications Stay Visible"** + subtitle **"Make notifications stay open until clicked or dismissed."**
 - Trailing: `Button("Enable")`, `.buttonStyle(.bordered)`, `.controlSize(.small)` (matches the permission action buttons).
@@ -91,12 +89,12 @@ A modal **sheet** (preferred over `.alert` so the numbered steps read cleanly), 
 - **Open Settings** → deep-links to the macOS Notifications settings pane (best-effort; macOS may not pre-select Biscotti, hence the explicit step 2). Then dismisses the sheet.
 - **Cancel** → dismisses.
 - Styling follows the design system (ivory background, system fonts, `.sage` for the primary button to match existing accents).
-- On return to the app, `alertStyle` is re-read; if now `.alert`, Row 4 disappears.
+- On return to the app, `alertStyle` is re-read; if now `.alert`, Row 3 disappears.
 
 ## Interaction / state notes
 
 - All three controls write through the `SettingsViewModel` (new properties + setters) following the existing `Binding` wrapper pattern; changes apply live.
-- The picker's disabled/badge state and Row 4's visibility derive from observable state already (or newly) exposed on the view model: `calendarState` (exists) and `alertStyle` (new).
+- The picker's disabled/badge state and Row 3's visibility derive from observable state already (or newly) exposed on the view model: `calendarState` (exists) and `alertStyle` (new).
 - No empty/loading states beyond what `SettingsView.task { load() }` already provides.
 
 ## Out of scope (UI)

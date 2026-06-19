@@ -296,11 +296,12 @@ public func openNotificationSettings() {
 
 Insert `notificationsSection` between `generalSection` and `permissionsSection` (`:22-25`).
 
-- **Rows 1 & 3** (Monitor, Stop Recording): the `VStack { Toggle; Text(subtitle) }` pattern from "Exit app on window close" (`:55-63`), each with a `Binding<Bool>` wrapper (`Task { await viewModel.setX(newValue) }`).
+- **Row 1** (Monitor for Meetings): the `VStack { Toggle; Text(subtitle) }` pattern from "Exit app on window close" (`:55-63`), with a `Binding<Bool>` wrapper (`Task { await viewModel.setX(newValue) }`).
 - **Row 2** (Calendar dropdown): `VStack(alignment:.leading)` with a `Picker("Calendar Event Notifications", selection: calendarNotificationModeBinding)` over `CalendarNotificationMode.allCases` (`Text(mode.displayText).tag(mode)`); the subtitle below. When `viewModel.calendarNotificationsDisabled`:
   - `.disabled(true)` on the picker and the display binding's getter returns `.never` (stored value untouched — the setter is inert while disabled).
   - A warning badge between picker and subtitle: a small capsule, `exclamationmark.triangle.fill` + "Requires Calendar Access", `Tokens.warningChipFill` background + `Tokens.warningChipText` foreground (a private `requiresCalendarAccessBadge` view; reuse `StatChip` styling if it fits).
-- **Row 4** (Stay-visible, conditional on `viewModel.showStayVisibleRow`): `HStack { VStack { Text("Notifications Stay Visible"); Text("Make notifications stay open until clicked or dismissed.").metadata }; Spacer(); Button("Enable") { showAlertsHelp = true } .bordered .controlSize(.small) }`.
+- **Row 3** (Stay-visible, conditional on `viewModel.showStayVisibleRow`): `HStack { VStack { Text("Notifications Stay Visible"); Text("Make notifications stay open until clicked or dismissed.").metadata }; Spacer(); Button("Enable") { showAlertsHelp = true } .bordered .controlSize(.small) }`.
+- **Stop Recording Automatically** lives in the **General** section (not Notifications) — same `VStack { Toggle; Text(subtitle) }` pattern, placed after the global-shortcut toggle.
 - `@State private var showAlertsHelp = false` → `.sheet(isPresented:)` presents `AlertsHelpSheet` (the §4.3 dialog).
 - Re-check style on return from System Settings:
   `.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await viewModel.refreshAlertStyle() } }`.

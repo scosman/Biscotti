@@ -69,6 +69,15 @@ public struct SettingsView: View {
                 "Global shortcut to start recording (\u{2318}\u{21E7}R)",
                 isOn: globalRecordShortcutBinding
             )
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Stop Recording Automatically",
+                    isOn: stopRecordingAutomaticallyBinding
+                )
+                Text("Stop recording when we detect your meeting has ended.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
             Picker(
                 "Show next meeting in menu bar",
                 selection: menuBarLeadTimeBinding
@@ -103,6 +112,17 @@ public struct SettingsView: View {
             get: { viewModel.globalRecordShortcutEnabled },
             set: { newValue in
                 Task { await viewModel.setGlobalRecordShortcut(newValue) }
+            }
+        )
+    }
+
+    private var stopRecordingAutomaticallyBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.stopRecordingAutomatically },
+            set: { newValue in
+                Task {
+                    await viewModel.setStopRecordingAutomatically(newValue)
+                }
             }
         )
     }
@@ -296,18 +316,7 @@ private extension SettingsView {
                 .foregroundStyle(Tokens.secondaryText)
             }
 
-            // Row 3: Stop Recording Automatically
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Toggle(
-                    "Stop Recording Automatically",
-                    isOn: stopRecordingAutomaticallyBinding
-                )
-                Text("Stop recording when we detect your meeting has ended.")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-            }
-
-            // Row 4: Notifications Stay Visible (only when alertStyle == .banner)
+            // Row 3: Notifications Stay Visible (only when alertStyle == .banner)
             if viewModel.showStayVisibleRow {
                 stayVisibleRow
             }
@@ -377,17 +386,6 @@ private extension SettingsView {
             set: { newValue in
                 Task {
                     await viewModel.setCalendarNotificationMode(newValue)
-                }
-            }
-        )
-    }
-
-    var stopRecordingAutomaticallyBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.stopRecordingAutomatically },
-            set: { newValue in
-                Task {
-                    await viewModel.setStopRecordingAutomatically(newValue)
                 }
             }
         )

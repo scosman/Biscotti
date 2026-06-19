@@ -17,7 +17,7 @@ The auto-stop **countdown** notification and the notification-permission request
 
 ## Part A — Notification Settings
 
-All three settings live in a new **"Notifications"** section on the Settings page (placement/ordering is a UI-design detail). Each persists to the existing SwiftData `AppSettings` store and takes effect **live** (no app restart), following the established pattern: ViewModel setter writes the store and posts a `Notification.Name` that `AppCore` observes to start/stop the relevant service.
+Two of the three settings live in a new **"Notifications"** section on the Settings page; "Stop Recording Automatically" lives in the General section (see `ui_design.md`). Each persists to the existing SwiftData `AppSettings` store and takes effect **live** (no app restart), following the established pattern: ViewModel setter writes the store and posts a `Notification.Name` that `AppCore` observes to start/stop the relevant service.
 
 ### A1. Monitor for Meetings
 

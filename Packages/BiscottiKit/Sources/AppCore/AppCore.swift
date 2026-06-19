@@ -28,6 +28,13 @@ public extension Notification.Name {
     static let menuBarLeadTimeDidChange = Notification.Name(
         "net.scosman.biscotti.menuBarLeadTimeDidChange"
     )
+
+    /// Posted after the "global record shortcut" setting is toggled.
+    /// The app delegate observes this to register/unregister the Carbon
+    /// hotkey live without requiring a restart.
+    static let globalRecordShortcutDidChange = Notification.Name(
+        "net.scosman.biscotti.globalRecordShortcutDidChange"
+    )
 }
 
 // MARK: - Deep-link jump state

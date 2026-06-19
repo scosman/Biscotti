@@ -22,7 +22,7 @@ One phase per item, built autonomously. Each phase ends green on `lint`+`test` (
   - 5a: Don't show the "Downloading…model" phase on a cache hit — simple delay-gate (~5s) or real-signal-gate; plain "Transcribing…" otherwise. **Research the open question** (is the readiness/download check itself slow on a cache hit? consider an optimistic "assume cached → detect failure → download" flow) and report at review. **Touches `Packages/Transcription` → mark `tx_*` manual tests `not-run`.**
   - 5b: Centered transcribing layout — bigger spinner, larger centered text, subtitle on its own centered line (no horizontal shift).
 
-- [ ] **Phase 6 — Global ⌘⇧R + settings toggle.** In-repo Carbon `RegisterEventHotKey` wrapper starts a recording OS-wide; `AppSettings.globalRecordShortcutEnabled` (default ON) toggle in Settings registers/unregisters live; no new dependency, no extra permission. _(1 commit)_ — spec §6.
+- [x] **Phase 6 — Global ⌘⇧R + settings toggle.** In-repo Carbon `RegisterEventHotKey` wrapper starts a recording OS-wide; `AppSettings.globalRecordShortcutEnabled` (default ON) toggle in Settings registers/unregisters live; no new dependency, no extra permission. _(1 commit)_ — spec §6.
 
 - [ ] **Phase 7 — Multi-select + delete.** _(2 commits)_ — spec §7.
   - 7a: Migrate `meetingsSelection` `UUID?` → `Set<UUID>` (shift/⌘ multi-select); detail pane shows "N meetings selected" placeholder (ContentUnavailableView-style, with a Delete button) when >1 selected.

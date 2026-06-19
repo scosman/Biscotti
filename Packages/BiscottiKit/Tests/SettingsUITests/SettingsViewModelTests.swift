@@ -1,5 +1,7 @@
+import AppCore
 import BiscottiTestSupport
 import Calendar
+import Foundation
 import Permissions
 import Testing
 @testable import DataStore
@@ -332,6 +334,83 @@ struct SettingsViewModelTests {
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
         #expect(viewModel.exitOnWindowClose == true)
+    }
+}
+
+// MARK: - Global record shortcut
+
+@Suite("SettingsViewModel -- global record shortcut")
+@MainActor
+struct SettingsGlobalRecordShortcutTests {
+    @Test("globalRecordShortcutEnabled defaults to true")
+    func globalRecordShortcutDefaultsTrue() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.globalRecordShortcutEnabled == true)
+    }
+
+    @Test("toggle globalRecordShortcut persists and reads back")
+    func toggleGlobalRecordShortcutPersists() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.globalRecordShortcutEnabled == true)
+
+        // Toggle off
+        await viewModel.setGlobalRecordShortcut(false)
+        #expect(viewModel.globalRecordShortcutEnabled == false)
+
+        // Verify persisted
+        let settings = try await fixture.store.settings()
+        #expect(settings.globalRecordShortcutEnabled == false)
+
+        // Toggle on
+        await viewModel.setGlobalRecordShortcut(true)
+        #expect(viewModel.globalRecordShortcutEnabled == true)
+
+        let settings2 = try await fixture.store.settings()
+        #expect(settings2.globalRecordShortcutEnabled == true)
+    }
+
+    @Test("load reads globalRecordShortcutEnabled from store")
+    func globalRecordShortcutLoadedFromStore() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        // Pre-set the value to false in the store
+        try await fixture.store.updateSettings { settings in
+            settings.globalRecordShortcutEnabled = false
+        }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+        #expect(viewModel.globalRecordShortcutEnabled == false)
+    }
+
+    @Test("setGlobalRecordShortcut posts notification")
+    func setGlobalRecordShortcutPostsNotification() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Register an observer before toggling
+        var received = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .globalRecordShortcutDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            received = true
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        await viewModel.setGlobalRecordShortcut(false)
+
+        #expect(received)
     }
 }
 

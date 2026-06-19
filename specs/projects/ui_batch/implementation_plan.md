@@ -24,7 +24,7 @@ One phase per item, built autonomously. Each phase ends green on `lint`+`test` (
 
 - [x] **Phase 6 — Global ⌘⇧R + settings toggle.** In-repo Carbon `RegisterEventHotKey` wrapper starts a recording OS-wide; `AppSettings.globalRecordShortcutEnabled` (default ON) toggle in Settings registers/unregisters live; no new dependency, no extra permission. _(1 commit)_ — spec §6.
 
-- [ ] **Phase 7 — Multi-select + delete.** _(2 commits)_ — spec §7.
+- [x] **Phase 7 — Multi-select + delete.** _(1 commit; 7a+7b combined — Set migration and delete refactor are intertwined in the same hunks)_ — spec §7.
   - 7a: Migrate `meetingsSelection` `UUID?` → `Set<UUID>` (shift/⌘ multi-select); detail pane shows "N meetings selected" placeholder (ContentUnavailableView-style, with a Delete button) when >1 selected.
   - 7b: Delete key (and placeholder Delete button) → confirmation alert (singular/plural) → multi-delete; empty selection no-ops; existing detail-menu single delete unchanged.
 

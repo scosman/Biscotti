@@ -171,8 +171,8 @@ public final class AppShellViewModel {
         core.route
     }
 
-    /// The currently selected meeting (for Meetings screen detail pane).
-    public var meetingsSelection: UUID? {
+    /// The currently selected meetings (for Meetings screen detail pane).
+    public var meetingsSelection: Set<UUID> {
         core.meetingsSelection
     }
 

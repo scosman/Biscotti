@@ -20,7 +20,7 @@ struct DeepLinkParsingTests {
         await fix.core.handleDeepLink(url)
 
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
         #expect(fix.core.pendingTranscriptJump != nil)
         #expect(fix.core.pendingTranscriptJump?.meetingID == meetingID)
         #expect(fix.core.pendingTranscriptJump?.time == 42.0)

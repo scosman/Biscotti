@@ -647,7 +647,7 @@ struct MeetingDetailDeleteTests {
         // Route to the meeting
         fix.core.select(meetingID)
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
 
         // Confirm delete
         await detailVM.confirmDelete()

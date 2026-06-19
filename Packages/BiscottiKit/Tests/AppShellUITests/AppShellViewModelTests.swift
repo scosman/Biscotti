@@ -90,7 +90,7 @@ struct AppShellRoutingTests {
         let meetingID = UUID()
         fix.core.select(meetingID)
         #expect(viewModel.route == .meetings)
-        #expect(viewModel.meetingsSelection == meetingID)
+        #expect(viewModel.meetingsSelection == [meetingID])
     }
 
     @Test("showRecording navigates back to recording screen")

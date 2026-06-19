@@ -368,11 +368,19 @@ private struct MeetingsSplitView: View {
             .frame(minWidth: 180, idealWidth: 220, maxWidth: 420)
 
             Group {
-                if let id = viewModel.meetingsSelection {
+                let selection = viewModel.meetingsSelection
+                if selection.count == 1, let id = selection.first {
                     MeetingDetailView(
-                        viewModel: viewModel.meetingDetailViewModel(for: id)
+                        viewModel: viewModel.meetingDetailViewModel(
+                            for: id
+                        )
                     )
                     .id(id)
+                } else if selection.count > 1 {
+                    MultiSelectPlaceholder(
+                        count: selection.count,
+                        listViewModel: viewModel.meetingListViewModel
+                    )
                 } else {
                     ContentUnavailableView {
                         Label {
@@ -392,6 +400,31 @@ private struct MeetingsSplitView: View {
             .frame(minWidth: 360, maxWidth: .infinity)
             .background(Tokens.contentBackground)
         }
+    }
+}
+
+/// Placeholder shown when more than one meeting is selected.
+/// Displays a count and a Delete button that triggers the confirmation.
+private struct MultiSelectPlaceholder: View {
+    let count: Int
+    let listViewModel: MeetingListViewModel
+
+    var body: some View {
+        ContentUnavailableView {
+            Label {
+                Text("\(count) Meetings Selected")
+                    .font(.serifHeadline)
+            } icon: {
+                Image(systemName: "checkmark.circle")
+            }
+        } actions: {
+            Button(role: .destructive) {
+                listViewModel.requestDeleteSelection()
+            } label: {
+                Text("Delete \(count) Meetings")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

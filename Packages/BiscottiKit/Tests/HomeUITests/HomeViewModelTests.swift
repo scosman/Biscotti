@@ -214,7 +214,7 @@ struct HomeViewModelRecentTests {
         let viewModel = HomeViewModel(core: fix.core)
         viewModel.selectMeeting(meetingID)
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
     }
 }
 
@@ -322,14 +322,14 @@ struct HomeViewModelActionTests {
 
         let meetingID = UUID()
         fix.core.select(meetingID)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
 
         // Navigate away then use "See all"
         fix.core.showHome()
         let viewModel = HomeViewModel(core: fix.core)
         viewModel.showMeetings()
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
     }
 
     @Test("joinAndRecord opens conference URL and starts recording")

@@ -58,19 +58,55 @@ public final class MeetingListViewModel {
         core.meetingsQuery
     }
 
-    /// The currently selected meeting ID (from AppCore's meetings state).
-    public var selectedID: UUID? {
+    /// The currently selected meeting IDs (from AppCore's meetings state).
+    public var selectedIDs: Set<UUID> {
         core.meetingsSelection
     }
+
+    /// Whether a delete confirmation alert should be shown.
+    public var showDeleteConfirmation = false
+
+    /// The number of meetings that will be deleted (for alert copy).
+    public var deleteConfirmationCount = 0
+
+    /// The IDs captured at request time, deleted on confirm. Avoids
+    /// TOCTOU: the user confirms exactly the set they were shown.
+    private var pendingDeleteIDs: Set<UUID> = []
 
     public init(core: AppCore) {
         self.core = core
     }
 
-    /// Called when the user selects a meeting in the list.
+    /// Called when the list selection changes (shift/cmd multi-select).
     /// Uses `selectFromList` to preserve the current search mode.
-    public func select(_ meetingID: UUID?) {
-        core.selectFromList(meetingID)
+    public func select(_ ids: Set<UUID>) {
+        core.selectFromList(ids)
+    }
+
+    /// Triggered by Delete key or the multi-select placeholder's button.
+    /// Captures the current selection and shows a confirmation alert.
+    public func requestDeleteSelection() {
+        let ids = selectedIDs
+        guard !ids.isEmpty else { return }
+        pendingDeleteIDs = ids
+        deleteConfirmationCount = ids.count
+        showDeleteConfirmation = true
+    }
+
+    /// Confirms the pending delete. Deletes exactly the IDs that were
+    /// captured when `requestDeleteSelection()` was called.
+    public func confirmDelete() async {
+        showDeleteConfirmation = false
+        let ids = pendingDeleteIDs
+        pendingDeleteIDs = []
+        guard !ids.isEmpty else { return }
+        await core.deleteMeetings(ids)
+    }
+
+    /// Cancels the pending delete.
+    public func cancelDelete() {
+        showDeleteConfirmation = false
+        pendingDeleteIDs = []
     }
 
     // MARK: - Grouping (pure, testable)

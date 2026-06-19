@@ -1262,7 +1262,8 @@ struct AppCoreRecordingRunStateTests {
         await fix.core.startRecording()
         let meetingID = await fix.core.stopRecording()
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        let unwrappedID = try #require(meetingID)
+        #expect(fix.core.meetingsSelection == [unwrappedID])
     }
 
     @Test("stopRecording enqueues transcription")

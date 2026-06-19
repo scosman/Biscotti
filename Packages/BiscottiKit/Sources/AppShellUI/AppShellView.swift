@@ -484,7 +484,6 @@ private struct RecordingNowSection: View {
                     : Color.clear,
                 in: RoundedRectangle(cornerRadius: 4)
             )
-            .padding(.horizontal, Tokens.spacingSM)
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)

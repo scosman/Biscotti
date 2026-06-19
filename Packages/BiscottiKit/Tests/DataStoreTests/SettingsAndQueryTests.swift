@@ -41,6 +41,7 @@ struct SettingsTests {
         #expect(result.customVocabulary.isEmpty)
         #expect(result.launchAtLogin == false)
         #expect(result.exitOnWindowClose == false)
+        #expect(result.globalRecordShortcutEnabled == true)
         #expect(result.menuBarLeadTimeSeconds == 3600)
         #expect(result.onboardingComplete == false)
         #expect(result.enabledCalendarIDs == nil)

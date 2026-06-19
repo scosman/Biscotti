@@ -1,5 +1,6 @@
 import AppCore
 import AppShellUI
+import Carbon
 import DesignSystem
 import MenuBarUI
 import Notifications
@@ -268,6 +269,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     var core: AppCore?
     var notificationService: NotificationService?
 
+    /// OS-wide ⌘⇧R hotkey managed by a Carbon wrapper. Non-nil while
+    /// the hotkey is registered; nil when unregistered or not yet built.
+    private var globalRecordHotKey: GlobalHotKey?
+
     /// Observable state read by `BiscottiApp.body`. Mutations here
     /// trigger SwiftUI re-renders (fixes the startup-hang race).
     let launchState = LaunchState()
@@ -289,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         MainActor.assumeIsolated {
             self.buildCore()
             self.observeExitOnWindowCloseSetting()
+            self.observeGlobalRecordShortcutSetting()
         }
     }
 
@@ -442,6 +448,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             // synchronous applicationShouldTerminateAfterLastWindowClosed
             // and the Cmd+Q handler can read it without an async hop.
             loadExitOnWindowCloseSetting(from: appCore)
+
+            // Register the global ⌘⇧R hotkey if the setting is ON.
+            loadGlobalRecordShortcutSetting(from: appCore)
         } catch {
             logger.error("buildCore: FAILED — \(error)")
             launchState.launchError = error.localizedDescription
@@ -473,6 +482,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
                 launchState.exitOnWindowClose = settings?.exitOnWindowClose ?? false
             }
         }
+    }
+
+    // MARK: - Global record shortcut
+
+    /// Reads the "global record shortcut" setting and registers/unregisters
+    /// the Carbon hotkey accordingly.
+    @MainActor
+    private func loadGlobalRecordShortcutSetting(from appCore: AppCore) {
+        Task { @MainActor in
+            let settings = try? await appCore.store.settings()
+            let enabled = settings?.globalRecordShortcutEnabled ?? true
+            if enabled {
+                registerGlobalRecordHotKey()
+            }
+        }
+    }
+
+    /// Observes `.globalRecordShortcutDidChange` notifications and
+    /// registers/unregisters the hotkey to reflect the new setting.
+    @MainActor
+    private func observeGlobalRecordShortcutSetting() {
+        Task { @MainActor [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .globalRecordShortcutDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await core?.store.settings()
+                let enabled = settings?.globalRecordShortcutEnabled ?? true
+                if enabled {
+                    registerGlobalRecordHotKey()
+                } else {
+                    unregisterGlobalRecordHotKey()
+                }
+            }
+        }
+    }
+
+    /// Creates and registers the ⌘⇧R hotkey. Idempotent — if already
+    /// registered, this is a no-op.
+    @MainActor
+    private func registerGlobalRecordHotKey() {
+        guard globalRecordHotKey == nil else { return }
+        let hotKey = GlobalHotKey(
+            keyCode: UInt32(kVK_ANSI_R),
+            modifiers: UInt32(cmdKey | shiftKey)
+        ) { [weak self] in
+            guard let self, let core else { return }
+            Task { @MainActor in
+                await core.toggleRecording()
+            }
+        }
+        hotKey.register()
+        globalRecordHotKey = hotKey
+    }
+
+    /// Unregisters and releases the global record hotkey.
+    @MainActor
+    private func unregisterGlobalRecordHotKey() {
+        globalRecordHotKey?.unregister()
+        globalRecordHotKey = nil
     }
 
     /// Closes the main window (if one exists). Used by the custom Cmd+Q

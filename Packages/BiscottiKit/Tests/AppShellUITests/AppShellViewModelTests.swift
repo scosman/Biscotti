@@ -90,7 +90,7 @@ struct AppShellRoutingTests {
         let meetingID = UUID()
         fix.core.select(meetingID)
         #expect(viewModel.route == .meetings)
-        #expect(viewModel.meetingsSelection == meetingID)
+        #expect(viewModel.meetingsSelection == [meetingID])
     }
 
     @Test("showRecording navigates back to recording screen")
@@ -498,6 +498,52 @@ struct AppShellIsHomeTests {
 
         fix.core.showMeetings()
         #expect(shellVM.isHome == false)
+    }
+}
+
+@Suite("AppShellViewModel -- isOnRecordingPage")
+struct AppShellIsOnRecordingPageTests {
+    @Test("isOnRecordingPage is true when route is .recording")
+    @MainActor
+    func trueWhenOnRecordingPage() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        await shellVM.startRecording()
+        #expect(shellVM.isOnRecordingPage == true)
+    }
+
+    @Test("isOnRecordingPage is false when route is not .recording")
+    @MainActor
+    func falseOnOtherRoutes() throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.isOnRecordingPage == false)
+
+        fix.core.showSettings()
+        #expect(shellVM.isOnRecordingPage == false)
+
+        fix.core.showMeetings()
+        #expect(shellVM.isOnRecordingPage == false)
+    }
+
+    @Test("isOnRecordingPage is false when recording but viewing another route")
+    @MainActor
+    func falseWhenRecordingButElsewhere() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellUITests")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        await shellVM.startRecording()
+        #expect(shellVM.isOnRecordingPage == true)
+
+        // Navigate away while still recording
+        fix.core.select(UUID())
+        #expect(shellVM.isOnRecordingPage == false)
+        #expect(shellVM.isRecording == true)
     }
 }
 

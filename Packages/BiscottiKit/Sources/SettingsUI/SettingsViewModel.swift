@@ -46,6 +46,9 @@ public final class SettingsViewModel {
     /// app stays alive in the menu bar.
     public private(set) var exitOnWindowClose: Bool = false
 
+    /// Whether the global ⌘⇧R hotkey is active. Default ON.
+    public private(set) var globalRecordShortcutEnabled: Bool = true
+
     /// How far before a meeting the menu bar shows the detailed text.
     public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
 
@@ -154,6 +157,25 @@ public final class SettingsViewModel {
         } catch {
             // Revert on failure
             menuBarLeadTime = previous
+        }
+    }
+
+    /// Toggles the global ⌘⇧R recording shortcut. Persists to the store
+    /// and posts `.globalRecordShortcutDidChange` so the app delegate can
+    /// register/unregister the Carbon hotkey live.
+    public func setGlobalRecordShortcut(_ enabled: Bool) async {
+        globalRecordShortcutEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.globalRecordShortcutEnabled = enabled
+            }
+            NotificationCenter.default.post(
+                name: .globalRecordShortcutDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            globalRecordShortcutEnabled = !enabled
         }
     }
 
@@ -290,6 +312,7 @@ public final class SettingsViewModel {
             let settings = try await core.store.settings()
             enabledCalendarIDs = settings.enabledCalendarIDs
             exitOnWindowClose = settings.exitOnWindowClose
+            globalRecordShortcutEnabled = settings.globalRecordShortcutEnabled
             menuBarLeadTime = MenuBarLeadTime(
                 seconds: settings.menuBarLeadTimeSeconds
             )

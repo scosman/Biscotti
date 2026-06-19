@@ -362,6 +362,19 @@ public final class MeetingDetailViewModel {
         syncPlaybackState()
     }
 
+    /// Seeks to the specified time and starts playback if paused.
+    ///
+    /// Used by transcript timestamp links and deep-link jumps so the
+    /// user hears audio immediately after clicking a link. The
+    /// transport-bar scrubber uses plain `seek(to:)` instead.
+    public func seekAndPlay(to time: TimeInterval) {
+        seek(to: time)
+        guard let player = audioPlayer, !player.isPlaying else { return }
+        player.play()
+        startPlaybackTicker()
+        syncPlaybackState()
+    }
+
     /// Copies the displayed transcript to the system pasteboard as plain text.
     public func copyTranscript() {
         guard let transcript = displayedTranscript,
@@ -575,7 +588,7 @@ public extension MeetingDetailViewModel {
             return
         }
         let clamped = min(max(0, seekTime), playbackDuration)
-        seek(to: clamped)
+        seekAndPlay(to: clamped)
         pendingSeek = nil
     }
 }

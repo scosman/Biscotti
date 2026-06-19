@@ -22,6 +22,10 @@ import SwiftData
     /// stays alive in the menu bar.
     public var exitOnWindowClose: Bool = false
 
+    /// Whether the global ⌘⇧R hotkey is active. When true, pressing
+    /// ⌘⇧R anywhere in the OS starts a Biscotti recording.
+    public var globalRecordShortcutEnabled: Bool = true
+
     /// Lead time (in seconds) before a meeting start at which the menu bar
     /// shows the detailed "next meeting" text. `0` means never show.
     /// Default: 3600 (1 hour before).
@@ -58,6 +62,7 @@ import SwiftData
         customVocabulary: [String] = [],
         launchAtLogin: Bool = false,
         exitOnWindowClose: Bool = false,
+        globalRecordShortcutEnabled: Bool = true,
         menuBarLeadTimeSeconds: Int = 3600,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
@@ -65,6 +70,7 @@ import SwiftData
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
         self.exitOnWindowClose = exitOnWindowClose
+        self.globalRecordShortcutEnabled = globalRecordShortcutEnabled
         self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
         self.onboardingComplete = onboardingComplete
         if let enabledCalendarIDs {

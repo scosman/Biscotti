@@ -202,9 +202,9 @@ struct AppCoreRecordingTests {
 
         let meetingID = await fix.core.stopRecording()
 
-        #expect(meetingID != nil)
+        let unwrappedID = try #require(meetingID)
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [unwrappedID])
         #expect(fix.core.recording.state.isRecording == false)
     }
 
@@ -255,6 +255,35 @@ struct AppCoreRecordingTests {
         #expect(result == nil)
         #expect(fix.core.route == .home)
     }
+
+    @Test("toggleRecording starts when idle")
+    @MainActor
+    func toggleRecordingStartsWhenIdle() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        let result = await fix.core.toggleRecording()
+
+        #expect(result == nil) // start path returns nil
+        #expect(fix.core.recording.state.isRecording == true)
+        #expect(fix.core.route == .recording)
+    }
+
+    @Test("toggleRecording stops when recording")
+    @MainActor
+    func toggleRecordingStopsWhenRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.recording.state.isRecording == true)
+
+        let meetingID = await fix.core.toggleRecording()
+
+        #expect(meetingID != nil) // stop path returns meeting ID
+        #expect(fix.core.recording.state.isRecording == false)
+        #expect(fix.core.route == .meetings)
+    }
 }
 
 // MARK: - Navigation tests
@@ -271,7 +300,7 @@ struct AppCoreNavigationTests {
         fix.core.select(meetingID)
 
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
     }
 
     @Test("select clears search query and results")
@@ -304,20 +333,33 @@ struct AppCoreNavigationTests {
         fix.core.setMeetingsQuery("hello")
 
         let meetingID = UUID()
-        fix.core.selectFromList(meetingID)
-        #expect(fix.core.meetingsSelection == meetingID)
+        fix.core.selectFromList([meetingID])
+        #expect(fix.core.meetingsSelection == [meetingID])
         #expect(fix.core.meetingsQuery == "hello")
     }
 
-    @Test("selectFromList nil clears selection")
+    @Test("selectFromList with multiple IDs sets multi-element selection")
     @MainActor
-    func selectFromListNil() throws {
+    func selectFromListMultiple() throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        fix.core.select(UUID()) // get to .meetings
+        let id1 = UUID()
+        let id2 = UUID()
+        fix.core.selectFromList([id1, id2])
+        #expect(fix.core.meetingsSelection == [id1, id2])
+    }
+
+    @Test("selectFromList empty set clears selection")
+    @MainActor
+    func selectFromListEmpty() throws {
         let fix = try makeCoreFixture(testName: "AppCoreTests")
         defer { fix.cleanup() }
 
         fix.core.select(UUID())
-        fix.core.selectFromList(nil)
-        #expect(fix.core.meetingsSelection == nil)
+        fix.core.selectFromList([])
+        #expect(fix.core.meetingsSelection.isEmpty)
     }
 
     @Test("showMeetings clears query but keeps selection")
@@ -333,7 +375,7 @@ struct AppCoreNavigationTests {
         fix.core.showMeetings()
 
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
         #expect(fix.core.meetingsQuery == "")
     }
 
@@ -347,10 +389,10 @@ struct AppCoreNavigationTests {
         let id2 = UUID()
 
         fix.core.select(id1)
-        #expect(fix.core.meetingsSelection == id1)
+        #expect(fix.core.meetingsSelection == [id1])
 
         fix.core.select(id2)
-        #expect(fix.core.meetingsSelection == id2)
+        #expect(fix.core.meetingsSelection == [id2])
     }
 
     @Test("route is .recording during active recording, then .meetings after stop")
@@ -366,7 +408,7 @@ struct AppCoreNavigationTests {
 
         let meetingID = try #require(await fix.core.stopRecording())
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
     }
 }
 
@@ -463,7 +505,7 @@ struct AppCoreFlowTests {
         // Stop recording
         let meetingID = try #require(await fix.core.stopRecording())
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == meetingID)
+        #expect(fix.core.meetingsSelection == [meetingID])
         #expect(fix.core.recording.state.isRecording == false)
         #expect(fix.core.summaries.count == 1)
 
@@ -494,7 +536,7 @@ struct AppCoreFlowTests {
         #expect(id1 != id2)
         #expect(fix.core.summaries.count == 2)
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == id2)
+        #expect(fix.core.meetingsSelection == [id2])
     }
 
     @Test("Select after stop navigates to a different meeting")
@@ -509,11 +551,11 @@ struct AppCoreFlowTests {
 
         await fix.core.startRecording()
         let newID = try #require(await fix.core.stopRecording())
-        #expect(fix.core.meetingsSelection == newID)
+        #expect(fix.core.meetingsSelection == [newID])
 
         // Select the older meeting
         fix.core.select(existingID)
-        #expect(fix.core.meetingsSelection == existingID)
+        #expect(fix.core.meetingsSelection == [existingID])
     }
 
     @Test("Initial route is empty")
@@ -583,7 +625,7 @@ struct AppCoreDeleteMeetingTests {
 
         // Route stays on meetings (with nil selection = placeholder)
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == nil)
+        #expect(fix.core.meetingsSelection.isEmpty)
     }
 
     @Test("deleteMeeting with missing files does not throw")
@@ -650,6 +692,77 @@ struct AppCoreDeleteMeetingTests {
 
         // Recording must still be active
         #expect(fix.core.recording.state.isRecording == true)
+    }
+}
+
+// MARK: - Batch delete tests (7b)
+
+@Suite("AppCore -- batch delete meetings")
+struct AppCoreBatchDeleteTests {
+    @Test("deleteMeetings removes all selected and selects neighbor")
+    @MainActor
+    func deleteMeetingsBatchRemovesAllAndSelectsNeighbor() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreBatchDeleteTests")
+        defer { fix.cleanup() }
+
+        // Create 3 meetings: A (oldest), B, C (newest).
+        // Summaries are reverse-chrono, so order is [C, B, A].
+        let idA = try await fix.store.createMeeting(title: "Meeting A")
+        let idB = try await fix.store.createMeeting(title: "Meeting B")
+        let idC = try await fix.store.createMeeting(title: "Meeting C")
+        await fix.core.reloadSummaries()
+        #expect(fix.core.summaries.count == 3)
+
+        // Select B and C
+        fix.core.selectFromList([idB, idC])
+
+        // Batch delete B and C
+        await fix.core.deleteMeetings([idB, idC])
+
+        // Both should be gone
+        #expect(try await fix.store.meetingExists(id: idB) == false)
+        #expect(try await fix.store.meetingExists(id: idC) == false)
+        #expect(fix.core.summaries.count == 1)
+
+        // Should select A (the remaining neighbor)
+        #expect(fix.core.meetingsSelection == [idA])
+        #expect(fix.core.route == .meetings)
+    }
+
+    @Test("deleteMeetings with empty set is no-op")
+    @MainActor
+    func deleteMeetingsEmptySetIsNoOp() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreBatchDeleteTests")
+        defer { fix.cleanup() }
+
+        let id = try await fix.store.createMeeting(title: "Keep Me")
+        await fix.core.reloadSummaries()
+        fix.core.select(id)
+
+        // Batch delete with empty set
+        await fix.core.deleteMeetings([])
+
+        // Meeting still exists, selection unchanged
+        #expect(try await fix.store.meetingExists(id: id))
+        #expect(fix.core.summaries.count == 1)
+        #expect(fix.core.meetingsSelection == [id])
+    }
+
+    @Test("deleteMeetings deleting all meetings clears selection")
+    @MainActor
+    func deleteMeetingsAllClearsSelection() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreBatchDeleteTests")
+        defer { fix.cleanup() }
+
+        let id1 = try await fix.store.createMeeting(title: "A")
+        let id2 = try await fix.store.createMeeting(title: "B")
+        await fix.core.reloadSummaries()
+
+        await fix.core.deleteMeetings([id1, id2])
+
+        #expect(fix.core.summaries.isEmpty)
+        #expect(fix.core.meetingsSelection.isEmpty)
+        #expect(fix.core.route == .meetings)
     }
 }
 

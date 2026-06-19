@@ -85,6 +85,7 @@ public struct AppShellView: View {
 
                         if viewModel.isRecording {
                             RecordingToolbarButton(viewModel: viewModel)
+                                .disabled(viewModel.isOnRecordingPage)
                         } else {
                             Button {
                                 Task { await viewModel.startRecording() }
@@ -367,11 +368,19 @@ private struct MeetingsSplitView: View {
             .frame(minWidth: 180, idealWidth: 220, maxWidth: 420)
 
             Group {
-                if let id = viewModel.meetingsSelection {
+                let selection = viewModel.meetingsSelection
+                if selection.count == 1, let id = selection.first {
                     MeetingDetailView(
-                        viewModel: viewModel.meetingDetailViewModel(for: id)
+                        viewModel: viewModel.meetingDetailViewModel(
+                            for: id
+                        )
                     )
                     .id(id)
+                } else if selection.count > 1 {
+                    MultiSelectPlaceholder(
+                        count: selection.count,
+                        listViewModel: viewModel.meetingListViewModel
+                    )
                 } else {
                     ContentUnavailableView {
                         Label {
@@ -391,6 +400,31 @@ private struct MeetingsSplitView: View {
             .frame(minWidth: 360, maxWidth: .infinity)
             .background(Tokens.contentBackground)
         }
+    }
+}
+
+/// Placeholder shown when more than one meeting is selected.
+/// Displays a count and a Delete button that triggers the confirmation.
+private struct MultiSelectPlaceholder: View {
+    let count: Int
+    let listViewModel: MeetingListViewModel
+
+    var body: some View {
+        ContentUnavailableView {
+            Label {
+                Text("\(count) Meetings Selected")
+                    .font(.serifHeadline)
+            } icon: {
+                Image(systemName: "checkmark.circle")
+            }
+        } actions: {
+            Button(role: .destructive) {
+                listViewModel.requestDeleteSelection()
+            } label: {
+                Text("Delete \(count) Meetings")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -427,7 +461,7 @@ private struct RecordingToolbarButton: View {
                     .animation(nil, value: viewModel.recordingElapsedText)
             }
             .padding(.horizontal, 16)
-            .frame(height: 34)
+            .frame(height: 32)
         }
         .buttonStyle(LightAlertButtonStyle())
         .help("Go to recording")
@@ -469,7 +503,7 @@ private struct RecordingNowSection: View {
 
                     Text("Recording")
                         .font(.monoMeta)
-                        .foregroundStyle(Color.signalRed)
+                        .foregroundStyle(Color.inkSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, Tokens.spacingXS)
@@ -478,25 +512,11 @@ private struct RecordingNowSection: View {
             }
             .buttonStyle(.plain)
             .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(
-                        isSelected
-                            ? Tokens.recordingTintStrong
-                            : Tokens.recordingTintSoft
-                    )
+                isSelected
+                    ? Tokens.accentWashStrong
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 4)
             )
-            .overlay(
-                Group {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(
-                                Color.recordingOutlineStrong,
-                                lineWidth: 0.5
-                            )
-                    }
-                }
-            )
-            .padding(.horizontal, Tokens.spacingSM)
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)

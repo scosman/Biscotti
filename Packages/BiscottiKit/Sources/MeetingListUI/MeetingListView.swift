@@ -6,8 +6,9 @@ import SwiftUI
 /// The Meetings screen's left-bar list: a native `List` with pinned
 /// section headers (browse mode) or flat ranked results (search mode).
 ///
-/// Uses `List(selection:)` for the platform's native accent highlight
-/// and keyboard navigation (arrow up/down drives the detail pane).
+/// Uses `List(selection: Binding<Set<UUID>>)` for the platform's native
+/// accent highlight, keyboard navigation (arrow up/down), and built-in
+/// shift/cmd multi-select.
 public struct MeetingListView: View {
     @Bindable private var viewModel: MeetingListViewModel
 
@@ -31,7 +32,7 @@ public struct MeetingListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.mode == .search,
-                  !viewModel.isSearching, // still in-flight → fall through to List/spinner
+                  !viewModel.isSearching, // still in-flight -> fall through to List/spinner
                   viewModel.results.isEmpty
         {
             ContentUnavailableView.search(text: viewModel.query)
@@ -39,7 +40,7 @@ public struct MeetingListView: View {
         } else {
             List(
                 selection: Binding(
-                    get: { viewModel.selectedID },
+                    get: { viewModel.selectedIDs },
                     set: { viewModel.select($0) }
                 )
             ) {
@@ -52,7 +53,42 @@ public struct MeetingListView: View {
                 }
             }
             .listStyle(.inset)
+            .onDeleteCommand {
+                viewModel.requestDeleteSelection()
+            }
+            .confirmationDialog(
+                deleteDialogTitle,
+                isPresented: $viewModel.showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.confirmDelete() }
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelDelete()
+                }
+            } message: {
+                Text(deleteDialogMessage)
+            }
         }
+    }
+
+    // MARK: - Delete confirmation copy
+
+    private var deleteDialogTitle: String {
+        let count = viewModel.deleteConfirmationCount
+        if count == 1 {
+            return "Delete this meeting?"
+        }
+        return "Delete \(count) meetings?"
+    }
+
+    private var deleteDialogMessage: String {
+        let count = viewModel.deleteConfirmationCount
+        if count == 1 {
+            return "This meeting and its recording will be permanently deleted."
+        }
+        return "These \(count) meetings and their recordings will be permanently deleted."
     }
 
     // MARK: - Browse mode (grouped by date)

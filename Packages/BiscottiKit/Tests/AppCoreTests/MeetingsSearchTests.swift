@@ -83,6 +83,130 @@ struct NeighborIDTests {
     }
 }
 
+// MARK: - batchNeighborID table tests
+
+@Suite("AppCore -- batchNeighborID")
+struct BatchNeighborIDTests {
+    @Test("contiguous range removal: selects element after range")
+    @MainActor
+    func contiguousRangeAfter() {
+        let ids = (0 ..< 5).map { _ in UUID() }
+        // Remove indices 1, 2 (contiguous) → nearest after = ids[3]
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[1], ids[2]]
+        )
+        #expect(result == ids[3])
+    }
+
+    @Test("contiguous range at end: selects element before range")
+    @MainActor
+    func contiguousRangeAtEnd() {
+        let ids = (0 ..< 4).map { _ in UUID() }
+        // Remove last two → nearest before = ids[1]
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[2], ids[3]]
+        )
+        #expect(result == ids[1])
+    }
+
+    @Test("non-contiguous removal: finds survivor in gap")
+    @MainActor
+    func nonContiguousGap() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        // ordered = [C, B, A], remove {C, A} → B at index 1 survives
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[0], ids[2]]
+        )
+        #expect(result == ids[1])
+    }
+
+    @Test("remove all: returns nil")
+    @MainActor
+    func removeAll() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: Set(ids)
+        )
+        #expect(result == nil)
+    }
+
+    @Test("remove none (empty set): returns nil")
+    @MainActor
+    func removeNone() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: []
+        )
+        #expect(result == nil)
+    }
+
+    @Test("single removal: selects element after")
+    @MainActor
+    func singleRemoval() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[1]]
+        )
+        #expect(result == ids[2])
+    }
+
+    @Test("remove first element: selects second")
+    @MainActor
+    func removeFirst() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[0]]
+        )
+        #expect(result == ids[1])
+    }
+
+    @Test("remove last element: selects second-to-last")
+    @MainActor
+    func removeLast() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[2]]
+        )
+        // No element after → falls back to nearest before
+        #expect(result == ids[1])
+    }
+
+    @Test("remove only element: returns nil")
+    @MainActor
+    func removeOnly() {
+        let sole = UUID()
+        let result = AppCore.batchNeighborID(
+            in: [sole], removing: [sole]
+        )
+        #expect(result == nil)
+    }
+
+    @Test("non-contiguous with multiple gaps: finds nearest after last removed")
+    @MainActor
+    func nonContiguousMultipleGaps() {
+        // [A, B, C, D, E] — remove {A, C, E} (indices 0, 2, 4)
+        // After last removed (4): nothing. Before first removed (0): nothing.
+        // Fallback finds B (index 1) or D (index 3) — first in order is B.
+        let ids = (0 ..< 5).map { _ in UUID() }
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [ids[0], ids[2], ids[4]]
+        )
+        #expect(result == ids[1])
+    }
+
+    @Test("IDs not in ordered list are ignored")
+    @MainActor
+    func unknownIDsIgnored() {
+        let ids = (0 ..< 3).map { _ in UUID() }
+        let stranger = UUID()
+        // Removing a stranger → removedIndices is empty → nil
+        let result = AppCore.batchNeighborID(
+            in: ids, removing: [stranger]
+        )
+        #expect(result == nil)
+    }
+}
+
 // MARK: - Debounced search via FakeScheduler
 
 @Suite("AppCore -- setMeetingsQuery with FakeScheduler")
@@ -221,7 +345,7 @@ struct AutoSelectTopResultTests {
 
         // Should auto-select the top result (Alpha)
         #expect(fix.core.meetingsResults.count == 1)
-        #expect(fix.core.meetingsSelection == id1)
+        #expect(fix.core.meetingsSelection == [id1])
     }
 
     @Test("search always selects top result even when prior selection survives")
@@ -244,8 +368,8 @@ struct AutoSelectTopResultTests {
         await fix.core.reloadSummaries()
 
         // Pre-select id2 (not the top result for "Alpha")
-        fix.core.selectFromList(id2)
-        #expect(fix.core.meetingsSelection == id2)
+        fix.core.selectFromList([id2])
+        #expect(fix.core.meetingsSelection == [id2])
 
         // Search for "Alpha" -- both match; selection should jump to the
         // top result, NOT stick to id2.
@@ -256,7 +380,7 @@ struct AutoSelectTopResultTests {
 
         #expect(fix.core.meetingsResults.count == 2)
         let topResultID = fix.core.meetingsResults.first?.id
-        #expect(fix.core.meetingsSelection == topResultID)
+        #expect(fix.core.meetingsSelection == Set([topResultID].compactMap(\.self)))
     }
 
     @Test("search results change moves selection to new top result")
@@ -288,7 +412,7 @@ struct AutoSelectTopResultTests {
 
         #expect(fix.core.meetingsResults.count == 2)
         let firstTopID = fix.core.meetingsResults.first?.id
-        #expect(fix.core.meetingsSelection == firstTopID)
+        #expect(fix.core.meetingsSelection == Set([firstTopID].compactMap(\.self)))
 
         // Refine search: "One" matches only id1; selection moves to new top
         fix.core.setMeetingsQuery("One")
@@ -297,7 +421,7 @@ struct AutoSelectTopResultTests {
         try await pollUntil { fix.core.isSearchingMeetings == false }
 
         #expect(fix.core.meetingsResults.count == 1)
-        #expect(fix.core.meetingsSelection == id1)
+        #expect(fix.core.meetingsSelection == [id1])
     }
 
     @Test("search with no results sets selection to nil")
@@ -323,7 +447,7 @@ struct AutoSelectTopResultTests {
         try await pollUntil { fix.core.isSearchingMeetings == false }
 
         #expect(fix.core.meetingsResults.isEmpty)
-        #expect(fix.core.meetingsSelection == nil)
+        #expect(fix.core.meetingsSelection.isEmpty)
     }
 }
 
@@ -350,13 +474,13 @@ struct DeleteSelectNeighborTests {
 
         // Select B
         fix.core.select(idB)
-        #expect(fix.core.meetingsSelection == idB)
+        #expect(fix.core.meetingsSelection == [idB])
 
         // Delete B -> should select the NEXT element (A, since B is at index 1)
         await fix.core.deleteMeeting(meetingID: idB)
 
         #expect(fix.core.route == .meetings)
-        #expect(fix.core.meetingsSelection == idA)
+        #expect(fix.core.meetingsSelection == [idA])
     }
 
     @Test("delete last meeting in browse mode selects previous")
@@ -376,7 +500,7 @@ struct DeleteSelectNeighborTests {
         // Delete A -> should select B (the one before)
         await fix.core.deleteMeeting(meetingID: idA)
 
-        #expect(fix.core.meetingsSelection == idB)
+        #expect(fix.core.meetingsSelection == [idB])
     }
 
     @Test("delete only meeting sets selection to nil")
@@ -391,7 +515,7 @@ struct DeleteSelectNeighborTests {
         fix.core.select(id)
         await fix.core.deleteMeeting(meetingID: id)
 
-        #expect(fix.core.meetingsSelection == nil)
+        #expect(fix.core.meetingsSelection.isEmpty)
         #expect(fix.core.route == .meetings)
     }
 
@@ -427,8 +551,8 @@ struct DeleteSelectNeighborTests {
         #expect(fix.core.meetingsResults.count == 3)
 
         // Select B in the search results
-        fix.core.selectFromList(idB)
-        #expect(fix.core.meetingsSelection == idB)
+        fix.core.selectFromList([idB])
+        #expect(fix.core.meetingsSelection == [idB])
 
         // The search results list is the active order. Find B's index
         // and verify the neighbor is computed from meetingsResults.
@@ -443,7 +567,7 @@ struct DeleteSelectNeighborTests {
         // Should NOT fall back to summaries order; should use search
         // results order. The neighbor should match what neighborID
         // computes from the pre-delete search order.
-        #expect(fix.core.meetingsSelection == expectedNeighbor)
+        #expect(fix.core.meetingsSelection == Set([expectedNeighbor].compactMap(\.self)))
         #expect(fix.core.route == .meetings)
         // Query preserved after delete
         #expect(fix.core.meetingsQuery == "Sprint")

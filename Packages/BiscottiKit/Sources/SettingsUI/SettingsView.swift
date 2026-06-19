@@ -61,6 +61,10 @@ public struct SettingsView: View {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
+            Toggle(
+                "Global shortcut to start recording (\u{2318}\u{21E7}R)",
+                isOn: globalRecordShortcutBinding
+            )
             Picker(
                 "Show next meeting in menu bar",
                 selection: menuBarLeadTimeBinding
@@ -86,6 +90,15 @@ public struct SettingsView: View {
             get: { viewModel.exitOnWindowClose },
             set: { newValue in
                 Task { await viewModel.setExitOnWindowClose(newValue) }
+            }
+        )
+    }
+
+    private var globalRecordShortcutBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.globalRecordShortcutEnabled },
+            set: { newValue in
+                Task { await viewModel.setGlobalRecordShortcut(newValue) }
             }
         )
     }

@@ -28,6 +28,13 @@ public extension Notification.Name {
     static let menuBarLeadTimeDidChange = Notification.Name(
         "net.scosman.biscotti.menuBarLeadTimeDidChange"
     )
+
+    /// Posted after the "global record shortcut" setting is toggled.
+    /// The app delegate observes this to register/unregister the Carbon
+    /// hotkey live without requiring a restart.
+    static let globalRecordShortcutDidChange = Notification.Name(
+        "net.scosman.biscotti.globalRecordShortcutDidChange"
+    )
 }
 
 // MARK: - Deep-link jump state
@@ -111,8 +118,10 @@ public final class AppCore {
 
     // MARK: - Meetings screen state
 
-    /// The selected meeting shown in the detail pane, or nil (placeholder).
-    public private(set) var meetingsSelection: UUID?
+    /// The selected meetings shown in the detail pane. Empty = no selection
+    /// (placeholder). Exactly one = detail view. More than one = multi-select
+    /// placeholder with delete affordance.
+    public private(set) var meetingsSelection: Set<UUID> = []
 
     /// The search query. Empty = browse mode, non-empty = search mode.
     public private(set) var meetingsQuery: String = ""
@@ -423,6 +432,19 @@ public final class AppCore {
         return meetingID
     }
 
+    /// Toggles recording: stops if currently recording, starts if idle.
+    /// Used by the global hotkey so a single shortcut can both start and
+    /// stop a session.
+    @discardableResult
+    public func toggleRecording() async -> UUID? {
+        if recording.state.isRecording {
+            return await stopRecording()
+        } else {
+            await startRecording()
+            return nil
+        }
+    }
+
     /// Records a detected event (from a notification action). Starts
     /// recording, optionally associated with the given calendar event.
     public func recordDetectedEvent(eventKey: String?) async {
@@ -433,20 +455,20 @@ public final class AppCore {
 
     /// Opens a specific meeting from OUTSIDE the list (menu bar, Home recent,
     /// stopRecording, "open this meeting"). Clears any active search, sets
-    /// selection, and routes to the Meetings screen.
+    /// a single-element selection, and routes to the Meetings screen.
     public func select(_ meetingID: UUID) {
         cancelMeetingsSearch()
         meetingsQuery = ""
         meetingsResults = []
-        meetingsSelection = meetingID
+        meetingsSelection = [meetingID]
         route = .meetings
     }
 
-    /// Row selection from WITHIN the list (`List(selection:)` setter).
+    /// Set selection from WITHIN the list (`List(selection:)` setter).
     /// Preserves the current mode (keeps the query if searching).
-    /// nil = placeholder (no selection).
-    public func selectFromList(_ meetingID: UUID?) {
-        meetingsSelection = meetingID
+    /// Empty set = placeholder (no selection).
+    public func selectFromList(_ ids: Set<UUID>) {
+        meetingsSelection = ids
     }
 
     /// "Past Meetings" (sidebar) and "See all" (Home): browse mode,
@@ -813,11 +835,15 @@ extension AppCore {
         }
     }
 
-    /// Always selects the top search result (or nil if no results).
+    /// Always selects the top search result (or empty if no results).
     /// Ensures the user sees the first match after every search, rather
     /// than a stale selection that might be below the fold.
     private func autoSelectTopResult() {
-        meetingsSelection = meetingsResults.first?.id
+        if let topID = meetingsResults.first?.id {
+            meetingsSelection = [topID]
+        } else {
+            meetingsSelection = []
+        }
     }
 
     private func cancelMeetingsSearch() {
@@ -1279,43 +1305,11 @@ extension AppCore {
     /// in the active order (browse or search), and selects it so the
     /// user sees the next meeting instead of a dead detail pane.
     public func deleteMeeting(meetingID: UUID) async {
-        // Guard: refuse to delete a meeting that is actively recording.
-        // Deleting files mid-write would corrupt the recording. Callers
-        // should stop the recording first.
-        if recording.state.isRecording,
-           recording.state.meetingID == meetingID
-        {
-            logger.warning(
-                "deleteMeeting: refusing to delete actively-recording meeting \(meetingID)"
-            )
-            return
-        }
-
-        // 1. Collect on-disk paths from the store BEFORE deleting the row.
-        let filePaths: [String]
-        do {
-            filePaths = try await store.audioFilePaths(
-                meetingID: meetingID
-            )
-        } catch {
-            filePaths = []
-            logger.warning(
-                "deleteMeeting: failed to read audio paths for \(meetingID): \(error)"
-            )
-        }
-
-        // 2. Delete files best-effort (missing files are fine).
-        deleteRecordingFiles(filePaths)
-
-        // 3. Delete the DB row (cascade handles snapshot, audio refs,
-        //    transcripts).
-        do {
-            try await store.delete(meetingID: meetingID)
-        } catch {
-            logger.error(
-                "deleteMeeting: DB delete failed for \(meetingID): \(error)"
-            )
-        }
+        // Recording guard is in deleteSingleMeetingInternal; if it
+        // refuses (returns false), return early so route/selection
+        // stay unchanged (e.g. route stays .recording).
+        let deleted = await deleteSingleMeetingInternal(meetingID: meetingID)
+        guard deleted else { return }
 
         // 4. Compute neighbor before refresh.
         let activeOrder: [UUID] = meetingsQuery.isEmpty
@@ -1331,14 +1325,111 @@ extension AppCore {
             await rerunMeetingsSearchNow()
         }
 
-        // 6. Validate neighbor still exists, else nil (placeholder).
+        // 6. Validate neighbor still exists, else empty (placeholder).
         let refreshed: [UUID] = meetingsQuery.isEmpty
             ? summaries.map(\.id)
             : meetingsResults.map(\.id)
-        meetingsSelection = neighbor.flatMap {
-            refreshed.contains($0) ? $0 : nil
+        if let neighbor, refreshed.contains(neighbor) {
+            meetingsSelection = [neighbor]
+        } else {
+            meetingsSelection = []
         }
         route = .meetings
+    }
+
+    /// Batch-deletes multiple meetings' on-disk recording files and DB rows.
+    ///
+    /// Computes the post-delete neighbor from the first selected meeting in
+    /// the active order (browse or search), then deletes all selected
+    /// meetings. Resilient: individual failures are logged but do not abort
+    /// the batch.
+    public func deleteMeetings(_ ids: Set<UUID>) async {
+        guard !ids.isEmpty else { return }
+
+        // Compute a surviving neighbor: the first element after the last
+        // deleted item in active order that is NOT itself being deleted,
+        // falling back to the first element before the first deleted item.
+        let activeOrder: [UUID] = meetingsQuery.isEmpty
+            ? summaries.map(\.id)
+            : meetingsResults.map(\.id)
+        let neighbor: UUID? = Self.batchNeighborID(
+            in: activeOrder, removing: ids
+        )
+
+        // Delete each meeting (files + DB row). Skip actively-recording
+        // meetings (the single-delete guard handles this per call).
+        var deletedAny = false
+        for id in ids {
+            let deleted = await deleteSingleMeetingInternal(meetingID: id)
+            if deleted { deletedAny = true }
+        }
+
+        // If every requested id was refused, return early without
+        // changing route or selection.
+        guard deletedAny else { return }
+
+        // Refresh UI.
+        await reloadSummaries()
+        if !meetingsQuery.isEmpty {
+            await rerunMeetingsSearchNow()
+        }
+
+        // Resolve post-delete selection.
+        let refreshed: [UUID] = meetingsQuery.isEmpty
+            ? summaries.map(\.id)
+            : meetingsResults.map(\.id)
+        if let neighbor, refreshed.contains(neighbor) {
+            meetingsSelection = [neighbor]
+        } else {
+            meetingsSelection = []
+        }
+        route = .meetings
+    }
+
+    /// Deletes a single meeting's files and DB row without touching
+    /// selection or refreshing summaries. Used by both `deleteMeeting`
+    /// and `deleteMeetings` to avoid duplicated file/DB logic.
+    ///
+    /// - Returns: `true` if the meeting was deleted, `false` if deletion
+    ///   was refused (e.g. the meeting is actively recording).
+    @discardableResult
+    private func deleteSingleMeetingInternal(meetingID: UUID) async -> Bool {
+        // Guard: refuse to delete a meeting that is actively recording.
+        if recording.state.isRecording,
+           recording.state.meetingID == meetingID
+        {
+            logger.warning(
+                "deleteSingleMeetingInternal: refusing to delete actively-recording meeting \(meetingID)"
+            )
+            return false
+        }
+
+        // 1. Collect on-disk paths from the store BEFORE deleting the row.
+        let filePaths: [String]
+        do {
+            filePaths = try await store.audioFilePaths(
+                meetingID: meetingID
+            )
+        } catch {
+            filePaths = []
+            logger.warning(
+                "deleteSingleMeetingInternal: failed to read audio paths for \(meetingID): \(error)"
+            )
+        }
+
+        // 2. Delete files best-effort (missing files are fine).
+        deleteRecordingFiles(filePaths)
+
+        // 3. Delete the DB row.
+        do {
+            try await store.delete(meetingID: meetingID)
+        } catch {
+            logger.error(
+                "deleteSingleMeetingInternal: DB delete failed for \(meetingID): \(error)"
+            )
+        }
+
+        return true
     }
 
     /// The element AFTER `id` (next/older), or the one BEFORE if `id`
@@ -1351,6 +1442,34 @@ extension AppCore {
         if idx + 1 < ordered.count { return ordered[idx + 1] }
         if idx - 1 >= 0 { return ordered[idx - 1] }
         return nil
+    }
+
+    /// Finds the best surviving neighbor after a batch removal.
+    ///
+    /// Prefers the nearest survivor after the last removed index, then
+    /// the nearest before the first removed index, then any survivor at
+    /// all (handles non-contiguous gaps like ⌘-click skip-selection).
+    static func batchNeighborID(
+        in ordered: [UUID], removing ids: Set<UUID>
+    ) -> UUID? {
+        guard !ids.isEmpty else { return nil }
+        let removedIndices = ordered.indices.filter { ids.contains(ordered[$0]) }
+        guard let firstRemoved = removedIndices.first,
+              let lastRemoved = removedIndices.last
+        else { return nil }
+
+        // Prefer: nearest after the last removed element
+        let afterSlice = ordered.suffix(from: min(lastRemoved + 1, ordered.count))
+        if let neighbor = afterSlice.first(where: { !ids.contains($0) }) {
+            return neighbor
+        }
+        // Then: nearest before the first removed element
+        let beforeSlice = ordered.prefix(firstRemoved)
+        if let neighbor = beforeSlice.last(where: { !ids.contains($0) }) {
+            return neighbor
+        }
+        // Fallback: any survivor (covers non-contiguous gaps)
+        return ordered.first(where: { !ids.contains($0) })
     }
 
     /// Best-effort removal of audio files and their per-meeting directory.

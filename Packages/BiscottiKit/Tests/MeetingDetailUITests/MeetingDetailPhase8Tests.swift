@@ -889,3 +889,152 @@ struct MeetingDetailCorrectionReTranscribeTests {
         #expect(viewModel.showReTranscribeAfterCorrection == false)
     }
 }
+
+// MARK: - seekAndPlay tests
+
+@Suite("MeetingDetailViewModel -- seekAndPlay")
+struct MeetingDetailSeekAndPlayTests {
+    @Test("seekAndPlay starts playback when paused")
+    @MainActor
+    func seekAndPlayStartsPlaybackWhenPaused() async throws {
+        let fix = try makeCoreFixture(testName: "SeekAndPlay")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.isPlaying == false)
+        #expect(fakePlayer.playCalls == 0)
+
+        viewModel.seekAndPlay(to: 30.0)
+
+        #expect(fakePlayer.currentTime == 30.0)
+        #expect(viewModel.isPlaying == true)
+        #expect(fakePlayer.playCalls == 1)
+
+        viewModel.stopPlayback()
+    }
+
+    @Test("seekAndPlay keeps playing when already playing")
+    @MainActor
+    func seekAndPlayKeepsPlayingWhenAlreadyPlaying() async throws {
+        let fix = try makeCoreFixture(testName: "SeekAndPlay")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        // Start playback first
+        viewModel.playPause()
+        #expect(viewModel.isPlaying == true)
+        #expect(fakePlayer.playCalls == 1)
+
+        // seekAndPlay while already playing should not call play() again
+        viewModel.seekAndPlay(to: 45.0)
+
+        #expect(fakePlayer.currentTime == 45.0)
+        #expect(viewModel.isPlaying == true)
+        #expect(fakePlayer.playCalls == 1) // no extra play() call
+
+        viewModel.stopPlayback()
+    }
+
+    @Test("seekAndPlay is no-op when no audio player")
+    @MainActor
+    func seekAndPlayNoOpWithoutPlayer() async throws {
+        let fix = try makeCoreFixture(testName: "SeekAndPlay")
+        defer { fix.cleanup() }
+
+        // Meeting without audio files
+        let meetingID = try await fix.store.createMeeting(
+            title: "No Audio"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { FakeAudioPlayer() }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.canPlay == false)
+
+        // Should not crash
+        viewModel.seekAndPlay(to: 10.0)
+
+        #expect(viewModel.isPlaying == false)
+    }
+
+    @Test("plain seek does not start playback (regression guard)")
+    @MainActor
+    func plainSeekDoesNotStartPlayback() async throws {
+        let fix = try makeCoreFixture(testName: "SeekAndPlay")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.isPlaying == false)
+
+        viewModel.seek(to: 30.0)
+
+        #expect(fakePlayer.currentTime == 30.0)
+        #expect(viewModel.isPlaying == false)
+        #expect(fakePlayer.playCalls == 0)
+    }
+
+    @Test("deep-link pending seek auto-plays via applySeekIfReady")
+    @MainActor
+    func deepLinkPendingSeekAutoPlays() async throws {
+        let fix = try makeCoreFixture(testName: "SeekAndPlay")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let fakePlayer = FakeAudioPlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+        await viewModel.load()
+
+        #expect(viewModel.isPlaying == false)
+
+        // Simulate a deep-link jump arriving for this meeting
+        try await fix.core.handleDeepLink(
+            #require(URL(string: "biscotti://meeting/\(meetingID)?time=42"))
+        )
+
+        // Apply the pending jump (this is what the view's .onChange triggers)
+        await viewModel.applyPendingJumpIfNeeded()
+
+        // The seek should have been applied AND playback started
+        #expect(fakePlayer.currentTime == 42.0)
+        #expect(viewModel.isPlaying == true)
+        #expect(fakePlayer.playCalls == 1)
+
+        viewModel.stopPlayback()
+    }
+}

@@ -44,6 +44,7 @@ public struct JoinRecordButtonStyle: ButtonStyle {
 /// `.buttonStyle(ToolbarRecordButtonStyle(fill: .signalRed))` for active.
 public struct ToolbarRecordButtonStyle: ButtonStyle {
     let fill: Color
+    @Environment(\.isEnabled) private var isEnabled
 
     public init(fill: Color) {
         self.fill = fill
@@ -51,15 +52,18 @@ public struct ToolbarRecordButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(minHeight: 32)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(fill)
             )
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .opacity(
+                !isEnabled ? 0.4 : configuration.isPressed ? 0.7 : 1.0
+            )
     }
 }
 

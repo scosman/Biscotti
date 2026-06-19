@@ -306,25 +306,8 @@ private struct HomePastSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                HomeSharedViews.groupLabel("PAST MEETINGS")
-
-                Spacer()
-
-                Button {
-                    viewModel.showMeetings()
-                } label: {
-                    HStack(spacing: 3) {
-                        Text("See all")
-                            .font(Tokens.metaText)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundStyle(.sage)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.bottom, Tokens.groupToCardGap)
+            HomeSharedViews.groupLabel("PAST MEETINGS")
+                .padding(.bottom, Tokens.groupToCardGap)
 
             if viewModel.showNoRecent {
                 noRecordingsCard
@@ -354,8 +337,37 @@ private struct HomePastSection: View {
                 }
                 pastRow(meeting: meeting)
             }
+
+            InsetDivider()
+            seeAllRow
         }
         .homeCard()
+    }
+
+    private var seeAllRow: some View {
+        Button {
+            viewModel.showMeetings()
+        } label: {
+            HStack(alignment: .center, spacing: 0) {
+                Text("See All")
+                    .font(Tokens.rowTitle)
+
+                Spacer(minLength: 8)
+
+                Text("\(viewModel.pastMeetingsCount)")
+                    .foregroundStyle(.inkSecondary)
+                    .font(Tokens.metaText)
+                    .padding(.trailing, 6)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.inkTertiary)
+            }
+            .padding(.vertical, Tokens.rowVerticalPadding)
+            .padding(.horizontal, Tokens.rowHorizontalPadding)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func pastRow(

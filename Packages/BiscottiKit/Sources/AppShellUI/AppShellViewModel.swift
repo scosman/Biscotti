@@ -171,8 +171,8 @@ public final class AppShellViewModel {
         core.route
     }
 
-    /// The currently selected meeting (for Meetings screen detail pane).
-    public var meetingsSelection: UUID? {
+    /// The currently selected meetings (for Meetings screen detail pane).
+    public var meetingsSelection: Set<UUID> {
         core.meetingsSelection
     }
 
@@ -184,6 +184,12 @@ public final class AppShellViewModel {
     /// Whether the current route is Home (used to disable the toolbar Home button).
     public var isHome: Bool {
         core.route == .home
+    }
+
+    /// Whether the current route is the recording page (used to disable
+    /// the toolbar REC button when the user is already viewing it).
+    public var isOnRecordingPage: Bool {
+        core.route == .recording
     }
 
     /// Token that increments when the search field should gain focus

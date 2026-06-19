@@ -107,9 +107,10 @@ public final class RecordingController {
 
     /// Starts a new recording session.
     ///
-    /// Flow: request mic permission (JIT) -> trigger system-audio prompt ->
-    /// create meeting -> write marker -> create directory -> attach audio refs ->
-    /// start engine -> pump elapsed -> schedule system-audio denial check.
+    /// Flow: request mic permission (JIT) -> create meeting -> write marker ->
+    /// create directory -> attach audio refs -> start engine -> pump elapsed ->
+    /// schedule system-audio denial check. The real system tap surfaces the TCC
+    /// prompt on first use — no pre-record probe.
     public func start() async {
         lastError = nil
         systemAudioWarning = false
@@ -127,9 +128,7 @@ public final class RecordingController {
             return
         }
 
-        // Trigger the system-audio TCC prompt before creating any meeting state.
         let newRecorder = makeRecorder()
-        await probeSystemAudioPermission(recorder: newRecorder)
 
         // Create meeting + directory + marker + audio refs
         guard let setup = await setupMeetingStorage() else {
@@ -266,24 +265,22 @@ public final class RecordingController {
 
     // MARK: - Onboarding support
 
-    /// Probes for system-audio permission and infers the state.
+    /// Probes for system-audio permission using the tone-probe and updates
+    /// the persisted permission state.
     ///
-    /// Triggers the macOS system-audio prompt (if not already decided)
-    /// by exercising the capture engine briefly, then checks the
-    /// `probableSystemAudioDenied` heuristic to update `Permissions`.
-    public func probeSystemAudioAndInferState() async {
+    /// Sets `.requestedNotVerified` on start, then runs the tone probe.
+    /// On success (non-zero audio observed): sets `.approved`.
+    /// On timeout: stays `.requestedNotVerified`.
+    /// Never sets a durable denied state.
+    public func probeSystemAudioPermission() async {
+        permissions.setSystemAudio(.requestedNotVerified)
         let probeRecorder = makeRecorder()
-        await probeSystemAudioPermission(recorder: probeRecorder)
-
-        // Brief delay for the system to settle the TCC state
-        try? await Task.sleep(for: .milliseconds(500))
-
-        let denied = await probeRecorder.probableSystemAudioDenied()
-        if denied {
-            permissions.noteSystemAudio(.denied)
-        } else {
-            permissions.noteSystemAudio(.authorized)
-        }
+        let observed = await probeRecorder.probeSystemAudioWithTone(
+            timeout: .seconds(5)
+        )
+        permissions.setSystemAudio(
+            observed ? .approved : .requestedNotVerified
+        )
     }
 
     // MARK: - Private types
@@ -306,18 +303,6 @@ public final class RecordingController {
     /// the user has manually edited the title.
     public static func autoTitle() -> String {
         "Untitled Meeting"
-    }
-
-    /// Triggers the system-audio TCC prompt by briefly exercising the engine.
-    ///
-    /// System audio has no public permission API; the only way to surface the
-    /// macOS prompt is to create a Core Audio process tap via the engine's
-    /// `requestPermissions(systemProbePath:)`. Uses a scratch file under the
-    /// storage root that is safe to discard.
-    private func probeSystemAudioPermission(recorder: any RecorderControlling) async {
-        let probePath = storageRoot.appendingPathComponent(".system_probe.aac")
-        _ = await recorder.requestPermissions(systemProbePath: probePath)
-        try? FileManager.default.removeItem(at: probePath)
     }
 
     /// Creates the meeting, recording directory, marker file, and audio refs.
@@ -398,7 +383,12 @@ public final class RecordingController {
     }
 
     /// After a delay, checks if the engine thinks system audio is denied.
+    ///
+    /// Sets the in-memory `systemAudioWarning` flag only — does **not** write
+    /// any durable/persisted permission state. The all-zero detection infra is
+    /// retained for potential Stage 3 reuse (in-recording hint).
     private func scheduleDenialCheck(recorder: any RecorderControlling) {
+        // TODO: Stage 3 — the all-zero detection infra here may power the in-recording hint
         let delay = denialCheckDelay
         denialCheckTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
@@ -407,9 +397,6 @@ public final class RecordingController {
             guard let self else { return }
             if denied {
                 systemAudioWarning = true
-                permissions.noteSystemAudio(.denied)
-            } else {
-                permissions.noteSystemAudio(.authorized)
             }
         }
     }

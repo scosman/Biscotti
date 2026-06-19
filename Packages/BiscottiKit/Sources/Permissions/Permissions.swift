@@ -4,8 +4,9 @@ import Foundation
 /// Unified, testable view of the system permissions the app needs.
 ///
 /// Fully owns **microphone** (public TCC API via the `MicAuthorizing` seam).
-/// **System audio** has no public status API; its state is reported by the
-/// `Recording` module via `noteSystemAudio(_:)` after inference.
+/// **System audio** has no public status API; its state is persisted via
+/// `SystemAudioPermissionStore` and updated by the tone-probe flow via
+/// `setSystemAudio(_:)`.
 /// **Calendar** and **notifications** are reported by their respective
 /// services via `noteCalendar(_:)` / `noteNotifications(_:)`, or can be
 /// requested through the injected seams.
@@ -14,8 +15,9 @@ public final class Permissions {
     /// Current microphone permission state.
     public private(set) var microphone: PermissionState
 
-    /// Current system-audio permission state (inferred by Recording, not TCC).
-    public private(set) var systemAudio: PermissionState
+    /// Current system-audio permission state (persisted via `SystemAudioPermissionStore`).
+    /// Uses a dedicated state type -- no `.denied` exists; see `SystemAudioPermissionState`.
+    public private(set) var systemAudio: SystemAudioPermissionState
 
     /// Current calendar permission state.
     public private(set) var calendar: PermissionState
@@ -26,6 +28,11 @@ public final class Permissions {
     private let mic: any MicAuthorizing
     private let cal: (any CalendarAuthorizing)?
     private var notif: (any NotificationAuthorizing)?
+    private let systemAudioStore: any SystemAudioPermissionStore
+
+    /// System Settings deeplink for System Audio Recording privacy pane.
+    private static let systemAudioSettingsURL =
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
 
     /// Creates a Permissions instance.
     /// - Parameters:
@@ -34,16 +41,20 @@ public final class Permissions {
     ///     until reported externally via `noteCalendar`).
     ///   - notif: The notification authorization seam (nil = status stays `.notDetermined`
     ///     until reported externally via `noteNotifications`).
+    ///   - systemAudioStore: Persistence seam for system-audio permission state.
+    ///     Defaults to `UserDefaultsSystemAudioPermissionStore` (device-local UserDefaults).
     public init(
         mic: any MicAuthorizing = LiveMicAuthorizer(),
         cal: (any CalendarAuthorizing)? = nil,
-        notif: (any NotificationAuthorizing)? = nil
+        notif: (any NotificationAuthorizing)? = nil,
+        systemAudioStore: any SystemAudioPermissionStore = UserDefaultsSystemAudioPermissionStore()
     ) {
         self.mic = mic
         self.cal = cal
         self.notif = notif
+        self.systemAudioStore = systemAudioStore
         microphone = mic.status()
-        systemAudio = .notDetermined
+        systemAudio = systemAudioStore.load()
         calendar = cal?.status() ?? .notDetermined
         notifications = .notDetermined
     }
@@ -89,9 +100,14 @@ public final class Permissions {
         }
     }
 
-    /// Called by the Recording module to report inferred system-audio state.
-    public func noteSystemAudio(_ state: PermissionState) {
+    /// Updates the system-audio permission state and persists it.
+    ///
+    /// Called by `RecordingController.probeSystemAudioPermission()` after
+    /// the tone-probe completes. Never sets a "denied" state (the enum
+    /// has no such case).
+    public func setSystemAudio(_ state: SystemAudioPermissionState) {
         systemAudio = state
+        systemAudioStore.save(state)
     }
 
     // MARK: - Calendar
@@ -126,6 +142,27 @@ public final class Permissions {
         notifications = state
     }
 
+    // MARK: - System Audio deeplink
+
+    /// Opens System Settings to the system-audio privacy pane.
+    /// Falls back to the Privacy & Security root if the anchored URL
+    /// cannot be opened.
+    ///
+    /// Shared entry point for Settings, Onboarding, and (later) the
+    /// in-recording hint (Stage 3).
+    public func openSystemAudioSettings() {
+        // Both URL strings are static and always parse; guard-let avoids
+        // force_unwrapping lint while keeping the fallback chain intact.
+        guard let primary = URL(string: Self.systemAudioSettingsURL) else { return }
+        if NSWorkspace.shared.open(primary) {
+            return
+        }
+        guard let fallback = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy"
+        ) else { return }
+        _ = NSWorkspace.shared.open(fallback)
+    }
+
     // MARK: - Settings deep links
 
     /// Returns a URL that opens the correct System Settings pane for the given permission.
@@ -135,7 +172,7 @@ public final class Permissions {
             case .microphone:
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
             case .systemAudio:
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                Self.systemAudioSettingsURL
             case .calendar:
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
             case .notifications:

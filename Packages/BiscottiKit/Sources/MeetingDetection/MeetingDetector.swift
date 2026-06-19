@@ -224,65 +224,6 @@ public final class MeetingDetector {
         }
     }
 
-    // MARK: - Non-self mic user tracking
-
-    /// Checks whether any non-Biscotti process is using the mic and
-    /// emits `.allMicUsersStopped` after the non-self mic-user set has
-    /// been continuously empty for `micStopDebounce` seconds. Cancels
-    /// any pending debounce if a non-self mic user reappears.
-    private func updateMicUserTracking(_ snapshot: [AudioProcess]) {
-        let hasNonSelfMicUsers = snapshot.contains { process in
-            guard process.isRunningInput else { return false }
-            guard let bundleID = process.bundleID else {
-                // Unknown-bundle processes count as non-self
-                return true
-            }
-            return !bundleID.hasPrefix(selfBundlePrefix)
-        }
-
-        if hadNonSelfMicUsers, !hasNonSelfMicUsers {
-            // Transition to empty -- start debounce timer
-            enterMicStopDebounce()
-        } else if hasNonSelfMicUsers {
-            // A non-self mic user is present -- cancel any pending debounce
-            cancelMicStopDebounce()
-        }
-        hadNonSelfMicUsers = hasNonSelfMicUsers
-    }
-
-    private func enterMicStopDebounce() {
-        // Cancel any existing debounce (shouldn't normally exist, but
-        // guards against double-fire).
-        micStopDebounceTask?.cancel()
-
-        let clock = clock
-        let debounce = micStopDebounce
-        micStopDebounceTask = Task { [weak self] in
-            try? await clock.sleep(for: debounce)
-            guard !Task.isCancelled else { return }
-            self?.resolveMicStopDebounce()
-        }
-    }
-
-    private func resolveMicStopDebounce() {
-        micStopDebounceTask = nil
-        // Self-verify: only emit if non-self mic users are still absent.
-        // A snapshot arriving between timer-start and resolve may have
-        // restored mic users (cancellation is the primary guard, but
-        // this is the belt-and-suspenders check).
-        guard !hadNonSelfMicUsers else {
-            logger.debug("Mic-stop debounce resolved but non-self mic users reappeared — suppressing")
-            return
-        }
-        emit(.allMicUsersStopped)
-        logger.info("All non-self mic users stopped (after debounce)")
-    }
-
-    private func cancelMicStopDebounce() {
-        micStopDebounceTask?.cancel()
-        micStopDebounceTask = nil
-    }
-
     // MARK: - State machine transitions
 
     private func feedStateMachine(
@@ -403,5 +344,109 @@ public final class MeetingDetector {
 
     private func emit(_ event: DetectionEvent) {
         eventContinuation?.yield(event)
+    }
+}
+
+// MARK: - Non-self mic user tracking
+
+extension MeetingDetector {
+    // MARK: - Apple system service denylist
+
+    // Design decision: we use a catalog-driven denylist for Apple system
+    // services on the mic-stop path. Any process whose bundleID starts with
+    // "com.apple." is IGNORED for mic-user counting UNLESS the catalog
+    // recognises it as a meeting app (e.g. FaceTime, avconferenced, Safari,
+    // WebKit.GPU).
+    //
+    // Root cause: com.apple.CoreSpeech (and similar system daemons) holds
+    // the mic for voice isolation / Siri / dictation and drops it during
+    // Bluetooth device transitions (e.g. AirPods switch). That drop causes
+    // a false >=1->0 transition that fires allMicUsersStopped while a real
+    // meeting is still active.
+    //
+    // Alternative considered (Option 1 — symmetric start/stop using catalog
+    // only): count only catalog-recognised apps on BOTH the start and stop
+    // paths. Rejected because allMicUsersStopped is a secondary safety-net
+    // signal for non-catalogued meeting apps — narrowing its scope to
+    // catalog-only apps would defeat its purpose. The denylist approach
+    // preserves broad non-Apple coverage (any third-party app still counts)
+    // while filtering the known-noisy Apple system services.
+
+    /// Returns `true` when the process should be ignored for mic-user
+    /// counting: it has an `com.apple.*` bundle ID but is NOT a recognised
+    /// meeting app in the catalog. Apple system services like CoreSpeech,
+    /// Siri, and dictation use the mic transiently and create false
+    /// stop-transitions during Bluetooth device switches.
+    private func isIgnoredAppleSystemService(_ bundleID: String) -> Bool {
+        bundleID.hasPrefix("com.apple.") && !catalog.isMeetingApp(bundleID: bundleID)
+    }
+
+    /// Checks whether any non-Biscotti process is using the mic and
+    /// emits `.allMicUsersStopped` after the non-self mic-user set has
+    /// been continuously empty for `micStopDebounce` seconds. Cancels
+    /// any pending debounce if a non-self mic user reappears.
+    private func updateMicUserTracking(_ snapshot: [AudioProcess]) {
+        var hasNonSelfMicUsers = false
+
+        for process in snapshot where process.isRunningInput {
+            if let bundleID = process.bundleID {
+                if bundleID.hasPrefix(selfBundlePrefix) {
+                    // Our own process -- excluded from non-self counting.
+                    continue
+                } else if isIgnoredAppleSystemService(bundleID) {
+                    // Apple system service (not a meeting app) -- ignored.
+                    continue
+                } else {
+                    hasNonSelfMicUsers = true
+                    break
+                }
+            } else {
+                // nil bundleID -- conservatively counted as non-self.
+                hasNonSelfMicUsers = true
+                break
+            }
+        }
+
+        if hadNonSelfMicUsers, !hasNonSelfMicUsers {
+            // Transition to empty -- start debounce timer
+            enterMicStopDebounce()
+        } else if hasNonSelfMicUsers {
+            // A non-self mic user is present -- cancel any pending debounce
+            cancelMicStopDebounce()
+        }
+        hadNonSelfMicUsers = hasNonSelfMicUsers
+    }
+
+    private func enterMicStopDebounce() {
+        // Cancel any existing debounce (shouldn't normally exist, but
+        // guards against double-fire).
+        micStopDebounceTask?.cancel()
+
+        let clock = clock
+        let debounce = micStopDebounce
+        micStopDebounceTask = Task { [weak self] in
+            try? await clock.sleep(for: debounce)
+            guard !Task.isCancelled else { return }
+            self?.resolveMicStopDebounce()
+        }
+    }
+
+    private func resolveMicStopDebounce() {
+        micStopDebounceTask = nil
+        // Self-verify: only emit if non-self mic users are still absent.
+        // A snapshot arriving between timer-start and resolve may have
+        // restored mic users (cancellation is the primary guard, but
+        // this is the belt-and-suspenders check).
+        guard !hadNonSelfMicUsers else {
+            logger.debug("Mic-stop debounce resolved but non-self mic users reappeared -- suppressing")
+            return
+        }
+        emit(.allMicUsersStopped)
+        logger.info("All non-self mic users stopped (after debounce)")
+    }
+
+    private func cancelMicStopDebounce() {
+        micStopDebounceTask?.cancel()
+        micStopDebounceTask = nil
     }
 }

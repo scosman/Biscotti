@@ -83,7 +83,7 @@ struct AudioRecorderTests {
         let ctx = try TestRecorderFactory.make()
         defer { TestRecorderFactory.cleanup(ctx) }
 
-        // System engine fails the first start.
+        // System engine fails the first start (permanently, so retries also fail).
         ctx.systemEngine.setStartError(Boom())
         do {
             try await ctx.recorder.start(paths: ctx.paths)
@@ -95,11 +95,14 @@ struct AudioRecorderTests {
         // Mic was started, then stopped as part of failed-start cleanup.
         #expect(ctx.micEngine.startCount == 1)
         #expect(ctx.micEngine.stopCount == 1)
+        // System engine tried 1 + maxRetries times before giving up.
+        let retriedStarts = AudioRecorder.systemStartMaxRetries + 1
+        #expect(ctx.systemEngine.startCount == retriedStarts)
 
         // Not consumed: clear the error and retry successfully.
         ctx.systemEngine.setStartError(nil)
         try await ctx.recorder.start(paths: ctx.paths)
-        #expect(ctx.systemEngine.startCount == 2)
+        #expect(ctx.systemEngine.startCount == retriedStarts + 1)
 
         ctx.deviceChangeProvider.finish()
         await ctx.recorder.stop()

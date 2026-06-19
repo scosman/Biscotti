@@ -9,7 +9,9 @@ import SwiftUI
 /// In-window settings screen. General preferences, permissions overview
 /// with inline request/grant actions, and calendar include/exclude.
 public struct SettingsView: View {
-    @Bindable private var viewModel: SettingsViewModel
+    /// Internal (not private) so the cross-file extension in
+    /// SettingsSystemAudioRow.swift can bind to it.
+    @Bindable var viewModel: SettingsViewModel
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -167,9 +169,7 @@ public struct SettingsView: View {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
-            permissionRow(
-                "System Audio", state: viewModel.systemAudioState, kind: .systemAudio
-            )
+            systemAudioRow
             permissionRow(
                 "Calendar", state: viewModel.calendarState, kind: .calendar
             )

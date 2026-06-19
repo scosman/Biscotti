@@ -78,7 +78,7 @@ struct StartAlignmentTests {
         }
     }
 
-    @Test("If system start fails, mic engine is stopped")
+    @Test("If system start fails (all retries), mic engine is stopped")
     func systemFailureStopsMic() async throws {
         let ctx = try TestRecorderFactory.make()
         defer { TestRecorderFactory.cleanup(ctx) }
@@ -92,7 +92,9 @@ struct StartAlignmentTests {
             // Mic was started, then stopped after system failure.
             #expect(ctx.micEngine.startCount == 1)
             #expect(ctx.micEngine.stopCount == 1)
-            #expect(ctx.systemEngine.startCount == 1)
+            // System engine tried 1 + maxRetries times.
+            let expectedAttempts = AudioRecorder.systemStartMaxRetries + 1
+            #expect(ctx.systemEngine.startCount == expectedAttempts)
         }
     }
 
@@ -109,6 +111,58 @@ struct StartAlignmentTests {
         #expect(ctx.systemEngine.micAnchor == 42.5)
 
         ctx.deviceChangeProvider.finish()
+    }
+
+    // MARK: - System start retry
+
+    @Test("Transient system start failure retries and succeeds")
+    func transientSystemStartRetries() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        // Fail the first start, succeed on retry.
+        ctx.systemEngine.setTransientStartError(
+            CaptureError.tapCreationFailed(-1), failureCount: 1
+        )
+
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        // 1 failing + 1 succeeding = 2 total start calls.
+        #expect(ctx.systemEngine.startCount == 2)
+        #expect(ctx.micEngine.startCount == 1)
+
+        let stream = await ctx.recorder.stateStream()
+        for await state in stream {
+            #expect(state.isRecording == true)
+            break
+        }
+
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+    }
+
+    @Test("Permanent system start failure exhausts retries and throws")
+    func permanentSystemStartFailureThrows() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        // All start attempts will fail.
+        ctx.systemEngine.setStartError(CaptureError.tapCreationFailed(-999))
+
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected start to throw after exhausting retries")
+        } catch {
+            // Expected — retries exhausted.
+        }
+
+        // Should have tried 1 + maxRetries = 3 total start calls.
+        let expectedAttempts = AudioRecorder.systemStartMaxRetries + 1
+        #expect(ctx.systemEngine.startCount == expectedAttempts)
+
+        // Mic was started once (before system retries) then stopped on failure.
+        #expect(ctx.micEngine.startCount == 1)
+        #expect(ctx.micEngine.stopCount == 1)
     }
 
     @Test("System engine start is gated on mic first buffer (fake fires immediately)")

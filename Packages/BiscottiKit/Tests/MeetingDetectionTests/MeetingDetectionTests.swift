@@ -581,6 +581,264 @@ struct StartFlapToleranceTests {
     }
 }
 
+// MARK: - Apple system service denylist tests
+
+@Suite("MeetingDetection — Apple System Service Denylist")
+@MainActor
+struct AppleSystemServiceDenylistTests {
+    @Test("com.apple.CoreSpeech using mic does not count as non-self")
+    func coreSpeechIgnored() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Only CoreSpeech using mic -- should be ignored (apple non-meeting)
+        source.emit([makeProcess(
+            bundleID: "com.apple.CoreSpeech",
+            isRunningInput: true,
+            isRunningOutput: false,
+            pid: 100
+        )])
+        await collector.settle()
+
+        // CoreSpeech stops -- no allMicUsersStopped because it was never
+        // counted as a non-self mic user
+        source.emit([])
+        await collector.settle()
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+
+        #expect(collector.events.isEmpty)
+    }
+
+    @Test("com.apple.FaceTime (catalog meeting app) counts as non-self")
+    func faceTimeCountsAsNonSelf() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["com.apple.FaceTime"],
+            displayNames: ["com.apple.FaceTime": "FaceTime"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // FaceTime using mic -- catalog meeting app, should count
+        source.emit([makeProcess(
+            bundleID: "com.apple.FaceTime",
+            isRunningInput: true,
+            isRunningOutput: true,
+            pid: 200
+        )])
+        await collector.waitForEvents(count: 1) // .started(FaceTime)
+
+        // FaceTime stops -- should fire allMicUsersStopped
+        source.emit([])
+        await collector.waitForEvents(count: 2)
+
+        #expect(collector.events.contains(.allMicUsersStopped))
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+
+    @Test("com.apple.avconferenced (FaceTime helper) counts as non-self, not ignored")
+    func avconferencedCountsAsNonSelf() async {
+        let source = FakeActivitySource()
+        // avconferenced is in the catalog as a helper of FaceTime
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["com.apple.FaceTime", "com.apple.avconferenced"],
+            parentMapping: ["com.apple.avconferenced": "com.apple.FaceTime"],
+            displayNames: ["com.apple.FaceTime": "FaceTime"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // avconferenced using mic -- catalog meeting app, must count as non-self
+        source.emit([makeProcess(
+            bundleID: "com.apple.avconferenced",
+            isRunningInput: true,
+            isRunningOutput: true,
+            pid: 201
+        )])
+        await collector.waitForEvents(count: 1) // .started(FaceTime)
+
+        // avconferenced stops -- should fire allMicUsersStopped
+        source.emit([])
+        await collector.waitForEvents(count: 2)
+
+        #expect(collector.events.contains(.allMicUsersStopped))
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+
+    @Test("CoreSpeech drop during Bluetooth switch does not false-fire allMicUsersStopped")
+    func coreSpeechDropDuringBluetoothSwitch() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Zoom + CoreSpeech both using mic
+        source.emit([
+            makeProcess(
+                bundleID: "us.zoom.xos",
+                isRunningInput: true,
+                isRunningOutput: true,
+                pid: 1
+            ),
+            makeProcess(
+                bundleID: "com.apple.CoreSpeech",
+                isRunningInput: true,
+                isRunningOutput: false,
+                pid: 2
+            )
+        ])
+        await collector.waitForEvents(count: 1) // .started(Zoom)
+
+        // CoreSpeech drops during Bluetooth switch, but Zoom stays.
+        // Should NOT cause a >=1->0 transition because Zoom is still
+        // a non-self mic user and CoreSpeech was already ignored.
+        source.emit([
+            makeProcess(
+                bundleID: "us.zoom.xos",
+                isRunningInput: true,
+                isRunningOutput: true,
+                pid: 1
+            )
+        ])
+        await collector.settle()
+
+        // Only .started should have fired -- no allMicUsersStopped
+        let micStopEvents = collector.events.filter {
+            $0 == .allMicUsersStopped
+        }
+        #expect(micStopEvents.isEmpty)
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+
+    @Test("non-Apple third-party app still counts as non-self mic user")
+    func thirdPartyStillCounts() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Non-catalogued third-party app using mic -- must count
+        source.emit([makeProcess(
+            bundleID: "com.example.recorder",
+            isRunningInput: true,
+            isRunningOutput: false,
+            pid: 300
+        )])
+        await collector.settle()
+
+        // Third-party stops -- should fire allMicUsersStopped
+        source.emit([])
+        await collector.waitForEvents(count: 1)
+
+        #expect(collector.events == [.allMicUsersStopped])
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+
+    @Test("only CoreSpeech on mic then Zoom joins -- Zoom counted, CoreSpeech still ignored")
+    func coreSpeechAloneDoesNotBlockZoomCounting() async {
+        let source = FakeActivitySource()
+        let catalog = FakeMeetingCatalog(
+            meetingBundleIDs: ["us.zoom.xos"],
+            displayNames: ["us.zoom.xos": "Zoom"]
+        )
+        let detector = makeImmediateDetector(
+            catalog: catalog, source: source
+        )
+        let collector = EventCollector()
+        collector.start(from: detector)
+        detector.start()
+
+        // Only CoreSpeech -- ignored, no non-self users
+        source.emit([makeProcess(
+            bundleID: "com.apple.CoreSpeech",
+            isRunningInput: true,
+            isRunningOutput: false,
+            pid: 1
+        )])
+        await collector.settle()
+        #expect(collector.events.isEmpty)
+
+        // Zoom joins -- now there IS a non-self mic user (0->>=1 transition)
+        source.emit([
+            makeProcess(
+                bundleID: "com.apple.CoreSpeech",
+                isRunningInput: true,
+                isRunningOutput: false,
+                pid: 1
+            ),
+            makeProcess(
+                bundleID: "us.zoom.xos",
+                isRunningInput: true,
+                isRunningOutput: true,
+                pid: 2
+            )
+        ])
+        await collector.waitForEvents(count: 1) // .started(Zoom)
+
+        // Zoom stops, only CoreSpeech left -- should fire allMicUsersStopped
+        // because the non-self set went from >=1 to 0 (CoreSpeech is ignored)
+        source.emit([makeProcess(
+            bundleID: "com.apple.CoreSpeech",
+            isRunningInput: true,
+            isRunningOutput: false,
+            pid: 1
+        )])
+        await collector.waitForEvents(count: 2)
+
+        #expect(collector.events.contains(.allMicUsersStopped))
+
+        detector.stop()
+        await collector.settle()
+        collector.cancel()
+    }
+}
+
 // MARK: - Mic-stop debounce self-verify tests
 
 @Suite("MeetingDetection — Mic Stop Self-Verify")

@@ -47,25 +47,64 @@ extension OnboardingView {
 
     var systemAudioStep: some View {
         wizardPage(
-            title: "System audio",
-            explanation: "Capture meeting audio from apps like Zoom "
-                + "and Teams."
+            title: "Record meeting audio",
+            explanation: "Biscotti captures the other side of your "
+                + "call from your speakers/headphones."
         ) {
             VStack(spacing: Tokens.spacingSM) {
-                if !viewModel.systemAudioGranted {
-                    Button("Allow System Audio") {
-                        Task { await viewModel.requestPermission() }
+                if viewModel.isValidatingSystemAudio {
+                    HStack(spacing: Tokens.spacingXS) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Validating\u{2026}")
+                            .font(Tokens.metadataFont)
+                            .foregroundStyle(Tokens.secondaryText)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
+                } else {
+                    switch viewModel.systemAudioResult {
+                    case .notRequested:
+                        Button("Request Access") {
+                            Task { await viewModel.requestPermission() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
 
-                denialGuidance(
-                    state: viewModel.systemAudioResult,
-                    kind: .systemAudio
-                )
+                    case .requestedNotVerified:
+                        Text("Not approved")
+                            .font(Tokens.metadataFont)
+                            .foregroundStyle(Tokens.secondaryText)
+
+                        HStack(spacing: Tokens.spacingSM) {
+                            Button("Retry") {
+                                Task { await viewModel.requestPermission() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+
+                            Button("Fix permissions") {
+                                viewModel.showFixPermissionsAlert = true
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                        }
+
+                    case .approved:
+                        Label(
+                            "Granted \u{2713}",
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .foregroundStyle(.sage)
+                        .font(Tokens.metadataFont)
+                    }
+                }
             }
         }
+        .fixPermissionsAlert(
+            isPresented: $viewModel.showFixPermissionsAlert,
+            title: SystemAudioPermissionState.fixPermissionsAlertTitle,
+            body: SystemAudioPermissionState.fixPermissionsAlertBody,
+            onOpenSettings: { viewModel.openSystemAudioSettings() }
+        )
     }
 
     // MARK: - Calendar

@@ -10,7 +10,7 @@ One phase per item, built autonomously. Each phase ends green on `lint`+`test` (
 
 - [x] **Phase 1 — Record button size.** Idle top-right Record button one Apple control-size step taller/bigger; near-equal height to the recording-state button. _(1 commit)_ — spec §1.
 
-- [ ] **Phase 2 — Reduce "RECORDING" emphasis.** _(2 commits)_ — spec §2.
+- [x] **Phase 2 — Reduce "RECORDING" emphasis.** _(2 commits)_ — spec §2.
   - 2a: Normalize the sidebar `RecordingNowSection` to a standard sidebar row (drop red backdrop/stroke; secondary-color subtitle).
   - 2b: Disable the top-right recording button while on the recording page (`isOnRecordingPage`), mirroring Home-on-Home.
 

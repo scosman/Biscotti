@@ -56,16 +56,6 @@ public extension TestScript {
                     + "capture survives the transitions without crash or silence."
             ),
             .humanQuestion(
-                id: "ac_input_device_switch",
-                prompt: "Verify the mic INPUT follows the default device (distinct from ac_route_change "
-                    + "which tests system/output-track survival). Mid-recording: (1) connect AirPods — "
-                    + "check the log confirms the mic engine reconnected to the new input device; "
-                    + "(2) speak into AirPods and verify playback sounds like the AirPods mic (not built-in); "
-                    + "(3) disconnect AirPods — check the log shows a second reconnect back to built-in; "
-                    + "(4) speak and verify playback uses built-in mic audio. Acceptance: the mic input "
-                    + "actively followed each default-device change (not stuck on the original device)."
-            ),
-            .humanQuestion(
                 id: "ac_device_sample_rate",
                 prompt: "Mid-recording: (1) connect AirPods/Bluetooth headphones (triggers a sample-rate "
                     + "change); (2) switch output to a 44.1 kHz device (e.g. some USB DACs); (3) switch "

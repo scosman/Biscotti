@@ -52,6 +52,23 @@ public final class SettingsViewModel {
     /// How far before a meeting the menu bar shows the detailed text.
     public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
 
+    // MARK: - Notification settings
+
+    /// Whether meeting-detected notifications are presented.
+    public private(set) var monitorForMeetings: Bool = true
+
+    /// Which calendar events trigger pre-meeting notifications.
+    public private(set) var calendarNotificationMode: CalendarNotificationMode = .allMeetings
+
+    /// Whether recording auto-stops when all mic users leave.
+    public private(set) var stopRecordingAutomatically: Bool = true
+
+    /// Whether the calendar notification picker should be disabled
+    /// (calendar access not authorized).
+    public var calendarNotificationsDisabled: Bool {
+        calendarState != .authorized
+    }
+
     // MARK: - Calendar state
 
     /// All calendars grouped by source, for the include/exclude toggles.
@@ -316,6 +333,9 @@ public final class SettingsViewModel {
             menuBarLeadTime = MenuBarLeadTime(
                 seconds: settings.menuBarLeadTimeSeconds
             )
+            monitorForMeetings = settings.monitorForMeetings
+            calendarNotificationMode = settings.calendarNotificationMode
+            stopRecordingAutomatically = settings.stopRecordingAutomatically
         } catch {
             enabledCalendarIDs = nil
         }
@@ -343,5 +363,66 @@ public final class SettingsViewModel {
                     calendars: calendars.sorted { $0.title < $1.title }
                 )
             }
+    }
+}
+
+// MARK: - Notification settings actions
+
+public extension SettingsViewModel {
+    /// Toggles the "monitor for meetings" setting. Persists to the store
+    /// and posts `.monitorForMeetingsDidChange` so AppCore refreshes its
+    /// cached flag.
+    func setMonitorForMeetings(_ enabled: Bool) async {
+        monitorForMeetings = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.monitorForMeetings = enabled
+            }
+            NotificationCenter.default.post(
+                name: .monitorForMeetingsDidChange,
+                object: nil
+            )
+        } catch {
+            monitorForMeetings = !enabled
+        }
+    }
+
+    /// Updates the calendar notification mode. Persists to the store
+    /// and posts `.calendarNotificationModeDidChange` so AppCore
+    /// reschedules timers.
+    func setCalendarNotificationMode(
+        _ mode: CalendarNotificationMode
+    ) async {
+        let previous = calendarNotificationMode
+        calendarNotificationMode = mode
+        do {
+            try await core.store.updateSettings { settings in
+                settings.calendarNotificationMode = mode
+            }
+            NotificationCenter.default.post(
+                name: .calendarNotificationModeDidChange,
+                object: nil
+            )
+        } catch {
+            calendarNotificationMode = previous
+        }
+    }
+
+    /// Toggles the "stop recording automatically" setting. Persists to
+    /// the store and posts `.stopRecordingAutomaticallyDidChange` so
+    /// AppCore refreshes its cached flag.
+    func setStopRecordingAutomatically(_ enabled: Bool) async {
+        stopRecordingAutomatically = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.stopRecordingAutomatically = enabled
+            }
+            NotificationCenter.default.post(
+                name: .stopRecordingAutomaticallyDidChange,
+                object: nil
+            )
+        } catch {
+            stopRecordingAutomatically = !enabled
+        }
     }
 }

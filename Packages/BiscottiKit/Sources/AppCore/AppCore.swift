@@ -35,6 +35,24 @@ public extension Notification.Name {
     static let globalRecordShortcutDidChange = Notification.Name(
         "net.scosman.biscotti.globalRecordShortcutDidChange"
     )
+
+    /// Posted after the "monitor for meetings" setting is toggled.
+    /// AppCore observes this to refresh its cached flag.
+    static let monitorForMeetingsDidChange = Notification.Name(
+        "net.scosman.biscotti.monitorForMeetingsDidChange"
+    )
+
+    /// Posted after the "calendar event notifications" mode is changed.
+    /// AppCore observes this to refresh its cached mode and reschedule timers.
+    static let calendarNotificationModeDidChange = Notification.Name(
+        "net.scosman.biscotti.calendarNotificationModeDidChange"
+    )
+
+    /// Posted after the "stop recording automatically" setting is toggled.
+    /// AppCore observes this to refresh its cached flag.
+    static let stopRecordingAutomaticallyDidChange = Notification.Name(
+        "net.scosman.biscotti.stopRecordingAutomaticallyDidChange"
+    )
 }
 
 // MARK: - Deep-link jump state
@@ -174,6 +192,18 @@ public final class AppCore {
     /// the menu bar shows the detailed "next meeting" text.
     public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
 
+    /// Cached "monitor for meetings" toggle. Gates whether detection
+    /// notifications are presented (the monitor itself always runs).
+    public private(set) var monitorForMeetings = true
+
+    /// Cached calendar notification mode. Gates which calendar events
+    /// trigger pre-meeting notifications.
+    public private(set) var calendarNotificationMode: CalendarNotificationMode = .allMeetings
+
+    /// Cached "stop recording automatically" toggle. Gates whether the
+    /// auto-stop countdown fires when mic users leave.
+    public private(set) var stopRecordingAutomatically = true
+
     // MARK: - Child services (publicly readable for the UI layer)
 
     /// The persistent store.
@@ -240,6 +270,9 @@ public final class AppCore {
 
     /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
+
+    /// Observes notification setting changes to refresh cached values.
+    private var notificationSettingsObserverTasks: [Task<Void, Never>] = []
 
     /// Auto-stop countdown duration in seconds.
     private let autoStopSeconds = 10
@@ -312,10 +345,12 @@ public final class AppCore {
             let settings = try await store.settings()
             onboardingComplete = settings.onboardingComplete
             loadMenuBarLeadTime(from: settings)
+            loadNotificationSettings(from: settings)
         } catch {
             onboardingComplete = false
         }
         startMenuBarLeadTimeObserver()
+        startNotificationSettingsObservers()
 
         if !onboardingComplete {
             logger.info("onLaunch: routing to onboarding")
@@ -486,35 +521,6 @@ public final class AppCore {
         route = .recording
     }
 
-    /// Routes to the Home screen.
-    public func showHome() {
-        route = .home
-    }
-
-    /// Routes to in-window Settings.
-    public func showSettings() {
-        route = .settings
-    }
-
-    /// Routes to Onboarding (re-run from Settings).
-    public func showOnboardingReplay() {
-        route = .onboarding
-    }
-
-    /// Requests focus on the search field. Increments the focus token
-    /// so `SearchFieldFocuser` (an `NSViewRepresentable` on the toolbar
-    /// `TextField`) detects the change and calls
-    /// `window.makeFirstResponder` on the backing `NSTextField`.
-    /// Called from the Cmd+F menu command.
-    public func focusSearch() {
-        searchFocusToken &+= 1
-    }
-
-    /// Routes to the read-only preview for an upcoming calendar event.
-    public func selectEvent(_ key: String) {
-        route = .event(key)
-    }
-
     /// Marks onboarding complete and transitions to Home.
     public func completeOnboarding() async {
         do {
@@ -587,6 +593,43 @@ public final class AppCore {
             summaries = []
         }
         summariesVersion &+= 1
+    }
+}
+
+// MARK: - Simple route helpers
+
+// Extracted to an extension to keep the main class body within the
+// type_body_length lint limit after adding notification-settings
+// stored properties (which must live in the class body for @Observable).
+
+public extension AppCore {
+    /// Routes to the Home screen.
+    func showHome() {
+        route = .home
+    }
+
+    /// Routes to in-window Settings.
+    func showSettings() {
+        route = .settings
+    }
+
+    /// Routes to Onboarding (re-run from Settings).
+    func showOnboardingReplay() {
+        route = .onboarding
+    }
+
+    /// Requests focus on the search field. Increments the focus token
+    /// so `SearchFieldFocuser` (an `NSViewRepresentable` on the toolbar
+    /// `TextField`) detects the change and calls
+    /// `window.makeFirstResponder` on the backing `NSTextField`.
+    /// Called from the Cmd+F menu command.
+    func focusSearch() {
+        searchFocusToken &+= 1
+    }
+
+    /// Routes to the read-only preview for an upcoming calendar event.
+    func selectEvent(_ key: String) {
+        route = .event(key)
     }
 }
 
@@ -729,6 +772,68 @@ extension AppCore {
                 }
             }
         }
+    }
+}
+
+// MARK: - Notification settings
+
+extension AppCore {
+    /// Updates the cached notification settings from a settings snapshot.
+    func loadNotificationSettings(from settings: AppSettingsData) {
+        monitorForMeetings = settings.monitorForMeetings
+        calendarNotificationMode = settings.calendarNotificationMode
+        stopRecordingAutomatically = settings.stopRecordingAutomatically
+    }
+
+    /// Starts async observers that refresh cached notification settings
+    /// when they are changed from SettingsUI. Cancels any previously
+    /// running observers first.
+    func startNotificationSettingsObservers() {
+        for task in notificationSettingsObserverTasks {
+            task.cancel()
+        }
+        notificationSettingsObserverTasks.removeAll()
+
+        let monitorTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .monitorForMeetingsDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    monitorForMeetings = settings.monitorForMeetings
+                }
+            }
+        }
+
+        let calendarModeTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .calendarNotificationModeDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    calendarNotificationMode = settings.calendarNotificationMode
+                    scheduleCalendarTimers()
+                }
+            }
+        }
+
+        let autoStopTask = Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(
+                named: .stopRecordingAutomaticallyDidChange
+            ) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    stopRecordingAutomatically = settings.stopRecordingAutomatically
+                }
+            }
+        }
+
+        notificationSettingsObserverTasks = [
+            monitorTask, calendarModeTask, autoStopTask
+        ]
     }
 }
 
@@ -889,6 +994,14 @@ extension AppCore {
             "Received .started for \(app.bundleID)"
         )
 
+        // Suppress if monitor is off
+        guard monitorForMeetings else {
+            detectionLogger.info(
+                "Suppressed: monitorForMeetings is off"
+            )
+            return
+        }
+
         // Suppress if already recording
         if case .recording = runState {
             detectionLogger.info(
@@ -939,6 +1052,7 @@ extension AppCore {
     /// When all non-Biscotti mic users stop (>=1 -> 0 transition),
     /// begin auto-stop countdown regardless of how the recording started.
     private func handleAllMicUsersStopped() {
+        guard stopRecordingAutomatically else { return }
         guard case let .recording(meetingID) = runState else { return }
         beginAutoStopCountdown(meetingID: meetingID)
     }
@@ -1041,6 +1155,18 @@ extension AppCore {
 // MARK: - Calendar-start timers
 
 extension AppCore {
+    /// Filters upcoming events by the calendar notification mode.
+    /// Pure and testable.
+    nonisolated static func eventsToNotify(
+        _ upcoming: [CalendarEvent], mode: CalendarNotificationMode
+    ) -> [CalendarEvent] {
+        switch mode {
+        case .never: []
+        case .allMeetings: upcoming.filter(\.isMeetingLike)
+        case .videoConferencing: upcoming.filter { $0.conferenceURL != nil }
+        }
+    }
+
     private func scheduleCalendarTimers() {
         // Cancel all existing timers
         for (_, task) in calendarTimerTasks {
@@ -1048,7 +1174,7 @@ extension AppCore {
         }
         calendarTimerTasks.removeAll()
 
-        for event in upcoming where event.isMeetingLike {
+        for event in Self.eventsToNotify(upcoming, mode: calendarNotificationMode) {
             let delay = event.start.timeIntervalSinceNow
             guard delay > 0 else { continue } // already started
 
@@ -1061,7 +1187,7 @@ extension AppCore {
                     return // cancelled
                 }
                 guard let self, !Task.isCancelled else { return }
-                await self.handleCalendarTimerFired(event: event)
+                await handleCalendarTimerFired(event: event)
             }
         }
     }
@@ -1069,6 +1195,16 @@ extension AppCore {
     private func handleCalendarTimerFired(
         event: CalendarEvent
     ) async {
+        // Re-check mode in case it changed since the timer was scheduled
+        switch calendarNotificationMode {
+        case .never:
+            return
+        case .videoConferencing where event.conferenceURL == nil:
+            return
+        default:
+            break
+        }
+
         // Suppress if already recording
         guard runState == .idle || runState == .detectedPending
         else { return }

@@ -132,6 +132,12 @@ public struct AppSettingsData: Sendable, Equatable {
     /// shows the detailed "next meeting" text. `0` means never show.
     /// Default: 3600 (1 hour before).
     public var menuBarLeadTimeSeconds: Int
+    /// Whether meeting-detected notifications are presented.
+    public var monitorForMeetings: Bool
+    /// Whether recording auto-stops when all mic users leave.
+    public var stopRecordingAutomatically: Bool
+    /// Which calendar events trigger pre-meeting notifications.
+    public var calendarNotificationMode: CalendarNotificationMode
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
@@ -142,6 +148,9 @@ public struct AppSettingsData: Sendable, Equatable {
         exitOnWindowClose: Bool = false,
         globalRecordShortcutEnabled: Bool = true,
         menuBarLeadTimeSeconds: Int = 3600,
+        monitorForMeetings: Bool = true,
+        stopRecordingAutomatically: Bool = true,
+        calendarNotificationMode: CalendarNotificationMode = .allMeetings,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil
     ) {
@@ -150,6 +159,9 @@ public struct AppSettingsData: Sendable, Equatable {
         self.exitOnWindowClose = exitOnWindowClose
         self.globalRecordShortcutEnabled = globalRecordShortcutEnabled
         self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
+        self.monitorForMeetings = monitorForMeetings
+        self.stopRecordingAutomatically = stopRecordingAutomatically
+        self.calendarNotificationMode = calendarNotificationMode
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
     }
@@ -396,6 +408,9 @@ public extension DataStore {
                 exitOnWindowClose: existing.exitOnWindowClose,
                 globalRecordShortcutEnabled: existing.globalRecordShortcutEnabled,
                 menuBarLeadTimeSeconds: existing.menuBarLeadTimeSeconds,
+                monitorForMeetings: existing.monitorForMeetings,
+                stopRecordingAutomatically: existing.stopRecordingAutomatically,
+                calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs
             )
@@ -425,6 +440,9 @@ public extension DataStore {
             exitOnWindowClose: model.exitOnWindowClose,
             globalRecordShortcutEnabled: model.globalRecordShortcutEnabled,
             menuBarLeadTimeSeconds: model.menuBarLeadTimeSeconds,
+            monitorForMeetings: model.monitorForMeetings,
+            stopRecordingAutomatically: model.stopRecordingAutomatically,
+            calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs
         )
@@ -435,6 +453,9 @@ public extension DataStore {
         model.exitOnWindowClose = dto.exitOnWindowClose
         model.globalRecordShortcutEnabled = dto.globalRecordShortcutEnabled
         model.menuBarLeadTimeSeconds = dto.menuBarLeadTimeSeconds
+        model.monitorForMeetings = dto.monitorForMeetings
+        model.stopRecordingAutomatically = dto.stopRecordingAutomatically
+        model.calendarNotificationModeRaw = dto.calendarNotificationMode.rawValue
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         try save()

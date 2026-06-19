@@ -21,6 +21,9 @@ public struct SettingsView: View {
                 // General
                 generalSection
 
+                // Notifications
+                notificationsSection
+
                 // Permissions (above Calendars per user feedback)
                 permissionsSection
 
@@ -249,6 +252,111 @@ public struct SettingsView: View {
             }
         }
     #endif
+}
+
+// MARK: - Notifications section
+
+private extension SettingsView {
+    var notificationsSection: some View {
+        Section("Notifications") {
+            // Row 1: Monitor for Meetings
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Monitor for Meetings",
+                    isOn: monitorForMeetingsBinding
+                )
+                Text(
+                    "Detect when an app starts using your microphone and offer to record. Nothing is recorded or processed unless you start recording."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+
+            // Row 2: Calendar Event Notifications
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Picker(
+                    "Calendar Event Notifications",
+                    selection: calendarNotificationModeBinding
+                ) {
+                    ForEach(CalendarNotificationMode.allCases) { mode in
+                        Text(mode.displayText).tag(mode)
+                    }
+                }
+                .disabled(viewModel.calendarNotificationsDisabled)
+
+                if viewModel.calendarNotificationsDisabled {
+                    requiresCalendarAccessBadge
+                }
+
+                Text(
+                    "Show a notification to record and join when a calendar event starts."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+
+            // Row 3: Stop Recording Automatically
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Stop Recording Automatically",
+                    isOn: stopRecordingAutomaticallyBinding
+                )
+                Text("Stop recording when we detect your meeting has ended.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+        }
+    }
+
+    var requiresCalendarAccessBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text("Requires Calendar Access")
+                .font(.caption)
+        }
+        .foregroundStyle(Tokens.warningChipText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(Tokens.warningChipFill)
+        )
+    }
+
+    var monitorForMeetingsBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.monitorForMeetings },
+            set: { newValue in
+                Task { await viewModel.setMonitorForMeetings(newValue) }
+            }
+        )
+    }
+
+    var calendarNotificationModeBinding: Binding<CalendarNotificationMode> {
+        Binding(
+            get: {
+                viewModel.calendarNotificationsDisabled
+                    ? .never
+                    : viewModel.calendarNotificationMode
+            },
+            set: { newValue in
+                Task {
+                    await viewModel.setCalendarNotificationMode(newValue)
+                }
+            }
+        )
+    }
+
+    var stopRecordingAutomaticallyBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.stopRecordingAutomatically },
+            set: { newValue in
+                Task {
+                    await viewModel.setStopRecordingAutomatically(newValue)
+                }
+            }
+        )
+    }
 }
 
 // Color(hex:) initializer is in DesignSystem/CalendarContextBlock.swift

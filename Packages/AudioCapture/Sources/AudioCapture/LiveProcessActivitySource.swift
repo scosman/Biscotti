@@ -8,8 +8,9 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Live process-activity source using Core Audio property listeners.
 ///
 /// Registers a system-level `kAudioHardwarePropertyProcessObjectList` listener
-/// and per-process `kAudioProcessPropertyIsRunning` listeners. All fires yield
-/// into a single `AsyncStream<Void>` so the monitor can re-snapshot.
+/// and per-process `kAudioProcessPropertyIsRunning`, `IsRunningInput`, and
+/// `IsRunningOutput` listeners. All fires yield into a single
+/// `AsyncStream<Void>` so the monitor can re-snapshot.
 ///
 /// Per-process listeners are reconciled whenever the process list changes.
 /// All listeners are removed on stream termination.
@@ -26,8 +27,9 @@ final class LiveProcessActivitySource: ProcessActivitySource, @unchecked Sendabl
             )
 
             // Mutable state for per-process listeners, protected by Mutex
-            // for Sendable closure capture.
-            let processListeners = Mutex<[AudioObjectID: CoreAudioHelpers.ProcessPropertyListener]>([:])
+            // for Sendable closure capture. Each process has multiple
+            // listeners (IsRunning, IsRunningInput, IsRunningOutput).
+            let processListeners = Mutex<[AudioObjectID: [CoreAudioHelpers.ProcessPropertyListener]]>([:])
 
             // Reconcile per-process listeners against the current process list.
             let reconcile: @Sendable () -> Void = {
@@ -58,8 +60,10 @@ final class LiveProcessActivitySource: ProcessActivitySource, @unchecked Sendabl
             // Cleanup on termination.
             continuation.onTermination = { @Sendable _ in
                 processListeners.withLock { listeners in
-                    for (_, listener) in listeners {
-                        CoreAudioHelpers.removeProcessPropertyListener(listener)
+                    for (_, perProcessListeners) in listeners {
+                        for listener in perProcessListeners {
+                            CoreAudioHelpers.removeProcessPropertyListener(listener)
+                        }
                     }
                     listeners.removeAll()
                 }
@@ -68,12 +72,22 @@ final class LiveProcessActivitySource: ProcessActivitySource, @unchecked Sendabl
         }
     }
 
-    /// Reconciles per-process `kAudioProcessPropertyIsRunning` listeners
-    /// against the current system process list. Adds listeners for new
-    /// processes, removes listeners for departed ones, then yields into
-    /// the continuation so the monitor re-snapshots.
+    /// Properties to monitor per process. `IsRunning` fires on any IO
+    /// toggle; `IsRunningInput`/`IsRunningOutput` fire specifically when
+    /// mic or speaker usage changes (needed because a process already
+    /// doing output won't flip `IsRunning` when mic-only toggles).
+    private static let monitoredProperties: [AudioObjectPropertySelector] = [
+        kAudioProcessPropertyIsRunning,
+        kAudioProcessPropertyIsRunningInput,
+        kAudioProcessPropertyIsRunningOutput
+    ]
+
+    /// Reconciles per-process property listeners against the current
+    /// system process list. Adds listeners for new processes, removes
+    /// all listeners for departed ones, then yields into the
+    /// continuation so the monitor re-snapshots.
     private static func reconcileListeners(
-        processListeners: borrowing Mutex<[AudioObjectID: CoreAudioHelpers.ProcessPropertyListener]>,
+        processListeners: borrowing Mutex<[AudioObjectID: [CoreAudioHelpers.ProcessPropertyListener]]>,
         queue: DispatchQueue,
         continuation: AsyncStream<Void>.Continuation
     ) {
@@ -92,25 +106,33 @@ final class LiveProcessActivitySource: ProcessActivitySource, @unchecked Sendabl
         processListeners.withLock { listeners in
             let trackedIDs = Set(listeners.keys)
 
-            // Remove departed
+            // Remove departed — remove ALL listeners for each process
             for removedID in trackedIDs.subtracting(currentIDs) {
-                if let listener = listeners.removeValue(forKey: removedID) {
-                    CoreAudioHelpers.removeProcessPropertyListener(listener)
+                if let removed = listeners.removeValue(forKey: removedID) {
+                    for listener in removed {
+                        CoreAudioHelpers.removeProcessPropertyListener(listener)
+                    }
                 }
             }
 
-            // Add new
+            // Add new — register a listener for each monitored property
             for newID in currentIDs.subtracting(trackedIDs) {
-                if let listener = CoreAudioHelpers.addProcessPropertyListener(
-                    processID: newID,
-                    property: kAudioProcessPropertyIsRunning,
-                    queue: queue,
-                    handler: {
-                        logger.debug("Process \(newID) running state changed")
-                        continuation.yield()
+                var registered: [CoreAudioHelpers.ProcessPropertyListener] = []
+                for property in monitoredProperties {
+                    if let listener = CoreAudioHelpers.addProcessPropertyListener(
+                        processID: newID,
+                        property: property,
+                        queue: queue,
+                        handler: {
+                            logger.debug("Process \(newID) running state changed")
+                            continuation.yield()
+                        }
+                    ) {
+                        registered.append(listener)
                     }
-                ) {
-                    listeners[newID] = listener
+                }
+                if !registered.isEmpty {
+                    listeners[newID] = registered
                 }
             }
         }

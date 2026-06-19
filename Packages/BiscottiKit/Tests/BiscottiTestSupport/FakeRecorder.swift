@@ -15,15 +15,24 @@ public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         public var startError: (any Error)?
         public var probableDenied: Bool
         public var stateValues: [CaptureState]
+        /// Canned result for `observedSystemAudio()`.
+        public var observedSystemAudio: Bool
+        /// Canned result for `probeSystemAudioWithTone(timeout:)`.
+        public var probeResult: Bool
+        public var probeSystemAudioWithToneCalled = false
 
         public init(
             startError: (any Error)? = nil,
             probableDenied: Bool = false,
-            stateValues: [CaptureState] = []
+            stateValues: [CaptureState] = [],
+            observedSystemAudio: Bool = false,
+            probeResult: Bool = false
         ) {
             self.startError = startError
             self.probableDenied = probableDenied
             self.stateValues = stateValues
+            self.observedSystemAudio = observedSystemAudio
+            self.probeResult = probeResult
         }
     }
 
@@ -69,5 +78,14 @@ public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
 
     public func probableSystemAudioDenied() async -> Bool {
         backing.probableDenied
+    }
+
+    public func observedSystemAudio() async -> Bool {
+        backing.observedSystemAudio
+    }
+
+    public func probeSystemAudioWithTone(timeout _: Duration) async -> Bool {
+        backing.probeSystemAudioWithToneCalled = true
+        return backing.probeResult
     }
 }

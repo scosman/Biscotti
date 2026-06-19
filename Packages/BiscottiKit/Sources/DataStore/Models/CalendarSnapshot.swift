@@ -6,7 +6,7 @@ import SwiftData
 /// A frozen copy of calendar event metadata, clearable in one operation.
 /// Participants + organizer are `Person` relationships on `Meeting` (dedup + voiceprints),
 /// NOT frozen here.
-@Model public final class CalendarSnapshot: @unchecked Sendable {
+@Model public final class CalendarSnapshot {
     public var id = UUID()
 
     // MARK: Link keys (recurring-event-robust re-sync)
@@ -56,7 +56,9 @@ import SwiftData
 
     /// When this snapshot was captured.
     public var snapshotDate = Date()
-    /// Source event deleted / not found on last sync.
+    /// Formerly set when the source event was deleted/not found on sync.
+    /// Deletion-detection was removed; this field is kept to avoid a SwiftData
+    /// schema migration and could be repurposed later.
     public var isStale: Bool = false
 
     public init(

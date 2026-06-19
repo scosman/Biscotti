@@ -65,6 +65,28 @@ public final class TranscriptionService {
         await runJob(meetingID: meetingID)
     }
 
+    // MARK: - Model readiness (for onboarding)
+
+    /// Downloads/compiles models if needed, forwarding status messages.
+    /// Standalone entry point for the onboarding download step (no
+    /// transcription job involved).
+    public func ensureModelsReady(
+        status: @escaping @Sendable (String) -> Void
+    ) async throws {
+        try await engine.ensureModelsDownloaded(status: status)
+    }
+
+    /// Returns `true` when models are already downloaded and ready.
+    /// Attempts a dry-run download (no-op if cached) to determine readiness.
+    public func modelsReady() async -> Bool {
+        do {
+            try await engine.ensureModelsDownloaded(status: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private
 
     private func runJob(meetingID: UUID) async {
@@ -94,11 +116,22 @@ public final class TranscriptionService {
         inFlightMeetingID = nil
     }
 
+    /// How long to wait before surfacing download-phase status messages.
+    ///
+    /// On a cache hit the download/init phase finishes well under this
+    /// threshold, so the user never sees a "Downloading..." subtitle.
+    /// A real download (tens of seconds to minutes) exceeds the delay
+    /// and shows it. Set to ~5s per spec to absorb cold-disk / larger-
+    /// model init times that can push cache hits past 1-2s.
+    static let downloadPhaseDelay: Duration = .seconds(5)
+
     /// The inner work of a transcription job. Separated from `runJob` so
     /// the caller can deterministically `await engine.shutdown()` after
     /// completion on every exit path (success, failure, or cancellation).
     private func executeJob(meetingID: UUID) async {
-        jobs[meetingID] = .downloadingModel(message: "Preparing\u{2026}")
+        // Start with a generic "Transcribing..." status. Download-phase
+        // subtitles are only surfaced after a delay (see downloadModels).
+        jobs[meetingID] = .transcribing
 
         guard let paths = await resolveAudioPaths(meetingID: meetingID) else { return }
 
@@ -116,7 +149,7 @@ public final class TranscriptionService {
     private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL)? {
         do {
             guard let resolved = try await store.audioPaths(meetingID: meetingID) else {
-                let meetingExists = try await store.meeting(id: meetingID) != nil
+                let meetingExists = try await store.meetingExists(id: meetingID)
                 if meetingExists {
                     jobs[meetingID] = .failed(
                         message: "No audio files available for this meeting.",
@@ -137,22 +170,33 @@ public final class TranscriptionService {
         }
     }
 
-    /// Ensures models are downloaded, forwarding status messages to `jobs`.
+    /// Ensures models are downloaded, forwarding status messages to `jobs`
+    /// only after a delay (so cache hits never flash a download subtitle).
     /// Returns `false` (with `.failed` set) on error.
     private func downloadModels(meetingID: UUID) async -> Bool {
+        // Gate: only surface download-phase messages after a delay so
+        // cache-hit loads (which finish quickly) never show a subtitle.
+        let gate = DownloadPhaseGate(delay: Self.downloadPhaseDelay)
+
         do {
-            // Note: The status callback fires in a detached `Task` so it doesn't
-            // block the engine. This means a late `.downloadingModel` message could
-            // theoretically land after the job has already moved to `.transcribing`.
-            // Acceptable for MVP -- the UI will immediately overwrite with the
-            // correct state on the next observation cycle.
             try await engine.ensureModelsDownloaded { [weak self] message in
                 Task { @MainActor [weak self] in
-                    self?.jobs[meetingID] = .downloadingModel(message: message)
+                    guard let self else { return }
+                    if gate.hasElapsed {
+                        jobs[meetingID] = .downloadingModel(message: message)
+                    } else {
+                        gate.start { @MainActor [weak self] in
+                            self?.jobs[meetingID] = .downloadingModel(
+                                message: message
+                            )
+                        }
+                    }
                 }
             }
+            gate.cancel()
             return true
         } catch {
+            gate.cancel()
             let (message, retriable) = mapEngineError(error)
             jobs[meetingID] = .failed(message: message, retriable: retriable)
             return false

@@ -34,6 +34,14 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     private var clientFormatConfigured = false
     private var clientFormatFailed = false
 
+    /// The channel count used in the last successful `configureClientFormat`
+    /// call. Compared on reconnect to avoid a redundant
+    /// `kExtAudioFileProperty_ClientDataFormat` set (which replaces the
+    /// AAC encoder's internal AudioConverter mid-stream -- harmless when
+    /// the format genuinely changed, but a needless converter reset and
+    /// potential flush of stale encoder state when it didn't).
+    private var lastConfiguredChannelCount: UInt32 = 0
+
     // MARK: - Two-track alignment
 
     /// Host-clock seconds of the mic's first delivered sample -- the
@@ -93,6 +101,10 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
 
+        // Clear any write error from a previous session (e.g. permission
+        // probe) so a fresh start reports only its own errors.
+        clearWriteError()
+
         // New session: restart the permission zero-detection window. A start()
         // can legitimately run again after a *failed* start (the recorder stays
         // retryable); without this the window stays closed and silent-system
@@ -104,6 +116,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 
         do {
             try createTapAndAggregate()
+
             #if DEBUG
                 if Self.verboseDiagnostics {
                     SystemCaptureDiagnostics.logSetupFormats(
@@ -134,29 +147,99 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         teardown()
     }
 
-    /// Reconnects hardware without reopening the audio file. Resets
-    /// client-format gating so a post-reconnect device delivering a
-    /// different channel count re-configures the ExtAudioFile client
-    /// format (the AAC output format is unchanged; only the PCM input
-    /// side adapts). Leading silence is NOT re-written: the alignment
-    /// was established on the first buffer of the session.
+    /// Settle delay before reconnecting hardware after a device change.
+    /// Gives the HAL time to stabilize after the route change; without this
+    /// the new aggregate/tap can fail to start because the device graph is
+    /// still reconfiguring. 200ms is based on observed Apple Silicon HAL
+    /// device-graph reconfiguration times (typically 100-200ms).
+    static let reconnectSettleDelay: Duration = .milliseconds(200)
+
+    /// Reconnects hardware without reopening the audio file.
+    ///
+    /// Re-queries the new tap's format and updates `tapSampleRate` so
+    /// the ExtAudioFile client format matches the data the new IOProc
+    /// delivers. Only resets the client-format flag (triggering a
+    /// mid-stream `kExtAudioFileProperty_ClientDataFormat` set and AAC
+    /// converter replacement) when the tap's rate or channel count
+    /// actually changed -- avoiding a disruptive converter reset when
+    /// the format is identical.
+    ///
+    /// Leading silence is NOT re-written: alignment was established on
+    /// the first buffer of the session.
     func reconnect() async throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
+
         teardownHardware()
 
-        // Allow the first post-reconnect buffer to re-set the client
-        // format, accommodating a new device's channel count.
-        clientFormatConfigured = false
-        clientFormatFailed = false
+        // Let the HAL settle after the device change before creating new
+        // hardware resources. Without this, the tap/aggregate creation can
+        // fail intermittently because the device graph is mid-reconfiguration.
+        try await Task.sleep(for: Self.reconnectSettleDelay)
 
         do {
             try createTapAndAggregate()
+
+            let formatChanged = detectAndApplyFormatChange()
+            if formatChanged {
+                clientFormatConfigured = false
+                clientFormatFailed = false
+            }
+
+            #if DEBUG
+                if Self.verboseDiagnostics {
+                    SystemCaptureDiagnostics.logSetupFormats(
+                        tapObjectID: tapObjectID,
+                        aggregateDeviceID: aggregateDeviceID
+                    )
+                }
+            #endif
+
             startWriterThread()
             try startIOProc()
         } catch {
+            // Partial-reconnect cleanup: tear down any hardware and the
+            // writer thread that were created before the throw. Without
+            // this, a failed startIOProc() leaks a running writer
+            // thread and orphaned aggregate/tap, and the capturingFlag
+            // reset below prevents stop() from ever cleaning them up.
+            teardownHardware()
             capturingFlag.store(false, ordering: .releasing)
             throw error
         }
+    }
+
+    /// Queries the new tap's format after reconnect, updates `tapSampleRate`,
+    /// and returns whether the format changed (requiring client-format reset).
+    ///
+    /// If the sample rate or channel count changed, the ExtAudioFile client
+    /// format must be updated so the encoder interprets incoming buffers at
+    /// the correct rate/layout. A stale tapSampleRate caused the AAC encoder
+    /// to misinterpret every buffer's duration, inflating or deflating the
+    /// file and producing garbage audio.
+    private func detectAndApplyFormatChange() -> Bool {
+        var formatChanged = false
+        if let newFormat = queryTapFormat() {
+            let preReconnectRate = tapSampleRate
+            tapSampleRate = newFormat.mSampleRate
+            if abs(preReconnectRate - tapSampleRate) > 1 {
+                logger.info(
+                    "Reconnect: tap sample rate changed \(preReconnectRate, privacy: .public) → \(newFormat.mSampleRate, privacy: .public)"
+                )
+                formatChanged = true
+            }
+            let prevChannels = lastConfiguredChannelCount
+            if newFormat.mChannelsPerFrame != prevChannels {
+                logger.info(
+                    "Reconnect: tap channel count changed \(prevChannels, privacy: .public) → \(newFormat.mChannelsPerFrame, privacy: .public)"
+                )
+                formatChanged = true
+            }
+        } else {
+            // Can't query -- force reconfigure to be safe.
+            logger.warning("Reconnect: tap format query failed — forcing client format reconfigure")
+            formatChanged = true
+        }
+        return formatChanged
     }
 
     // MARK: - Setup
@@ -250,8 +333,12 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         guard let file = audioFile else { return }
         guard !clientFormatFailed else { return }
 
-        // First buffer: set client format from actual delivered channel
-        // count (ground truth). ExtAudioFile handles N-ch → mono downmix.
+        // First buffer (or first after reconnect): set client format from
+        // actual delivered channel count (ground truth). ExtAudioFile
+        // handles N-ch → mono downmix. On reconnect the flag is cleared
+        // ONLY if the tap's channel count or sample rate actually changed
+        // -- skipping the mid-stream converter replacement when the format
+        // is identical avoids disrupting the AAC encoder's internal state.
         if !clientFormatConfigured {
             if configureClientFormat(
                 channelCount: UInt32(channelCount), file: file
@@ -259,6 +346,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
                 clientFormatConfigured = true
             } else {
                 clientFormatFailed = true
+                logger.error(
+                    "System audio track stopped: client format configuration failed. Audio captured before this point is preserved in the file."
+                )
                 return
             }
         }
@@ -300,14 +390,20 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
         let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
         if writeStatus != noErr {
-            logger.error("ExtAudioFileWrite failed: \(writeStatus)")
+            logger.error("ExtAudioFileWrite failed: \(writeStatus, privacy: .public)")
             recordWriteError(writeStatus)
         }
     }
 
-    private func recordWriteError(_ status: OSStatus) {
+    private nonisolated func recordWriteError(_ status: OSStatus) {
         os_unfair_lock_lock(&_lock)
         if _writeError == nil { _writeError = status }
+        os_unfair_lock_unlock(&_lock)
+    }
+
+    private nonisolated func clearWriteError() {
+        os_unfair_lock_lock(&_lock)
+        _writeError = nil
         os_unfair_lock_unlock(&_lock)
     }
 
@@ -351,7 +447,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
                 var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
                 let status = ExtAudioFileWrite(file, UInt32(count), &bufferList)
                 if status != noErr {
-                    logger.error("Leading-silence write failed: \(status)")
+                    logger.error("Leading-silence write failed: \(status, privacy: .public)")
                     return
                 }
                 framesRemaining -= count
@@ -492,6 +588,7 @@ extension LiveSystemCaptureEngine {
         tapSampleRate = tapFormat.mSampleRate
         clientFormatConfigured = false
         clientFormatFailed = false
+        lastConfiguredChannelCount = 0
 
         // Create ADTS AAC file. Client format deferred to processEntry()
         // where the actual channel count is known from IOProc data.
@@ -527,9 +624,19 @@ extension LiveSystemCaptureEngine {
 
     /// Sets client format (interleaved float PCM) and encoder bit rate.
     /// Returns `true` on success.
+    ///
+    /// On mid-stream failure (e.g. `-66565` / `kExtAudioFileError_InvalidDataFormat`
+    /// after a device route change), returns `false` and sets `clientFormatFailed`
+    /// via the caller. This preserves audio already written to the file --
+    /// the system track will contain everything captured before the route change.
+    /// Reopening the file is not viable because `ExtAudioFileCreateWithURL` with
+    /// `eraseFile` would truncate the entire session's system audio.
+    ///
+    /// Thread-safety: only the writer thread calls this during capture.
     private func configureClientFormat(
         channelCount: UInt32, file: ExtAudioFileRef
     ) -> Bool {
+        let rate = tapSampleRate
         let bytesPerFrame = UInt32(MemoryLayout<Float>.size) * channelCount
         var clientASBD = AudioStreamBasicDescription(
             mSampleRate: tapSampleRate,
@@ -542,6 +649,7 @@ extension LiveSystemCaptureEngine {
             mBitsPerChannel: 32,
             mReserved: 0
         )
+
         let clientStatus = ExtAudioFileSetProperty(
             file,
             kExtAudioFileProperty_ClientDataFormat,
@@ -549,15 +657,19 @@ extension LiveSystemCaptureEngine {
             &clientASBD
         )
         guard clientStatus == noErr else {
-            logger.error("Failed to set client format (\(channelCount) ch): \(clientStatus)")
+            logger.error(
+                "Failed to set client format (\(channelCount, privacy: .public) ch, rate=\(rate, privacy: .public)): \(clientStatus, privacy: .public)"
+            )
             recordWriteError(clientStatus)
             return false
         }
 
         let brStatus = EncoderSettings.applyBitRate(to: file, bitRate: encoder.bitRate)
         if brStatus != noErr {
-            logger.warning("applyBitRate returned \(brStatus) — using encoder default")
+            logger.warning("applyBitRate returned \(brStatus, privacy: .public) — using encoder default")
         }
+
+        lastConfiguredChannelCount = channelCount
         return true
     }
 }

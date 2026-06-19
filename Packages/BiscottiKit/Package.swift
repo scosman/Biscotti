@@ -16,11 +16,21 @@ let package = Package(
         .library(name: "RecordingUI", targets: ["RecordingUI"]),
         .library(name: "MeetingDetailUI", targets: ["MeetingDetailUI"]),
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
-        .library(name: "ManualTestKit", targets: ["ManualTestKit"])
+        .library(name: "Calendar", targets: ["Calendar"]),
+        .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
+        .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
+        .library(name: "Notifications", targets: ["Notifications"]),
+        .library(name: "SettingsUI", targets: ["SettingsUI"]),
+        .library(name: "MenuBarUI", targets: ["MenuBarUI"]),
+        .library(name: "HomeUI", targets: ["HomeUI"]),
+        .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
+        .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
+        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
-        .package(name: "AudioCapture", path: "../AudioCapture")
+        .package(name: "AudioCapture", path: "../AudioCapture"),
+        .package(url: "https://github.com/scosman/swift-markdown-engine", revision: "6edaa33637bcfc39272415f635c5f2ed6ff2853b")
     ],
     targets: [
         .target(
@@ -46,6 +56,12 @@ let package = Package(
         ),
         .target(
             name: "DesignSystem",
+            resources: [.process("Resources")],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "DesignSystemTests",
+            dependencies: ["DesignSystem"],
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -54,7 +70,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PermissionsTests",
-            dependencies: ["Permissions"],
+            dependencies: ["Permissions", "BiscottiTestSupport"],
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -102,6 +118,10 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Calendar",
+                "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -115,7 +135,11 @@ let package = Package(
             name: "BiscottiTestSupport",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -130,7 +154,13 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "DesignSystem",
+                "MeetingCatalog",
+                "MeetingDetailUI",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -143,6 +173,7 @@ let package = Package(
             name: "MeetingListUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
                 "DesignSystem"
             ],
@@ -154,7 +185,9 @@ let package = Package(
                 "MeetingListUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -167,6 +200,8 @@ let package = Package(
             name: "RecordingUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
+                "DataStore",
                 "DesignSystem",
                 "Permissions",
                 "Recording"
@@ -179,7 +214,9 @@ let package = Package(
                 "RecordingUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingDetection",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -192,8 +229,10 @@ let package = Package(
             name: "MeetingDetailUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "MarkdownEditorUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors
@@ -204,7 +243,36 @@ let package = Package(
                 "MeetingDetailUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "HomeUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "HomeUITests",
+            dependencies: [
+                "HomeUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -217,10 +285,15 @@ let package = Package(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
+                "Calendar",
+                "DataStore",
                 "DesignSystem",
+                "HomeUI",
                 "MeetingListUI",
+                "MeetingDetailUI",
+                "OnboardingUI",
                 "RecordingUI",
-                "MeetingDetailUI"
+                "SettingsUI"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -230,7 +303,10 @@ let package = Package(
                 "AppShellUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "Calendar",
                 "DataStore",
+                "HomeUI",
+                "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -240,12 +316,163 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "Calendar",
+            dependencies: [
+                "DataStore",
+                "MeetingCatalog"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "CalendarTests",
+            dependencies: [
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "SettingsUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem",
+                "Permissions"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SettingsUITests",
+            dependencies: [
+                "SettingsUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MenuBarUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MenuBarUITests",
+            dependencies: [
+                "MenuBarUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "OnboardingUI",
+            dependencies: [
+                "AppCore",
+                "Calendar",
+                "DataStore",
+                "DesignSystem",
+                "Permissions",
+                "TranscriptionService"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "OnboardingUITests",
+            dependencies: [
+                "OnboardingUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Calendar",
+                "DataStore",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingCatalog",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingCatalogTests",
+            dependencies: ["MeetingCatalog"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MeetingDetection",
+            dependencies: [
+                "MeetingCatalog",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MeetingDetectionTests",
+            dependencies: [
+                "MeetingDetection",
+                "MeetingCatalog",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Notifications",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "NotificationsTests",
+            dependencies: ["Notifications"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "ManualTestKit",
             swiftSettings: warningsAsErrors
         ),
         .testTarget(
             name: "ManualTestKitTests",
             dependencies: ["ManualTestKit"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MarkdownEditorUI",
+            dependencies: [
+                "DesignSystem",
+                .product(name: "MarkdownEngine", package: "swift-markdown-engine")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MarkdownEditorUITests",
+            dependencies: ["MarkdownEditorUI"],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

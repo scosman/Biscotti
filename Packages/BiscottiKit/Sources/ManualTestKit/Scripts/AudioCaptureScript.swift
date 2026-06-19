@@ -56,6 +56,14 @@ public extension TestScript {
                     + "capture survives the transitions without crash or silence."
             ),
             .humanQuestion(
+                id: "ac_device_sample_rate",
+                prompt: "Mid-recording: (1) connect AirPods/Bluetooth headphones (triggers a sample-rate "
+                    + "change); (2) switch output to a 44.1 kHz device (e.g. some USB DACs); (3) switch "
+                    + "output back. On stop, verify the system audio file plays back correctly — audio "
+                    + "captured before each transition is preserved. A -66565 stop-track (system audio "
+                    + "ends early but mic continues) is acceptable; total silence or a crash is not."
+            ),
+            .humanQuestion(
                 id: "ac_meet_close_midcapture",
                 prompt: "Start capture with a Google Meet instant meeting already running; speak; "
                     + "after a few seconds close Meet and keep speaking. Verify (mic playback) your "

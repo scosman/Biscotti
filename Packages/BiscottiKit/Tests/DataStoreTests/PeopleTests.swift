@@ -22,8 +22,10 @@ struct PeopleTests {
         // Verify the stored name is still the original, not overwritten
         let meeting = try await store.createMeeting(title: "Name check")
         try await store.setParticipants([id1], organizer: nil, for: meeting)
-        let fetched = try await store.meeting(id: meeting)
-        #expect(fetched?.participants.first?.name == "Alice")
+        try await store.read { store in
+            let fetched = try store.meeting(id: meeting)
+            #expect(fetched?.participants.first?.name == "Alice")
+        }
     }
 
     @Test("Dedup by email is case-insensitive")
@@ -69,9 +71,11 @@ struct PeopleTests {
 
         try await store.setParticipants([alice, bob], organizer: alice, for: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.participants.count == 2)
-        #expect(meeting?.organizer?.id == alice)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.participants.count == 2)
+            #expect(meeting?.organizer?.id == alice)
+        }
     }
 
     @Test("setParticipants replaces existing participants")
@@ -82,14 +86,19 @@ struct PeopleTests {
         let bob = try await store.findOrCreatePerson(name: "Bob", email: "b@x.com")
 
         try await store.setParticipants([alice, bob], organizer: nil, for: meetingID)
-        #expect(try await store.meeting(id: meetingID)?.participants.count == 2)
+        try await store.read { store in
+            let count = try store.meeting(id: meetingID)?.participants.count
+            #expect(count == 2)
+        }
 
         // Replace with just Bob
         try await store.setParticipants([bob], organizer: bob, for: meetingID)
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.participants.count == 1)
-        #expect(meeting?.participants.first?.id == bob)
-        #expect(meeting?.organizer?.id == bob)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.participants.count == 1)
+            #expect(meeting?.participants.first?.id == bob)
+            #expect(meeting?.organizer?.id == bob)
+        }
     }
 
     @Test("setParticipants for non-existent meeting throws notFound")
@@ -120,14 +129,21 @@ struct PeopleTests {
 
         // Set initial participants + organizer
         try await store.setParticipants([alice, bob], organizer: alice, for: meetingID)
-        #expect(try await store.meeting(id: meetingID)?.participants.count == 2)
-        #expect(try await store.meeting(id: meetingID)?.organizer != nil)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let participantCount = meeting?.participants.count
+            let hasOrganizer = meeting?.organizer != nil
+            #expect(participantCount == 2)
+            #expect(hasOrganizer)
+        }
 
         // Clear to empty
         try await store.setParticipants([], organizer: nil, for: meetingID)
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.participants.isEmpty == true)
-        #expect(meeting?.organizer == nil)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.participants.isEmpty == true)
+            #expect(meeting?.organizer == nil)
+        }
     }
 
     // MARK: - Cross-meeting person reuse
@@ -144,10 +160,12 @@ struct PeopleTests {
         try await store.setParticipants([alice], organizer: alice, for: meetingID2)
 
         // Same person ID appears on both meetings
-        let meeting1 = try await store.meeting(id: meetingID1)
-        let meeting2 = try await store.meeting(id: meetingID2)
-        #expect(meeting1?.participants.first?.id == alice)
-        #expect(meeting2?.participants.first?.id == alice)
-        #expect(meeting2?.organizer?.id == alice)
+        try await store.read { store in
+            let meeting1 = try store.meeting(id: meetingID1)
+            let meeting2 = try store.meeting(id: meetingID2)
+            #expect(meeting1?.participants.first?.id == alice)
+            #expect(meeting2?.participants.first?.id == alice)
+            #expect(meeting2?.organizer?.id == alice)
+        }
     }
 }

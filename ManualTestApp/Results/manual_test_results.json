@@ -2,69 +2,73 @@
   "ac_crash_safety_check" : {
     "status" : "pass",
     "stepID" : "ac_crash_safety_check",
-    "timestamp" : "2026-06-10T21:33:39Z"
+    "timestamp" : "2026-06-19T16:30:23Z"
+  },
+  "ac_device_sample_rate" : {
+    "status" : "pass",
+    "stepID" : "ac_device_sample_rate",
+    "timestamp" : "2026-06-19T16:25:18Z"
   },
   "ac_files_exist" : {
     "note" : "Both .aac files exist with sane sizes",
     "status" : "pass",
     "stepID" : "ac_files_exist",
-    "timestamp" : "2026-06-10T03:50:23Z"
+    "timestamp" : "2026-06-19T16:19:04Z"
   },
   "ac_meet_close_midcapture" : {
     "status" : "pass",
     "stepID" : "ac_meet_close_midcapture",
-    "timestamp" : "2026-06-10T03:50:34Z"
+    "timestamp" : "2026-06-19T16:26:34Z"
   },
   "ac_meet_open_midcapture" : {
     "status" : "pass",
     "stepID" : "ac_meet_open_midcapture",
-    "timestamp" : "2026-06-10T21:28:37Z"
+    "timestamp" : "2026-06-19T16:27:18Z"
   },
   "ac_mega_timing" : {
     "status" : "pass",
     "stepID" : "ac_mega_timing",
-    "timestamp" : "2026-06-10T21:32:56Z"
+    "timestamp" : "2026-06-19T16:30:18Z"
   },
   "ac_mega_voice" : {
-    "note" : "some jitter as devices changed, but always stabilized. all modes work",
     "status" : "pass",
     "stepID" : "ac_mega_voice",
-    "timestamp" : "2026-06-10T21:32:53Z"
+    "timestamp" : "2026-06-19T16:30:16Z"
   },
   "ac_playback_mic" : {
     "status" : "pass",
     "stepID" : "ac_playback_mic",
-    "timestamp" : "2026-06-10T03:50:26Z"
+    "timestamp" : "2026-06-19T16:19:28Z"
   },
   "ac_playback_system" : {
     "status" : "pass",
     "stepID" : "ac_playback_system",
-    "timestamp" : "2026-06-10T03:50:27Z"
+    "timestamp" : "2026-06-19T16:19:30Z"
   },
   "ac_request_permissions" : {
     "status" : "pass",
     "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-06-10T03:49:34Z"
+    "timestamp" : "2026-06-19T16:18:53Z"
   },
   "ac_route_change" : {
     "status" : "pass",
     "stepID" : "ac_route_change",
-    "timestamp" : "2026-06-10T03:50:31Z"
+    "timestamp" : "2026-06-19T16:20:29Z"
   },
   "ac_start_recording" : {
     "status" : "pass",
     "stepID" : "ac_start_recording",
-    "timestamp" : "2026-06-10T21:33:14Z"
+    "timestamp" : "2026-06-19T16:27:38Z"
   },
   "ac_stop_recording" : {
     "status" : "pass",
     "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-06-10T21:30:29Z"
+    "timestamp" : "2026-06-19T16:28:45Z"
   },
   "ac_two_dialogs" : {
     "status" : "pass",
     "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-06-10T03:49:37Z"
+    "timestamp" : "2026-06-19T16:18:54Z"
   },
   "llm_action_items_quality" : {
     "status" : "pass",

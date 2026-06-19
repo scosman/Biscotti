@@ -41,6 +41,7 @@ enum TestRecorderFactory {
     /// Creates an `AudioRecorder` backed by fakes, with temp-dir paths.
     static func make(
         probableDenied: Bool = false,
+        observedNonZero: Bool = false,
         micAuthStatus: AVAuthorizationStatus = .authorized,
         requestAccessResult: Bool = true
     ) throws -> Components {
@@ -56,7 +57,10 @@ enum TestRecorderFactory {
         let systemEngine = FakeCaptureEngine()
         let micEngine = FakeCaptureEngine()
         let deviceChangeProvider = FakeDeviceChangeProvider()
-        let permissionChecker = FakeSystemPermissionChecker(probableDenied: probableDenied)
+        let permissionChecker = FakeSystemPermissionChecker(
+            probableDenied: probableDenied,
+            observedNonZero: observedNonZero
+        )
         let micPermChecker = FakeMicPermissionChecker(status: micAuthStatus, requestAccessResult: requestAccessResult)
 
         let recorder = AudioRecorder(

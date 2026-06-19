@@ -1,10 +1,15 @@
 import AppCore
 import AudioCapture
+import Calendar
 import DataStore
 import Foundation
+import MeetingCatalog
+import MeetingDetection
+import Notifications
 import Permissions
 import Recording
 import TranscriptionService
+import UserNotifications
 
 /// Bundles all test dependencies for AppCore-based tests.
 ///
@@ -18,13 +23,28 @@ public struct CoreFixture {
     public let fakeEngine: FakeTranscriber
     public let storageRoot: URL
     public let permissions: Permissions
+    public let calendarService: CalendarService
+    public let fakeEventStore: FakeEventStore
+    public let detector: MeetingDetector
+    public let notificationService: NotificationService
+    public let fakeNotificationCenter: FakeTestNotificationCenter
+    public let fakeActivitySource: FakeActivitySource
+    public let fakeScheduler: FakeScheduler?
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
     }
 
     /// Creates a meeting with present audio files and returns its ID.
-    public func createMeetingWithAudio(title: String = "Test Meeting") async throws -> UUID {
+    ///
+    /// - Parameters:
+    ///   - title: The meeting title.
+    ///   - recordingDuration: Optional wall-clock recording duration (seconds).
+    ///     When non-nil, stored via `setRecordingDuration(_:for:)`.
+    public func createMeetingWithAudio(
+        title: String = "Test Meeting",
+        recordingDuration: TimeInterval? = nil
+    ) async throws -> UUID {
         let meetingID = try await store.createMeeting(title: title)
         let micRef = AudioFileRef(
             role: .mic,
@@ -39,39 +59,316 @@ public struct CoreFixture {
             isPresent: true
         )
         try await store.attachAudio([micRef, sysRef], to: meetingID)
+        if let recordingDuration {
+            try await store.setRecordingDuration(
+                recordingDuration, for: meetingID
+            )
+        }
         return meetingID
     }
 }
 
-/// Creates a `CoreFixture` with configurable fakes.
+/// A configurable fake EventStore for tests.
+public final class FakeEventStore: EventStoreProviding,
+    @unchecked Sendable
+{
+    public var authStatus: CalendarAuthStatus
+    public var requestAccessResult: Bool
+    public var calendarInfos: [CalendarInfo]
+    public var eventDTOs: [EKEventDTO]
+    public var refreshResult: EKEventDTO?
+
+    public init(
+        authStatus: CalendarAuthStatus = .authorized,
+        requestAccessResult: Bool = true,
+        calendarInfos: [CalendarInfo] = [],
+        eventDTOs: [EKEventDTO] = [],
+        refreshResult: EKEventDTO? = nil
+    ) {
+        self.authStatus = authStatus
+        self.requestAccessResult = requestAccessResult
+        self.calendarInfos = calendarInfos
+        self.eventDTOs = eventDTOs
+        self.refreshResult = refreshResult
+    }
+
+    public func authorizationStatus() -> CalendarAuthStatus {
+        authStatus
+    }
+
+    public func requestAccess() async throws -> Bool {
+        requestAccessResult
+    }
+
+    public func calendars() -> [CalendarInfo] {
+        calendarInfos
+    }
+
+    public func events(
+        in _: DateInterval, calendars _: [String]?
+    ) -> [EKEventDTO] {
+        eventDTOs
+    }
+
+    public func refreshEvent(
+        eventIdentifier _: String, occurrenceStart _: Date
+    ) -> EKEventDTO? {
+        refreshResult
+    }
+}
+
+// MARK: - FakeScheduler
+
+/// Controllable scheduler for deterministic timer tests.
 ///
-/// - Parameters:
-///   - micStatus: Initial mic permission status (default `.authorized`).
-///   - micRequestResult: Whether mic permission request succeeds (default `true`).
-///   - startError: Error to throw from the recorder's `start` method.
-///   - probableDenied: Whether the recorder reports probable system audio denial.
-///   - stateValues: Capture state values to emit from the recorder's state stream.
-///   - summaryLimit: Max meetings to load for the sidebar (default `50`).
-///   - denialCheckDelay: Delay before the denial check task runs (default `60s`).
-///   - testName: Used to namespace the storage directory (default `"Test"`).
+/// Records `sleep` calls and lets tests advance time explicitly via
+/// `advance(by:)` to fire pending sleeps.
 @MainActor
+public final class FakeScheduler: AppScheduler, @unchecked Sendable {
+    private var currentInstant: ContinuousClock.Instant
+    private var pendingSleeps: [(
+        deadline: ContinuousClock.Instant,
+        continuation: CheckedContinuation<Void, any Error>
+    )] = []
+
+    public init(
+        now: ContinuousClock.Instant = ContinuousClock.now
+    ) {
+        currentInstant = now
+    }
+
+    public func sleep(for duration: Duration) async throws {
+        let deadline = currentInstant + duration
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            pendingSleeps.append(
+                (deadline: deadline, continuation: continuation)
+            )
+        }
+    }
+
+    public nonisolated func now() -> ContinuousClock.Instant {
+        // Called from nonisolated context; safe because tests run
+        // single-threaded on MainActor.
+        MainActor.assumeIsolated { currentInstant }
+    }
+
+    /// Advance time and resume all sleeps whose deadlines have elapsed.
+    public func advance(by duration: Duration) {
+        currentInstant += duration
+        resumeElapsed()
+    }
+
+    /// Resume all sleeps whose deadline <= currentInstant.
+    private func resumeElapsed() {
+        let elapsed = pendingSleeps.filter {
+            $0.deadline <= currentInstant
+        }
+        pendingSleeps.removeAll { $0.deadline <= currentInstant }
+        for entry in elapsed {
+            entry.continuation.resume()
+        }
+    }
+
+    /// Cancel all pending sleeps with CancellationError.
+    public func cancelAll() {
+        let all = pendingSleeps
+        pendingSleeps.removeAll()
+        for entry in all {
+            entry.continuation.resume(
+                throwing: CancellationError()
+            )
+        }
+    }
+
+    /// The number of pending sleep calls.
+    public var pendingCount: Int {
+        pendingSleeps.count
+    }
+}
+
+// MARK: - FakeTestNotificationCenter
+
+/// Records notification calls for assertion in tests.
+///
+/// NOT `@MainActor` — conforms to `NotificationCenterProviding` (which is
+/// `Sendable`, nonisolated). All mutable state lives in a reference-type
+/// backing store marked `@unchecked Sendable` (safe because all tests run
+/// on `@MainActor` single-threaded).
+public final class FakeTestNotificationCenter: NotificationCenterProviding,
+    @unchecked Sendable
+{
+    /// Reference-type backing for mutable state.
+    public final class Backing: @unchecked Sendable {
+        public var authGranted = true
+        public var authStatus: UNAuthorizationStatus = .authorized
+        public var addedRequests: [UNNotificationRequest] = []
+        public var removedPendingIDs: [String] = []
+        public var removedDeliveredIDs: [String] = []
+        public var registeredCategories: Set<UNNotificationCategory> = []
+        public var scriptedAlertStyle: UNAlertStyle = .banner
+    }
+
+    public let backing = Backing()
+
+    public init() {}
+
+    public func requestAuthorization() async throws -> Bool {
+        backing.authGranted
+    }
+
+    public func authorizationStatus() async -> UNAuthorizationStatus {
+        backing.authStatus
+    }
+
+    public func add(_ request: UNNotificationRequest) async throws {
+        backing.addedRequests.append(request)
+    }
+
+    public func removePendingRequests(withIdentifiers ids: [String]) {
+        backing.removedPendingIDs.append(contentsOf: ids)
+    }
+
+    public func removeDeliveredNotifications(
+        withIdentifiers ids: [String]
+    ) {
+        backing.removedDeliveredIDs.append(contentsOf: ids)
+    }
+
+    public func setCategories(
+        _ categories: Set<UNNotificationCategory>
+    ) {
+        backing.registeredCategories = categories
+    }
+
+    public func alertStyle() async -> UNAlertStyle {
+        backing.scriptedAlertStyle
+    }
+
+    /// Convenience accessors
+    public var addedRequests: [UNNotificationRequest] {
+        backing.addedRequests
+    }
+}
+
+// MARK: - ImmediateClock (for MeetingDetector debounce bypass)
+
+/// A clock that completes `sleep` immediately, making debounce
+/// timers fire without real delays. Used to bypass MeetingDetector's
+/// 3s/8s debounce in integration tests that drive the full
+/// fakeActivitySource -> MeetingDetector -> AppCore pipeline.
+public struct ImmediateClock: Clock, Sendable {
+    public typealias Duration = Swift.Duration
+
+    public struct Instant: InstantProtocol {
+        public var offset: Swift.Duration
+        public static var zero: Instant {
+            Instant(offset: .zero)
+        }
+
+        public func advanced(
+            by duration: Swift.Duration
+        ) -> Instant {
+            Instant(offset: offset + duration)
+        }
+
+        public func duration(to other: Instant) -> Swift.Duration {
+            other.offset - offset
+        }
+
+        public static func < (
+            lhs: Instant, rhs: Instant
+        ) -> Bool {
+            lhs.offset < rhs.offset
+        }
+    }
+
+    public var now: Instant {
+        .zero
+    }
+
+    public var minimumResolution: Swift.Duration {
+        .zero
+    }
+
+    public init() {}
+
+    public func sleep(
+        until _: Instant, tolerance _: Swift.Duration?
+    ) async throws {
+        try Task.checkCancellation()
+        await Task.yield()
+    }
+}
+
+// MARK: - FakeActivitySource
+
+/// Yields scripted AudioProcess snapshots on demand for tests.
+///
+/// NOT `@MainActor` — conforms to `ActivitySource` (which is `Sendable`,
+/// nonisolated). Uses `@unchecked Sendable` (safe because tests run
+/// single-threaded on `@MainActor`).
+public final class FakeActivitySource: ActivitySource,
+    @unchecked Sendable
+{
+    private var continuation: AsyncStream<[AudioProcess]>.Continuation?
+
+    public init() {}
+
+    public func activityStream() -> AsyncStream<[AudioProcess]> {
+        let (stream, cont) = AsyncStream.makeStream(
+            of: [AudioProcess].self
+        )
+        continuation = cont
+        return stream
+    }
+
+    /// Push a snapshot into the stream for test consumption.
+    public func emit(_ processes: [AudioProcess]) {
+        continuation?.yield(processes)
+    }
+
+    /// Finish the stream.
+    public func finish() {
+        continuation?.finish()
+    }
+}
+
+/// Creates a `CoreFixture` with configurable fakes.
+@MainActor
+// swiftlint:disable:next function_body_length
 public func makeCoreFixture(
     micStatus: PermissionState = .authorized,
     micRequestResult: Bool = true,
     startError: (any Error)? = nil,
     probableDenied: Bool = false,
     stateValues: [CaptureState] = [],
-    summaryLimit: Int = 50,
     denialCheckDelay: Duration = .seconds(60),
+    calendarAuthStatus: CalendarAuthStatus = .authorized,
+    calendarInfos: [CalendarInfo] = [],
+    calendarEventDTOs: [EKEventDTO] = [],
+    calendarRefreshResult: EKEventDTO? = nil,
+    calendarAuthorizer: (any CalendarAuthorizing)? = nil,
+    notificationAuthorizer: (any NotificationAuthorizing)? = nil,
+    useFakeScheduler: Bool = false,
+    useImmediateDetectorClock: Bool = false,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
-    let micAuth = FakeMicAuthorizer(status: micStatus, requestResult: micRequestResult)
-    let permissions = Permissions(mic: micAuth)
+    let micAuth = FakeMicAuthorizer(
+        status: micStatus, requestResult: micRequestResult
+    )
+    let permissions = Permissions(
+        mic: micAuth,
+        cal: calendarAuthorizer,
+        notif: notificationAuthorizer,
+        systemAudioStore: InMemorySystemAudioPermissionStore()
+    )
 
     let storageRoot = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(testName)-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: storageRoot, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+        at: storageRoot, withIntermediateDirectories: true
+    )
 
     let fakeRecorder = FakeRecorder(
         startError: startError,
@@ -88,14 +385,57 @@ public func makeCoreFixture(
     )
 
     let fakeEngine = FakeTranscriber()
-    let transcription = TranscriptionService(store: store, engine: fakeEngine)
+    let transcription = TranscriptionService(
+        store: store, engine: fakeEngine
+    )
+
+    let fakeEventStore = FakeEventStore(
+        authStatus: calendarAuthStatus,
+        requestAccessResult: true,
+        calendarInfos: calendarInfos,
+        eventDTOs: calendarEventDTOs,
+        refreshResult: calendarRefreshResult
+    )
+    let catalog = BundledMeetingCatalog()
+    let calendarService = CalendarService(
+        store: store,
+        catalog: catalog,
+        provider: fakeEventStore
+    )
+
+    let fakeActivitySource = FakeActivitySource()
+    let detector = if useImmediateDetectorClock {
+        MeetingDetector(
+            catalog: catalog,
+            source: fakeActivitySource,
+            clock: AnyClock(ImmediateClock())
+        )
+    } else {
+        MeetingDetector(
+            catalog: catalog,
+            source: fakeActivitySource
+        )
+    }
+
+    let fakeNotifCenter = FakeTestNotificationCenter()
+    let notificationService = NotificationService(
+        provider: fakeNotifCenter
+    )
+
+    let fakeScheduler: FakeScheduler? = useFakeScheduler
+        ? FakeScheduler() : nil
+    let scheduler: any AppScheduler = fakeScheduler
+        ?? LiveAppScheduler()
 
     let core = AppCore(
         store: store,
         permissions: permissions,
         recording: recording,
         transcription: transcription,
-        summaryLimit: summaryLimit
+        calendar: calendarService,
+        detector: detector,
+        notifications: notificationService,
+        scheduler: scheduler
     )
 
     return CoreFixture(
@@ -104,6 +444,13 @@ public func makeCoreFixture(
         fakeRecorder: fakeRecorder,
         fakeEngine: fakeEngine,
         storageRoot: storageRoot,
-        permissions: permissions
+        permissions: permissions,
+        calendarService: calendarService,
+        fakeEventStore: fakeEventStore,
+        detector: detector,
+        notificationService: notificationService,
+        fakeNotificationCenter: fakeNotifCenter,
+        fakeActivitySource: fakeActivitySource,
+        fakeScheduler: fakeScheduler
     )
 }

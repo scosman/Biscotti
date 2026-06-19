@@ -70,7 +70,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 
 - **Apple Silicon, macOS 15+ only.** Newest APIs are fair game; no Intel/older-macOS support.
 - **Swift-package-first.** The app target stays thin (composition root + Apple glue); everything testable lives in packages under `Packages/` so it runs via `swift build`/`swift test` with no `xcodebuild`/signing. See `architecture.md` → "Thin-App Composition."
-- **Agents: run builds/tests through the `hooks-mcp` MCP server, not Bash.** The `Makefile` is the canonical command surface, but `swift build`, `swift test`, and `xcodebuild` **fail under the agent Bash sandbox** — llbuild's build-system file writes hit a silent sandbox denial that no SwiftPM flag, scratch-path, or `--disable-sandbox` fixes. The `hooks-mcp` tools (`mcp__hooks-mcp__build`, `…__test`, `…__build_app`, `…__generate`, `…__bootstrap`, etc.) run the *same* `make` targets in the MCP server process, **outside** the sandbox — use them for anything that compiles. Only `mcp__hooks-mcp__lint` / `…__format` (and their `make lint`/`make format` equivalents) are also safe to run directly in Bash. Humans and CI invoke `make` directly as usual.
+- **Agents: run builds/tests through the `hooks-mcp` MCP server, not Bash.** The `Makefile` is the canonical command surface, but `swift build`, `swift test`, and `xcodebuild` **fail under the agent Bash sandbox** — llbuild's build-system file writes hit a silent sandbox denial that no SwiftPM flag, scratch-path, or `--disable-sandbox` fixes. The `hooks-mcp` tools (`mcp__hooks-mcp__build`, `…__test`, `…__build_app`, `…__generate`, `…__bootstrap`, etc.) run the *same* `make` targets in the MCP server process, **outside** the sandbox — use them for anything that compiles. Only `mcp__hooks-mcp__lint` / `…__format` (and their `make lint`/`make format` equivalents) are also safe to run directly in Bash — **once the pinned SwiftLint binary is cached under `.tools/`**. On a fresh checkout, `make lint`/`format` first `curl` the pinned SwiftLint (see `SWIFTLINT_VERSION` in the `Makefile`), and that download is blocked by the Bash sandbox; run `mcp__hooks-mcp__lint` (outside the sandbox) once to populate `.tools/`, after which Bash `make lint`/`format` work. Humans and CI invoke `make` directly as usual.
 - **The design is shape-level.** When building a component, *you* design its real API inside the boundary `architecture.md` draws — don't expect interfaces there, and don't add them to that doc.
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
@@ -87,7 +87,7 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 
 | Target | Does | Gating? |
 |---|---|---|
-| `make bootstrap` | Install dev tools via Homebrew (`brew bundle`) | — |
+| `make bootstrap` | Install dev tools via Homebrew (`brew bundle`) + fetch pinned SwiftLint | — |
 | `make generate` | Generate `App/Biscotti.xcodeproj` from `App/project.yml` (XcodeGen) | — |
 | `make build` | `swift build` all SPM packages | — |
 | `make test` | `swift test` across packages | Yes |

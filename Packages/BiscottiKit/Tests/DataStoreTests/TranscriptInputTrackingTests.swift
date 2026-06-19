@@ -42,9 +42,11 @@ struct TranscriptInputTrackingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        #expect(transcript?.transcriptionMethodId == "v1")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            #expect(transcript?.transcriptionMethodId == "v1")
+        }
     }
 
     @Test("addTranscript persists vocabularyUsed")
@@ -59,9 +61,11 @@ struct TranscriptInputTrackingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        #expect(transcript?.vocabularyUsed == vocab)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            #expect(transcript?.vocabularyUsed == vocab)
+        }
     }
 
     @Test("addTranscript persists mappedEventIdentifier")
@@ -75,9 +79,11 @@ struct TranscriptInputTrackingTests {
             to: meetingID
         )
 
-        let meeting = try await store.meeting(id: meetingID)
-        let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
-        #expect(transcript?.mappedEventIdentifier == "event-123")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let transcript = meeting?.transcripts.first(where: { $0.id == transcriptID })
+            #expect(transcript?.mappedEventIdentifier == "event-123")
+        }
     }
 
     @Test("preferredTranscriptIsStale returns false for identical inputs")

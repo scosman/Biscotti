@@ -4,10 +4,14 @@ import SwiftData
 /// The single owner of all persistent data. All mutations go through this actor;
 /// queries use `FetchDescriptor` + `#Predicate`.
 ///
-/// **Thread-safety contract:** Returned `@Model` objects carry `@unchecked Sendable`
-/// so they can cross the actor boundary, but callers **must treat them as read-only
-/// snapshots**. All mutations must go through `DataStore` methods — mutating a model
-/// object off-actor is unsupported and risks data races.
+/// **Thread-safety contract:** SwiftData `@Model` objects are **not** `Sendable`
+/// (the macro marks the conformance unavailable on purpose), so they must never
+/// cross the actor boundary. Off-actor callers get data through the `Sendable`
+/// read-model projections in `DataStore+ReadModels`, through identifiers/`Bool`
+/// helpers (e.g. ``meetingExists(id:)``), or — for tests and internal verification
+/// — by running a closure on the actor via ``read(_:)`` and returning only a
+/// `Sendable` result. Methods such as ``meeting(id:)`` that return raw models are
+/// for on-actor use only.
 public actor DataStore {
     /// Storage configuration for the model container.
     public enum Storage: Sendable {
@@ -45,9 +49,11 @@ public actor DataStore {
         }
 
         do {
+            // TODO: re-wire `migrationPlan: DataStoreMigrationPlan.self` once a
+            // breaking schema change requires V2. Currently V1-only; additive
+            // defaulted properties are handled automatically by SwiftData.
             container = try ModelContainer(
                 for: schema,
-                migrationPlan: DataStoreMigrationPlan.self,
                 configurations: [config]
             )
         } catch {
@@ -70,11 +76,27 @@ public actor DataStore {
     }
 
     /// Fetches a meeting by ID, or nil if not found.
+    ///
+    /// The returned `Meeting` is **not** `Sendable` and must only be read on this
+    /// actor. Off-actor callers that just need existence should use
+    /// ``meetingExists(id:)``; callers that need data should use the read-model
+    /// projections in `DataStore+ReadModels`.
     public func meeting(id: UUID) throws -> Meeting? {
         let descriptor = FetchDescriptor<Meeting>(
             predicate: #Predicate { $0.id == id }
         )
         return try context.fetch(descriptor).first
+    }
+
+    /// Returns whether a meeting with the given ID exists. Returns a `Sendable`
+    /// `Bool`, so it is safe to call across the actor boundary (unlike
+    /// ``meeting(id:)``, which returns a non-`Sendable` model).
+    public func meetingExists(id: UUID) throws -> Bool {
+        var descriptor = FetchDescriptor<Meeting>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetchCount(descriptor) > 0
     }
 
     /// Returns the most recently created meetings, ordered by `createdAt` descending.
@@ -99,6 +121,17 @@ public actor DataStore {
             return start >= now
         }
         return Array(filtered.prefix(limit))
+    }
+
+    /// Sets the recording duration for a meeting.
+    public func setRecordingDuration(
+        _ duration: TimeInterval, for meetingID: UUID
+    ) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        meeting.recordingDuration = duration
+        try save()
     }
 
     /// Deletes a meeting by ID. Throws `notFound` if the meeting does not exist.

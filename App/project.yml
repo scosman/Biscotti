@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
+  fileTypes:
+    icon:
+      file: true
 
 settings:
   base:
@@ -48,6 +51,10 @@ targets:
         product: AppCore
       - package: BiscottiKit
         product: DataStore
+      - package: BiscottiKit
+        product: MenuBarUI
+      - package: BiscottiKit
+        product: Notifications
       - package: Transcription
         product: Transcription
       - package: AudioCapture

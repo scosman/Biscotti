@@ -1,6 +1,9 @@
 .specs_skill_state/
 reviews/
 
+# Pinned dev tools vendored by the Makefile (e.g. SwiftLint portable binary)
+.tools/
+
 # Swift / Xcode
 .build/
 **/.build/

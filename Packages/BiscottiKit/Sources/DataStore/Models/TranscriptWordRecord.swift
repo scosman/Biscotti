@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - TranscriptWordRecord
 
 /// Word-level detail within a segment. `index` gives stable ordering.
-@Model public final class TranscriptWordRecord: @unchecked Sendable {
+@Model public final class TranscriptWordRecord {
     public var id = UUID()
     /// Stable ordering within the segment.
     public var index: Int = 0

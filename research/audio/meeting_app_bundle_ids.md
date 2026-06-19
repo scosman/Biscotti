@@ -5,6 +5,10 @@ discover while testing per-process audio capture and meeting detection. We'll ne
 this to build a good UX later — e.g. mapping a user-facing "meeting app" to the
 actual process whose audio we must tap.
 
+> **See also:** [`research/meeting_apps/README.md`](../meeting_apps/README.md) for the
+> full catalog of 18+ meeting platforms with bundle IDs, meeting-link URL formats, regexes,
+> confidence levels, and source citations. This file focuses on audio-routing specifics.
+
 **Key gotcha:** the user-facing app is often NOT the process that produces/consumes
 the audio. Browsers route audio through a GPU/media helper process, and some native
 apps route through a system conferencing daemon. Per-process taps must target the

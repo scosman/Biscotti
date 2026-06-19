@@ -26,24 +26,26 @@ struct SnapshotTests {
             calendarTitle: "Work",
             calendarColorHex: "#4285F4",
             conferenceURL: URL(string: "https://meet.google.com/abc"),
-            conferencePlatform: "meet"
+            conferencePlatform: "Google Meet"
         )
 
         try await store.setSnapshot(snapshot, for: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        let snap = meeting?.calendarSnapshot
-        #expect(snap != nil)
-        #expect(snap?.eventIdentifier == "ek-123")
-        #expect(snap?.compositeKey == "Standup|2025-06-01|alice@x.com")
-        #expect(snap?.title == "Daily Standup")
-        #expect(snap?.isAllDay == false)
-        #expect(snap?.location == "Room 42")
-        #expect(snap?.conferenceURL == URL(string: "https://meet.google.com/abc"))
-        #expect(snap?.conferencePlatform == "meet")
-        #expect(snap?.calendarTitle == "Work")
-        #expect(snap?.calendarColorHex == "#4285F4")
-        #expect(snap?.eventNotes == "Bring updates")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            let snap = meeting?.calendarSnapshot
+            #expect(snap != nil)
+            #expect(snap?.eventIdentifier == "ek-123")
+            #expect(snap?.compositeKey == "Standup|2025-06-01|alice@x.com")
+            #expect(snap?.title == "Daily Standup")
+            #expect(snap?.isAllDay == false)
+            #expect(snap?.location == "Room 42")
+            #expect(snap?.conferenceURL == URL(string: "https://meet.google.com/abc"))
+            #expect(snap?.conferencePlatform == "Google Meet")
+            #expect(snap?.calendarTitle == "Work")
+            #expect(snap?.calendarColorHex == "#4285F4")
+            #expect(snap?.eventNotes == "Bring updates")
+        }
     }
 
     @Test("clearSnapshot removes snapshot and meeting survives")
@@ -56,14 +58,17 @@ struct SnapshotTests {
             title: "Event"
         )
         try await store.setSnapshot(snapshot, for: meetingID)
-        #expect(try await store.meeting(id: meetingID)?.calendarSnapshot != nil)
+        let hasSnapshot = try await store.read { try $0.meeting(id: meetingID)?.calendarSnapshot != nil }
+        #expect(hasSnapshot)
 
         try await store.clearSnapshot(for: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting != nil)
-        #expect(meeting?.calendarSnapshot == nil)
-        #expect(meeting?.title == "Clearable")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting != nil)
+            #expect(meeting?.calendarSnapshot == nil)
+            #expect(meeting?.title == "Clearable")
+        }
     }
 
     @Test("setSnapshot replaces existing snapshot and deletes old entity")
@@ -85,14 +90,16 @@ struct SnapshotTests {
         )
         try await store.setSnapshot(second, for: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting?.calendarSnapshot?.eventIdentifier == "new")
-        #expect(meeting?.calendarSnapshot?.title == "New Event")
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting?.calendarSnapshot?.eventIdentifier == "new")
+            #expect(meeting?.calendarSnapshot?.title == "New Event")
 
-        // Verify the old snapshot entity was deleted, not orphaned
-        let allSnapshots = try await store.fetchAllSnapshots()
-        #expect(allSnapshots.count == 1)
-        #expect(allSnapshots.first?.eventIdentifier == "new")
+            // Verify the old snapshot entity was deleted, not orphaned
+            let allSnapshots = try store.fetchAllSnapshots()
+            #expect(allSnapshots.count == 1)
+            #expect(allSnapshots.first?.eventIdentifier == "new")
+        }
     }
 
     @Test("clearSnapshot on meeting with no snapshot is a no-op")
@@ -103,17 +110,19 @@ struct SnapshotTests {
         // Should not throw
         try await store.clearSnapshot(for: meetingID)
 
-        let meeting = try await store.meeting(id: meetingID)
-        #expect(meeting != nil)
-        #expect(meeting?.calendarSnapshot == nil)
+        try await store.read { store in
+            let meeting = try store.meeting(id: meetingID)
+            #expect(meeting != nil)
+            #expect(meeting?.calendarSnapshot == nil)
+        }
     }
 
     @Test("setSnapshot on non-existent meeting throws notFound")
     func setSnapshotMissing() async throws {
         let store = try makeStore()
         let bogus = UUID()
-        let snapshot = CalendarSnapshot(compositeKey: "test", title: "Test")
         await #expect(throws: DataStoreError.notFound(bogus)) {
+            let snapshot = CalendarSnapshot(compositeKey: "test", title: "Test")
             try await store.setSnapshot(snapshot, for: bogus)
         }
     }

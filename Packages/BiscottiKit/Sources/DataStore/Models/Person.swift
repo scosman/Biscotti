@@ -5,7 +5,7 @@ import SwiftData
 
 /// A person who participates in or organizes meetings.
 /// Recurs across meetings so identity (and future voiceprints) accumulate.
-@Model public final class Person: @unchecked Sendable {
+@Model public final class Person {
     public var id = UUID()
     public var name: String = ""
     /// Key field for dedup (may be nil for people without a known email).

@@ -12,6 +12,14 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         var reconnectCount = 0
         var lastURL: URL?
         var startError: (any Error)?
+        /// Number of start() calls that should fail before succeeding.
+        /// Decremented on each failing call. When 0 and `startError` is
+        /// set, the error is permanent; when >0, the error clears after
+        /// this many failures.
+        var startFailuresRemaining = 0
+        var reconnectError: (any Error)?
+        /// Number of reconnect() calls that should fail before succeeding.
+        var reconnectFailuresRemaining = 0
         var micAnchor: Double = 0
         /// Anchor value the fake fires via `onFirstBuffer` on start. Set
         /// via `setFirstBufferAnchor(_:)` before calling start. Default 0.
@@ -24,6 +32,11 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// For fakes used as the mic engine in tests, setting this and then
     /// calling `simulateFirstBuffer(anchor:)` exercises the alignment path.
     private var onFirstBuffer: (@Sendable (Double) -> Void)?
+
+    /// Optional callback fired after each successful `start()`. Used by
+    /// probe tests to simulate audio arriving once the engine is running
+    /// (e.g. setting `observedNonZero` on the permission checker).
+    var onStart: (@Sendable () -> Void)?
 
     func setOnFirstBuffer(_ callback: (@Sendable (Double) -> Void)?) {
         onFirstBuffer = callback
@@ -50,9 +63,38 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         state.withLock { $0.lastURL }
     }
 
-    /// Set to make the next `start()` throw.
+    /// Set to make `start()` throw permanently (every call fails).
     func setStartError(_ error: (any Error)?) {
-        state.withLock { $0.startError = error }
+        state.withLock {
+            $0.startError = error
+            $0.startFailuresRemaining = 0
+        }
+    }
+
+    /// Set a transient start error: `start()` will throw for the next
+    /// `count` calls, then succeed on the (count+1)-th call.
+    func setTransientStartError(_ error: any Error, failureCount count: Int) {
+        state.withLock {
+            $0.startError = error
+            $0.startFailuresRemaining = count
+        }
+    }
+
+    /// Set to make `reconnect()` throw permanently.
+    func setReconnectError(_ error: (any Error)?) {
+        state.withLock {
+            $0.reconnectError = error
+            $0.reconnectFailuresRemaining = 0
+        }
+    }
+
+    /// Set a transient reconnect error: `reconnect()` will throw for the
+    /// next `count` calls, then succeed.
+    func setTransientReconnectError(_ error: any Error, failureCount count: Int) {
+        state.withLock {
+            $0.reconnectError = error
+            $0.reconnectFailuresRemaining = count
+        }
     }
 
     /// Set the anchor value fired via `onFirstBuffer` when start is called.
@@ -74,7 +116,17 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         let (error, anchor) = state.withLock { locked -> ((any Error)?, Double) in
             locked.startCount += 1
             locked.lastURL = url
-            return (locked.startError, locked.firstBufferAnchor)
+            if let err = locked.startError {
+                if locked.startFailuresRemaining > 0 {
+                    locked.startFailuresRemaining -= 1
+                    // Transient: will clear when count reaches 0
+                    if locked.startFailuresRemaining == 0 {
+                        locked.startError = nil
+                    }
+                }
+                return (err, locked.firstBufferAnchor)
+            }
+            return (nil, locked.firstBufferAnchor)
         }
 
         if let error {
@@ -86,6 +138,9 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         // timeout. Real engines fire this from the actual audio tap.
         let callback = onFirstBuffer
         callback?(anchor)
+
+        // Notify test hooks that the engine started successfully.
+        onStart?()
     }
 
     func stop() async {
@@ -93,6 +148,19 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
     }
 
     func reconnect() async throws {
-        state.withLock { $0.reconnectCount += 1 }
+        let error: (any Error)? = state.withLock { locked -> (any Error)? in
+            locked.reconnectCount += 1
+            if let err = locked.reconnectError {
+                if locked.reconnectFailuresRemaining > 0 {
+                    locked.reconnectFailuresRemaining -= 1
+                    if locked.reconnectFailuresRemaining == 0 {
+                        locked.reconnectError = nil
+                    }
+                }
+                return err
+            }
+            return nil
+        }
+        if let error { throw error }
     }
 }

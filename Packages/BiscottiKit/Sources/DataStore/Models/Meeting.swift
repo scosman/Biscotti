@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Meeting
 
 /// A recorded (or upcoming) meeting — the central aggregate in the data model.
-@Model public final class Meeting: @unchecked Sendable {
+@Model public final class Meeting {
     public var id = UUID()
     public var title: String = ""
     public var startDate: Date?
@@ -14,6 +14,16 @@ import SwiftData
     public var notes: String = ""
     /// Which transcript version is "current" (set via `setPreferredTranscript`).
     public var preferredTranscriptID: UUID?
+
+    /// Whether the user has manually edited the title. When `true`, calendar
+    /// association will NOT overwrite the title with the event name.
+    public var editedTitle: Bool = false
+
+    /// The recording's wall-clock duration in seconds, captured when the
+    /// recording stops. `nil` for meetings that were never recorded (e.g.
+    /// calendar-only entries) or recordings from before this field existed.
+    /// Additive field -- defaults nil, no migration needed.
+    public var recordingDuration: TimeInterval?
 
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []

@@ -73,9 +73,7 @@ struct CascadeDeleteTests {
 
         // Attach audio refs
         let mic = AudioFileRef(role: .mic, path: "/tmp/mic.aac", byteSize: 1024)
-        let system = AudioFileRef(
-            role: .system, path: "/tmp/sys.aac", byteSize: 2048
-        )
+        let system = AudioFileRef(role: .system, path: "/tmp/sys.aac", byteSize: 2048)
         try await store.attachAudio([mic, system], to: meetingID)
 
         // Set a calendar snapshot
@@ -95,24 +93,95 @@ struct CascadeDeleteTests {
         )
 
         // Verify children exist before delete
-        #expect(try await store.fetchAllTranscripts().count == 1)
-        #expect(try await store.fetchAllSegments().count == 2)
-        #expect(try await store.fetchAllWords().count == 2)
-        #expect(try await store.fetchAllAudioRefs().count == 2)
-        #expect(try await store.fetchAllSnapshots().count == 1)
-        #expect(try await store.fetchAllPersons().count == 1)
+        try await store.read { store in
+            // [transcripts, segments, words, audioRefs, snapshots, persons]
+            let counts = try [
+                store.fetchAllTranscripts().count,
+                store.fetchAllSegments().count,
+                store.fetchAllWords().count,
+                store.fetchAllAudioRefs().count,
+                store.fetchAllSnapshots().count,
+                store.fetchAllPersons().count
+            ]
+            #expect(counts == [1, 2, 2, 2, 1, 1])
+        }
 
         // Delete the meeting
         try await store.delete(meetingID: meetingID)
 
         // All owned children should be cascade-deleted
-        #expect(try await store.fetchAllTranscripts().isEmpty)
-        #expect(try await store.fetchAllSegments().isEmpty)
-        #expect(try await store.fetchAllWords().isEmpty)
-        #expect(try await store.fetchAllAudioRefs().isEmpty)
-        #expect(try await store.fetchAllSnapshots().isEmpty)
+        try await store.read { store in
+            // owned children: [transcripts, segments, words, audioRefs, snapshots]
+            let childCounts = try [
+                store.fetchAllTranscripts().count,
+                store.fetchAllSegments().count,
+                store.fetchAllWords().count,
+                store.fetchAllAudioRefs().count,
+                store.fetchAllSnapshots().count
+            ]
+            let persons = try store.fetchAllPersons().count
+            #expect(childCounts == [0, 0, 0, 0, 0])
+            #expect(persons == 1) // shared Person survives
+        }
+    }
 
-        // Shared Person should survive
-        #expect(try await store.fetchAllPersons().count == 1)
+    @Test("Deleting one meeting preserves shared Person linked to another meeting")
+    func deleteOnePreservesSharedPerson() async throws {
+        let store = try makeStore()
+
+        // Create two meetings
+        let id1 = try await store.createMeeting(title: "Meeting A")
+        let id2 = try await store.createMeeting(title: "Meeting B")
+
+        // Create a person shared across both meetings
+        let personID = try await store.findOrCreatePerson(
+            name: "Bob", email: "bob@test.com"
+        )
+        try await store.setParticipants(
+            [personID], organizer: personID, for: id1
+        )
+        try await store.setParticipants(
+            [personID], organizer: personID, for: id2
+        )
+
+        // Give Meeting A a calendar snapshot (cascade target)
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-shared",
+            compositeKey: "shared|test",
+            title: "Shared Event"
+        )
+        try await store.setSnapshot(snapshot, for: id1)
+
+        // Verify setup
+        try await store.read { store in
+            let persons = try store.fetchAllPersons().count
+            let snapshots = try store.fetchAllSnapshots().count
+            #expect(persons == 1)
+            #expect(snapshots == 1)
+        }
+
+        // Delete Meeting A
+        try await store.delete(meetingID: id1)
+
+        // Meeting B and the shared Person must survive
+        try await store.read { store in
+            let meetingBExists = try store.meeting(id: id2) != nil
+            let meetingBTitle = try store.meeting(id: id2)?.title
+            let persons = try store.fetchAllPersons()
+            let personCount = persons.count
+            let firstPersonName = persons.first?.name
+            let snapshotsEmpty = try store.fetchAllSnapshots().isEmpty
+            let meetingAExists = try store.meeting(id: id1) != nil
+            #expect(meetingBExists)
+            #expect(meetingBTitle == "Meeting B")
+            #expect(personCount == 1)
+            #expect(firstPersonName == "Bob")
+
+            // Meeting A's snapshot should be gone (cascade)
+            #expect(snapshotsEmpty)
+
+            // Meeting A should be gone
+            #expect(meetingAExists == false)
+        }
     }
 }

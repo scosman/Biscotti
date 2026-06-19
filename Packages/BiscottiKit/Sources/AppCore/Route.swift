@@ -2,12 +2,22 @@ import Foundation
 
 /// The current navigation destination in the app.
 public enum Route: Sendable, Equatable {
-    /// No meeting selected; show a placeholder.
-    case empty
+    /// The home / welcome screen (replaces Stage B `.empty`).
+    case home
 
     /// A recording is in progress; show the recording screen.
     case recording
 
-    /// A specific meeting is selected; show its detail screen.
-    case meeting(UUID)
+    /// The two-pane Meetings screen (list + detail). Selection state
+    /// lives in `AppCore.meetingsSelection`, not in the route.
+    case meetings
+
+    /// An un-recorded upcoming calendar event (read-only preview), keyed by composite key.
+    case event(String)
+
+    /// In-window settings.
+    case settings
+
+    /// First-run onboarding (full-window takeover).
+    case onboarding
 }

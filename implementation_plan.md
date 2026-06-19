@@ -151,6 +151,9 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **Depends on:** Project 4 (and the specific components each slice touches).
 - **Risk:** **low-medium.** Likely split into several tiny Projects when the time comes.
 
+### Project 14 — Custom Vocabularies  ·  blocked
+ - Implement the planned custom vocabulary project. However it's blocked as the SDK fails whenever you add a custom vocabulary. Fix identified, waiting for ArgMax to merge.
+
 ---
 
 ## Critical Path & Parallelism

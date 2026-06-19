@@ -3,10 +3,12 @@ import DataStore
 import DesignSystem
 import SwiftUI
 
-/// The sidebar's scrollable list of past meetings.
+/// The Meetings screen's left-bar list: a native `List` with pinned
+/// section headers (browse mode) or flat ranked results (search mode).
 ///
-/// Each row shows the meeting title and a relative date. Selecting a row
-/// routes the detail pane to that meeting via `MeetingListViewModel`.
+/// Uses `List(selection: Binding<Set<UUID>>)` for the platform's native
+/// accent highlight, keyboard navigation (arrow up/down), and built-in
+/// shift/cmd multi-select.
 public struct MeetingListView: View {
     @Bindable private var viewModel: MeetingListViewModel
 
@@ -15,32 +17,113 @@ public struct MeetingListView: View {
     }
 
     public var body: some View {
-        Group {
-            if viewModel.meetings.isEmpty {
-                Text("No recordings yet")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                    .padding(.vertical, Tokens.spacingSM)
-            } else {
-                ForEach(viewModel.meetings) { meeting in
-                    Button {
-                        viewModel.select(meeting.id)
-                    } label: {
-                        meetingRow(meeting)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.vertical, Tokens.spacingXS)
-                    .padding(.horizontal, Tokens.spacingSM)
-                    .background(
-                        viewModel.selectedMeetingID == meeting.id
-                            ? Color.accentColor.opacity(0.15)
-                            : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 4)
-                    )
+        // Empty states render OUTSIDE the List so ContentUnavailableView
+        // centers vertically in the full pane instead of pinning to a row.
+        if viewModel.mode == .browse, viewModel.groups.isEmpty {
+            ContentUnavailableView {
+                Label {
+                    Text("No Recordings")
+                        .font(.serifHeadline)
+                } icon: {
+                    Image(systemName: "waveform")
+                }
+            } description: {
+                Text("Recorded meetings will appear here.")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewModel.mode == .search,
+                  !viewModel.isSearching, // still in-flight -> fall through to List/spinner
+                  viewModel.results.isEmpty
+        {
+            ContentUnavailableView.search(text: viewModel.query)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(
+                selection: Binding(
+                    get: { viewModel.selectedIDs },
+                    set: { viewModel.select($0) }
+                )
+            ) {
+                switch viewModel.mode {
+                case .browse:
+                    browseContent
+
+                case .search:
+                    searchContent
+                }
+            }
+            .listStyle(.inset)
+            .onDeleteCommand {
+                viewModel.requestDeleteSelection()
+            }
+            .confirmationDialog(
+                deleteDialogTitle,
+                isPresented: $viewModel.showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.confirmDelete() }
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelDelete()
+                }
+            } message: {
+                Text(deleteDialogMessage)
+            }
+        }
+    }
+
+    // MARK: - Delete confirmation copy
+
+    private var deleteDialogTitle: String {
+        let count = viewModel.deleteConfirmationCount
+        if count == 1 {
+            return "Delete this meeting?"
+        }
+        return "Delete \(count) meetings?"
+    }
+
+    private var deleteDialogMessage: String {
+        let count = viewModel.deleteConfirmationCount
+        if count == 1 {
+            return "This meeting and its recording will be permanently deleted."
+        }
+        return "These \(count) meetings and their recordings will be permanently deleted."
+    }
+
+    // MARK: - Browse mode (grouped by date)
+
+    private var browseContent: some View {
+        ForEach(viewModel.groups) { group in
+            Section(group.title) {
+                ForEach(group.meetings) { meeting in
+                    meetingRow(meeting)
+                        .tag(meeting.id)
                 }
             }
         }
     }
+
+    // MARK: - Search mode (flat results)
+
+    @ViewBuilder
+    private var searchContent: some View {
+        if viewModel.isSearching {
+            HStack {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+            .padding(.vertical, Tokens.spacingLG)
+        } else {
+            ForEach(viewModel.results) { hit in
+                searchRow(hit)
+                    .tag(hit.id)
+            }
+        }
+    }
+
+    // MARK: - Row views
 
     private func meetingRow(_ meeting: MeetingSummary) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -48,24 +131,45 @@ public struct MeetingListView: View {
                 .font(.body)
                 .lineLimit(1)
 
-            Text(MeetingListViewModel.relativeDate(meeting.date))
+            Text(MeetingListViewModel.secondLineText(for: meeting))
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+    }
+
+    private func searchRow(_ hit: SearchHit) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(hit.title)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer()
+                Text(TimeFormatting.shortDate(hit.date))
+                    .font(.monoMeta)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+            Text(
+                "matches: \(MeetingListViewModel.matchedFieldsText(hit.matchedFields))"
+            )
+            .font(.caption)
+            .foregroundStyle(Tokens.secondaryText)
+        }
     }
 }
 
-#Preview("Meeting List - Empty") {
-    MeetingListView(viewModel: .preview())
-        .frame(width: 200)
-}
+#if DEBUG
+    #Preview("Meeting List - Browse Empty") {
+        MeetingListView(viewModel: .previewEmpty())
+            .frame(width: 280, height: 400)
+    }
 
-#Preview("Meeting List - With Meetings") {
-    // The preview helper uses an in-memory store that starts empty.
-    // SwiftUI previews primarily verify layout; use the app or tests
-    // to exercise populated lists.
-    MeetingListView(viewModel: .preview())
-        .frame(width: 200)
-}
+    #Preview("Meeting List - Browse Populated") {
+        MeetingListView(viewModel: .previewBrowse())
+            .frame(width: 280, height: 400)
+    }
+
+    #Preview("Meeting List - Search") {
+        MeetingListView(viewModel: .previewSearch())
+            .frame(width: 280, height: 400)
+    }
+#endif

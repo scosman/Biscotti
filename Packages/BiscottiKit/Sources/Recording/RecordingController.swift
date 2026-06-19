@@ -24,6 +24,10 @@ public final class RecordingController {
     /// The last error from a start or stop attempt. Cleared on next start.
     public private(set) var lastError: RecordingError?
 
+    /// In-memory notes captured during the current recording session.
+    /// Oldest-first (insertion order). Reset on `start()`, seeded on `stop()`.
+    public private(set) var notes: [MeetingNote] = []
+
     // MARK: - Dependencies
 
     private let store: DataStore
@@ -75,16 +79,42 @@ public final class RecordingController {
         self.denialCheckDelay = denialCheckDelay
     }
 
+    // MARK: - Notes
+
+    /// Adds a timestamped note to the current session.
+    ///
+    /// Empty or whitespace-only text is ignored. The timestamp is the
+    /// current `state.elapsed` at the moment of the call.
+    public func addNote(text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let note = MeetingNote(text: trimmed, timestamp: state.elapsed)
+        notes.append(note)
+    }
+
+    /// Updates the text of an existing note. The timestamp is preserved.
+    public func updateNote(id: UUID, text: String) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        notes[index].text = text
+    }
+
+    /// Removes a note by its stable ID.
+    public func removeNote(id: UUID) {
+        notes.removeAll(where: { $0.id == id })
+    }
+
     // MARK: - Start
 
     /// Starts a new recording session.
     ///
-    /// Flow: request mic permission (JIT) -> trigger system-audio prompt ->
-    /// create meeting -> write marker -> create directory -> attach audio refs ->
-    /// start engine -> pump elapsed -> schedule system-audio denial check.
+    /// Flow: request mic permission (JIT) -> create meeting -> write marker ->
+    /// create directory -> attach audio refs -> start engine -> pump elapsed ->
+    /// schedule system-audio denial check. The real system tap surfaces the TCC
+    /// prompt on first use — no pre-record probe.
     public func start() async {
         lastError = nil
         systemAudioWarning = false
+        notes = []
 
         guard !state.isRecording else {
             lastError = .alreadyRecording
@@ -98,9 +128,7 @@ public final class RecordingController {
             return
         }
 
-        // Trigger the system-audio TCC prompt before creating any meeting state.
         let newRecorder = makeRecorder()
-        await probeSystemAudioPermission(recorder: newRecorder)
 
         // Create meeting + directory + marker + audio refs
         guard let setup = await setupMeetingStorage() else {
@@ -118,7 +146,10 @@ public final class RecordingController {
         }
 
         recorder = newRecorder
-        state = RecordingState(isRecording: true, elapsed: 0, meetingID: setup.meetingID)
+        state = RecordingState(
+            isRecording: true, elapsed: 0,
+            meetingID: setup.meetingID, startDate: Date()
+        )
         startStateStreamPump(recorder: newRecorder)
         scheduleDenialCheck(recorder: newRecorder)
     }
@@ -159,8 +190,31 @@ public final class RecordingController {
             Self.logger.warning("markAudioPresence failed for \(meetingID): \(error.localizedDescription)")
         }
 
+        // Persist recording duration (capture before resetting state)
+        let elapsed = state.elapsed
+        if elapsed > 0 {
+            do {
+                try await store.setRecordingDuration(elapsed, for: meetingID)
+            } catch {
+                Self.logger.warning("setRecordingDuration failed for \(meetingID): \(error.localizedDescription)")
+            }
+        }
+
+        // Seed in-memory notes into the meeting's notes field
+        if let section = NotesMarkdown.generate(notes: notes, meetingID: meetingID) {
+            do {
+                let detail = try await store.meetingDetail(id: meetingID)
+                let existing = detail?.notes ?? ""
+                let merged = NotesMarkdown.merged(existing: existing, section: section)
+                try await store.setNotes(merged, for: meetingID)
+            } catch {
+                Self.logger.warning("Notes seeding failed for \(meetingID): \(error.localizedDescription)")
+            }
+        }
+
         // Reset state
         recorder = nil
+        notes = []
         state = .idle
 
         return meetingID
@@ -209,6 +263,26 @@ public final class RecordingController {
         }
     }
 
+    // MARK: - Onboarding support
+
+    /// Probes for system-audio permission using the tone-probe and updates
+    /// the persisted permission state.
+    ///
+    /// Sets `.requestedNotVerified` on start, then runs the tone probe.
+    /// On success (non-zero audio observed): sets `.approved`.
+    /// On timeout: stays `.requestedNotVerified`.
+    /// Never sets a durable denied state.
+    public func probeSystemAudioPermission() async {
+        permissions.setSystemAudio(.requestedNotVerified)
+        let probeRecorder = makeRecorder()
+        let observed = await probeRecorder.probeSystemAudioWithTone(
+            timeout: .seconds(5)
+        )
+        permissions.setSystemAudio(
+            observed ? .approved : .requestedNotVerified
+        )
+    }
+
     // MARK: - Private types
 
     /// Captures the artefacts created by `setupMeetingStorage()`.
@@ -220,28 +294,15 @@ public final class RecordingController {
 
     // MARK: - Private helpers
 
-    /// Generates an auto-title like "Recording -- Jun 9, 2:30 PM".
+    /// Generates an auto-title for a new recording.
     ///
-    /// - TODO: the hardcoded `"MMM d, h:mm a"` format ignores the user's locale
-    ///   (12h vs 24h, date-component ordering). Before ship, migrate to
-    ///   `Date.FormatStyle` or `DateFormatter.dateFormat(fromTemplate:locale:)`
-    ///   for locale-aware formatting. Deferred past MVP.
-    public static func autoTitle(date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
-        return "Recording \u{2014} \(formatter.string(from: date))"
-    }
-
-    /// Triggers the system-audio TCC prompt by briefly exercising the engine.
-    ///
-    /// System audio has no public permission API; the only way to surface the
-    /// macOS prompt is to create a Core Audio process tap via the engine's
-    /// `requestPermissions(systemProbePath:)`. Uses a scratch file under the
-    /// storage root that is safe to discard.
-    private func probeSystemAudioPermission(recorder: any RecorderControlling) async {
-        let probePath = storageRoot.appendingPathComponent(".system_probe.aac")
-        _ = await recorder.requestPermissions(systemProbePath: probePath)
-        try? FileManager.default.removeItem(at: probePath)
+    /// The title is just "Untitled Meeting" -- the date is already stored as
+    /// `Meeting.startDate` / `Meeting.createdAt` and displayed separately
+    /// in the UI, so embedding it in the title would cause duplication.
+    /// Calendar association will replace this with the event title unless
+    /// the user has manually edited the title.
+    public static func autoTitle() -> String {
+        "Untitled Meeting"
     }
 
     /// Creates the meeting, recording directory, marker file, and audio refs.
@@ -250,7 +311,7 @@ public final class RecordingController {
     /// `lastError` already set). Eagerly cleans up partial state on failure
     /// so the meeting doesn't become an invisible orphan.
     private func setupMeetingStorage() async -> MeetingSetup? {
-        let title = Self.autoTitle(date: Date())
+        let title = Self.autoTitle()
         let meetingID: UUID
         do {
             meetingID = try await store.createMeeting(title: title)
@@ -322,7 +383,12 @@ public final class RecordingController {
     }
 
     /// After a delay, checks if the engine thinks system audio is denied.
+    ///
+    /// Sets the in-memory `systemAudioWarning` flag only — does **not** write
+    /// any durable/persisted permission state. The all-zero detection infra is
+    /// retained for potential Stage 3 reuse (in-recording hint).
     private func scheduleDenialCheck(recorder: any RecorderControlling) {
+        // TODO: Stage 3 — the all-zero detection infra here may power the in-recording hint
         let delay = denialCheckDelay
         denialCheckTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
@@ -331,9 +397,6 @@ public final class RecordingController {
             guard let self else { return }
             if denied {
                 systemAudioWarning = true
-                permissions.noteSystemAudio(.denied)
-            } else {
-                permissions.noteSystemAudio(.authorized)
             }
         }
     }

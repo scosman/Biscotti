@@ -19,6 +19,7 @@ actions:
   - name: "build"
     description: "Build all SPM packages"
     command: "bash -c 'set -o pipefail; make build 2>&1 | tail -n 400'"
+    timeout: 300
 
   - name: "test"
     description: "Gating: run the package test suite (swift test)"

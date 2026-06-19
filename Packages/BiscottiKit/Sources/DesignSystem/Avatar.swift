@@ -104,15 +104,10 @@ public struct AvatarCluster: View {
         self.maxCount = maxCount
     }
 
-    // TODO: Duplicate AvatarPerson values can arrive when the same real person
-    // exists as multiple Person records with different UUIDs (same name + email).
-    // The MeetingSummary avatar path (HomeViewModel.avatarData(for:)) doesn't
-    // dedup, so identical AvatarPerson values pass through. The root fix is
-    // upstream Person deduplication in the data store; this view-layer dedup is
-    // defensive until that lands.
-
     /// Deduped people, display limit, and adjusted overflow — computed once
-    /// per render so the dedup set-filter runs a single time.
+    /// per render so the dedup set-filter runs a single time. Duplicate
+    /// invitees are legitimate (raw invite lists can include the same
+    /// person more than once), so we dedup here for display purposes.
     private var layout: (shown: [AvatarPerson], overflow: Int) {
         // 1. Dedup, preserving order
         var seen = Set<AvatarPerson>()

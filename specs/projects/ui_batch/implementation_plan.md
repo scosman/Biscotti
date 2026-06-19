@@ -28,4 +28,4 @@ One phase per item, built autonomously. Each phase ends green on `lint`+`test` (
   - 7a: Migrate `meetingsSelection` `UUID?` → `Set<UUID>` (shift/⌘ multi-select); detail pane shows "N meetings selected" placeholder (ContentUnavailableView-style, with a Delete button) when >1 selected.
   - 7b: Delete key (and placeholder Delete button) → confirmation alert (singular/plural) → multi-delete; empty selection no-ops; existing detail-menu single delete unchanged.
 
-- [ ] **Phase 8 — Human review & sign-off.** Walk the user through each item (ideally running the app), gather feedback, and make tweak commits per item as needed. No new scope — polish/sign-off only.
+- [x] **Phase 8 — Human review & sign-off.** Human review completed; items 3, 4, 5, 7 signed off as-is. Tweak commits made: item 1 (both toolbar buttons → 32pt) + item 2 (dim disabled REC button) in `c3060b0`; item 6 (⌘⇧R toggles start/stop, no window activation) in `3700bbc`. No new scope — polish/sign-off only.

@@ -544,13 +544,23 @@ extension AudioRecorder {
         }
     }
 
+    /// Maximum number of retry attempts for mic engine reconnect failures
+    /// during input-device changes.
+    static let micReconnectMaxRetries = 2
+
+    /// Delay between mic engine reconnect retries.
+    static let micReconnectRetryDelay: Duration = .milliseconds(300)
+
     /// Handles a device-change event by reconnecting the affected engine.
     ///
     /// On OUTPUT change: reconnect the system tap + aggregate device (file-preserving)
     /// with retry on transient failures. The reconnect includes a settle delay
     /// (inside the engine) to let the HAL stabilize.
-    /// On INPUT change: the mic engine handles input-route changes internally
-    /// via `AVAudioEngineConfigurationChange`, so no action is needed here.
+    /// On INPUT change: reconnect the mic engine so it picks up the new default
+    /// input device. AVAudioEngine does NOT automatically follow default-input
+    /// changes — it keeps using the device it was started with. Without an
+    /// explicit reconnect, switching to AirPods leaves the built-in mic active,
+    /// and removing the current device (AirPods out) loses audio entirely.
     /// `isRecording` stays `true` throughout -- no audio loss.
     private func handleDeviceChange(_ event: DeviceChangeEvent) async {
         guard isRecording else { return }
@@ -561,10 +571,8 @@ extension AudioRecorder {
             await reconnectSystemEngineWithRetry()
 
         case .inputChanged:
-            // The mic engine handles input-route changes internally via
-            // AVAudioEngineConfigurationChange. No destructive stop/start
-            // needed -- the file stays open and audio is preserved.
-            logger.info("Input device changed -- mic engine handles internally (file-preserving)")
+            logger.info("Input device changed -- reconnecting mic capture (file-preserving)")
+            await reconnectMicEngineWithRetry()
         }
     }
 
@@ -602,6 +610,42 @@ extension AudioRecorder {
         }
         logger.error(
             "System engine reconnect failed after \(Self.systemReconnectMaxRetries + 1, privacy: .public) attempts — system track lost, mic continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
+        )
+    }
+
+    /// Reconnects the mic engine with retry on transient failures.
+    ///
+    /// The mic engine's `reconnect()` tears down the AVAudioEngine and rebuilds
+    /// it, which picks up the new default input device. If all retries are
+    /// exhausted, the mic track is lost but the system track continues.
+    private func reconnectMicEngineWithRetry() async {
+        var lastError: (any Error)?
+        for attempt in 0 ... Self.micReconnectMaxRetries {
+            if attempt > 0 {
+                logger.info(
+                    "Retrying mic engine reconnect (attempt \(attempt + 1, privacy: .public)/\(Self.micReconnectMaxRetries + 1, privacy: .public))"
+                )
+                do {
+                    try await Task.sleep(for: Self.micReconnectRetryDelay)
+                } catch {
+                    return // Task cancelled (recorder stopping)
+                }
+            }
+            do {
+                try await micEngine.reconnect()
+                if attempt > 0 {
+                    logger.info("Mic engine reconnect succeeded on retry \(attempt, privacy: .public)")
+                }
+                return
+            } catch {
+                lastError = error
+                logger.warning(
+                    "Mic engine reconnect failed (attempt \(attempt + 1, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        logger.error(
+            "Mic engine reconnect failed after \(Self.micReconnectMaxRetries + 1, privacy: .public) attempts — mic track lost, system continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
         )
     }
 }

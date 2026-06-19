@@ -163,15 +163,30 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
     func reconnect() async throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async { [self] in
                 guard !isTearingDown else {
                     cont.resume()
                     return
                 }
+                if let inID = CoreAudioHelpers.defaultInputDeviceID() {
+                    let name = CoreAudioHelpers.deviceName(for: inID) ?? "unknown"
+                    logger.info("Mic reconnect: following default input \"\(name)\" id=\(inID)")
+                }
                 teardownEngine()
-                buildAndStartEngine(context: "reconnect")
-                cont.resume()
+                do {
+                    try buildAndStartEngineOrThrow()
+                    cont.resume()
+                } catch {
+                    logger.error("Mic reconnect failed: \(error.localizedDescription)")
+                    teardownEngine()
+                    restoreOutputRate()
+                    closeExtFile()
+                    capturingFlag.store(false, ordering: .releasing)
+                    cont.resume(throwing: CaptureError.micEngineFailed(
+                        error.localizedDescription
+                    ))
+                }
             }
         }
     }

@@ -2,7 +2,7 @@
   "ac_crash_safety_check" : {
     "status" : "not-run",
     "stepID" : "ac_crash_safety_check",
-    "timestamp" : "2026-06-17T02:00:18Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_device_sample_rate" : {
     "status" : "not-run",
@@ -12,62 +12,67 @@
   "ac_files_exist" : {
     "status" : "not-run",
     "stepID" : "ac_files_exist",
-    "timestamp" : "2026-06-17T01:42:55Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
+  },
+  "ac_input_device_switch" : {
+    "status" : "not-run",
+    "stepID" : "ac_input_device_switch",
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_meet_close_midcapture" : {
     "status" : "not-run",
     "stepID" : "ac_meet_close_midcapture",
-    "timestamp" : "2026-06-17T01:49:03Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_meet_open_midcapture" : {
     "status" : "not-run",
     "stepID" : "ac_meet_open_midcapture",
-    "timestamp" : "2026-06-17T01:49:54Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_mega_timing" : {
     "status" : "not-run",
     "stepID" : "ac_mega_timing",
-    "timestamp" : "2026-06-17T02:00:13Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_mega_voice" : {
     "status" : "not-run",
     "stepID" : "ac_mega_voice",
-    "timestamp" : "2026-06-17T02:00:10Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_playback_mic" : {
     "status" : "not-run",
     "stepID" : "ac_playback_mic",
-    "timestamp" : "2026-06-17T01:43:26Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_playback_system" : {
     "status" : "not-run",
     "stepID" : "ac_playback_system",
-    "timestamp" : "2026-06-17T01:43:27Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_request_permissions" : {
     "status" : "not-run",
     "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-06-17T01:42:38Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_route_change" : {
     "status" : "not-run",
     "stepID" : "ac_route_change",
-    "timestamp" : "2026-06-17T01:46:20Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_start_recording" : {
     "status" : "not-run",
     "stepID" : "ac_start_recording",
-    "timestamp" : "2026-06-17T01:50:04Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_stop_recording" : {
     "status" : "not-run",
     "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-06-17T01:51:03Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "ac_two_dialogs" : {
     "status" : "not-run",
     "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-06-17T01:42:39Z"
+    "timestamp" : "2026-06-18T00:00:00Z"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

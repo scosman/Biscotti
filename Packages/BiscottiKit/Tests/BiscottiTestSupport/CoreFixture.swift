@@ -360,7 +360,8 @@ public func makeCoreFixture(
     let permissions = Permissions(
         mic: micAuth,
         cal: calendarAuthorizer,
-        notif: notificationAuthorizer
+        notif: notificationAuthorizer,
+        systemAudioStore: InMemorySystemAudioPermissionStore()
     )
 
     let storageRoot = FileManager.default.temporaryDirectory

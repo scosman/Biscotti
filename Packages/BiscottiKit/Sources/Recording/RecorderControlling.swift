@@ -23,6 +23,14 @@ public protocol RecorderControlling: Sendable {
     /// Returns `true` if the system audio buffers were all-zero in the first
     /// ~2 s, indicating a probable missing screen-recording permission.
     func probableSystemAudioDenied() async -> Bool
+
+    /// Returns `true` if any non-zero system audio sample has been observed.
+    func observedSystemAudio() async -> Bool
+
+    /// Starts a fresh system tap + plays the probe tone; returns `true` as
+    /// soon as non-zero system audio is observed, `false` after `timeout`.
+    /// Always tears down tap + tone before returning. Never throws.
+    func probeSystemAudioWithTone(timeout: Duration) async -> Bool
 }
 
 // Re-export AudioCapture types so downstream modules (AppCore, UI) can use

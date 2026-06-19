@@ -30,7 +30,7 @@ let package = Package(
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.7.0")
+        .package(url: "https://github.com/scosman/swift-markdown-engine", revision: "6edaa33637bcfc39272415f635c5f2ed6ff2853b")
     ],
     targets: [
         .target(
@@ -70,7 +70,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PermissionsTests",
-            dependencies: ["Permissions"],
+            dependencies: ["Permissions", "BiscottiTestSupport"],
             swiftSettings: warningsAsErrors
         ),
         .target(

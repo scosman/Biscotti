@@ -91,6 +91,14 @@
         func probableSystemAudioDenied() async -> Bool {
             false
         }
+
+        func observedSystemAudio() async -> Bool {
+            false
+        }
+
+        func probeSystemAudioWithTone(timeout _: Duration) async -> Bool {
+            true
+        }
     }
 
     private struct PreviewTranscriber: Transcribing {

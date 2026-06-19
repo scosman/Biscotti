@@ -320,7 +320,7 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .welcome)
         #expect(model.microphoneResult == .notDetermined)
-        #expect(model.systemAudioResult == .notDetermined)
+        #expect(model.systemAudioResult == .notRequested)
         #expect(model.calendarResult == .notDetermined)
         #expect(model.notificationsGranted == false)
         #expect(model.calendarGroups.isEmpty)

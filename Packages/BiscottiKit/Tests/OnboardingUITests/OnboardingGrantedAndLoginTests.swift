@@ -31,7 +31,7 @@ struct OnboardingGrantedAndLoginTests {
         // but we can verify the property reflects systemAudioResult
         #expect(
             model.systemAudioGranted
-                == (model.systemAudioResult == .authorized)
+                == (model.systemAudioResult == .approved)
         )
 
         // Calendar -- walk to calendar step and request

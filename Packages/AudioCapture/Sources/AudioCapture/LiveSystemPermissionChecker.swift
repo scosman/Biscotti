@@ -44,6 +44,12 @@ final class LiveSystemPermissionChecker: SystemPermissionChecker, @unchecked Sen
         }
     }
 
+    /// `true` as soon as any non-zero sample has been observed.
+    /// Mirrors the internal `hasNonZero` atomic for the tone-probe path.
+    var observedNonZero: Bool {
+        hasNonZero.load(ordering: .acquiring)
+    }
+
     func probableDenied() async -> Bool {
         // If we haven't accumulated enough audio yet, we can't tell.
         guard totalDurationCentiseconds.load(ordering: .acquiring) >= checkWindowCentiseconds else { return false }

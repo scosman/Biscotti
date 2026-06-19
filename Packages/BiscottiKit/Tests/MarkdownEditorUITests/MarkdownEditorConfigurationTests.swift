@@ -79,17 +79,17 @@ struct MarkdownEditorConfigurationTests {
 
     // MARK: - Overscroll
 
-    @Test("overscroll percent is zero for bounded box")
+    @Test("overscroll percent is zero in fitsContent mode")
     func overscrollPercentZero() {
         #expect(config.overscroll.percent == 0)
     }
 
-    @Test("overscroll maxPoints is small for bounded box")
+    @Test("overscroll maxPoints is small in fitsContent mode")
     func overscrollMaxPointsSmall() {
         #expect(config.overscroll.maxPoints <= 10)
     }
 
-    @Test("overscroll minPoints is small for bounded box")
+    @Test("overscroll minPoints is small in fitsContent mode")
     func overscrollMinPointsSmall() {
         #expect(config.overscroll.minPoints <= 5)
     }
@@ -137,6 +137,13 @@ struct MarkdownEditorConfigurationTests {
                 == defaultSpelling.continuousSpellChecking
         )
         #expect(config.spellChecking.grammarChecking == defaultSpelling.grammarChecking)
+    }
+
+    // MARK: - Height behavior
+
+    @Test("heightBehavior is fitsContent (no nested scroll)")
+    func heightBehaviorFitsContent() {
+        #expect(config.heightBehavior == .fitsContent)
     }
 }
 

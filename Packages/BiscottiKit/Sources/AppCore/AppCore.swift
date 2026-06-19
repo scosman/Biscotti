@@ -573,14 +573,14 @@ public final class AppCore {
 
     // MARK: - Onboarding support
 
-    /// Triggers the system-audio permission prompt by exercising the
-    /// capture probe and infers the permission state. Used by the
-    /// onboarding wizard's system-audio step.
+    /// Runs the system-audio tone-probe and updates the persisted permission
+    /// state. Single entry point for onboarding and Settings.
+    ///
+    /// Delegates to `RecordingController.probeSystemAudioPermission()` which
+    /// handles the probe lifecycle (start tap, play tone, poll, tear down)
+    /// and updates `Permissions` with the result.
     public func requestSystemAudioPermission() async {
-        // Use the recording controller's start flow to probe system audio.
-        // We create a temporary recorder, probe it, and read back the
-        // inferred state from permissions.
-        await recording.probeSystemAudioAndInferState()
+        await recording.probeSystemAudioPermission()
     }
 
     // MARK: - Data refresh

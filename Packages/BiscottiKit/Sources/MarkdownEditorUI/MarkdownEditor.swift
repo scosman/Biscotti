@@ -6,16 +6,22 @@ import SwiftUI
 ///
 /// Wraps the third-party `NativeTextViewWrapper` from `MarkdownEngine`
 /// with the F Sage color palette, dimmed markers (hide-on-blur), and
-/// prose-friendly defaults. Callers interact with a plain markdown
-/// `String` binding and never see the engine's configuration object.
+/// prose-friendly defaults. Uses `.fitsContent` height behavior so the
+/// editor grows to fit its content instead of scrolling internally --
+/// the enclosing page scroll view handles overflow.
+///
+/// Callers interact with a plain markdown `String` binding and never
+/// see the engine's configuration object.
 ///
 /// ```swift
-/// MarkdownEditor(
-///     text: $notes,
-///     documentId: meeting.id.uuidString,
-///     placeholder: "Add notes..."
-/// )
-/// .frame(minHeight: 120, maxHeight: 340)
+/// ScrollView {
+///     MarkdownEditor(
+///         text: $notes,
+///         documentId: meeting.id.uuidString,
+///         placeholder: "Add notes..."
+///     )
+///     .frame(minHeight: 120)
+/// }
 /// ```
 public struct MarkdownEditor: View {
     @Binding private var text: String
@@ -85,13 +91,15 @@ public struct MarkdownEditor: View {
         """
 
         var body: some View {
-            MarkdownEditor(
-                text: $text,
-                documentId: "preview",
-                placeholder: "Add notes..."
-            )
-            .frame(minHeight: 200, maxHeight: 400)
-            .padding()
+            ScrollView {
+                MarkdownEditor(
+                    text: $text,
+                    documentId: "preview",
+                    placeholder: "Add notes..."
+                )
+                .frame(minHeight: 120)
+                .padding()
+            }
             .background(Color.paper)
         }
     }

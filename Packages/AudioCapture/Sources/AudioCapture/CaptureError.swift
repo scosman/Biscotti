@@ -15,6 +15,9 @@ public enum CaptureError: Error, Sendable, Equatable {
     /// indicating a probable missing screen-recording permission grant.
     case probablePermissionDenied
 
+    /// The tone-probe infrastructure failed (output engine or format).
+    case probeFailed(String)
+
     /// Mic permission was denied or restricted.
     case micPermissionDenied
 
@@ -39,6 +42,8 @@ extension CaptureError: LocalizedError {
             "Aggregate device creation failed (OSStatus \(status))"
         case let .micEngineFailed(message):
             "Mic engine failed: \(message)"
+        case let .probeFailed(message):
+            "Probe tone failed: \(message)"
         case .probablePermissionDenied:
             "System audio appears blocked (all-zero buffers) — grant Screen & System Audio Recording in Settings."
         case .micPermissionDenied:

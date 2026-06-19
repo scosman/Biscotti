@@ -60,6 +60,30 @@ public actor AudioRecorder {
     /// VPIO DSP fault from hanging start() indefinitely.
     static let micFirstBufferTimeout: Duration = .seconds(3)
 
+    /// Maximum number of retry attempts for system engine start failures.
+    /// The system engine (Core Audio process tap) can fail intermittently
+    /// when the audio HAL is mid-reconfiguration (e.g. VPIO just reclocked
+    /// the output device). A short retry with a settle delay resolves most
+    /// transient failures.
+    ///
+    /// 2 retries (3 total attempts) balances resilience against start-time
+    /// latency (~500ms worst case). The HAL device-graph reconfiguration on
+    /// Apple Silicon typically settles within 100-300ms.
+    static let systemStartMaxRetries = 2
+
+    /// Delay between system engine start retries. 250ms matches the observed
+    /// HAL settle time on Apple Silicon after VPIO reclocks the output device.
+    static let systemStartRetryDelay: Duration = .milliseconds(250)
+
+    /// Maximum number of retry attempts for system engine reconnect failures
+    /// during route changes. Same rationale as `systemStartMaxRetries`.
+    static let systemReconnectMaxRetries = 2
+
+    /// Delay between system engine reconnect retries. Slightly longer than
+    /// start retries because the reconnect path already includes its own
+    /// 200ms settle delay inside the engine, so this is additive back-off.
+    static let systemReconnectRetryDelay: Duration = .milliseconds(300)
+
     // MARK: - Init
 
     /// Creates a recorder with injected capture engines and seams.
@@ -114,7 +138,7 @@ public actor AudioRecorder {
             try await systemEngine.start(writingTo: systemProbePath)
             await systemEngine.stop()
         } catch {
-            logger.error("System-audio permission probe failed: \(error.localizedDescription)")
+            logger.error("System-audio permission probe failed: \(error.localizedDescription, privacy: .public)")
         }
 
         return micGranted
@@ -176,11 +200,14 @@ public actor AudioRecorder {
         // Forward the mic anchor to the system engine for alignment.
         systemEngine.setMicAnchor(micAnchor)
 
-        // Start system audio. On failure, tear down the mic engine.
+        // Start system audio with retry. The system engine (Core Audio process
+        // tap + aggregate device) can fail intermittently when the HAL is
+        // mid-reconfiguration (e.g. VPIO just reclocked the output device).
+        // A short retry with a settle delay resolves most transient failures.
+        // On exhausted retries, tear down the mic engine.
         do {
-            try await systemEngine.start(writingTo: paths.systemAAC)
+            try await startSystemEngineWithRetry(path: paths.systemAAC)
         } catch {
-            logger.error("System engine start failed: \(error.localizedDescription)")
             await micEngine.stop()
             throw error
         }
@@ -216,7 +243,7 @@ public actor AudioRecorder {
         } catch {
             micEngine.setOnFirstBuffer(nil)
             stream.continuation.finish()
-            logger.error("Mic engine start failed: \(error.localizedDescription)")
+            logger.error("Mic engine start failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
 
@@ -264,6 +291,44 @@ public actor AudioRecorder {
         }
     }
 
+    /// Starts the system engine with retry on transient failures.
+    ///
+    /// The system engine (Core Audio process tap + aggregate device) can fail
+    /// intermittently when the audio HAL is mid-reconfiguration -- typically
+    /// right after VPIO reclocked the output device. A short settle delay
+    /// between attempts resolves most transient failures.
+    private func startSystemEngineWithRetry(path: URL) async throws {
+        var lastError: (any Error)?
+        for attempt in 0 ... Self.systemStartMaxRetries {
+            if attempt > 0 {
+                logger.info(
+                    "Retrying system engine start (attempt \(attempt + 1, privacy: .public)/\(Self.systemStartMaxRetries + 1, privacy: .public))"
+                )
+                try await Task.sleep(for: Self.systemStartRetryDelay)
+            }
+            do {
+                try await systemEngine.start(writingTo: path)
+                if attempt > 0 {
+                    logger.info("System engine start succeeded on retry \(attempt, privacy: .public)")
+                }
+                return
+            } catch {
+                lastError = error
+                logger.warning(
+                    "System engine start failed (attempt \(attempt + 1, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        // The loop always runs at least once, so lastError is always set here.
+        guard let error = lastError else {
+            preconditionFailure("startSystemEngineWithRetry: loop completed without setting lastError")
+        }
+        logger.error(
+            "System engine start failed after \(Self.systemStartMaxRetries + 1, privacy: .public) attempts"
+        )
+        throw error
+    }
+
     /// Stops capture. Idempotent — safe to call when not recording.
     ///
     /// After stopping, checks the system engine for write errors and
@@ -282,7 +347,7 @@ public actor AudioRecorder {
 
         // Surface any write errors that occurred during recording.
         if let writeErr = systemEngine.writeError {
-            logger.error("System audio write error during recording (OSStatus \(writeErr))")
+            logger.error("System audio write error during recording (OSStatus \(writeErr, privacy: .public))")
             _lastSystemWriteError = writeErr
         }
 
@@ -319,16 +384,6 @@ public actor AudioRecorder {
             // Emit current state immediately
             continuation.yield(self.currentState)
         }
-    }
-
-    // MARK: - Permission inference
-
-    /// Returns `true` if the system audio buffers in the first ~2 s were
-    /// all-zero, indicating a probable missing screen-recording permission.
-    ///
-    /// The library reports; it does not own TCC prompts.
-    public func probableSystemAudioDenied() async -> Bool {
-        await permissionChecker.probableDenied()
     }
 
     // MARK: - Internal helpers
@@ -375,9 +430,109 @@ public actor AudioRecorder {
             }
         }
     }
+}
 
-    // MARK: - Route-change handling
+// MARK: - Permission inference & tone probe
 
+public extension AudioRecorder {
+    /// Returns `true` if the system audio buffers in the first ~2 s were
+    /// all-zero, indicating a probable missing screen-recording permission.
+    ///
+    /// The library reports; it does not own TCC prompts.
+    func probableSystemAudioDenied() async -> Bool {
+        await permissionChecker.probableDenied()
+    }
+
+    /// Returns `true` if any non-zero system audio sample has been observed.
+    ///
+    /// Used by the tone-probe to detect permission approval as early as
+    /// possible (no 2 s wait). Wraps the checker's instantaneous flag.
+    func observedSystemAudio() -> Bool {
+        permissionChecker.observedNonZero
+    }
+
+    /// Default timeout for the system audio tone probe.
+    static let defaultProbeTimeout: Duration = .seconds(5)
+
+    /// Poll interval for checking observedSystemAudio during a tone probe.
+    internal static let probePollInterval: Duration = .milliseconds(50)
+
+    /// Starts a fresh system tap + plays the probe tone; returns `true` as
+    /// soon as non-zero system audio is observed, `false` after `timeout`.
+    /// Always tears down the tap and tone before returning.
+    ///
+    /// Each call creates a fresh tap so a Retry after a first-time grant
+    /// works (a pre-grant tap may stay silent). Never throws across this
+    /// boundary -- probe failures return `false` and are logged `.public`.
+    func probeSystemAudioWithTone(
+        timeout: Duration = defaultProbeTimeout
+    ) async -> Bool {
+        // Reset the checker so prior session data doesn't cause a false positive.
+        permissionChecker.reset()
+
+        // The system engine requires a write path; the probe discards this file.
+        let probePath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("biscotti_probe_\(UUID().uuidString).aac")
+        let tonePlayer = ProbeTonePlayer()
+
+        // Start the system engine (creates a fresh tap -> TCC prompt on first use).
+        do {
+            try await systemEngine.start(writingTo: probePath)
+        } catch {
+            logger.error(
+                "Probe: system engine start failed: \(error.localizedDescription, privacy: .public)"
+            )
+            try? FileManager.default.removeItem(at: probePath)
+            return false
+        }
+
+        // Start the probe tone.
+        do {
+            try tonePlayer.start()
+        } catch {
+            logger.error(
+                "Probe: tone player start failed: \(error.localizedDescription, privacy: .public)"
+            )
+            await systemEngine.stop()
+            try? FileManager.default.removeItem(at: probePath)
+            return false
+        }
+
+        // Poll for non-zero audio or timeout.
+        let observed = await pollForObservedAudio(timeout: timeout)
+
+        // ALWAYS tear down: tone first (so the last tap buffers are silence),
+        // then engine.
+        tonePlayer.stop()
+        await systemEngine.stop()
+        try? FileManager.default.removeItem(at: probePath)
+
+        logger.info(
+            "Probe complete: observed=\(observed, privacy: .public)"
+        )
+        return observed
+    }
+
+    /// Polls `observedSystemAudio()` at short intervals until `true` or timeout.
+    private func pollForObservedAudio(timeout: Duration) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if observedSystemAudio() {
+                return true
+            }
+            do {
+                try await Task.sleep(for: Self.probePollInterval)
+            } catch {
+                return false // Task cancelled
+            }
+        }
+        return observedSystemAudio() // One final check
+    }
+}
+
+// MARK: - Route-change handling
+
+extension AudioRecorder {
     private func startRouteChangeListener() {
         routeChangeTask = Task { [weak self] in
             guard let self else { return }
@@ -389,11 +544,23 @@ public actor AudioRecorder {
         }
     }
 
+    /// Maximum number of retry attempts for mic engine reconnect failures
+    /// during input-device changes.
+    static let micReconnectMaxRetries = 2
+
+    /// Delay between mic engine reconnect retries.
+    static let micReconnectRetryDelay: Duration = .milliseconds(300)
+
     /// Handles a device-change event by reconnecting the affected engine.
     ///
-    /// On OUTPUT change: reconnect the system tap + aggregate device (file-preserving).
-    /// On INPUT change: the mic engine handles input-route changes internally
-    /// via `AVAudioEngineConfigurationChange`, so no action is needed here.
+    /// On OUTPUT change: reconnect the system tap + aggregate device (file-preserving)
+    /// with retry on transient failures. The reconnect includes a settle delay
+    /// (inside the engine) to let the HAL stabilize.
+    /// On INPUT change: reconnect the mic engine so it picks up the new default
+    /// input device. AVAudioEngine does NOT automatically follow default-input
+    /// changes — it keeps using the device it was started with. Without an
+    /// explicit reconnect, switching to AirPods leaves the built-in mic active,
+    /// and removing the current device (AirPods out) loses audio entirely.
     /// `isRecording` stays `true` throughout -- no audio loss.
     private func handleDeviceChange(_ event: DeviceChangeEvent) async {
         guard isRecording else { return }
@@ -401,18 +568,85 @@ public actor AudioRecorder {
         switch event {
         case .outputChanged:
             logger.info("Output device changed -- reconnecting system capture (file-preserving)")
-            do {
-                try await systemEngine.reconnect()
-            } catch {
-                logger.error("System engine reconnect failed after route change: \(error.localizedDescription)")
-            }
+            await reconnectSystemEngineWithRetry()
 
         case .inputChanged:
-            // The mic engine handles input-route changes internally via
-            // AVAudioEngineConfigurationChange. No destructive stop/start
-            // needed -- the file stays open and audio is preserved.
-            logger.info("Input device changed -- mic engine handles internally (file-preserving)")
+            logger.info("Input device changed -- reconnecting mic capture (file-preserving)")
+            await reconnectMicEngineWithRetry()
         }
+    }
+
+    /// Reconnects the system engine with retry on transient failures.
+    ///
+    /// The system engine's `reconnect()` includes its own settle delay to let
+    /// the HAL stabilize. On failure, retries up to `systemReconnectMaxRetries`
+    /// times with an additional delay between attempts. If all retries are
+    /// exhausted, the system track is lost but the mic track continues.
+    private func reconnectSystemEngineWithRetry() async {
+        var lastError: (any Error)?
+        for attempt in 0 ... Self.systemReconnectMaxRetries {
+            if attempt > 0 {
+                logger.info(
+                    "Retrying system engine reconnect (attempt \(attempt + 1, privacy: .public)/\(Self.systemReconnectMaxRetries + 1, privacy: .public))"
+                )
+                do {
+                    try await Task.sleep(for: Self.systemReconnectRetryDelay)
+                } catch {
+                    return // Task cancelled (recorder stopping)
+                }
+            }
+            do {
+                try await systemEngine.reconnect()
+                if attempt > 0 {
+                    logger.info("System engine reconnect succeeded on retry \(attempt, privacy: .public)")
+                }
+                return
+            } catch {
+                lastError = error
+                logger.warning(
+                    "System engine reconnect failed (attempt \(attempt + 1, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        logger.error(
+            "System engine reconnect failed after \(Self.systemReconnectMaxRetries + 1, privacy: .public) attempts — system track lost, mic continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
+        )
+    }
+
+    /// Reconnects the mic engine with retry on transient failures.
+    ///
+    /// The mic engine's `reconnect()` tears down the AVAudioEngine and rebuilds
+    /// it, which picks up the new default input device. If all retries are
+    /// exhausted, the mic track is lost but the system track continues.
+    private func reconnectMicEngineWithRetry() async {
+        var lastError: (any Error)?
+        for attempt in 0 ... Self.micReconnectMaxRetries {
+            if attempt > 0 {
+                logger.info(
+                    "Retrying mic engine reconnect (attempt \(attempt + 1, privacy: .public)/\(Self.micReconnectMaxRetries + 1, privacy: .public))"
+                )
+                do {
+                    try await Task.sleep(for: Self.micReconnectRetryDelay)
+                } catch {
+                    return // Task cancelled (recorder stopping)
+                }
+            }
+            do {
+                try await micEngine.reconnect()
+                if attempt > 0 {
+                    logger.info("Mic engine reconnect succeeded on retry \(attempt, privacy: .public)")
+                }
+                return
+            } catch {
+                lastError = error
+                logger.warning(
+                    "Mic engine reconnect failed (attempt \(attempt + 1, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        logger.error(
+            "Mic engine reconnect failed after \(Self.micReconnectMaxRetries + 1, privacy: .public) attempts — mic track lost, system continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
+        )
     }
 }
 

@@ -34,6 +34,34 @@ public func avatarInitials(for name: String) -> String {
     return String(trimmed.prefix(2)).uppercased()
 }
 
+/// Computes how many name avatars to show inside an `AvatarCluster`.
+///
+/// The cluster may contain a recording badge, name avatars, and a "+N"
+/// overflow chip. `maxCount` caps the total visible circles.
+///
+/// - Parameters:
+///   - peopleCount: Number of people with display data (array length).
+///   - totalCount: Reported total participants (may exceed `peopleCount`
+///     when the calendar knows the count but not every name).
+///   - maxCount: Maximum visible circles in the cluster.
+///   - hasRecordingBadge: Whether the recording mic badge is present.
+/// - Returns: The number of name avatars to display.
+public func avatarNameLimit(
+    peopleCount: Int,
+    totalCount: Int,
+    maxCount: Int,
+    hasRecordingBadge: Bool
+) -> Int {
+    let reserved = hasRecordingBadge ? 1 : 0
+    let available = maxCount - reserved
+    let effective = max(peopleCount, totalCount)
+    if effective > available {
+        // Need an overflow chip — it takes one slot
+        return min(peopleCount, max(0, available - 1))
+    }
+    return min(peopleCount, available)
+}
+
 /// Returns a deterministic palette index for a given key string.
 ///
 /// Uses FNV-1a 32-bit hash (stable across launches, unlike Swift's

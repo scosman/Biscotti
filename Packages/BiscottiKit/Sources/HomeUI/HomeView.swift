@@ -157,7 +157,6 @@ private struct HomeUpcomingSection: View {
                     totalCount: data.total,
                     size: Tokens.heroAvatarSize
                 )
-                .padding(.trailing, Tokens.avatarTrailingGap)
 
                 heroCenterStack(event: event, data: data)
 
@@ -265,7 +264,6 @@ private struct HomeUpcomingSection: View {
                     totalCount: data.total,
                     size: Tokens.avatarSize
                 )
-                .padding(.trailing, Tokens.avatarTrailingGap)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(event.title)
@@ -375,7 +373,6 @@ private struct HomePastSection: View {
                     size: Tokens.avatarSize,
                     showLeadingRecordingAvatar: true
                 )
-                .padding(.trailing, Tokens.avatarTrailingGap)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(meeting.title)

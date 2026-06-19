@@ -16,7 +16,7 @@ One phase per item, built autonomously. Each phase ends green on `lint`+`test` (
 
 - [x] **Phase 3 — "See All" as the list's last row.** Move "See All" from the header into the bottom row of the home Past-Meetings card: left-labeled, grey total count before the chevron; hidden when there are no past meetings. _(1 commit)_ — spec §3.
 
-- [ ] **Phase 4 — Play links start playback.** Transcript timestamp links and notes `biscotti://…` deep-links seek **and** start playing if paused (via `seekAndPlay`); already-playing keeps playing. _(1 commit)_ — spec §4.
+- [x] **Phase 4 — Play links start playback.** Transcript timestamp links and notes `biscotti://…` deep-links seek **and** start playing if paused (via `seekAndPlay`); already-playing keeps playing. _(1 commit)_ — spec §4.
 
 - [ ] **Phase 5 — Transcribing UI.** _(2 commits)_ — spec §5.
   - 5a: Don't show the "Downloading…model" phase on a cache hit — simple delay-gate (~5s) or real-signal-gate; plain "Transcribing…" otherwise. **Research the open question** (is the readiness/download check itself slow on a cache hit? consider an optimistic "assume cached → detect failure → download" flow) and report at review. **Touches `Packages/Transcription` → mark `tx_*` manual tests `not-run`.**

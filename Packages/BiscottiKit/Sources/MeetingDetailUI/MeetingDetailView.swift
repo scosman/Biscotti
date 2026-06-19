@@ -570,7 +570,7 @@ private extension MeetingDetailView {
                 transcriptID: transcriptID,
                 canSeek: viewModel.canPlay,
                 attributed: attributed,
-                onSeek: { viewModel.seek(to: $0) }
+                onSeek: { viewModel.seekAndPlay(to: $0) }
             )
             .equatable()
             .frame(minHeight: fill, alignment: .topLeading)

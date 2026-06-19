@@ -50,16 +50,30 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
     // enabling OTA updates without app releases.
 
     public static let knownMeetingBundleIDs: Set<String> = [
+        // Native meeting apps
         "us.zoom.xos",
         "com.microsoft.teams2",
-        "com.google.Chrome",
-        "com.tinyspeck.slackmacgap",
-        "com.tinyspeck.slackmacgap.helper",
+        "Cisco-Systems.Spark",
         "com.cisco.webexmeetingsapp",
+        "com.logmein.GoToMeeting",
+        "com.logmein.goto",
+        "com.ringcentral.glip",
+        "org.jitsi.jitsi-meet",
+        "com.electron.8x8---virtual-office",
+        "com.electron.dialpad",
+        "com.vonage.vbc",
+        "com.zoho.meeting", // medium-confidence, web-sourced; verify on hardware
         "com.hnc.Discord",
         "com.apple.FaceTime",
+        "com.tinyspeck.slackmacgap",
+        "com.tinyspeck.slackmacgap.helper",
+
+        // Browsers (host browser-only meetings: Google Meet, Whereby, etc.)
+        "com.google.Chrome",
         "com.apple.Safari",
         "company.thebrowser.Browser",
+
+        // System helpers (audio-routing daemons)
         "com.apple.avconferenced",
         "com.apple.WebKit.GPU"
     ]
@@ -67,10 +81,19 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
     public static let meetingAppNames: [String: String] = [
         "us.zoom.xos": "Zoom",
         "com.microsoft.teams2": "Microsoft Teams",
+        "Cisco-Systems.Spark": "Cisco Webex",
+        "com.cisco.webexmeetingsapp": "Cisco Webex",
+        "com.logmein.GoToMeeting": "GoTo Meeting",
+        "com.logmein.goto": "GoTo",
+        "com.ringcentral.glip": "RingCentral",
+        "org.jitsi.jitsi-meet": "Jitsi Meet",
+        "com.electron.8x8---virtual-office": "8x8 Work",
+        "com.electron.dialpad": "Dialpad",
+        "com.vonage.vbc": "Vonage",
+        "com.zoho.meeting": "Zoho Meeting",
         "com.google.Chrome": "Google Chrome",
         "com.tinyspeck.slackmacgap": "Slack",
         "com.tinyspeck.slackmacgap.helper": "Slack Huddle",
-        "com.cisco.webexmeetingsapp": "Cisco Webex",
         "com.hnc.Discord": "Discord",
         "com.apple.FaceTime": "FaceTime",
         "com.apple.Safari": "Safari",

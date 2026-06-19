@@ -762,7 +762,8 @@ struct HomeViewModelHeroTests {
         let dtos = [
             makeEventDTO(
                 id: "nourl", startOffset: 60, from: now,
-                isMeetingLike: true, conferenceURL: nil
+                isMeetingLike: true, conferenceURL: nil,
+                location: "Conference Room B"
             )
         ]
 
@@ -789,7 +790,7 @@ struct HomeViewModelHeroTests {
             makeEventDTO(
                 id: "withurl", startOffset: 60, from: now,
                 isMeetingLike: true,
-                conferenceURL: URL(string: "https://meet.google.com/abc")
+                conferenceURL: URL(string: "https://meet.google.com/abc-defg-hij")
             )
         ]
 
@@ -1007,9 +1008,13 @@ private func makeEventDTO(
     from baseDate: Date,
     durationSeconds: TimeInterval = 3600,
     isMeetingLike: Bool = true,
-    conferenceURL: URL? = URL(string: "https://meet.google.com/test")
+    conferenceURL: URL? = URL(string: "https://meet.google.com/abc-defg-hij"),
+    location: String? = nil
 ) -> EKEventDTO {
     let start = baseDate.addingTimeInterval(startOffset)
+    // Default location: a realistic Zoom link when meeting-like, nil otherwise.
+    // Callers can override via the location parameter.
+    let resolvedLocation = location ?? (isMeetingLike ? "https://zoom.us/j/1234567890" : nil)
     return EKEventDTO(
         eventIdentifier: id,
         calendarItemIdentifier: "ci-\(id)",
@@ -1019,7 +1024,7 @@ private func makeEventDTO(
         startDate: start,
         endDate: start.addingTimeInterval(durationSeconds),
         isAllDay: false,
-        location: isMeetingLike ? "https://zoom.us/j/\(id)" : nil,
+        location: resolvedLocation,
         url: conferenceURL,
         timeZone: nil,
         notes: nil,

@@ -432,6 +432,19 @@ public final class AppCore {
         return meetingID
     }
 
+    /// Toggles recording: stops if currently recording, starts if idle.
+    /// Used by the global hotkey so a single shortcut can both start and
+    /// stop a session.
+    @discardableResult
+    public func toggleRecording() async -> UUID? {
+        if recording.state.isRecording {
+            return await stopRecording()
+        } else {
+            await startRecording()
+            return nil
+        }
+    }
+
     /// Records a detected event (from a notification action). Starts
     /// recording, optionally associated with the given calendar event.
     public func recordDetectedEvent(eventKey: String?) async {

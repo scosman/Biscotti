@@ -530,7 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         ) { [weak self] in
             guard let self, let core else { return }
             Task { @MainActor in
-                await core.startRecording()
+                await core.toggleRecording()
             }
         }
         hotKey.register()

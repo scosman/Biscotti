@@ -255,6 +255,35 @@ struct AppCoreRecordingTests {
         #expect(result == nil)
         #expect(fix.core.route == .home)
     }
+
+    @Test("toggleRecording starts when idle")
+    @MainActor
+    func toggleRecordingStartsWhenIdle() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        let result = await fix.core.toggleRecording()
+
+        #expect(result == nil) // start path returns nil
+        #expect(fix.core.recording.state.isRecording == true)
+        #expect(fix.core.route == .recording)
+    }
+
+    @Test("toggleRecording stops when recording")
+    @MainActor
+    func toggleRecordingStopsWhenRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+
+        await fix.core.startRecording()
+        #expect(fix.core.recording.state.isRecording == true)
+
+        let meetingID = await fix.core.toggleRecording()
+
+        #expect(meetingID != nil) // stop path returns meeting ID
+        #expect(fix.core.recording.state.isRecording == false)
+        #expect(fix.core.route == .meetings)
+    }
 }
 
 // MARK: - Navigation tests

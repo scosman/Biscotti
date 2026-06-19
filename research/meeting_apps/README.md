@@ -33,6 +33,15 @@ behind a shared `MeetingCatalog` protocol backed by `RemoteConfig`. The experime
 intentionally stale. When editing bundle IDs or display names, always update both production
 files together.
 
+## Detection philosophy: recall over precision
+
+Conference-link regexes are anchored on **distinctive host + join-path prefix**, then accept
+any non-whitespace tail. This biases toward recall (never miss a real meeting link) over
+precision (occasionally a stray marketing URL in event text might be misclassified as a
+meeting link). A rare false-positive is an acceptable trade: the worst outcome is showing a
+"Join" button on a non-meeting event, which is harmless. Missing a real meeting link means
+the app fails to detect a meeting, which is a worse user experience.
+
 ## Which entries were applied to code
 
 Entries below are marked **ADDED TO CODE** (bundle ID and/or link regex added to production
@@ -56,9 +65,9 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://zoom.us/my/johndoe` (personal room) -- high
   - `https://zoom.us/w/123...` (webinar), `https://zoom.us/s/123...` (host start) -- high/medium
   - `https://zoomgov.com/j/...`, `/my/...`, `/w/...`, `/s/...` (Zoom for Government) -- high
-  - **Regex (updated):** `/j/` requires digits (meeting IDs are 9-11 digits); `/my/`, `/w/`, `/s/` accept alphanumeric slugs. `https?://[\w.-]*\.?zoom(gov)?\.us/(?:j/\d+[^\s]*|(?:my|w|s)/[^\s]+)` and the `zoomgov.com` equivalent.
-  - Previous regex: `https?://[\w.-]*zoom\.us/j/\d+[^\s]*` (only `/j/`, no gov, no personal room)
-- **ADDED TO CODE:** Updated link regex to cover `/my/`, `/w/`, `/s/` paths + `zoomgov.com`. `/j/` retains the digits-only constraint to avoid false positives. Bundle ID unchanged.
+  - **Regex (updated):** `https?://[\w.-]*\.?zoom\.us/(?:j|my|w|s|wc)/[^\s]+` and `zoomgov.com` equivalent. Join-path prefixes anchor the match; ID/slug is unconstrained -- matches numeric IDs, name-join links, and passcode query strings.
+  - Previous regex: `https?://[\w.-]*zoom\.us/j/\d+[^\s]*` (only `/j/`, digits-only, no gov, no personal room)
+- **ADDED TO CODE:** Updated link regex to cover `/j/`, `/my/`, `/w/`, `/s/`, `/wc/` paths + `zoomgov.com`. Bundle ID unchanged.
 
 ### 2. Microsoft Teams
 
@@ -81,9 +90,10 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
 - **Bundle IDs:** N/A. Meetings run in `com.google.Chrome`, `com.apple.Safari`, `company.thebrowser.Browser` (all already in code as browser hosts).
 - **Meeting-link formats:**
   - `https://meet.google.com/abc-mnop-xyz` -- 10 lowercase letters in 3-4-3 dash-separated groups -- high
-  - **Regex (tightened):** `https?://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}`
+  - `https://meet.google.com/lookup/<nickname>` -- named/personal room lookup -- high
+  - **Regex (updated):** `https?://meet\.google\.com/(?:lookup/[^\s]+|[a-z]{3}-[a-z]{4}-[a-z]{3})` -- matches 3-4-3 codes or `/lookup/<nickname>`.
   - Previous regex: `https?://meet\.google\.com/[a-z-]+` (loose; matched non-meeting paths like `/new`, `/landing`)
-- **ADDED TO CODE:** Tightened link regex to 3-4-3 format. No bundle ID change.
+- **ADDED TO CODE:** Tightened to 3-4-3 format + `/lookup/` path. No bundle ID change.
 
 ### 4. Cisco Webex
 
@@ -97,9 +107,9 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://acme.webex.com/meet/jsmith` (personal room) -- high
   - `https://acme.webex.com/acme/j.php?MTID=m...` (scheduled) -- high
   - `https://acme.my.webex.com/...` (business scheduled) -- medium
-  - **Regex (tightened):** `https?://[\w.-]+\.webex\.com/(?:meet/[^\s]+|[^\s]*j\.php\?[^\s]+|wbxmjs/joinservice/[^\s]+)`
-  - Previous regex: `https?://[\w.-]*webex\.com/[^\s]+` (too broad; matched marketing pages)
-- **ADDED TO CODE:** Added `Cisco-Systems.Spark` bundle ID + display name. Tightened link regex.
+  - **Regex (updated, recall-first):** `https?://(?:[\w.-]+\.)?webex\.com/[^\s]+` -- any `*.webex.com` path. Recall-first: the `webex.com` host is distinctive enough that false positives from marketing pages in event text are rare and harmless.
+  - Previous regex: `https?://[\w.-]*webex\.com/[^\s]+` (original V1, then briefly tightened to specific paths, now reverted to broad/recall-first)
+- **ADDED TO CODE:** Added `Cisco-Systems.Spark` bundle ID + display name. Recall-first link regex.
 
 ### 5. GoTo Meeting (GoTo)
 
@@ -111,7 +121,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://global.gotomeeting.com/join/850393077` (standard, 9-digit) -- high
   - `https://gotomeet.me/JohnSmith` (personal room) -- high
   - `https://meet.goto.com/123456789` (current invite format) -- medium
-  - **Regex:** `https?://(?:global\.gotomeeting\.com/join/\d{9}|gotomeet\.me/[A-Za-z0-9._~-]+|meet\.goto\.com/[A-Za-z0-9._~-]+)(?:[?#][^\s]*)?`
+  - **Regex:** `https?://(?:global\.gotomeeting\.com/join/[^\s]+|gotomeet\.me/[^\s]+|meet\.goto\.com/[^\s]+)` -- distinctive hosts, any join path
 - **ADDED TO CODE:** Bundle IDs, display names, and link regex.
 
 ### 6. RingCentral
@@ -123,7 +133,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://v.ringcentral.com/join/469909326` (RingEX, 9-12 digit) -- high
   - `https://video.ringcentral.com/join/...` -- high
   - `https://meetings.ringcentral.com/j/1234567890` (legacy, 10-digit) -- high
-  - **Regex:** `https?://(?:v|video|meetings)\.ringcentral\.com/(?:join|j)/[A-Za-z0-9]+`
+  - **Regex:** `https?://(?:v|video|meetings)\.ringcentral\.com/(?:join|j)/[^\s]+` -- /join or /j path, any tail
 - **ADDED TO CODE:** Bundle ID, display name, and link regex.
 
 ### 7. Slack
@@ -166,7 +176,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
 - **Meeting-link formats:**
   - `https://whereby.com/my-room` (personal/free) -- high
   - `https://mycompany.whereby.com/<room>` (business subdomain) -- high
-  - **Regex:** `https?://([a-zA-Z0-9-]+\.)?whereby\.com/(?!information|blog|user|sitemap)[a-zA-Z0-9][a-zA-Z0-9_-]+`
+  - **Regex:** `https?://(?:[a-zA-Z0-9-]+\.)?whereby\.com/(?!information|blog|user|sitemap|pricing|signin|download)[a-zA-Z0-9][^\s]*` -- negative lookahead excludes known marketing/auth paths; tail is `[^\s]*` (recall-first)
 - **ADDED TO CODE:** Link regex only (no bundle ID -- browser-only).
 
 ### 11. Jitsi Meet
@@ -178,7 +188,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://meet.jit.si/MyTeamStandup` -- high
   - `https://8x8.vc/<AppID>/MyRoom` (JaaS / 8x8 hosted Jitsi) -- high
   - Self-hosted Jitsi instances use infinite custom domains -- only `meet.jit.si` and `8x8.vc` are host-detectable.
-  - **Regex:** `https?://meet\.jit\.si/[A-Za-z0-9_-]+` and `https?://(?:[a-z]+\.)?8x8\.vc/[^\s/?#]+/[^\s/?#]+`
+  - **Regex:** `https?://meet\.jit\.si/[^\s/?#]+(?:/[^\s/?#]+)?` (with optional namespace segment) and `https?://(?:[a-z]+\.)?8x8\.vc/[^\s/?#]+/[^\s/?#]+`
   - The `8x8.vc` regex is shared between Jitsi and 8x8 Work (labeled "8x8 / Jitsi").
 - **ADDED TO CODE:** Bundle ID, display name, and `meet.jit.si` link regex. `8x8.vc` regex shared with 8x8 entry.
 
@@ -201,7 +211,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
 - **Meeting-link formats:**
   - `https://meeting.zoho.com/join?key=123456789` (10-digit key) -- high
   - Regional variants: `.eu`, `.in`, `.com.au`, `.jp`
-  - **Regex:** `https?://meeting\.zoho\.(com|eu|in|com\.au|jp)/join\?key=\d+`
+  - **Regex:** `https?://(?:meeting|meet)\.zoho\.(?:com|eu|in|com\.au|jp)/[^\s]+` -- covers `meeting.zoho.*` and `meet.zoho.*`, any path
 - **ADDED TO CODE:** Bundle ID (with medium-confidence comment), display name, and link regex.
 
 ### 14. Dialpad
@@ -214,7 +224,8 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `https://meetings.dialpad.com/janedoe` (personal room) -- high
   - `https://meetings.dialpad.com/room/budgetreview` (team room) -- high
   - `https://www.uberconference.com/strategicearth` (legacy redirect) -- high
-  - **Regex:** `https?://meetings\.dialpad\.com/(room/)?[A-Za-z0-9][A-Za-z0-9._-]{3,}` and `https?://(www\.)?uberconference\.com/[A-Za-z0-9][A-Za-z0-9._-]{3,}`
+  - `https://dialpad.com/meetings/janedoe` (alt path on main domain) -- medium
+  - **Regex:** `https?://meetings\.dialpad\.com/(?:room/)?[^\s]+`, `https?://(?:www\.)?uberconference\.com/[^\s]+`, and `https?://(?:www\.)?dialpad\.com/meetings/[^\s]+`
 - **ADDED TO CODE:** Bundle ID, display name, and link regexes.
 
 ### 15. Vonage
@@ -224,7 +235,9 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
   - `com.vonage.vbc` -- Vonage Business Communications -- source: MacUpdater tracking DB -- **high (single-source) / medium overall** -- **ADDED TO CODE**
 - **Meeting-link formats:**
   - `https://meetings.vonage.com/982515622` (9-digit meeting code) -- high
-  - **Regex:** `https?://meetings\.vonage\.com/[0-9]{6,12}`
+  - `https://meetings.vonage.com/?room_token=...` (host URL with token) -- high
+  - `https://freeconferencing.vonage.com/<room>` (free conferencing product) -- medium
+  - **Regex:** `https?://(?:meetings|freeconferencing)\.vonage\.com/[^\s]+` -- covers both subdomains
 - **ADDED TO CODE:** Bundle ID, display name, and link regex.
 
 ### 16. BigBlueButton
@@ -244,7 +257,7 @@ config dicts) or **DOC ONLY** (documented here but not in code) with the reason.
 - **Meeting-link formats:**
   - `https://<account>.clickmeeting.com/<room>` -- high
   - `https://<account>.clickwebinar.com/<room>` -- high
-  - **Regex:** `https?://[A-Za-z0-9-]+\.click(?:meeting|webinar)\.com/[A-Za-z0-9_-]+`
+  - **Regex:** `https?://[A-Za-z0-9-]+\.click(?:meeting|webinar)\.com/[^\s]+` -- `[^\s]+` tail (recall-first; subdomain anchoring provides sufficient precision)
 - **ADDED TO CODE:** Link regex only (bundle ID unverified). Webinar-first platform.
 
 ### 18. Livestorm
@@ -287,10 +300,13 @@ as of 2026. Documented for completeness; **not added to code**.
 - `com.zoho.meeting` -- medium (with comment)
 
 ### Link regexes applied or changed:
-- **Zoom:** broadened from `/j/` only to `/j/`, `/my/`, `/w/`, `/s/` + `zoomgov.com`
-- **Google Meet:** tightened from `[a-z-]+` to `[a-z]{3}-[a-z]{4}-[a-z]{3}`
-- **Microsoft Teams:** extended to cover `/meet/`, `teams.live.com`, and gov domains
-- **Cisco Webex:** tightened from `webex.com/[^\s]+` to specific meeting paths
+
+**Detection philosophy: recall over precision.** A false positive (flagging a non-meeting URL) only adds a low-cost UI hint; a false negative (missing a real meeting link) silently degrades the experience. Regexes therefore use `[^\s]+` tails and minimal path constraints, anchored by distinctive hostnames. The negative-lookahead on Whereby (`/information`, `/blog`, `/pricing`, etc.) is the one exception where precision is worth the complexity.
+
+- **Zoom:** broadened to `/j/`, `/my/`, `/w/`, `/s/`, `/wc/` with `[^\s]+` tails + `zoomgov.com`
+- **Google Meet:** `[a-z]{3}-[a-z]{4}-[a-z]{3}` code format + `/lookup/<nickname>`
+- **Microsoft Teams:** covers `/l/meetup-join/`, `/meet/`, `teams.live.com`, and gov/dod domains
+- **Cisco Webex:** recall-first -- any `*.webex.com/` path
 - **Additional platforms:** GoTo Meeting, RingCentral, Jitsi Meet, 8x8 / Jitsi (`8x8.vc`), Zoho Meeting, Dialpad, Vonage, FaceTime, Whereby, ClickMeeting
 
 ### Not applied to code (and why):

@@ -9,16 +9,20 @@ struct ConferenceMatchTests {
     // MARK: - Positive matches (parameterized)
 
     @Test("Detects conference link for platform", arguments: [
-        // Zoom
+        // Zoom — numeric IDs and name-join links
         ("https://us04web.zoom.us/j/12345678?pwd=abc", "Zoom"),
+        ("https://zoom.us/j/team-standup", "Zoom"),
+        ("https://zoom.us/j/nourl", "Zoom"),
+        ("https://zoom.us/j/abc", "Zoom"),
         ("https://zoom.us/my/johndoe", "Zoom"),
         ("https://zoom.us/w/12345678901?tk=abc", "Zoom"),
         ("https://zoom.us/s/12345678901", "Zoom"),
         ("https://zoomgov.com/j/1234567890", "Zoom"),
         ("https://company.zoom.us/j/1234567890", "Zoom"),
 
-        // Google Meet
+        // Google Meet — 3-4-3 code and /lookup/ nickname
         ("https://meet.google.com/abc-defg-hij", "Google Meet"),
+        ("https://meet.google.com/lookup/my-standup", "Google Meet"),
 
         // Microsoft Teams
         ("https://teams.microsoft.com/l/meetup-join/abc123", "Microsoft Teams"),
@@ -26,41 +30,49 @@ struct ConferenceMatchTests {
         ("https://teams.live.com/meet/9425716001426", "Microsoft Teams"),
         ("https://gov.teams.microsoft.us/l/meetup-join/abc123", "Microsoft Teams"),
 
-        // Cisco Webex
+        // Cisco Webex — recall-first, any webex.com path
         ("https://example.webex.com/meet/room1", "Cisco Webex"),
         ("https://acme.webex.com/acme/j.php?MTID=m12345", "Cisco Webex"),
 
         // Slack Huddle
         ("https://app.slack.com/huddle/T123/C456", "Slack Huddle"),
 
-        // GoTo Meeting
+        // GoTo Meeting — distinctive hosts, any join path
         ("https://global.gotomeeting.com/join/850393077", "GoTo Meeting"),
+        ("https://global.gotomeeting.com/join/my-standup", "GoTo Meeting"),
         ("https://gotomeet.me/JohnSmith", "GoTo Meeting"),
         ("https://meet.goto.com/123456789", "GoTo Meeting"),
 
-        // RingCentral
+        // RingCentral — /join or /j, any tail
         ("https://v.ringcentral.com/join/469909326", "RingCentral"),
+        ("https://v.ringcentral.com/join/jane-doe", "RingCentral"),
         ("https://video.ringcentral.com/join/123456789", "RingCentral"),
         ("https://meetings.ringcentral.com/j/1234567890", "RingCentral"),
 
-        // Jitsi Meet
+        // Jitsi Meet — with optional namespace segment
         ("https://meet.jit.si/MyTeamStandup", "Jitsi Meet"),
+        ("https://meet.jit.si/myorg/StandUp", "Jitsi Meet"),
 
         // 8x8 / Jitsi
         ("https://8x8.vc/acmejets/mel.black", "8x8 / Jitsi"),
         ("https://8x8.vc/vpaas-magic-cookie-abc123/MyRoom", "8x8 / Jitsi"),
 
-        // Zoho Meeting
+        // Zoho Meeting — meeting.zoho.* and meet.zoho.*
         ("https://meeting.zoho.com/join?key=1234567890", "Zoho Meeting"),
         ("https://meeting.zoho.eu/join?key=1234567890", "Zoho Meeting"),
+        ("https://meet.zoho.com/123", "Zoho Meeting"),
+        ("https://meeting.zoho.com/meeting/register?sessionId=123", "Zoho Meeting"),
 
-        // Dialpad
+        // Dialpad — meetings.dialpad.com, uberconference.com, dialpad.com/meetings/
         ("https://meetings.dialpad.com/janedoe", "Dialpad"),
         ("https://meetings.dialpad.com/room/budgetreview", "Dialpad"),
         ("https://www.uberconference.com/strategicearth", "Dialpad"),
+        ("https://dialpad.com/meetings/janedoe", "Dialpad"),
 
-        // Vonage
+        // Vonage — meetings + freeconferencing subdomains
         ("https://meetings.vonage.com/982515622", "Vonage"),
+        ("https://meetings.vonage.com/?room_token=abc", "Vonage"),
+        ("https://freeconferencing.vonage.com/some-room", "Vonage"),
 
         // FaceTime
         ("https://facetime.apple.com/join#v=1&p=BASE64&k=BASE64", "FaceTime"),
@@ -82,22 +94,16 @@ struct ConferenceMatchTests {
     // MARK: - Negative matches (parameterized)
 
     @Test("Rejects non-meeting URLs", arguments: [
-        // Zoom /j/ requires digits — non-numeric slug must not match
-        "https://zoom.us/j/nourl",
-        "https://zoom.us/j/abc",
-
-        // Google Meet non-meeting paths
+        // Google Meet non-meeting paths (not 3-4-3 codes or /lookup/)
         "https://meet.google.com/new",
         "https://meet.google.com/landing",
-
-        // Webex marketing pages
-        "https://www.webex.com/pricing",
 
         // Whereby marketing paths
         "https://whereby.com/information",
         "https://whereby.com/blog",
         "https://whereby.com/user",
         "https://whereby.com/sitemap",
+        "https://whereby.com/pricing",
 
         // Generic URLs
         "https://example.com/meeting"

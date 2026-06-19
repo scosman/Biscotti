@@ -135,56 +135,57 @@ public struct BundledMeetingCatalog: MeetingCatalog {
 
     private static let compiledPatterns: [CompiledPattern] = {
         let patterns: [(String, String)] = [
-            // Zoom: /j/ requires digits (meeting ID); /my/, /w/, /s/ accept slugs. + zoomgov
-            ("Zoom", #"https?://[\w.-]*\.?zoom(gov)?\.us/(?:j/\d+[^\s]*|(?:my|w|s)/[^\s]+)"#),
-            ("Zoom", #"https?://[\w.-]*\.?zoomgov\.com/(?:j/\d+[^\s]*|(?:my|w|s)/[^\s]+)"#),
+            // Zoom: join-path prefixes; ID/slug unconstrained — matches numeric IDs and name-join links
+            ("Zoom", #"https?://[\w.-]*\.?zoom\.us/(?:j|my|w|s|wc)/[^\s]+"#),
+            ("Zoom", #"https?://[\w.-]*\.?zoomgov\.com/(?:j|my|w|s|wc)/[^\s]+"#),
 
-            // Google Meet: 3-4-3 lowercase letter code
-            ("Google Meet", #"https?://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}"#),
+            // Google Meet: 3-4-3 code or /lookup/<nickname>
+            ("Google Meet", #"https?://meet\.google\.com/(?:lookup/[^\s]+|[a-z]{3}-[a-z]{4}-[a-z]{3})"#),
 
             // Microsoft Teams: legacy /l/meetup-join, new /meet/, consumer teams.live.com, gov
             ("Microsoft Teams",
              #"https?://(?:teams\.microsoft\.com/(?:l/meetup-join|meet)/|teams\.live\.com/meet/|(?:gov|dod)\.teams\.microsoft\.us/l/meetup-join/)[^\s]+"#),
 
-            // Cisco Webex: personal room, scheduled (j.php), joinservice
-            ("Cisco Webex",
-             #"https?://[\w.-]+\.webex\.com/(?:meet/[^\s]+|[^\s]*j\.php\?[^\s]+|wbxmjs/joinservice/[^\s]+)"#),
+            // Cisco Webex: any *.webex.com path — recall-first
+            ("Cisco Webex", #"https?://(?:[\w.-]+\.)?webex\.com/[^\s]+"#),
 
             // Slack Huddle (UNVERIFIED — see research/meeting_apps/README.md)
             ("Slack Huddle", #"https?://app\.slack\.com/huddle/[^\s]+"#),
 
-            // GoTo Meeting: gotomeeting.com, gotomeet.me, meet.goto.com
+            // GoTo Meeting: distinctive hosts, any join path accepted
             ("GoTo Meeting",
-             #"https?://(?:global\.gotomeeting\.com/join/\d{9}|gotomeet\.me/[A-Za-z0-9._~-]+|meet\.goto\.com/[A-Za-z0-9._~-]+)(?:[?#][^\s]*)?"#),
+             #"https?://(?:global\.gotomeeting\.com/join/[^\s]+|gotomeet\.me/[^\s]+|meet\.goto\.com/[^\s]+)"#),
 
-            // RingCentral: v.ringcentral.com, video.ringcentral.com, meetings.ringcentral.com
+            // RingCentral: /join or /j path on distinctive subdomains
             ("RingCentral",
-             #"https?://(?:v|video|meetings)\.ringcentral\.com/(?:join|j)/[A-Za-z0-9]+"#),
+             #"https?://(?:v|video|meetings)\.ringcentral\.com/(?:join|j)/[^\s]+"#),
 
-            // Jitsi Meet: meet.jit.si (public instance only; self-hosted = infinite domains)
-            ("Jitsi Meet", #"https?://meet\.jit\.si/[A-Za-z0-9_-]+"#),
+            // Jitsi Meet: meet.jit.si with optional namespace path segment
+            ("Jitsi Meet", #"https?://meet\.jit\.si/[^\s/?#]+(?:/[^\s/?#]+)?"#),
 
             // 8x8 / Jitsi: 8x8.vc (shared by 8x8 Work and JaaS-hosted Jitsi)
             ("8x8 / Jitsi", #"https?://(?:[a-z]+\.)?8x8\.vc/[^\s/?#]+/[^\s/?#]+"#),
 
-            // Zoho Meeting: meeting.zoho.{com,eu,in,com.au,jp}
-            ("Zoho Meeting", #"https?://meeting\.zoho\.(com|eu|in|com\.au|jp)/join\?key=\d+"#),
+            // Zoho Meeting: meeting.zoho.* or meet.zoho.*, any path
+            ("Zoho Meeting", #"https?://(?:meeting|meet)\.zoho\.(?:com|eu|in|com\.au|jp)/[^\s]+"#),
 
-            // Dialpad: meetings.dialpad.com + legacy uberconference.com
-            ("Dialpad", #"https?://meetings\.dialpad\.com/(room/)?[A-Za-z0-9][A-Za-z0-9._-]{3,}"#),
-            ("Dialpad", #"https?://(www\.)?uberconference\.com/[A-Za-z0-9][A-Za-z0-9._-]{3,}"#),
+            // Dialpad: meetings.dialpad.com, uberconference.com, dialpad.com/meetings/
+            ("Dialpad", #"https?://meetings\.dialpad\.com/(?:room/)?[^\s]+"#),
+            ("Dialpad", #"https?://(?:www\.)?uberconference\.com/[^\s]+"#),
+            ("Dialpad", #"https?://(?:www\.)?dialpad\.com/meetings/[^\s]+"#),
 
-            // Vonage: meetings.vonage.com (6-12 digit meeting code)
-            ("Vonage", #"https?://meetings\.vonage\.com/[0-9]{6,12}"#),
+            // Vonage: meetings.vonage.com + freeconferencing.vonage.com
+            ("Vonage", #"https?://(?:meetings|freeconferencing)\.vonage\.com/[^\s]+"#),
 
             // FaceTime: facetime.apple.com/join# (hash fragment holds key material)
             ("FaceTime", #"https?://facetime\.apple\.com/join#[^\s]+"#),
 
-            // Whereby: whereby.com room links (browser-only)
-            ("Whereby", #"https?://([a-zA-Z0-9-]+\.)?whereby\.com/(?!information|blog|user|sitemap)[a-zA-Z0-9][a-zA-Z0-9_-]+"#),
+            // Whereby: room links; excludes known marketing paths
+            ("Whereby",
+             #"https?://(?:[a-zA-Z0-9-]+\.)?whereby\.com/(?!information|blog|user|sitemap|pricing|signin|download)[a-zA-Z0-9][^\s]*"#),
 
-            // ClickMeeting / ClickWebinar (bundle ID unverified; link format is solid)
-            ("ClickMeeting", #"https?://[A-Za-z0-9-]+\.click(?:meeting|webinar)\.com/[A-Za-z0-9_-]+"#)
+            // ClickMeeting / ClickWebinar: any room path on account subdomain
+            ("ClickMeeting", #"https?://[A-Za-z0-9-]+\.click(?:meeting|webinar)\.com/[^\s]+"#)
         ]
         return patterns.compactMap { platform, pattern in
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {

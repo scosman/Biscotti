@@ -402,7 +402,6 @@ struct TranscriptionConcurrencyTests {
     @Test("Status progresses through downloadingModel, transcribing, completed")
     @MainActor
     func statusProgression() async throws {
-        var observedStatuses: [JobStatus] = []
         let fix = try makeFixture(
             statusMessages: ["Downloading speech model", "Downloading diarization model"]
         )
@@ -679,4 +678,97 @@ private final class StatusCollector: @unchecked Sendable {
     var messages: [String] {
         lock.withLock { _messages }
     }
+}
+
+// MARK: - Download phase delay-gate tests (Phase 5a)
+
+@Suite("TranscriptionService -- download phase delay gate")
+struct TranscriptionDownloadPhaseGateTests {
+    @Test("Fast cache-hit completes without stalling on download phase")
+    @MainActor
+    func cacheHitCompletesWithoutStalling() async throws {
+        // FakeTranscriber.ensureModelsDownloaded returns immediately (cache hit).
+        // Verifies the full pipeline completes and the final status is correct.
+        let fix = try makeFixture(
+            statusMessages: ["Downloading speech-to-text model"]
+        )
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        #expect(fix.fakeEngine.backing.ensureModelsCalled == true)
+        #expect(fix.fakeEngine.backing.processAudioCalled == true)
+    }
+
+    @Test("Initial job status is .transcribing, not .downloadingModel")
+    @MainActor
+    func initialStatusIsTranscribing() async throws {
+        // Use a blocking engine so we can observe the initial status.
+        let blockingEngine = BlockingOnDownloadFakeTranscriber()
+        let store = try DataStore(storage: .inMemory)
+        let service = TranscriptionService(store: store, engine: blockingEngine)
+
+        let meetingID = try await store.createMeeting(title: "Gate Test")
+        let mic = AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 100, isPresent: true)
+        let sys = AudioFileRef(role: .system, path: "/tmp/test/system.aac", byteSize: 100, isPresent: true)
+        try await store.attachAudio([mic, sys], to: meetingID)
+
+        // Start transcription in a detached task.
+        let task = Task { @MainActor in
+            await service.transcribe(meetingID: meetingID)
+        }
+
+        // Wait for the job to start.
+        for _ in 0 ..< 200 {
+            if service.jobs[meetingID] != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        // The initial status should be .transcribing (not .downloadingModel).
+        let status = service.jobs[meetingID]
+        #expect(status == .transcribing)
+
+        // Unblock and clean up.
+        blockingEngine.backing.unblock()
+        await task.value
+    }
+}
+
+/// A fake transcriber that blocks on `ensureModelsDownloaded` until unblocked.
+/// Used to observe the initial job status before the download phase completes.
+private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Sendable {
+    final class Backing: @unchecked Sendable {
+        private var _unblocked = false
+
+        func unblock() {
+            _unblocked = true
+        }
+
+        var isUnblocked: Bool {
+            _unblocked
+        }
+    }
+
+    let backing = Backing()
+
+    func ensureModelsDownloaded(
+        status: (@Sendable (String) -> Void)?
+    ) async throws {
+        status?("Downloading speech-to-text model")
+        // Poll until unblocked.
+        while !backing.isUnblocked {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    func processAudio(
+        mic _: URL,
+        system _: URL,
+        customVocabulary _: [String]
+    ) async throws -> TranscriptResult {
+        FakeTranscriber.defaultResult
+    }
+
+    func shutdown() async {}
 }

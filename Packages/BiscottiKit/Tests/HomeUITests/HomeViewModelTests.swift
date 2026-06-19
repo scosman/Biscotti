@@ -170,6 +170,38 @@ struct HomeViewModelRecentTests {
         #expect(viewModel.showNoRecent == false)
     }
 
+    @Test("pastMeetingsCount returns total count, not capped at 3")
+    @MainActor
+    func pastMeetingsCountReflectsTotal() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUIPastCount")
+        defer { fix.cleanup() }
+
+        for idx in 0 ..< 5 {
+            _ = try await fix.createMeetingWithAudio(
+                title: "Meeting \(idx)",
+                recordingDuration: Double(idx + 1) * 60
+            )
+        }
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+        // recentMeetings is capped at 3, but pastMeetingsCount is the full total
+        #expect(viewModel.recentMeetings.count == 3)
+        #expect(viewModel.pastMeetingsCount == 5)
+    }
+
+    @Test("pastMeetingsCount is zero when no meetings exist")
+    @MainActor
+    func pastMeetingsCountZeroWhenEmpty() async throws {
+        let fix = try makeCoreFixture(testName: "HomeUIPastCountEmpty")
+        defer { fix.cleanup() }
+
+        await fix.core.reloadSummaries()
+
+        let viewModel = HomeViewModel(core: fix.core)
+        #expect(viewModel.pastMeetingsCount == 0)
+    }
+
     @Test("selectMeeting routes to .meetings and sets selection")
     @MainActor
     func selectMeetingRoutes() async throws {

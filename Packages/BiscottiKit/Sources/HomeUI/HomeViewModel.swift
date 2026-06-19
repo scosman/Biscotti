@@ -135,6 +135,11 @@ public final class HomeViewModel {
         core.summaries.isEmpty
     }
 
+    /// Total number of past meetings (for the "See All" row count badge).
+    public var pastMeetingsCount: Int {
+        core.summaries.count
+    }
+
     // MARK: - Actions
 
     /// Request calendar access (from the "Connect" empty state).

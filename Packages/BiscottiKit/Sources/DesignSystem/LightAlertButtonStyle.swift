@@ -8,6 +8,7 @@ import SwiftUI
 /// controls layout (padding, height); this style only provides the chrome.
 public struct LightAlertButtonStyle: ButtonStyle {
     @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
 
     public init() {}
 
@@ -25,7 +26,9 @@ public struct LightAlertButtonStyle: ButtonStyle {
             // Tighter whisper shadow than HomeCardModifier (0.05/1.5/1)
             // -- intentional for the smaller button footprint.
             .shadow(color: .black.opacity(0.06), radius: 1, x: 0, y: 0.5)
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .opacity(
+                !isEnabled ? 0.4 : configuration.isPressed ? 0.7 : 1.0
+            )
             .onHover { isHovering = $0 }
     }
 }

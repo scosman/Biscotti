@@ -461,7 +461,7 @@ private struct RecordingToolbarButton: View {
                     .animation(nil, value: viewModel.recordingElapsedText)
             }
             .padding(.horizontal, 16)
-            .frame(height: 34)
+            .frame(height: 32)
         }
         .buttonStyle(LightAlertButtonStyle())
         .help("Go to recording")

@@ -104,18 +104,41 @@ public struct AvatarCluster: View {
         self.maxCount = maxCount
     }
 
-    private var shownPeople: [AvatarPerson] {
-        let limit = avatarNameLimit(
+    /// Deduped people, display limit, and adjusted overflow — computed once
+    /// per render so the dedup set-filter runs a single time. Duplicate
+    /// invitees are legitimate (raw invite lists can include the same
+    /// person more than once), so we dedup here for display purposes.
+    private var layout: (shown: [AvatarPerson], overflow: Int) {
+        // 1. Dedup, preserving order
+        var seen = Set<AvatarPerson>()
+        let unique = people.filter { seen.insert($0).inserted }
+
+        // 2. Adjust totalCount for duplicates removed
+        let adjusted = adjustedAvatarTotalCount(
             peopleCount: people.count,
-            totalCount: totalCount,
+            uniqueCount: unique.count,
+            totalCount: totalCount
+        )
+
+        // 3. Compute display limit from unique counts
+        let limit = avatarNameLimit(
+            peopleCount: unique.count,
+            totalCount: adjusted,
             maxCount: maxCount,
             hasRecordingBadge: showLeadingRecordingAvatar
         )
-        return Array(people.prefix(limit))
+
+        let shown = Array(unique.prefix(limit))
+        let overflow = max(0, adjusted - shown.count)
+        return (shown: shown, overflow: overflow)
+    }
+
+    private var shownPeople: [AvatarPerson] {
+        layout.shown
     }
 
     private var overflowCount: Int {
-        max(0, totalCount - shownPeople.count)
+        layout.overflow
     }
 
     /// Whether person avatars should show the white stacked border ring.

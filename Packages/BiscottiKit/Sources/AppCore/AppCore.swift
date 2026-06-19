@@ -422,6 +422,10 @@ public final class AppCore {
             return
         }
 
+        // Dismiss any lingering meeting-detected banners so they don't
+        // persist on screen during an active recording.
+        await notifications.cancelAdHocDetected()
+
         // Stash the eventKey so retry can re-use it.
         pendingStartupEventKey = eventKey
 
@@ -1131,18 +1135,6 @@ extension AppCore {
             switch action {
             case let .openAndRecord(eventKey):
                 await recordDetectedEvent(eventKey: eventKey)
-
-            case .join:
-                // NOTE: Join URL opening is handled exclusively by the app
-                // target's UNUserNotificationCenterDelegate (AppDelegate),
-                // which reads the URL from userInfo and calls
-                // NSWorkspace.shared.open(url) BEFORE the action reaches
-                // this stream. AppCore intentionally does nothing here to
-                // stay AppKit-free and testable. If the delegate is ever
-                // refactored to only call handleResponseValues (removing
-                // its direct URL open), this case must be updated to open
-                // the URL or forward to a callback.
-                break
 
             case .keepRecording:
                 keepRecording()

@@ -303,3 +303,53 @@ struct NotificationSettingsLoadingTests {
         #expect(fix.core.calendarNotificationMode == .allMeetings)
     }
 }
+
+// MARK: - Cancel ad-hoc on record start
+
+@Suite("AppCore -- cancel ad-hoc on record start")
+struct CancelAdHocOnRecordStartTests {
+    @Test("startRecording dismisses lingering ad-hoc notifications")
+    @MainActor
+    func startRecordingDismissesAdHoc() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            useImmediateDetectorClock: true,
+            testName: "CancelAdHoc"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { settings in
+            settings.onboardingComplete = true
+        }
+        await fix.core.onLaunch()
+
+        // Emit audio snapshot so a meeting is detected.
+        fix.fakeActivitySource.emit([
+            makeAudioProcess(
+                bundleID: "us.zoom.xos",
+                input: true, output: true
+            )
+        ])
+        try await pollUntil { fix.core.runState == .detectedPending }
+
+        // An ad-hoc notification should have been presented.
+        let adHocRequests = fix.fakeNotificationCenter.addedRequests.filter {
+            $0.content.categoryIdentifier == "biscotti.ad-hoc-detected"
+        }
+        #expect(!adHocRequests.isEmpty)
+
+        let removedBefore = fix.fakeNotificationCenter.backing.removedPendingIDs.count
+
+        // Start recording -- should cancel the ad-hoc notification.
+        await fix.core.startRecording()
+
+        let removedAfter = fix.fakeNotificationCenter.backing.removedPendingIDs
+        #expect(removedAfter.count > removedBefore)
+
+        // The ad-hoc notification ID should be in the removed list.
+        let adHocID = adHocRequests[0].identifier
+        #expect(removedAfter.contains(adHocID))
+
+        _ = await fix.core.stopRecording()
+    }
+}

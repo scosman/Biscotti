@@ -14,8 +14,7 @@ enum CategoryID {
 
 /// UNNotificationAction identifiers.
 enum ActionID {
-    static let openAndRecord = "biscotti.action.open-and-record"
-    static let join = "biscotti.action.join"
+    static let recordAndJoin = "biscotti.action.record-and-join"
     static let record = "biscotti.action.record"
     static let keepRecording = "biscotti.action.keep-recording"
 }

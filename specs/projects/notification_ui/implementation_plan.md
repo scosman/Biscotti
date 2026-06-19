@@ -15,7 +15,7 @@ Three phases, each a coherent, independently reviewable unit. Details live in `f
   - `SettingsUI`: `SettingsViewModel` props/setters/`load`; `SettingsView` "Notifications" section — two toggles + the calendar-mode `Picker` with the disabled/"Requires Calendar Access" badge (arch §4.1–4.2, ui_design §Rows 1–3).
   - Tests: `DataStore` round-trip + enum; `eventsToNotify`; detection-notification + auto-stop gating; live-toggle wiring; ViewModel setters/load (arch §7).
 
-- [ ] **Phase 2 — Notification presentation & copy.**
+- [x] **Phase 2 — Notification presentation & copy.**
   The meeting-detected and calendar-event notifications themselves.
   - `Notifications`: meeting-detected copy → "Meeting detected" / "App: {name}"; `.timeSensitive` on both kinds; "Record & Join"/"Record" action rework (`ActionID`, categories, `NotificationAction` drop `.join`, `ResponseMapper`); `cancelAdHocDetected()` + presented-ID tracking (arch §2.2–2.5).
   - `AppCore`: call `cancelAdHocDetected()` at the top of `startRecording`; drop the `.join` consumer case (arch §3.8–3.9).

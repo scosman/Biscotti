@@ -675,7 +675,7 @@ struct AppCoreNotificationActionTests {
 
         fix.notificationService.handleResponseValues(
             categoryID: "biscotti.meeting-starting",
-            actionID: "biscotti.action.open-and-record",
+            actionID: "biscotti.action.record",
             userInfo: [
                 "biscotti.kind": "meeting-starting",
                 "biscotti.eventKey": eventKey ?? ""

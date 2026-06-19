@@ -128,7 +128,7 @@ public struct AvatarCluster: View {
     }
 
     private var overlap: CGFloat {
-        size * 0.34
+        size * 0.42
     }
 
     public var body: some View {

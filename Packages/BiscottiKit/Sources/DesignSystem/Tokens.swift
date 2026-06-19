@@ -221,9 +221,12 @@ public enum Tokens {
     /// Fixed width for the avatar column in rows.
     public static let avatarColumnWidth: CGFloat = 78
 
+    /// Trailing gap between the avatar column and adjacent row content.
+    public static let avatarTrailingGap: CGFloat = 8
+
     /// Default avatar size for ordinary rows.
-    public static let avatarSize: CGFloat = 26
+    public static let avatarSize: CGFloat = 24
 
     /// Avatar size for the hero row.
-    public static let heroAvatarSize: CGFloat = 28
+    public static let heroAvatarSize: CGFloat = 26
 }

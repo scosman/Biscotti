@@ -547,10 +547,30 @@ private extension MeetingDetailView {
         }
     }
 
+    /// Centered transcribing state: large spinner, larger centered text,
+    /// optional subtitle on its own centered line. Explicit center-alignment
+    /// ensures subtitle changes only affect vertical layout, not horizontal.
     func centeredStatus(message: String, subtitle: String?) -> some View {
         VStack {
             Spacer()
-            StatusRow(message, subtitle: subtitle)
+            VStack(alignment: .center, spacing: Tokens.spacingMD) {
+                ProgressView()
+                    .controlSize(.large)
+
+                VStack(alignment: .center, spacing: Tokens.spacingXS) {
+                    Text(message)
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Tokens.secondaryText)
+                        .multilineTextAlignment(.center)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(Tokens.secondaryText.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                }
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)

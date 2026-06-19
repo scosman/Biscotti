@@ -85,6 +85,7 @@ public struct AppShellView: View {
 
                         if viewModel.isRecording {
                             RecordingToolbarButton(viewModel: viewModel)
+                                .disabled(viewModel.isOnRecordingPage)
                         } else {
                             Button {
                                 Task { await viewModel.startRecording() }

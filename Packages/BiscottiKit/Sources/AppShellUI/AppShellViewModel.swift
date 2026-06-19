@@ -186,6 +186,12 @@ public final class AppShellViewModel {
         core.route == .home
     }
 
+    /// Whether the current route is the recording page (used to disable
+    /// the toolbar REC button when the user is already viewing it).
+    public var isOnRecordingPage: Bool {
+        core.route == .recording
+    }
+
     /// Token that increments when the search field should gain focus
     /// (e.g. Cmd+F). The view observes this via `.onChange`.
     public var searchFocusToken: UInt {

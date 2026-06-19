@@ -16,7 +16,10 @@ public extension MarkdownEditorConfiguration {
     ///   AND a negative kern to collapse layout advance, so setting
     ///   `hiddenMarkerFontSize` to body size causes text overlap.)
     /// - Prose-friendly defaults (auto-close pairs off, list helpers on).
-    /// - Reduced overscroll for a bounded inline editor box.
+    /// - `.fitsContent` height behavior: the editor grows to fit its
+    ///   content instead of scrolling internally, so the enclosing page
+    ///   scroll view handles overflow (no nested scroll region).
+    /// - Minimal overscroll (effectively zero in fitsContent mode).
     /// - No wiki-link, image-embed, syntax-highlight, or LaTeX services.
     ///
     static func biscotti() -> MarkdownEditorConfiguration {
@@ -43,7 +46,8 @@ public extension MarkdownEditorConfiguration {
             lists: ListStyle(helpersEnabled: true, autoClosePairsEnabled: false),
             overscroll: OverscrollPolicy(percent: 0, maxPoints: 8, minPoints: 4),
             textInsets: TextInsets(horizontal: 8, vertical: 8),
-            readingWidth: nil
+            readingWidth: nil,
+            heightBehavior: .fitsContent
         )
     }
 }

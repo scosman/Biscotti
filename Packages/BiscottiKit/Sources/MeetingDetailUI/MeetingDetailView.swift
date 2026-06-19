@@ -12,11 +12,11 @@ import TranscriptionService
 /// Layout: while loading, shows a centered spinner. Once loaded, a
 /// single outer `ScrollView` containing a chrome section (header,
 /// calendar card, tab bar) measured via a preference key, and a
-/// tab-content area sized to fill the remaining viewport. The audio
-/// transport bar is pinned to the bottom of the panel via
-/// `safeAreaInset`, staying fixed regardless of scroll position.
-/// The Notes editor scrolls internally; the Transcript tab grows
-/// with content and the outer scroll handles it.
+/// tab-content area. The audio transport bar is pinned to the bottom
+/// of the panel via `safeAreaInset`, staying fixed regardless of
+/// scroll position. Both the Notes editor (via `.fitsContent`) and
+/// the Transcript tab grow with content -- the outer scroll handles
+/// overflow for both.
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
@@ -507,9 +507,11 @@ private extension MeetingDetailView {
         }
     }
 
-    /// Notes tab: MarkdownEditor sized to fill the remaining viewport.
-    /// A transparent click-forwarder sits behind the editor so clicking
-    /// empty space below the placeholder focuses the text view.
+    /// Notes tab: MarkdownEditor grows to fit its content (`.fitsContent`
+    /// height behavior). The outer page scroll view handles overflow -- no
+    /// nested scroll region. The min-height fills available viewport space
+    /// (floored at 100pt) so the editor is a large click target even when
+    /// empty, but content taller than the viewport still grows the page.
     func notesTabContent(fill: CGFloat) -> some View {
         MarkdownEditor(
             text: Binding(
@@ -519,12 +521,8 @@ private extension MeetingDetailView {
             documentId: viewModel.meetingID.uuidString,
             placeholder: "Add notes\u{2026}"
         )
-        .frame(height: fill)
+        .frame(minHeight: max(100, fill), alignment: .top)
         .background(TextViewFocusForwarder())
-        .overlay(
-            RoundedRectangle(cornerRadius: Tokens.buttonRadius)
-                .stroke(Color.cardStroke, lineWidth: 0.5)
-        )
     }
 }
 
@@ -693,10 +691,11 @@ private extension View {
 // MARK: - Click-to-focus helper for the MarkdownEditor
 
 /// An `NSViewRepresentable` that catches mouse clicks in the empty area
-/// of the MarkdownEditor's scroll view and makes the `NSTextView` the
+/// below the MarkdownEditor's content and makes the `NSTextView` the
 /// first responder. Placed as a `.background` of the editor so it sits
-/// behind the scroll view and only receives clicks that the text view
-/// itself doesn't consume (i.e. clicks below the text content).
+/// behind the content and only receives clicks that the text view
+/// itself doesn't consume (i.e. clicks in the minHeight region below
+/// the last line of text).
 private struct TextViewFocusForwarder: NSViewRepresentable {
     func makeNSView(context _: Context) -> FocusForwarderView {
         FocusForwarderView()

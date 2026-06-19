@@ -69,15 +69,13 @@ public struct Avatar: View {
 
 /// A row of overlapped avatars pinned to a fixed-width column.
 ///
-/// Shows up to 3 overlapping avatars plus a "+N" neutral badge for
-/// any remaining participants. The column width is fixed so all row
-/// titles align at the same X coordinate.
+/// Caps visible circles at `maxCount` (default 4). The recording badge
+/// and the "+N" overflow chip each consume a slot in that budget.
+/// Overflow is triggered by `max(people.count, totalCount)` so the cap
+/// holds even when the calendar reports more attendees than it provides
+/// names for.
 ///
-/// When `showLeadingRecordingAvatar` is true, a grey microphone circle
-/// is rendered as the leftmost (bottom-most in the Z stack) element.
-/// It is an extra element that does NOT consume a person slot or change
-/// the "+N" overflow count — it just guarantees the cluster is never
-/// visually blank on past meetings.
+/// The column width is fixed so all row titles align at the same X.
 public struct AvatarCluster: View {
     private let people: [AvatarPerson]
     private let totalCount: Int
@@ -85,9 +83,10 @@ public struct AvatarCluster: View {
     private let columnWidth: CGFloat
     private let showLeadingRecordingAvatar: Bool
 
-    /// Maximum number of avatars rendered before the "+N" badge.
-    /// Defaults to 3. Callers can raise this (e.g. 8 for expanded views).
-    private let maxShown: Int
+    /// Maximum total visible circles (recording badge + name avatars +
+    /// overflow chip). Defaults to 4. Callers can raise this (e.g. 8
+    /// for expanded views).
+    private let maxCount: Int
 
     public init(
         people: [AvatarPerson],
@@ -95,18 +94,24 @@ public struct AvatarCluster: View {
         size: CGFloat = Tokens.avatarSize,
         columnWidth: CGFloat = Tokens.avatarColumnWidth,
         showLeadingRecordingAvatar: Bool = false,
-        maxShown: Int = 3
+        maxCount: Int = 4
     ) {
         self.people = people
         self.totalCount = totalCount
         self.size = size
         self.columnWidth = columnWidth
         self.showLeadingRecordingAvatar = showLeadingRecordingAvatar
-        self.maxShown = maxShown
+        self.maxCount = maxCount
     }
 
     private var shownPeople: [AvatarPerson] {
-        Array(people.prefix(maxShown))
+        let limit = avatarNameLimit(
+            peopleCount: people.count,
+            totalCount: totalCount,
+            maxCount: maxCount,
+            hasRecordingBadge: showLeadingRecordingAvatar
+        )
+        return Array(people.prefix(limit))
     }
 
     private var overflowCount: Int {
@@ -121,14 +126,16 @@ public struct AvatarCluster: View {
     /// any circle overlaps another (people, overflow badge, or mic).
     private var isStacked: Bool {
         if showLeadingRecordingAvatar {
-            let personCount = shownPeople.count + (overflowCount > 0 ? 1 : 0)
-            return (personCount + 1) > 1 // +1 for the recording avatar
+            let visibleCircles = shownPeople.count
+                + (overflowCount > 0 ? 1 : 0)
+                + 1 // recording badge
+            return visibleCircles > 1
         }
         return shownPeople.count > 1
     }
 
     private var overlap: CGFloat {
-        size * 0.34
+        size * 0.35
     }
 
     public var body: some View {

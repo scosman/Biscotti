@@ -316,14 +316,14 @@ private extension EventPreviewView {
 
         return VStack(alignment: .leading, spacing: Tokens.spacingSM) {
             // Avatar row (up to 8 before overflow).
-            // Wider columnWidth than default (78pt) to avoid clipping
+            // Wider columnWidth than default (80pt) to avoid clipping
             // when showing 8 overlapping avatars + optional "+N" badge.
             AvatarCluster(
                 people: data.people,
                 totalCount: data.total,
                 size: Tokens.avatarSize,
                 columnWidth: 240,
-                maxShown: 8
+                maxCount: 8
             )
 
             // Email list (wrapping, up to 16)

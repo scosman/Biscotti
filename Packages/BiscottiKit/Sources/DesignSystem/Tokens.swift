@@ -218,8 +218,8 @@ public enum Tokens {
 
     // MARK: - Avatar
 
-    /// Fixed width for the avatar column in rows.
-    public static let avatarColumnWidth: CGFloat = 78
+    /// Fixed width for the avatar column in home rows.
+    public static let avatarColumnWidth: CGFloat = 80
 
     /// Default avatar size for ordinary rows.
     public static let avatarSize: CGFloat = 26

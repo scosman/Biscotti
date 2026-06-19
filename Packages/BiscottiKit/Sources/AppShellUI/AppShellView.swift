@@ -469,7 +469,7 @@ private struct RecordingNowSection: View {
 
                     Text("Recording")
                         .font(.monoMeta)
-                        .foregroundStyle(Color.signalRed)
+                        .foregroundStyle(Color.inkSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, Tokens.spacingXS)
@@ -478,23 +478,10 @@ private struct RecordingNowSection: View {
             }
             .buttonStyle(.plain)
             .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(
-                        isSelected
-                            ? Tokens.recordingTintStrong
-                            : Tokens.recordingTintSoft
-                    )
-            )
-            .overlay(
-                Group {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(
-                                Color.recordingOutlineStrong,
-                                lineWidth: 0.5
-                            )
-                    }
-                }
+                isSelected
+                    ? Tokens.accentWashStrong
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 4)
             )
             .padding(.horizontal, Tokens.spacingSM)
 

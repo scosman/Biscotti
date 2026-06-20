@@ -14,21 +14,46 @@ public enum TranscriptContent {
     /// Builds a single `AttributedString` for the entire transcript.
     ///
     /// Per turn:
-    /// - Speaker label: semibold, palette-derived color.
+    /// - Speaker label: semibold, palette-derived color, clickable link
+    ///   when the segment has a non-nil `speakerID`.
     /// - Two spaces + timestamp (MM:SS or H:MM:SS): mono, `.inkTertiary`,
     ///   optionally a clickable seek link when `canSeek` is true.
     /// - Newline + utterance text: system ~14pt, `.inkSecondary`.
     /// - Blank line between turns.
+    ///
+    /// - Parameters:
+    ///   - segments: The transcript segments to render.
+    ///   - canSeek: Whether timestamps should be clickable seek links.
+    ///   - names: A map of diarization speaker ID to display name. When
+    ///     a segment's `speakerID` is in this map, the assigned name is
+    ///     shown instead of `speakerLabel`. Color is always keyed on
+    ///     `speakerID` so it stays stable across renames.
     public static func attributedString(
-        _ segments: [SegmentData], canSeek: Bool
+        _ segments: [SegmentData], canSeek: Bool,
+        names: [Int: String] = [:]
     ) -> AttributedString {
         var result = AttributedString()
 
         for (index, segment) in segments.enumerated() {
+            // Speaker display name: assigned name or original label
+            let displayName: String = if let sid = segment.speakerID,
+                                         let assignedName = names[sid]
+            {
+                assignedName
+            } else {
+                segment.speakerLabel
+            }
+
             // Speaker label
-            var speaker = AttributedString(segment.speakerLabel)
+            var speaker = AttributedString(displayName)
             speaker.font = .system(size: 14, weight: .semibold)
-            speaker.foregroundColor = speakerColor(for: segment.speakerLabel)
+            speaker.foregroundColor = speakerColor(for: segment)
+
+            // Make speaker span clickable when the segment has a speaker ID
+            if let sid = segment.speakerID {
+                speaker.link = SpeakerLink.url(speakerID: sid)
+            }
+
             result.append(speaker)
 
             // Two spaces + timestamp (+ play glyph when seekable)
@@ -70,11 +95,26 @@ public enum TranscriptContent {
     /// <utterance text>
     /// ```
     /// Blank line between turns.
-    public static func plainText(_ segments: [SegmentData]) -> String {
+    ///
+    /// - Parameters:
+    ///   - segments: The transcript segments to render.
+    ///   - names: Optional speaker-ID-to-name map; same semantics as
+    ///     `attributedString`.
+    public static func plainText(
+        _ segments: [SegmentData],
+        names: [Int: String] = [:]
+    ) -> String {
         segments.map { segment in
+            let displayName: String = if let sid = segment.speakerID,
+                                         let assignedName = names[sid]
+            {
+                assignedName
+            } else {
+                segment.speakerLabel
+            }
             let timeText = TimeFormatting.formatPlaybackTime(segment.startTime)
             let trimmedText = segment.text.drop(while: \.isWhitespace)
-            return "\(segment.speakerLabel)  \(timeText)\n\(trimmedText)"
+            return "\(displayName)  \(timeText)\n\(trimmedText)"
         }
         .joined(separator: "\n\n")
     }
@@ -82,7 +122,28 @@ public enum TranscriptContent {
     // MARK: - Speaker color
 
     /// Stable per-speaker color from the shared avatar palette.
-    /// Same label always maps to the same color.
+    ///
+    /// When the segment has a non-nil `speakerID`, the color is keyed on
+    /// a canonical string `"speaker-<id>"` so the color stays the same
+    /// regardless of whether a name is assigned. Falls back to
+    /// `speakerLabel` for segments without diarization data.
+    public static func speakerColor(for segment: SegmentData) -> Color {
+        let colorKey: String = if let sid = segment.speakerID {
+            "speaker-\(sid)"
+        } else {
+            segment.speakerLabel
+        }
+        return Tokens.avatarPalette[
+            avatarColorIndex(
+                forKey: colorKey,
+                paletteCount: Tokens.avatarPalette.count
+            )
+        ]
+    }
+
+    /// Legacy overload: stable per-speaker color from a label string.
+    /// Kept for backward compatibility; new code should prefer the
+    /// `SegmentData` overload.
     public static func speakerColor(for label: String) -> Color {
         Tokens.avatarPalette[
             avatarColorIndex(

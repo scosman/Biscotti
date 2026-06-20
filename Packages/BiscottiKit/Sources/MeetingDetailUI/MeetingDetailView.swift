@@ -133,6 +133,42 @@ public struct MeetingDetailView: View {
                 "This overwrites the summary you edited with a new AI-generated one."
             )
         }
+        .sheet(
+            item: Binding(
+                get: {
+                    viewModel.speakerSheetTranscriptID
+                        .map { SpeakerSheetBinding(id: $0) }
+                },
+                set: { newValue in
+                    viewModel.speakerSheetTranscriptID = newValue?.id
+                }
+            )
+        ) { _ in
+            if let sheetData = viewModel.speakerSheetData {
+                SpeakerMappingSheet(
+                    data: sheetData,
+                    onAssign: { speakerID, personID in
+                        await viewModel.assignSpeaker(
+                            speakerID: speakerID,
+                            personID: personID
+                        )
+                    },
+                    onAddPerson: { speakerID, name in
+                        await viewModel.assignNewPerson(
+                            speakerID: speakerID, name: name
+                        )
+                    },
+                    onUnassign: { speakerID in
+                        await viewModel.unassignSpeaker(
+                            speakerID: speakerID
+                        )
+                    },
+                    onDismiss: {
+                        viewModel.speakerSheetTranscriptID = nil
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Loaded content
@@ -807,8 +843,16 @@ private extension MeetingDetailView {
             SelectableTranscriptView(
                 transcriptID: transcriptID,
                 canSeek: viewModel.canPlay,
+                speakerNames: viewModel.displayedSpeakerNames,
                 attributed: attributed,
-                onSeek: { viewModel.seekAndPlay(to: $0) }
+                onSeek: { viewModel.seekAndPlay(to: $0) },
+                onSpeaker: { speakerID in
+                    Task {
+                        await viewModel.openSpeakerSheet(
+                            speakerID: speakerID
+                        )
+                    }
+                }
             )
             .equatable()
             .frame(minHeight: fill, alignment: .topLeading)
@@ -968,6 +1012,14 @@ private final class FocusForwarderView: NSView {
         }
         return nil
     }
+}
+
+// MARK: - Speaker sheet binding helper
+
+/// Lightweight `Identifiable` wrapper so `.sheet(item:)` can drive
+/// the speaker mapping sheet from a `UUID?`.
+private struct SpeakerSheetBinding: Identifiable {
+    let id: UUID
 }
 
 // MARK: - Event Picker Sheet (uses shared DesignSystem.EventPickerSheet)

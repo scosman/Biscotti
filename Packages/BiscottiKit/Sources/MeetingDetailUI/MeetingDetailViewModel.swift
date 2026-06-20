@@ -110,17 +110,19 @@ public final class MeetingDetailViewModel {
     /// Cached `AttributedString` for the displayed transcript. Building the
     /// attributed string synchronously for long transcripts (~hundreds of
     /// segments) is expensive enough to cause a visible load delay. We cache
-    /// it keyed by transcript ID + canPlay so it is only rebuilt when the
-    /// underlying data actually changes, not on every SwiftUI render.
+    /// it keyed by transcript ID + canPlay + speaker names so it is only
+    /// rebuilt when the underlying data actually changes, not on every
+    /// SwiftUI render.
     public private(set) var cachedTranscriptAttributed: AttributedString?
 
-    /// The transcript ID + canPlay state that the cached attributed string
-    /// was built for. When either changes we rebuild.
+    /// The transcript ID + canPlay + names state that the cached attributed
+    /// string was built for. When any changes we rebuild.
     private var cachedTranscriptKey: CachedTranscriptKey?
 
     private struct CachedTranscriptKey: Equatable {
         let transcriptID: UUID
         let canPlay: Bool
+        let names: [Int: String]
     }
 
     // MARK: - Phase 8: Notes
@@ -172,6 +174,16 @@ public final class MeetingDetailViewModel {
 
     /// Whether a delete operation is in progress.
     public private(set) var isDeleting: Bool = false
+
+    // MARK: - Speaker mapping sheet
+
+    /// The transcript ID for which the speaker mapping sheet is presented.
+    /// Setting to non-nil opens the sheet; nil dismisses it.
+    public var speakerSheetTranscriptID: UUID?
+
+    /// Assembled data for the speaker mapping sheet, populated when the
+    /// sheet opens. `nil` when the sheet is closed.
+    public private(set) var speakerSheetData: SpeakerSheetData?
 
     // MARK: - Summary tab
 
@@ -318,7 +330,10 @@ public final class MeetingDetailViewModel {
               !transcript.segments.isEmpty
         else { return }
 
-        let text = TranscriptContent.plainText(transcript.segments)
+        let text = TranscriptContent.plainText(
+            transcript.segments,
+            names: displayedSpeakerNames
+        )
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
@@ -526,6 +541,14 @@ public extension MeetingDetailViewModel {
     var canRegenerateSummary: Bool {
         displayedTranscript != nil && modelAvailable
     }
+
+    /// Speaker ID -> display name map derived from the displayed
+    /// transcript's speaker assignments. Used by `TranscriptContent`
+    /// and `SelectableTranscriptView` for name replacement and
+    /// cache-key equality.
+    var displayedSpeakerNames: [Int: String] {
+        displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
+    }
 }
 
 // MARK: - Version selection, notes autosave, re-transcribe
@@ -615,7 +638,8 @@ public extension MeetingDetailViewModel {
 
     /// Rebuilds the cached `AttributedString` from the current displayed
     /// transcript. Called reactively when inputs change (job status,
-    /// version switch, canPlay flip) -- never during `body` evaluation.
+    /// version switch, canPlay flip, speaker name changes) -- never
+    /// during `body` evaluation.
     func rebuildTranscriptCacheIfNeeded() {
         guard let transcript = displayedTranscript,
               !transcript.segments.isEmpty
@@ -625,13 +649,17 @@ public extension MeetingDetailViewModel {
             return
         }
 
+        let names = displayedSpeakerNames
         let key = CachedTranscriptKey(
-            transcriptID: transcript.id, canPlay: canPlay
+            transcriptID: transcript.id,
+            canPlay: canPlay,
+            names: names
         )
         guard key != cachedTranscriptKey else { return }
 
         cachedTranscriptAttributed = TranscriptContent.attributedString(
-            transcript.segments, canSeek: canPlay
+            transcript.segments, canSeek: canPlay,
+            names: names
         )
         cachedTranscriptKey = key
     }
@@ -1128,5 +1156,213 @@ public extension MeetingDetailViewModel {
         summaryAutosaveTask = nil
         await core.deleteMeeting(meetingID: meetingID)
         isDeleting = false
+    }
+}
+
+// MARK: - Speaker mapping sheet DTOs
+
+/// A single speaker row for the mapping sheet.
+public struct SpeakerRow: Identifiable, Sendable, Equatable {
+    public let speakerID: Int
+    public let label: String
+    public let assigned: PersonData?
+
+    public var id: Int {
+        speakerID
+    }
+
+    public init(
+        speakerID: Int, label: String, assigned: PersonData?
+    ) {
+        self.speakerID = speakerID
+        self.label = label
+        self.assigned = assigned
+    }
+}
+
+/// Assembled data for the speaker mapping sheet.
+public struct SpeakerSheetData: Sendable, Equatable {
+    public let transcriptID: UUID
+    public let rows: [SpeakerRow]
+    public let invitees: [PersonData]
+    public let people: [PersonData]
+
+    /// The speaker ID that was clicked to open the sheet (if any).
+    /// Can be used to pre-focus or scroll to that speaker's row.
+    public let focusedSpeakerID: Int?
+
+    public init(
+        transcriptID: UUID,
+        rows: [SpeakerRow],
+        invitees: [PersonData],
+        people: [PersonData],
+        focusedSpeakerID: Int? = nil
+    ) {
+        self.transcriptID = transcriptID
+        self.rows = rows
+        self.invitees = invitees
+        self.people = people
+        self.focusedSpeakerID = focusedSpeakerID
+    }
+}
+
+// MARK: - Speaker mapping sheet actions
+
+public extension MeetingDetailViewModel {
+    /// Opens the speaker mapping sheet for the currently displayed
+    /// transcript. The `speakerID` identifies which speaker was clicked
+    /// and is stored on the sheet data for potential row pre-focus.
+    func openSpeakerSheet(speakerID: Int) async {
+        guard let transcript = displayedTranscript else { return }
+        speakerSheetData = await buildSpeakerSheetData(
+            transcript: transcript, focusedSpeakerID: speakerID
+        )
+        speakerSheetTranscriptID = transcript.id
+    }
+
+    /// Assembles the speaker sheet data from the current transcript,
+    /// calendar invitees, and all known people.
+    func buildSpeakerSheetData(
+        transcript: TranscriptData,
+        focusedSpeakerID: Int? = nil
+    ) async -> SpeakerSheetData {
+        // Collect distinct speaker IDs from segments, preserving order
+        var seenIDs: Set<Int> = []
+        var orderedIDs: [Int] = []
+        for seg in transcript.segments {
+            guard let sid = seg.speakerID else { continue }
+            if seenIDs.insert(sid).inserted {
+                orderedIDs.append(sid)
+            }
+        }
+
+        // Build rows with current assignment
+        let rows = orderedIDs.map { sid in
+            SpeakerRow(
+                speakerID: sid,
+                label: "Speaker \(sid)",
+                assigned: transcript.speakerAssignments[sid]
+            )
+        }
+
+        // Invitees from calendar context
+        var invitees: [PersonData] = []
+        var inviteeIDs: Set<UUID> = []
+        if let ctx = calendarContext {
+            if let org = ctx.organizer {
+                invitees.append(org)
+                inviteeIDs.insert(org.id)
+            }
+            for att in ctx.attendees
+                where inviteeIDs.insert(att.id).inserted
+            {
+                invitees.append(att)
+            }
+        }
+
+        // All people, deduped against invitees
+        var people: [PersonData] = []
+        do {
+            let all = try await core.store.allPersonData()
+            people = all.filter { !inviteeIDs.contains($0.id) }
+        } catch {
+            // Non-fatal
+        }
+
+        return SpeakerSheetData(
+            transcriptID: transcript.id,
+            rows: rows,
+            invitees: invitees,
+            people: people,
+            focusedSpeakerID: focusedSpeakerID
+        )
+    }
+
+    /// Assigns a speaker to an existing person. Apply-on-change:
+    /// persists immediately and reloads the transcript cache.
+    func assignSpeaker(speakerID: Int, personID: UUID) async {
+        guard let transcriptID = speakerSheetTranscriptID else {
+            return
+        }
+        do {
+            try await core.store.setSpeakerAssignment(
+                speakerID: speakerID, personID: personID,
+                for: transcriptID
+            )
+            await reloadAfterSpeakerChange()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Creates a new name-only person and assigns the speaker to them.
+    func assignNewPerson(speakerID: Int, name: String) async {
+        guard let transcriptID = speakerSheetTranscriptID else {
+            return
+        }
+        let trimmed = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let personID = try await core.store.findOrCreatePerson(
+                name: trimmed, email: nil
+            )
+            try await core.store.setSpeakerAssignment(
+                speakerID: speakerID, personID: personID,
+                for: transcriptID
+            )
+            await reloadAfterSpeakerChange()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Clears a speaker assignment back to "Speaker N".
+    func unassignSpeaker(speakerID: Int) async {
+        guard let transcriptID = speakerSheetTranscriptID else {
+            return
+        }
+        do {
+            try await core.store.setSpeakerAssignment(
+                speakerID: speakerID, personID: nil,
+                for: transcriptID
+            )
+            await reloadAfterSpeakerChange()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Reloads detail + rebuilds the transcript cache and refreshes
+    /// the sheet data after a speaker assignment change.
+    private func reloadAfterSpeakerChange() async {
+        do {
+            detail = try await core.store.meetingDetail(id: meetingID)
+            versions = detail?.versions ?? []
+            // Reload the selected version if we were viewing a non-preferred version
+            if let selectedID = selectedVersionID,
+               selectedID != detail?.preferredTranscript?.id
+            {
+                selectedTranscript = try await core.store.transcript(
+                    id: selectedID
+                )
+            } else {
+                selectedTranscript = nil
+            }
+            cachedTranscriptKey = nil
+            rebuildTranscriptCacheIfNeeded()
+            // Refresh the sheet data so rows reflect new assignments.
+            // Preserve the focusedSpeakerID from the current sheet so
+            // the scroll position stays coherent across reloads.
+            if let transcript = displayedTranscript {
+                let existingFocus = speakerSheetData?.focusedSpeakerID
+                speakerSheetData = await buildSpeakerSheetData(
+                    transcript: transcript,
+                    focusedSpeakerID: existingFocus
+                )
+            }
+        } catch {
+            // Non-fatal
+        }
     }
 }

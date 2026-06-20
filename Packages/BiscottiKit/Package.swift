@@ -346,6 +346,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
                 "Permissions"
             ],
             swiftSettings: warningsAsErrors
@@ -358,7 +359,10 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",

@@ -3,6 +3,7 @@ import AppKit
 import Calendar
 import DataStore
 import DesignSystem
+import Intelligence
 import Permissions
 import SwiftUI
 
@@ -23,6 +24,9 @@ public struct SettingsView: View {
             Form {
                 // General
                 generalSection
+
+                // AI Enhancements
+                aiEnhancementsSection
 
                 // Notifications
                 notificationsSection
@@ -273,6 +277,125 @@ public struct SettingsView: View {
             }
         }
     #endif
+}
+
+// MARK: - AI Enhancements section
+
+private extension SettingsView {
+    var aiEnhancementsSection: some View {
+        Section {
+            // Toggle 1: Summarize Transcripts
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Summarize Transcripts",
+                    isOn: summarizeTranscriptsBinding
+                )
+                .disabled(!viewModel.modelAvailable)
+                Text(
+                    "Automatically generate a summary of your meetings."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+
+            // Toggle 2: Guess Speaker Names
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Guess Speaker Names",
+                    isOn: guessSpeakerNamesBinding
+                )
+                .disabled(!viewModel.modelAvailable)
+                Text(
+                    "Use information from the transcript to assign speaker names."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+
+            // Conditional download row when no model is present
+            if !viewModel.modelAvailable {
+                modelDownloadRow
+            }
+        } header: {
+            Text("AI Enhancements")
+        } footer: {
+            Text("AI runs locally on your Mac.")
+        }
+    }
+
+    var summarizeTranscriptsBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.modelAvailable
+                    ? viewModel.summarizeTranscripts
+                    : false
+            },
+            set: { newValue in
+                Task { await viewModel.setSummarizeTranscripts(newValue) }
+            }
+        )
+    }
+
+    var guessSpeakerNamesBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.modelAvailable
+                    ? viewModel.guessSpeakerNames
+                    : false
+            },
+            set: { newValue in
+                Task { await viewModel.setGuessSpeakerNames(newValue) }
+            }
+        )
+    }
+
+    @ViewBuilder
+    var modelDownloadRow: some View {
+        // Only rendered inside `if !viewModel.modelAvailable`, so
+        // `.downloaded` is unreachable; grouped with the idle states
+        // for exhaustiveness.
+        switch viewModel.modelDownload {
+        case .notDownloaded, .unknown, .downloaded:
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Download Local Language AI Model?")
+                Text("Several GB \u{00B7} runs entirely on your Mac.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                Button("Download") {
+                    viewModel.startModelDownload()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+        case let .downloading(fraction):
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                if let fraction {
+                    ProgressView(value: fraction)
+                    Text("Downloading\u{2026} \(Int(fraction * 100))%")
+                        .font(Tokens.metadataFont)
+                        .foregroundStyle(Tokens.secondaryText)
+                } else {
+                    ProgressView()
+                    Text("Downloading\u{2026}")
+                        .font(Tokens.metadataFont)
+                        .foregroundStyle(Tokens.secondaryText)
+                }
+            }
+
+        case let .failed(message):
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Download failed: \(message)")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(.red)
+                Button("Retry") {
+                    viewModel.startModelDownload()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
 }
 
 // MARK: - Notifications section

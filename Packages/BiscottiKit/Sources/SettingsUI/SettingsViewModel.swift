@@ -3,6 +3,7 @@ import AppKit
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
 import Permissions
 import ServiceManagement
 
@@ -73,6 +74,24 @@ public final class SettingsViewModel {
     /// (calendar access not authorized).
     public var calendarNotificationsDisabled: Bool {
         calendarState != .authorized
+    }
+
+    // MARK: - AI Enhancements
+
+    /// Whether AI-generated summaries are enabled (persisted).
+    public private(set) var summarizeTranscripts: Bool = true
+
+    /// Whether AI-based speaker name guessing is enabled (persisted).
+    public private(set) var guessSpeakerNames: Bool = true
+
+    /// Current model download lifecycle state (observed from Intelligence).
+    public var modelDownload: ModelDownloadState {
+        core.intelligence.download
+    }
+
+    /// Whether the AI model is present on disk.
+    public var modelAvailable: Bool {
+        core.intelligence.isModelDownloaded
     }
 
     // MARK: - Calendar state
@@ -364,9 +383,13 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            summarizeTranscripts = settings.summarizeTranscripts
+            guessSpeakerNames = settings.guessSpeakerNames
         } catch {
             enabledCalendarIDs = nil
         }
+
+        core.intelligence.refreshModelState()
 
         // SMAppService is the source of truth for launch-at-login
         launchAtLogin = readLaunchAtLoginStatus()
@@ -470,5 +493,41 @@ public extension SettingsViewModel {
         } catch {
             stopRecordingAutomatically = !enabled
         }
+    }
+}
+
+// MARK: - AI Enhancements actions
+
+public extension SettingsViewModel {
+    /// Toggles the "summarize transcripts" AI setting. Persists to the
+    /// store with optimistic update; reverts on failure.
+    func setSummarizeTranscripts(_ enabled: Bool) async {
+        summarizeTranscripts = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.summarizeTranscripts = enabled
+            }
+        } catch {
+            summarizeTranscripts = !enabled
+        }
+    }
+
+    /// Toggles the "guess speaker names" AI setting. Persists to the
+    /// store with optimistic update; reverts on failure.
+    func setGuessSpeakerNames(_ enabled: Bool) async {
+        guessSpeakerNames = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.guessSpeakerNames = enabled
+            }
+        } catch {
+            guessSpeakerNames = !enabled
+        }
+    }
+
+    /// Starts the AI model download. Runs asynchronously; the download
+    /// state is observed through `modelDownload` (from Intelligence).
+    func startModelDownload() {
+        Task { await core.intelligence.downloadModel() }
     }
 }

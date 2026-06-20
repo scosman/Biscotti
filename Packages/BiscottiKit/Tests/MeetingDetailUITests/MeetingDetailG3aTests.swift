@@ -142,9 +142,9 @@ struct MeetingDetailEditableTitleTests {
         )
     }
 
-    @Test("flushNotes also saves pending title")
+    @Test("flushPendingEdits also saves pending title")
     @MainActor
-    func flushNotesSavesPendingTitle() async throws {
+    func flushPendingEditsSavesPendingTitle() async throws {
         let fix = try makeCoreFixture(testName: "G3aTitle")
         defer { fix.cleanup() }
 
@@ -160,7 +160,7 @@ struct MeetingDetailEditableTitleTests {
         await viewModel.load()
 
         viewModel.editableTitle = "Edited via flush"
-        await viewModel.flushNotes()
+        await viewModel.flushPendingEdits()
 
         let detail = try await fix.store.meetingDetail(id: meetingID)
         #expect(detail?.title == "Edited via flush")
@@ -841,9 +841,9 @@ struct MeetingDetailSaveTitleGuardTests {
             #expect(meetingBefore?.editedTitle == false)
         }
 
-        // Simulate onDisappear: flushNotes calls saveTitle. The title
+        // Simulate onDisappear: flushPendingEdits calls saveTitle. The title
         // hasn't changed, so editedTitle must NOT flip to true.
-        await viewModel.flushNotes()
+        await viewModel.flushPendingEdits()
 
         try await fix.store.read { store in
             let meetingAfter = try store.meeting(id: meetingID)

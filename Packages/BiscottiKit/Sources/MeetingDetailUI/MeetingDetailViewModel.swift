@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import DesignSystem
 import Foundation
+import Intelligence
 import TranscriptionService
 
 /// The three display states of the Meeting Detail screen.
@@ -152,12 +153,13 @@ public final class MeetingDetailViewModel {
 
     /// The body tabs of the meeting detail screen.
     public enum Tab: String, CaseIterable, Sendable {
+        case summary = "Summary"
         case transcript = "Transcript"
         case notes = "Notes"
     }
 
     /// The currently selected tab, bindable from the view.
-    public var selectedTab: Tab = .transcript
+    public var selectedTab: Tab = .summary
 
     /// A pending seek time set by a deep-link jump that arrived before
     /// the audio player was loaded. Applied at the end of `loadAudioPlayer`.
@@ -170,6 +172,32 @@ public final class MeetingDetailViewModel {
 
     /// Whether a delete operation is in progress.
     public private(set) var isDeleting: Bool = false
+
+    // MARK: - Summary tab
+
+    /// The current saved summary markdown (from MeetingDetailData).
+    public var summaryText: String = ""
+
+    /// Whether the user has manually edited the summary.
+    public private(set) var editedSummary: Bool = false
+
+    /// Whether to show the regenerate-edited-summary confirmation dialog.
+    public var showRegenerateConfirm: Bool = false
+
+    /// Debounce handle for summary autosave.
+    private var summaryAutosaveTask: Task<Void, Never>?
+
+    /// Whether `updateSummary` was called (user made an edit) and the
+    /// change has not yet been persisted. Distinguishes a user clearing
+    /// the summary to empty (should persist) from the initial-load empty
+    /// state (should not spuriously set editedSummary).
+    private var summaryDirty: Bool = false
+
+    /// Whether the "Summarize Transcripts" toggle is on (loaded from settings).
+    public private(set) var summarizeEnabled: Bool = true
+
+    /// Debounce interval for summary autosave.
+    private static let summaryDebounceInterval: Duration = .seconds(1)
 
     public init(
         core: AppCore,
@@ -186,126 +214,35 @@ public final class MeetingDetailViewModel {
         self.urlOpener = urlOpener
     }
 
-    // MARK: - Derived state
-
-    /// The current display state.
-    public var displayState: MeetingDetailState {
-        let jobStatus = core.transcription.jobs[meetingID]
-
-        switch jobStatus {
-        case let .downloadingModel(message):
-            return .processing(
-                message: "Transcribing\u{2026}", subtitle: message
-            )
-
-        case .transcribing:
-            return .processing(message: "Transcribing\u{2026}")
-
-        case let .failed(message, retriable):
-            return .failed(message: message, retriable: retriable)
-
-        case .completed, .idle, .none:
-            if let detail, detail.preferredTranscript != nil {
-                return .transcript(detail)
-            }
-            if isLoading {
-                return .processing(message: "Loading\u{2026}")
-            }
-            if let detail {
-                return .transcript(detail)
-            }
-            return .failed(message: "Meeting not found.", retriable: false)
-        }
-    }
-
-    /// The current transcription job status for this meeting.
-    public var currentJobStatus: JobStatus? {
-        core.transcription.jobs[meetingID]
-    }
-
-    /// Whether the Re-transcribe action should be enabled.
-    public var canReTranscribe: Bool {
-        guard let detail, detail.hasAudio else { return false }
-        let jobStatus = core.transcription.jobs[meetingID]
-        switch jobStatus {
-        case .downloadingModel, .transcribing:
-            return false
-        default:
-            return true
-        }
-    }
-
-    /// Formatted date for display.
-    public var formattedDate: String {
-        guard let detail else { return "" }
-        return Self.formatDate(detail.date)
-    }
-
-    /// Formatted duration for display (e.g. "4m 12s").
-    public var formattedDuration: String? {
-        guard let duration = detail?.duration else { return nil }
-        return Self.formatDuration(duration)
-    }
-
-    /// Whether the meeting has calendar context.
-    public var hasCalendarContext: Bool {
-        calendarContext != nil
-    }
-
-    /// Calendar events available for association correction. Populated
-    /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
-    /// window around the meeting's recording time instead of the
-    /// forward-only `core.upcoming`.
-    public var availableEvents: [CalendarEvent] {
-        nearbyEvents
-    }
-
-    /// Available events mapped to `EventPickerItem` for the shared picker
-    /// sheet. Keeps the `Calendar` → `DesignSystem` mapping in the VM so
-    /// the view does not need `import Calendar`.
-    public var availableEventPickerItems: [EventPickerItem] {
-        availableEvents.map { event in
-            EventPickerItem(
-                id: event.id,
-                title: event.title,
-                start: event.start,
-                conferencePlatform: event.conferencePlatform
-            )
-        }
-    }
-
-    /// Whether calendar access has been granted. Used to decide between
-    /// "no events near this time" vs "grant calendar access" in the picker.
-    public var hasCalendarAccess: Bool {
-        core.calendar.auth == .authorized
-    }
-
-    /// Whether audio playback is available.
-    public var canPlay: Bool {
-        isAudioAvailable && audioPlayer != nil
-    }
-
-    /// The active version ID: explicit selection or the preferred version.
-    public var activeVersionID: UUID? {
-        selectedVersionID ?? detail?.preferredTranscript?.id
-    }
-
-    /// The transcript to display: selected version or preferred.
-    public var displayedTranscript: TranscriptData? {
-        selectedTranscript ?? detail?.preferredTranscript
-    }
-
     // MARK: - Actions
 
     /// Loads the meeting detail from the store.
+    ///
+    /// Cancels any in-flight debounced autosave tasks and resets their
+    /// dirty flags **before** overwriting stored text. Without this,
+    /// a stale debounce firing after the reload would re-persist the
+    /// old user text via `setSummary` (marking `editedSummary = true`)
+    /// and silently clobber the freshly-loaded value.
     public func load() async {
+        // Cancel pending autosaves so stale debounces cannot fire
+        // after we overwrite summaryText / notes below.
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        summaryAutosaveTask?.cancel()
+        summaryAutosaveTask = nil
+        summaryDirty = false
+
         isLoading = true
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
             calendarContext = detail?.calendar
             editableTitle = detail?.title ?? ""
             notes = detail?.notes ?? ""
+            summaryText = detail?.summary ?? ""
+            editedSummary = detail?.editedSummary ?? false
             versions = detail?.versions ?? []
+            let settings = try? await core.store.settings()
+            summarizeEnabled = settings?.summarizeTranscripts ?? true
             await loadAudioPlayer()
             rebuildTranscriptCacheIfNeeded()
         } catch {
@@ -395,6 +332,14 @@ public final class MeetingDetailViewModel {
         pasteboard.setString(notes, forType: .string)
     }
 
+    /// Copies the summary markdown to the system pasteboard as plain text.
+    public func copySummary() {
+        guard !summaryText.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(summaryText, forType: .string)
+    }
+
     /// Stops the playback ticker and cleans up. Called on disappear/flush.
     public func stopPlayback() {
         audioPlayer?.pause()
@@ -446,6 +391,143 @@ public final class MeetingDetailViewModel {
     }
 }
 
+// MARK: - Derived state
+
+public extension MeetingDetailViewModel {
+    /// The current display state.
+    var displayState: MeetingDetailState {
+        let jobStatus = core.transcription.jobs[meetingID]
+
+        switch jobStatus {
+        case let .downloadingModel(message):
+            return .processing(
+                message: "Transcribing\u{2026}", subtitle: message
+            )
+
+        case .transcribing:
+            return .processing(message: "Transcribing\u{2026}")
+
+        case let .failed(message, retriable):
+            return .failed(message: message, retriable: retriable)
+
+        case .completed, .idle, .none:
+            if let detail, detail.preferredTranscript != nil {
+                return .transcript(detail)
+            }
+            if isLoading {
+                return .processing(message: "Loading\u{2026}")
+            }
+            if let detail {
+                return .transcript(detail)
+            }
+            return .failed(message: "Meeting not found.", retriable: false)
+        }
+    }
+
+    /// The current transcription job status for this meeting.
+    var currentJobStatus: JobStatus? {
+        core.transcription.jobs[meetingID]
+    }
+
+    /// Whether the Re-transcribe action should be enabled.
+    var canReTranscribe: Bool {
+        guard let detail, detail.hasAudio else { return false }
+        let jobStatus = core.transcription.jobs[meetingID]
+        switch jobStatus {
+        case .downloadingModel, .transcribing:
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// Formatted date for display.
+    var formattedDate: String {
+        guard let detail else { return "" }
+        return Self.formatDate(detail.date)
+    }
+
+    /// Formatted duration for display (e.g. "4m 12s").
+    var formattedDuration: String? {
+        guard let duration = detail?.duration else { return nil }
+        return Self.formatDuration(duration)
+    }
+
+    /// Whether the meeting has calendar context.
+    var hasCalendarContext: Bool {
+        calendarContext != nil
+    }
+
+    /// Calendar events available for association correction. Populated
+    /// by `loadNearbyEvents()` when the picker opens, using a +/- 1.5h
+    /// window around the meeting's recording time instead of the
+    /// forward-only `core.upcoming`.
+    var availableEvents: [CalendarEvent] {
+        nearbyEvents
+    }
+
+    /// Available events mapped to `EventPickerItem` for the shared picker
+    /// sheet. Keeps the `Calendar` → `DesignSystem` mapping in the VM so
+    /// the view does not need `import Calendar`.
+    var availableEventPickerItems: [EventPickerItem] {
+        availableEvents.map { event in
+            EventPickerItem(
+                id: event.id,
+                title: event.title,
+                start: event.start,
+                conferencePlatform: event.conferencePlatform
+            )
+        }
+    }
+
+    /// Whether calendar access has been granted. Used to decide between
+    /// "no events near this time" vs "grant calendar access" in the picker.
+    var hasCalendarAccess: Bool {
+        core.calendar.auth == .authorized
+    }
+
+    /// Whether audio playback is available.
+    var canPlay: Bool {
+        isAudioAvailable && audioPlayer != nil
+    }
+
+    /// The active version ID: explicit selection or the preferred version.
+    var activeVersionID: UUID? {
+        selectedVersionID ?? detail?.preferredTranscript?.id
+    }
+
+    /// The transcript to display: selected version or preferred.
+    var displayedTranscript: TranscriptData? {
+        selectedTranscript ?? detail?.preferredTranscript
+    }
+
+    /// The current enhancement status for this meeting, if any.
+    var enhancementStatus: EnhancementStatus? {
+        core.intelligence.jobs[meetingID]
+    }
+
+    /// Live partial markdown from streaming summary generation.
+    var streamingSummary: String? {
+        core.intelligence.streamingSummary[meetingID]
+    }
+
+    /// Whether an AI enhancement run is currently in progress.
+    var isEnhancing: Bool {
+        enhancementStatus == .identifyingSpeakers
+            || enhancementStatus == .summarizing
+    }
+
+    /// Whether the AI model is downloaded and available.
+    var modelAvailable: Bool {
+        core.intelligence.isModelDownloaded
+    }
+
+    /// Whether the Regenerate Summary overflow menu item should appear.
+    var canRegenerateSummary: Bool {
+        displayedTranscript != nil && modelAvailable
+    }
+}
+
 // MARK: - Version selection, notes autosave, re-transcribe
 
 public extension MeetingDetailViewModel {
@@ -475,7 +557,7 @@ public extension MeetingDetailViewModel {
     /// Updates notes and debounces autosave to the store.
     ///
     /// Uses `[weak self]` for the short debounce window. If the VM
-    /// deallocs mid-debounce, `flushNotes()` (called in `onDisappear`)
+    /// deallocs mid-debounce, `flushPendingEdits()` (called in `onDisappear`)
     /// is the guarantee that pending edits are persisted before teardown.
     func updateNotes(_ text: String) {
         notes = text
@@ -491,14 +573,17 @@ public extension MeetingDetailViewModel {
         }
     }
 
-    /// Flushes any pending notes and title changes immediately and stops
-    /// playback. Called on navigation away (onDisappear) to prevent
-    /// leaked timers and lost edits.
-    func flushNotes() async {
+    /// Flushes any pending notes, summary, and title changes immediately
+    /// and stops playback. Called on navigation away (onDisappear) to
+    /// prevent leaked timers and lost edits.
+    func flushPendingEdits() async {
         notesAutosaveTask?.cancel()
         notesAutosaveTask = nil
+        summaryAutosaveTask?.cancel()
+        summaryAutosaveTask = nil
         stopPlayback()
         await saveNotes()
+        await saveSummary()
         await saveTitle()
     }
 
@@ -729,7 +814,7 @@ public extension MeetingDetailViewModel {
     ///
     /// **Guard:** only persists (and flags `editedTitle`) when the trimmed
     /// title differs from the currently-stored title. Without this guard,
-    /// `flushNotes()` (called unconditionally on every `onDisappear`) and
+    /// `flushPendingEdits()` (called unconditionally on every `onDisappear`) and
     /// `.onSubmit` would set `editedTitle = true` on every viewed meeting,
     /// permanently blocking `applyEventTitle` from updating the title when
     /// the user links or re-links a calendar event.
@@ -806,6 +891,110 @@ private extension MeetingDetailViewModel {
         } catch {
             // Non-fatal; notes will be retried on next edit.
         }
+    }
+
+    /// Saves the current summary to the store (marks editedSummary = true).
+    ///
+    /// Only persists when `summaryDirty` is true (set by `updateSummary`,
+    /// i.e. a real user edit). This lets the user clear the summary to
+    /// empty and have that persist, while the flush-on-disappear path
+    /// does not spuriously set editedSummary for never-edited meetings.
+    func saveSummary() async {
+        guard summaryDirty else { return }
+        summaryDirty = false
+        do {
+            try await core.store.setSummary(
+                summaryText, for: meetingID
+            )
+            editedSummary = true
+        } catch {
+            // Non-fatal; summary will be retried on next edit.
+        }
+    }
+}
+
+// MARK: - Summary tab actions
+
+public extension MeetingDetailViewModel {
+    /// Updates the summary and debounces autosave to the store.
+    ///
+    /// Mirrors `updateNotes`: uses `[weak self]` for the debounce window.
+    /// If the VM deallocs mid-debounce, `flushPendingEdits()` (which also flushes
+    /// the summary) is the guarantee that pending edits are persisted.
+    func updateSummary(_ text: String) {
+        summaryText = text
+        summaryDirty = true
+        summaryAutosaveTask?.cancel()
+        summaryAutosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.summaryDebounceInterval)
+            } catch {
+                return // cancelled
+            }
+            guard let self, !Task.isCancelled else { return }
+            await saveSummary()
+        }
+    }
+
+    /// Initiates summary generation. If the summary has been edited,
+    /// shows a confirmation dialog; otherwise generates immediately.
+    func generateSummary() {
+        if editedSummary {
+            showRegenerateConfirm = true
+        } else {
+            runSummary(force: false)
+        }
+    }
+
+    /// Confirms regeneration after the user accepted the overwrite dialog.
+    func confirmRegenerate() {
+        showRegenerateConfirm = false
+        runSummary(force: true)
+    }
+
+    /// Retries a failed summary generation (force = true).
+    func retrySummary() {
+        runSummary(force: true)
+    }
+}
+
+// MARK: - Summary generation (private)
+
+private extension MeetingDetailViewModel {
+    /// Runs summary generation from the currently selected transcript version.
+    /// Auto-switches to the Summary tab.
+    func runSummary(force: Bool) {
+        guard let transcriptID = activeVersionID else { return }
+        selectedTab = .summary
+        Task {
+            await core.intelligence.generateSummary(
+                meetingID: meetingID,
+                transcriptID: transcriptID,
+                force: force
+            )
+        }
+    }
+}
+
+// MARK: - Enhancement observation & settings
+
+public extension MeetingDetailViewModel {
+    /// Called when enhancement status changes for this meeting.
+    /// Reloads data on completion so the summary and speaker names
+    /// are picked up from the store.
+    func onEnhancementStatusChange(
+        _ newStatus: EnhancementStatus?
+    ) async {
+        if newStatus == .completed {
+            await load()
+            await core.reloadSummaries()
+        }
+    }
+
+    /// Navigates to Settings so the user can download the model or
+    /// enable the summarize toggle.
+    func openSettings() {
+        core.showSettings()
     }
 }
 
@@ -935,6 +1124,8 @@ public extension MeetingDetailViewModel {
         stopPlayback()
         notesAutosaveTask?.cancel()
         notesAutosaveTask = nil
+        summaryAutosaveTask?.cancel()
+        summaryAutosaveTask = nil
         await core.deleteMeeting(meetingID: meetingID)
         isDeleting = false
     }

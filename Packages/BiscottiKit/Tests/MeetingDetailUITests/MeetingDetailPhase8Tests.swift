@@ -712,9 +712,9 @@ struct MeetingDetailNotesTests {
         #expect(notesAfterDebounce == "Updated notes")
     }
 
-    @Test("flushNotes persists immediately")
+    @Test("flushPendingEdits persists immediately")
     @MainActor
-    func flushNotesPersists() async throws {
+    func flushPendingEditsPersists() async throws {
         let fix = try makeCoreFixture(testName: "Phase8Notes")
         defer { fix.cleanup() }
 
@@ -730,7 +730,7 @@ struct MeetingDetailNotesTests {
         await viewModel.load()
 
         viewModel.updateNotes("Flush me")
-        await viewModel.flushNotes()
+        await viewModel.flushPendingEdits()
 
         let persisted = try await fix.store.meetingDetail(
             id: meetingID

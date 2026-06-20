@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import DataStore
 import DesignSystem
+import Intelligence
 import MarkdownEditorUI
 import SwiftUI
 import TranscriptionService
@@ -66,6 +67,11 @@ public struct MeetingDetailView: View {
         .onChange(of: viewModel.pendingJumpToken) { _, _ in
             Task { await viewModel.applyPendingJumpIfNeeded() }
         }
+        .onChange(of: viewModel.enhancementStatus) { _, newStatus in
+            Task {
+                await viewModel.onEnhancementStatusChange(newStatus)
+            }
+        }
         .onChange(of: viewModel.selectedTab) { _, _ in
             // Clear stale "Copied" feedback when switching tabs.
             copyResetTask?.cancel()
@@ -75,7 +81,7 @@ public struct MeetingDetailView: View {
         .onDisappear {
             copyResetTask?.cancel()
             copyResetTask = nil
-            Task { await viewModel.flushNotes() }
+            Task { await viewModel.flushPendingEdits() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
             EventPickerSheet(
@@ -111,6 +117,20 @@ public struct MeetingDetailView: View {
         } message: {
             Text(
                 "This permanently deletes the recording and transcript."
+            )
+        }
+        .confirmationDialog(
+            "Replace your edited summary?",
+            isPresented: $viewModel.showRegenerateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                viewModel.confirmRegenerate()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This overwrites the summary you edited with a new AI-generated one."
             )
         }
     }
@@ -210,6 +230,8 @@ public struct MeetingDetailView: View {
     /// method, so it is safe during `body` evaluation.
     private var canCopy: Bool {
         switch viewModel.selectedTab {
+        case .summary:
+            !viewModel.summaryText.isEmpty
         case .transcript:
             viewModel.hasDisplayableTranscript
         case .notes:
@@ -314,6 +336,18 @@ private extension MeetingDetailView {
                 }
             }
 
+            if viewModel.canRegenerateSummary {
+                Button {
+                    viewModel.generateSummary()
+                } label: {
+                    Label(
+                        "Regenerate Summary",
+                        systemImage: "sparkles"
+                    )
+                }
+                .disabled(viewModel.isEnhancing)
+            }
+
             Divider()
 
             if viewModel.hasCalendarContext {
@@ -406,14 +440,21 @@ private extension MeetingDetailView {
 
             Spacer()
 
+            if viewModel.isEnhancing {
+                enhancementPill
+            }
+
             if viewModel.selectedTab == .transcript, viewModel.versions.count > 1 {
                 versionPicker
             }
 
             Button {
-                if viewModel.selectedTab == .transcript {
+                switch viewModel.selectedTab {
+                case .summary:
+                    viewModel.copySummary()
+                case .transcript:
                     viewModel.copyTranscript()
-                } else {
+                case .notes:
                     viewModel.copyNotes()
                 }
                 didCopy = true
@@ -434,6 +475,21 @@ private extension MeetingDetailView {
             .controlSize(.small)
             .foregroundStyle(didCopy ? .sage : .inkSecondary)
             .disabled(!canCopy)
+        }
+    }
+
+    /// Subtle status pill showing which AI enhancement phase is active.
+    var enhancementPill: some View {
+        HStack(spacing: Tokens.spacingXS) {
+            ProgressView()
+                .controlSize(.small)
+            Text(
+                viewModel.enhancementStatus == .identifyingSpeakers
+                    ? "Identifying speakers\u{2026}"
+                    : "Summarizing\u{2026}"
+            )
+            .font(.monoMeta)
+            .foregroundStyle(.inkSecondary)
         }
     }
 
@@ -499,6 +555,9 @@ private extension MeetingDetailView {
     @ViewBuilder
     func tabContent(fill: CGFloat) -> some View {
         switch viewModel.selectedTab {
+        case .summary:
+            summaryTabContent(fill: fill)
+
         case .notes:
             notesTabContent(fill: fill)
 
@@ -523,6 +582,167 @@ private extension MeetingDetailView {
         )
         .frame(minHeight: max(100, fill), alignment: .top)
         .background(TextViewFocusForwarder())
+    }
+}
+
+// MARK: - Summary tab states
+
+private extension MeetingDetailView {
+    @ViewBuilder
+    func summaryTabContent(fill: CGFloat) -> some View {
+        // 1. Streaming: read-only editor with "Generating summary..." header
+        if let streaming = viewModel.streamingSummary {
+            summaryStreamingContent(
+                text: streaming, fill: fill
+            )
+
+            // 2. Error: banner + existing summary below
+        } else if case .failed = viewModel.enhancementStatus {
+            summaryErrorContent(fill: fill)
+
+            // 3. Has content: editable summary
+        } else if !viewModel.summaryText.isEmpty {
+            summaryEditorContent(fill: fill)
+
+            // 4. Empty + no transcript: muted placeholder
+        } else if viewModel.displayedTranscript == nil {
+            summaryNoTranscriptContent
+                .frame(height: fill)
+
+            // 5. Empty + model available + feature on: Generate Summary button
+            // (ui_design.md §1c/1d, functional_spec §3.4: model present →
+            // Generate button; feature off OR no model → settings hint.)
+        } else if viewModel.modelAvailable, viewModel.summarizeEnabled {
+            summaryGenerateContent
+                .frame(height: fill)
+
+            // 6. Empty + no model or feature off: hint + Open Settings
+        } else {
+            summarySettingsHintContent
+                .frame(height: fill)
+        }
+    }
+
+    /// Streaming state: read-only MarkdownEditor with a generating header.
+    func summaryStreamingContent(
+        text: String, fill: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            HStack(spacing: Tokens.spacingXS) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Generating summary\u{2026}")
+                    .font(.monoMeta)
+                    .foregroundStyle(.inkSecondary)
+            }
+
+            MarkdownEditor(
+                text: .constant(text),
+                documentId: "\(viewModel.meetingID.uuidString)-summary-streaming",
+                isEditable: false
+            )
+            .frame(minHeight: max(100, fill - 30), alignment: .top)
+        }
+    }
+
+    /// Error state: banner at top, existing summary below if any.
+    func summaryErrorContent(fill: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            Banner(
+                "Couldn\u{2019}t generate the summary.",
+                style: .error,
+                actionLabel: "Retry"
+            ) {
+                viewModel.retrySummary()
+            }
+
+            if !viewModel.summaryText.isEmpty {
+                MarkdownEditor(
+                    text: Binding(
+                        get: { viewModel.summaryText },
+                        set: { viewModel.updateSummary($0) }
+                    ),
+                    documentId: "\(viewModel.meetingID.uuidString)-summary",
+                    placeholder: ""
+                )
+                .frame(
+                    minHeight: max(100, fill - 60),
+                    alignment: .top
+                )
+                .background(TextViewFocusForwarder())
+            }
+        }
+    }
+
+    /// Has-content state: editable MarkdownEditor mirroring Notes.
+    func summaryEditorContent(fill: CGFloat) -> some View {
+        MarkdownEditor(
+            text: Binding(
+                get: { viewModel.summaryText },
+                set: { viewModel.updateSummary($0) }
+            ),
+            documentId: "\(viewModel.meetingID.uuidString)-summary",
+            placeholder: ""
+        )
+        .frame(minHeight: max(100, fill), alignment: .top)
+        .background(TextViewFocusForwarder())
+    }
+
+    /// Empty + no transcript: muted placeholder.
+    var summaryNoTranscriptContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            Text("No transcript available.")
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Empty + model available + feature on: centered Generate button.
+    var summaryGenerateContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            Text("No summary yet")
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+            Button("Generate Summary") {
+                viewModel.generateSummary()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(viewModel.isEnhancing)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Empty + no model or feature off: hint + Open Settings.
+    var summarySettingsHintContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            if !viewModel.modelAvailable {
+                Text("An AI model is needed to summarize.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text(
+                    "Turn on AI summaries in Settings to generate one automatically."
+                )
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+                .multilineTextAlignment(.center)
+            }
+            Button("Open Settings") {
+                viewModel.openSettings()
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

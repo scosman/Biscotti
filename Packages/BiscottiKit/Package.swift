@@ -239,6 +239,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
                 "MarkdownEditorUI",
                 "TranscriptionService"
             ],
@@ -252,6 +253,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",

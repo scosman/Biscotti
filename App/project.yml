@@ -27,6 +27,8 @@ packages:
     path: ../Packages/Transcription
   AudioCapture:
     path: ../Packages/AudioCapture
+  LocalLLM:
+    path: ../Packages/LocalLLM
 
 targets:
   Biscotti:
@@ -52,6 +54,8 @@ targets:
       - package: BiscottiKit
         product: DataStore
       - package: BiscottiKit
+        product: Intelligence
+      - package: BiscottiKit
         product: MenuBarUI
       - package: BiscottiKit
         product: Notifications
@@ -59,7 +63,11 @@ targets:
         product: Transcription
       - package: AudioCapture
         product: AudioCapture
+      - package: LocalLLM
+        product: LocalLLM
       - target: BiscottiTranscriber
+        embed: true
+      - target: BiscottiLLM
         embed: true
 
   BiscottiTranscriber:
@@ -81,6 +89,26 @@ targets:
     dependencies:
       - package: Transcription
         product: Transcription
+
+  BiscottiLLM:
+    type: xpc-service
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: ../XPCServices/BiscottiLLM
+        excludes:
+          - "*.plist"
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiLLM
+        INFOPLIST_FILE: ../XPCServices/BiscottiLLM/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiLLM/BiscottiLLM.entitlements
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - package: LocalLLM
+        product: LocalLLM
 
 schemes:
   Biscotti:

@@ -2,6 +2,7 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -73,6 +74,9 @@ public extension AppCore {
         )
         permissions.setNotificationAuthorizer(notifAuth)
 
+        logger.info("AppCore.live: Intelligence init")
+        let intelligence = buildIntelligence(store: store)
+
         logger.info("AppCore.live: constructing AppCore")
         let core = AppCore(
             store: store,
@@ -81,10 +85,33 @@ public extension AppCore {
             transcription: transcription,
             calendar: calendar,
             detector: detector,
-            notifications: notifications
+            notifications: notifications,
+            intelligence: intelligence
         )
         logger.info("AppCore.live: done")
         return core
+    }
+
+    /// Builds the live `Intelligence` service with real LocalLLM-backed
+    /// implementations. Extracted to keep `live(storageRoot:…)` under
+    /// the function body length lint limit.
+    private static func buildIntelligence(
+        store: DataStore
+    ) -> Intelligence {
+        let modelProvider = LiveModelProvider()
+        let llmRunner = LiveLLMRunner(modelProvider: modelProvider)
+        return Intelligence(
+            store: store,
+            llm: llmRunner,
+            models: modelProvider,
+            settings: { [store] in
+                let settings = try? await store.settings()
+                return AISettings(
+                    summarize: settings?.summarizeTranscripts ?? true,
+                    guessSpeakers: settings?.guessSpeakerNames ?? true
+                )
+            }
+        )
     }
 }
 

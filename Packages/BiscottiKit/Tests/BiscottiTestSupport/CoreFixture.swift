@@ -3,6 +3,8 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
+import LocalLLM
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -30,6 +32,9 @@ public struct CoreFixture {
     public let fakeNotificationCenter: FakeTestNotificationCenter
     public let fakeActivitySource: FakeActivitySource
     public let fakeScheduler: FakeScheduler?
+    public let intelligence: Intelligence
+    public let fakeLLMRunner: FakeCoreLLMRunner
+    public let fakeModelProvider: FakeCoreModelProvider
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -333,6 +338,64 @@ public final class FakeActivitySource: ActivitySource,
     }
 }
 
+// MARK: - Fake LLM fakes for CoreFixture
+
+/// A simple fake LLM runner for AppCore integration tests.
+/// Records session usage; does not return meaningful LLM output.
+public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
+    /// Number of times `withSession` was called.
+    public var sessionCount = 0
+
+    public init() {}
+
+    public func withSession<T: Sendable>(
+        _ body: @Sendable (any LLMSession) async throws -> T
+    ) async throws -> T {
+        sessionCount += 1
+        return try await body(FakeCoreLLMSession())
+    }
+}
+
+/// A minimal fake LLM session that returns empty responses.
+public struct FakeCoreLLMSession: LLMSession {
+    public func generate(
+        system _: String, user _: String,
+        options _: LocalLLM.GenerationOptions
+    ) async throws -> String {
+        ""
+    }
+
+    public func generateStreaming(
+        system _: String, user _: String,
+        options _: LocalLLM.GenerationOptions
+    ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+}
+
+/// A fake model provider for AppCore integration tests.
+public final class FakeCoreModelProvider: ModelProviding,
+    @unchecked Sendable
+{
+    public var downloaded: Bool
+    public let modelURL: URL
+
+    public init(downloaded: Bool = false) {
+        self.downloaded = downloaded
+        modelURL = URL(fileURLWithPath: "/fake/model.gguf")
+    }
+
+    public func isDownloaded() -> Bool {
+        downloaded
+    }
+
+    public func download(
+        progress _: @Sendable @escaping (Int64, Int64?) -> Void
+    ) async throws {
+        downloaded = true
+    }
+}
+
 /// Creates a `CoreFixture` with configurable fakes.
 @MainActor
 // swiftlint:disable:next function_body_length
@@ -351,6 +414,7 @@ public func makeCoreFixture(
     notificationAuthorizer: (any NotificationAuthorizing)? = nil,
     useFakeScheduler: Bool = false,
     useImmediateDetectorClock: Bool = false,
+    modelDownloaded: Bool = false,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -427,6 +491,17 @@ public func makeCoreFixture(
     let scheduler: any AppScheduler = fakeScheduler
         ?? LiveAppScheduler()
 
+    let fakeLLMRunner = FakeCoreLLMRunner()
+    let fakeModelProvider = FakeCoreModelProvider(
+        downloaded: modelDownloaded
+    )
+    let intelligence = Intelligence(
+        store: store,
+        llm: fakeLLMRunner,
+        models: fakeModelProvider,
+        settings: { AISettings(summarize: true, guessSpeakers: true) }
+    )
+
     let core = AppCore(
         store: store,
         permissions: permissions,
@@ -435,6 +510,7 @@ public func makeCoreFixture(
         calendar: calendarService,
         detector: detector,
         notifications: notificationService,
+        intelligence: intelligence,
         scheduler: scheduler
     )
 
@@ -451,6 +527,9 @@ public func makeCoreFixture(
         notificationService: notificationService,
         fakeNotificationCenter: fakeNotifCenter,
         fakeActivitySource: fakeActivitySource,
-        fakeScheduler: fakeScheduler
+        fakeScheduler: fakeScheduler,
+        intelligence: intelligence,
+        fakeLLMRunner: fakeLLMRunner,
+        fakeModelProvider: fakeModelProvider
     )
 }

@@ -3,6 +3,8 @@
     import Calendar
     import DataStore
     import Foundation
+    import Intelligence
+    import LocalLLM
     import MeetingCatalog
     import MeetingDetection
     import Notifications
@@ -53,6 +55,13 @@
                 provider: PreviewNotificationCenter()
             )
 
+            let intelligence = Intelligence(
+                store: store,
+                llm: PreviewLLMRunner(),
+                models: PreviewModelProvider(),
+                settings: { AISettings(summarize: true, guessSpeakers: true) }
+            )
+
             return AppCore(
                 store: store,
                 permissions: permissions,
@@ -60,7 +69,8 @@
                 transcription: transcription,
                 calendar: calendar,
                 detector: detector,
-                notifications: notifications
+                notifications: notifications,
+                intelligence: intelligence
             )
         }
     }
@@ -174,5 +184,43 @@
         func alertStyle() async -> UNAlertStyle {
             .banner
         }
+    }
+
+    /// No-op LLM runner for previews.
+    private struct PreviewLLMRunner: LLMRunning {
+        func withSession<T: Sendable>(
+            _ body: @Sendable (any LLMSession) async throws -> T
+        ) async throws -> T {
+            try await body(PreviewLLMSession())
+        }
+    }
+
+    /// No-op LLM session for previews.
+    private struct PreviewLLMSession: LLMSession {
+        func generate(
+            system _: String, user _: String,
+            options _: LocalLLM.GenerationOptions
+        ) async throws -> String {
+            ""
+        }
+
+        func generateStreaming(
+            system _: String, user _: String,
+            options _: LocalLLM.GenerationOptions
+        ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
+            AsyncThrowingStream { $0.finish() }
+        }
+    }
+
+    /// No-op model provider for previews (model not downloaded).
+    private struct PreviewModelProvider: ModelProviding {
+        let modelURL = URL(fileURLWithPath: "/preview/model.gguf")
+        func isDownloaded() -> Bool {
+            false
+        }
+
+        func download(
+            progress _: @Sendable @escaping (Int64, Int64?) -> Void
+        ) async throws {}
     }
 #endif

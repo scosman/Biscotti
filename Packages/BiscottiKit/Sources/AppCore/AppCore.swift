@@ -1,6 +1,7 @@
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -227,6 +228,9 @@ public final class AppCore {
     /// System notification presenter and action stream.
     public let notifications: NotificationService
 
+    /// In-process LLM orchestration (speaker-ID, summarization, model download).
+    public let intelligence: Intelligence
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -307,6 +311,7 @@ public final class AppCore {
         calendar: CalendarService,
         detector: MeetingDetector,
         notifications: NotificationService,
+        intelligence: Intelligence,
         scheduler: any AppScheduler = LiveAppScheduler()
     ) {
         self.store = store
@@ -316,6 +321,7 @@ public final class AppCore {
         self.calendar = calendar
         self.detector = detector
         self.notifications = notifications
+        self.intelligence = intelligence
         self.scheduler = scheduler
     }
 
@@ -464,8 +470,9 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription] in
+        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
             await transcription.transcribe(meetingID: meetingID)
+            await intelligence.runAutoEnhancements(meetingID: meetingID)
         }
 
         return meetingID

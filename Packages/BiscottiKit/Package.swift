@@ -117,6 +117,7 @@ let package = Package(
             name: "AppCore",
             dependencies: [
                 "DataStore",
+                "Intelligence",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -125,6 +126,7 @@ let package = Package(
                 "MeetingDetection",
                 "Notifications",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -139,6 +141,7 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",
@@ -146,6 +149,7 @@ let package = Package(
                 "Recording",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             path: "Tests/BiscottiTestSupport",
@@ -159,6 +163,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
                 "MeetingCatalog",
                 "MeetingDetailUI",
                 "MeetingDetection",

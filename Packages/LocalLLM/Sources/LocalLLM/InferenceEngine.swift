@@ -4,6 +4,18 @@
 /// tests), and eventually any future engine backend. The protocol lets
 /// `InProcessBackend` be engine-agnostic and lets tests run without a model.
 public protocol InferenceEngine: Sendable {
+    /// Count the tokens for a prompt using the model's tokenizer.
+    ///
+    /// Applies the same chat template and tokenization as `generate`, but
+    /// returns only the integer count. Only requires the model's vocab -- no
+    /// context or KV-cache needed.
+    func countTokens(
+        system: String?,
+        user: String,
+        applyChatTemplate: Bool,
+        thinking: ThinkingMode
+    ) async throws -> Int
+
     /// Run a buffered (non-streaming) generation.
     func generate(
         prompt: String,

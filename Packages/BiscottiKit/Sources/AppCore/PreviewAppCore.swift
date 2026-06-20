@@ -198,6 +198,14 @@
 
     /// No-op LLM session for previews.
     private struct PreviewLLMSession: LLMSession {
+        func countTokens(
+            system _: String, user _: String
+        ) async throws -> Int {
+            100
+        }
+
+        func reconfigure(contextSize _: Int) async throws {}
+
         func generate(
             system _: String, user _: String,
             options _: LocalLLM.GenerationOptions

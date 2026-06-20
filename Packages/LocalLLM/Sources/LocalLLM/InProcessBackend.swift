@@ -34,10 +34,43 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
 
     func start() async throws {
         if let model = deferredModel, let config = deferredConfig {
-            engine = try await LLMEngine(modelPath: model, config: config)
+            if config.contextSize == 0 {
+                // Model-only: load model + vocab without allocating a context/KV
+                // cache. Ready for countTokens immediately; createContext must be
+                // called (via reconfigure) before generate.
+                engine = try await LLMEngine(
+                    modelPath: model, nGpuLayers: config.nGpuLayers
+                )
+            } else {
+                engine = try await LLMEngine(modelPath: model, config: config)
+            }
         }
         // Otherwise: engine is already constructed (model loaded at init time for
         // real LLMEngine, or no-op for MockEngine). Nothing to do.
+    }
+
+    func countTokens(
+        system: String?, user: String,
+        applyChatTemplate: Bool, thinking: ThinkingMode
+    ) async throws -> Int {
+        try await engine.countTokens(
+            system: system, user: user,
+            applyChatTemplate: applyChatTemplate, thinking: thinking
+        )
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        guard let llmEngine = engine as? LLMEngine else {
+            // MockEngine or other non-llama engine: no-op (tests don't need
+            // real context resizing).
+            return
+        }
+        // Carry forward the full existing config, changing only contextSize.
+        // This preserves threadCount, seed, and nGpuLayers from the original
+        // EngineConfig used at load time.
+        var updatedConfig = deferredConfig ?? .default
+        updatedConfig.contextSize = contextSize
+        try await llmEngine.createContext(config: updatedConfig)
     }
 
     func generate(
@@ -93,6 +126,13 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
 /// Minimal engine that throws if used before start() replaces it with the real one.
 /// Only exists to satisfy the non-optional `engine` property at init time.
 private final class PlaceholderEngine: InferenceEngine, @unchecked Sendable {
+    func countTokens(
+        system _: String?, user _: String,
+        applyChatTemplate _: Bool, thinking _: ThinkingMode
+    ) async throws -> Int {
+        throw LLMServiceError.serviceUnavailable("Engine not loaded (start() not called)")
+    }
+
     func generate(prompt _: String, system _: String?, options _: GenerationOptions) async throws -> GenerationResult {
         throw LLMServiceError.serviceUnavailable("Engine not loaded (start() not called)")
     }

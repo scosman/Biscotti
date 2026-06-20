@@ -1,9 +1,9 @@
 import DataStore
 import Foundation
-import Intelligence
 import LocalLLM
 import Testing
 import Transcription
+@testable import Intelligence
 
 // MARK: - Fakes
 
@@ -49,8 +49,24 @@ final class FakeSession: LLMSession, @unchecked Sendable {
     /// tokens. Used to test that the Summarizer prefers canonical `.done` text.
     var canonicalDoneText: String?
 
+    /// Canned token count for `countTokens`. Returns this value for every call.
+    var tokenCount: Int = 100
+
+    /// Recorded reconfigure calls (context sizes).
+    var reconfigureCalls: [Int] = []
+
     private var generateCallIndex = 0
     private var streamingCallIndex = 0
+
+    func countTokens(
+        system _: String, user _: String
+    ) async throws -> Int {
+        tokenCount
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        reconfigureCalls.append(contextSize)
+    }
 
     func generate(
         system: String, user: String, options _: GenerationOptions
@@ -765,7 +781,7 @@ struct IntelligenceOrchestrationTests {
         #expect(detail?.summary == "CANONICAL FINAL")
     }
 
-    @Test("auto-enhancement passes right-sized context config to LLM runner")
+    @Test("auto-enhancement opens model-only and reconfigures to right size")
     @MainActor func contextSizingAutoEnhancement() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
@@ -773,32 +789,24 @@ struct IntelligenceOrchestrationTests {
         let session = FakeSession()
         session.generateResponses = ["0 | Alice |"]
         session.streamingTokens = [["Summary"]]
+        session.tokenCount = 500
 
         let fixture = makeIntelligence(
             store: store, session: session
         )
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // Compute the exact expected context size from the deterministic test
-        // transcript. Intelligence builds both prompt pairs with the same
-        // formatted transcript and takes the max estimate.
-        let detail = try await store.meetingDetail(id: meetingID)
-        let transcript = try #require(detail?.preferredTranscript)
-        let formatted = TranscriptFormatter.plain(transcript, names: [:])
-        let speakerUser = IntelligencePrompts.speakerUser(
-            transcript: formatted, invitees: []
-        )
-        let summaryUser = IntelligencePrompts.summaryUser(
-            transcript: formatted
-        )
-        let speakerChars = IntelligencePrompts.speakerSystem.count + speakerUser.count
-        let summaryChars = IntelligencePrompts.summarySystem.count + summaryUser.count
-        // Formula: max(pair estimates) + 3072, where estimate = chars / 2
-        let expectedContextSize = max(speakerChars, summaryChars) / 2 + 3072
-
+        // Session opens in model-only mode (contextSize=0, no KV-cache)
         let config = fixture.runner.lastConfig
         #expect(config != nil)
-        #expect(config?.contextSize == expectedContextSize)
+        #expect(config?.contextSize == 0)
+
+        // Reconfigure called with right-sized context: tokenCount + 3072
+        #expect(session.reconfigureCalls.count == 1)
+        let expectedContextSize = ContextSizing.contextSize(
+            forInputTokens: session.tokenCount
+        )
+        #expect(session.reconfigureCalls.first == expectedContextSize)
     }
 }
 
@@ -924,7 +932,7 @@ struct IntelligenceGenerateSummaryTests {
         await task1.value
     }
 
-    @Test("manual generateSummary passes right-sized context config")
+    @Test("manual generateSummary opens model-only and reconfigures")
     @MainActor func contextSizingManualGenerate() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
@@ -933,6 +941,7 @@ struct IntelligenceGenerateSummaryTests {
 
         let session = FakeSession()
         session.streamingTokens = [["Summary"]]
+        session.tokenCount = 200
 
         let fixture = makeIntelligence(
             store: store, session: session, guessSpeakers: false
@@ -941,17 +950,17 @@ struct IntelligenceGenerateSummaryTests {
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
 
-        // Compute the exact expected context size. Manual generate uses summary
-        // only, so the context is sized for the summary prompt pair.
-        let transcript = try #require(await store.transcript(id: transcriptID))
-        let formatted = TranscriptFormatter.plain(transcript, names: [:])
-        let userMsg = IntelligencePrompts.summaryUser(transcript: formatted)
-        let totalChars = IntelligencePrompts.summarySystem.count + userMsg.count
-        let expectedContextSize = totalChars / 2 + 3072
-
+        // Session opens in model-only mode (contextSize=0, no KV-cache)
         let config = fixture.runner.lastConfig
         #expect(config != nil)
-        #expect(config?.contextSize == expectedContextSize)
+        #expect(config?.contextSize == 0)
+
+        // Reconfigure called with right-sized context: tokenCount + 3072
+        #expect(session.reconfigureCalls.count == 1)
+        let expectedContextSize = ContextSizing.contextSize(
+            forInputTokens: session.tokenCount
+        )
+        #expect(session.reconfigureCalls.first == expectedContextSize)
     }
 }
 

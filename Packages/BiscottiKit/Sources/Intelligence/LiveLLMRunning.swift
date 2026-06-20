@@ -32,6 +32,16 @@ public struct LiveLLMRunner: LLMRunning {
 struct LiveLLMSession: LLMSession, @unchecked Sendable {
     let connection: LLMConnection
 
+    func countTokens(
+        system: String, user: String
+    ) async throws -> Int {
+        try await connection.countTokens(system: system, user: user)
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        try await connection.reconfigure(contextSize: contextSize)
+    }
+
     func generate(
         system: String, user: String, options: GenerationOptions
     ) async throws -> String {

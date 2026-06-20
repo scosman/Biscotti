@@ -46,13 +46,21 @@ private let backendInitOnce: Void = {
 /// Loads a GGUF model once and serves many independent single-turn generations.
 /// Each `generate` call uses a fresh KV cache (no state carry-over between calls).
 /// Thread-safe via Swift actor isolation.
+///
+/// Two initialization modes:
+/// - **Full** (`init(modelPath:config:)`): loads model + creates context. Ready
+///   for both `countTokens` and `generate`.
+/// - **Model-only** (`init(modelPath:nGpuLayers:)`): loads model without a
+///   context/KV-cache. Ready for `countTokens` only; `generate` requires a
+///   subsequent `createContext(config:)` call. Used by the XPC service to
+///   tokenize prompts before the caller decides on a context size.
 public actor LLMEngine { // swiftlint:disable:this type_body_length
     // nonisolated(unsafe) so deinit can free the C handles. These are only mutated
     // within the actor's isolation domain (init, generate, unload, deinit).
     private nonisolated(unsafe) var model: OpaquePointer?
     private nonisolated(unsafe) var context: OpaquePointer?
     private nonisolated(unsafe) var vocab: OpaquePointer?
-    private let config: EngineConfig
+    private var config: EngineConfig
     private var loadDuration: TimeInterval?
     private var isFirstGenerate = true
 
@@ -66,43 +74,157 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         _ = backendInitOnce
         self.config = config
 
-        guard FileManager.default.fileExists(atPath: modelPath.path) else {
-            throw LocalLLMError.modelFileNotFound(modelPath)
+        let loadStart = ContinuousClock.now
+
+        let loadedModel = try Self.loadModel(path: modelPath, nGpuLayers: config.nGpuLayers)
+        model = loadedModel
+        vocab = llama_model_get_vocab(loadedModel)
+
+        // Create context
+        do {
+            context = try Self.makeContext(model: loadedModel, config: config)
+        } catch {
+            llama_model_free(loadedModel)
+            model = nil
+            vocab = nil
+            throw error
         }
+
+        let loadEnd = ContinuousClock.now
+        loadDuration = Self.durationSeconds(from: loadStart, to: loadEnd)
+    }
+
+    /// Load a model **without** creating a context.
+    ///
+    /// The engine is usable for `countTokens` immediately. Call
+    /// `createContext(config:)` before attempting `generate`.
+    ///
+    /// - Parameters:
+    ///   - modelPath: Path to a GGUF model file.
+    ///   - nGpuLayers: GPU layers for model loading (default 99 = all on Apple Silicon).
+    /// - Throws: `LocalLLMError.modelFileNotFound`, `.modelLoadFailed`.
+    public init(modelPath: URL, nGpuLayers: Int = 99) async throws {
+        _ = backendInitOnce
+        // Placeholder config; real config set by createContext.
+        config = EngineConfig(contextSize: 0, nGpuLayers: nGpuLayers)
 
         let loadStart = ContinuousClock.now
 
-        // Load model
-        var modelParams = llama_model_default_params()
-        modelParams.n_gpu_layers = Int32(config.nGpuLayers)
+        let loadedModel = try Self.loadModel(path: modelPath, nGpuLayers: nGpuLayers)
+        model = loadedModel
+        vocab = llama_model_get_vocab(loadedModel)
+        context = nil
 
-        guard let loadedModel = llama_model_load_from_file(modelPath.path, modelParams) else {
-            throw LocalLLMError.modelLoadFailed(
-                "llama_model_load_from_file returned null for \(modelPath.path)"
+        let loadEnd = ContinuousClock.now
+        loadDuration = Self.durationSeconds(from: loadStart, to: loadEnd)
+    }
+
+    /// Create (or recreate) the inference context with the given configuration.
+    ///
+    /// Must be called before `generate` on a model-only engine. Safe to call
+    /// on a fully initialized engine to resize the context -- the old context
+    /// is freed first, the model stays loaded.
+    public func createContext(config newConfig: EngineConfig) throws {
+        guard newConfig.contextSize > 0 else {
+            throw LocalLLMError.contextCreationFailed(
+                "contextSize must be > 0, got \(newConfig.contextSize)"
             )
         }
-        model = loadedModel
+        guard let mdl = model else {
+            throw LocalLLMError.generationFailed("Model not loaded")
+        }
+        // Free existing context if present
+        if let ctx = context {
+            llama_free(ctx)
+            context = nil
+        }
+        context = try Self.makeContext(model: mdl, config: newConfig)
+        // Preserve nGpuLayers from the original config (model loading
+        // parameter, not context parameter). All other fields come from
+        // newConfig, which the caller is expected to have populated from
+        // the original config (see InProcessBackend.reconfigure).
+        config = EngineConfig(
+            contextSize: newConfig.contextSize,
+            nGpuLayers: config.nGpuLayers,
+            threadCount: newConfig.threadCount,
+            seed: newConfig.seed
+        )
+    }
 
-        // Create context
+    // MARK: - Shared model/context helpers
+
+    /// Load a GGUF model from disk. Shared by both init paths.
+    private static func loadModel(path: URL, nGpuLayers: Int) throws -> OpaquePointer {
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            throw LocalLLMError.modelFileNotFound(path)
+        }
+        var modelParams = llama_model_default_params()
+        modelParams.n_gpu_layers = Int32(nGpuLayers)
+        guard let loadedModel = llama_model_load_from_file(path.path, modelParams) else {
+            throw LocalLLMError.modelLoadFailed(
+                "llama_model_load_from_file returned null for \(path.path)"
+            )
+        }
+        return loadedModel
+    }
+
+    /// Create a context from an already-loaded model.
+    private static func makeContext(
+        model: OpaquePointer, config: EngineConfig
+    ) throws -> OpaquePointer {
         var ctxParams = llama_context_default_params()
         ctxParams.n_ctx = UInt32(config.contextSize)
         if let threadCount = config.threadCount {
             ctxParams.n_threads = Int32(threadCount)
             ctxParams.n_threads_batch = Int32(threadCount)
         }
-
-        guard let ctx = llama_init_from_model(loadedModel, ctxParams) else {
-            llama_model_free(loadedModel)
-            model = nil
+        guard let ctx = llama_init_from_model(model, ctxParams) else {
             throw LocalLLMError.contextCreationFailed(
                 "llama_init_from_model returned null (contextSize=\(config.contextSize))"
             )
         }
-        context = ctx
-        vocab = llama_model_get_vocab(loadedModel)
+        return ctx
+    }
 
-        let loadEnd = ContinuousClock.now
-        loadDuration = Self.durationSeconds(from: loadStart, to: loadEnd)
+    // MARK: - Token counting
+
+    /// Count the tokens that the model's tokenizer produces for a prompt.
+    ///
+    /// Applies the same chat template and tokenization pipeline as `generate`,
+    /// but returns only the token count -- no context, sampling, or KV-cache
+    /// work. Only requires the model to be loaded (vocab); does not need a
+    /// context.
+    ///
+    /// - Parameters:
+    ///   - system: Optional system instruction.
+    ///   - user: The user's message.
+    ///   - applyChatTemplate: Whether to render the chat template (default true).
+    ///   - thinking: Thinking mode for template rendering (default .off).
+    /// - Returns: The number of tokens in the rendered prompt.
+    /// - Throws: `LocalLLMError.tokenizationFailed` or `.generationFailed` if
+    ///   the model is not loaded.
+    public func countTokens(
+        system: String?,
+        user: String,
+        applyChatTemplate: Bool = true,
+        thinking: ThinkingMode = .off
+    ) throws -> Int {
+        guard let vocab else {
+            throw LocalLLMError.generationFailed("Engine not loaded or already unloaded")
+        }
+
+        let promptString: String
+        if applyChatTemplate {
+            let template = GemmaChatTemplate(thinkingEnabled: thinking == .auto)
+            promptString = template.render(
+                system: system, user: user, addGenerationPrompt: true
+            )
+        } else {
+            promptString = user
+        }
+
+        let tokens = try tokenize(text: promptString, vocab: vocab)
+        return tokens.count
     }
 
     /// Run a single-turn generation (non-streaming).
@@ -214,8 +336,14 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         options: GenerationOptions,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> GenerationResult {
-        guard let ctx = context, let vocab else {
+        guard let vocab else {
             throw LocalLLMError.generationFailed("Engine not loaded or already unloaded")
+        }
+        guard let ctx = context else {
+            throw LocalLLMError.generationFailed(
+                "No context created. Call createContext(config:) or "
+                    + "reconfigure(contextSize:) before generating."
+            )
         }
 
         let totalStart = ContinuousClock.now

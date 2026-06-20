@@ -1,15 +1,15 @@
 import LocalLLM
 import os
 
-/// Caller-side heuristic for right-sizing the LLM context window.
+/// Caller-side policy for right-sizing the LLM context window.
 ///
 /// Instead of allocating the full 32k KV cache for every request, the caller
-/// estimates input tokens from character counts and adds an output reservation
-/// to produce a tighter context size. This keeps memory proportional to actual
-/// prompt length.
+/// obtains the real input token count (via the XPC tokenizer) and adds an
+/// output reservation to produce a tighter context size. This keeps memory
+/// proportional to actual prompt length.
 ///
-/// Phase 1 uses `chars / 2` (a deliberate overestimate; real tokenizers produce
-/// ~chars/4 for English). Phase 2 will use actual tokenization via an XPC API.
+/// The sizing math is pure and testable; the async act of counting tokens
+/// lives in the session/runner layer.
 enum ContextSizing {
     private static let log = Logger(
         subsystem: "net.scosman.biscotti",
@@ -24,53 +24,56 @@ enum ContextSizing {
     /// never allocates MORE than before.
     static let maxContextSize = 32768
 
-    /// Estimate input token count from raw message character counts.
+    /// Compute the context size for a generation, given the real input token
+    /// count from the model's tokenizer.
     ///
-    /// Uses a conservative `chars / 2` heuristic that intentionally overestimates
-    /// token count (real tokenizers typically produce ~chars/4 for English).
-    /// The overestimate is safe: it just allocates a slightly larger KV cache.
-    static func estimateInputTokens(systemCharCount: Int, userCharCount: Int) -> Int {
-        max((systemCharCount + userCharCount) / 2, 1)
+    /// Returns `inputTokens + outputTokenReservation`, capped at
+    /// `maxContextSize`.
+    static func contextSize(forInputTokens inputTokens: Int) -> Int {
+        let clamped = max(inputTokens, 1)
+        return min(clamped + outputTokenReservation, maxContextSize)
     }
 
-    /// Compute the context size for a generation, given the system and user
-    /// message text.
+    /// Count tokens for each prompt pair using the session's tokenizer and
+    /// return the context size needed for the largest pair.
     ///
-    /// Returns `estimatedInputTokens + outputTokenReservation`, capped at
-    /// `maxContextSize`.
-    static func contextSize(forSystem system: String, user: String) -> Int {
-        let estimated = estimateInputTokens(
-            systemCharCount: system.count,
-            userCharCount: user.count
-        )
-        let size = min(estimated + outputTokenReservation, maxContextSize)
+    /// Used when a session serves multiple sequential tasks (e.g., speaker-ID
+    /// then summary) that share a single context allocation.
+    static func contextSize(
+        forPairs pairs: [(system: String, user: String)],
+        session: any LLMSession
+    ) async throws -> Int {
+        precondition(!pairs.isEmpty, "pairs must not be empty")
+        var maxTokens = 1
+        for pair in pairs {
+            let count = try await session.countTokens(
+                system: pair.system, user: pair.user
+            )
+            maxTokens = max(maxTokens, count)
+        }
+
+        let size = min(maxTokens + outputTokenReservation, maxContextSize)
 
         log.info(
-            "Context sized: estimatedInputTokens=\(estimated), contextSize=\(size)"
+            "Context sized (multi-task): maxInputTokens=\(maxTokens), contextSize=\(size)"
         )
 
         return size
     }
 
-    /// Compute the context size needed for the larger of two prompt pairs.
-    ///
-    /// Used when a session serves multiple sequential tasks (e.g., speaker-ID
-    /// then summary) that share a single context allocation. Takes the max of
-    /// both estimates so the context fits whichever task is larger.
+    /// Count tokens for a single prompt pair and return the context size.
     static func contextSize(
-        forPairs pairs: [(system: String, user: String)]
-    ) -> Int {
-        let maxEstimate = pairs.map {
-            estimateInputTokens(
-                systemCharCount: $0.system.count,
-                userCharCount: $0.user.count
-            )
-        }.max() ?? 1
-
-        let size = min(maxEstimate + outputTokenReservation, maxContextSize)
+        forSystem system: String,
+        user: String,
+        session: any LLMSession
+    ) async throws -> Int {
+        let count = try await session.countTokens(
+            system: system, user: user
+        )
+        let size = min(max(count, 1) + outputTokenReservation, maxContextSize)
 
         log.info(
-            "Context sized (multi-task): maxEstimatedInputTokens=\(maxEstimate), contextSize=\(size)"
+            "Context sized: inputTokens=\(count), contextSize=\(size)"
         )
 
         return size

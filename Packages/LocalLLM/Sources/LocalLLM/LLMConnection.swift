@@ -61,6 +61,50 @@ public actor LLMConnection {
         }
     }
 
+    // MARK: - Token counting
+
+    /// Count the tokens for a prompt using the model's tokenizer.
+    ///
+    /// Uses the same chat template and tokenization as `generate`, but returns
+    /// only the token count. Lightweight: no context/KV-cache work, no
+    /// sampling. Serialized behind the same queue as generation requests.
+    public func countTokens(
+        system: String?,
+        user: String,
+        applyChatTemplate: Bool = true,
+        thinking: ThinkingMode = .off
+    ) async throws -> Int {
+        try guardReady()
+
+        await semaphore.wait()
+        defer { semaphore.signal() }
+
+        try guardReady()
+
+        return try await backend.countTokens(
+            system: system, user: user,
+            applyChatTemplate: applyChatTemplate, thinking: thinking
+        )
+    }
+
+    // MARK: - Context reconfiguration
+
+    /// Recreate the inference context with a new size.
+    ///
+    /// Frees the current KV cache and allocates a new one at the specified
+    /// size. The model stays loaded (no re-read of weights). Serialized
+    /// behind the same queue as generation requests.
+    public func reconfigure(contextSize: Int) async throws {
+        try guardReady()
+
+        await semaphore.wait()
+        defer { semaphore.signal() }
+
+        try guardReady()
+
+        try await backend.reconfigure(contextSize: contextSize)
+    }
+
     // MARK: - Generation (buffered)
 
     /// Run a single-turn generation and return the full result.

@@ -11,6 +11,13 @@ import Foundation
 ///
 /// Strict serialization: one in-flight generation per connection (enforced
 /// by `LLMConnection`'s semaphore), so the wire carries no request IDs.
+///
+/// **`Int32` on the wire:** `@objc` protocols require Objective-C-compatible
+/// types. `Int` is not `@objc`-representable; `Int32` is the widest signed
+/// integer the `@objc` bridge supports for scalar reply-handler parameters.
+/// Token counts and context sizes are well within Int32.max (~2 billion),
+/// so the narrowing is safe in practice. Overflow guards exist at every
+/// `Int -> Int32` cast site (see `XPCBackend` and `LLMXPCService`).
 @objc public protocol LLMServiceProtocol {
     /// Load a model and prepare the engine for generation.
     ///
@@ -46,6 +53,33 @@ import Foundation
 
     /// Best-effort cancel the in-flight generation.
     func cancel(reply: @escaping @Sendable () -> Void)
+
+    /// Count the tokens for a prompt using the model's tokenizer.
+    ///
+    /// Requires the model to be loaded (via `load`). Uses the same chat
+    /// template and tokenization pipeline as `generate`, but returns only
+    /// the integer token count -- no context, sampling, or KV-cache work.
+    ///
+    /// - Parameters:
+    ///   - requestData: JSON-encoded `LLMCountTokensRequest`.
+    ///   - reply: Token count on success, or an error.
+    func countTokens(
+        requestData: Data,
+        reply: @escaping @Sendable (Int32, Error?) -> Void
+    )
+
+    /// Recreate the inference context with a new size.
+    ///
+    /// Frees the current KV cache and allocates a new one. The model stays
+    /// loaded. Used after `countTokens` to right-size the context.
+    ///
+    /// - Parameters:
+    ///   - contextSize: The new context window size in tokens.
+    ///   - reply: `nil` on success; error on failure.
+    func reconfigure(
+        contextSize: Int32,
+        reply: @escaping @Sendable (Error?) -> Void
+    )
 
     /// Lightweight liveness check.
     func healthCheck(reply: @escaping @Sendable (Bool) -> Void)

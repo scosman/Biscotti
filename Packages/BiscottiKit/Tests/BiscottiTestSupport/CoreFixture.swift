@@ -359,6 +359,14 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
 
 /// A minimal fake LLM session that returns empty responses.
 public struct FakeCoreLLMSession: LLMSession {
+    public func countTokens(
+        system _: String, user _: String
+    ) async throws -> Int {
+        100
+    }
+
+    public func reconfigure(contextSize _: Int) async throws {}
+
     public func generate(
         system _: String, user _: String,
         options _: LocalLLM.GenerationOptions

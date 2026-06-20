@@ -109,6 +109,77 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
         }
     }
 
+    func countTokens(
+        requestData: Data,
+        reply: @escaping @Sendable (Int32, Error?) -> Void
+    ) {
+        let request: LLMCountTokensRequest
+        do {
+            request = try JSONDecoder().decode(
+                LLMCountTokensRequest.self, from: requestData
+            )
+        } catch {
+            reply(0, LLMNSErrorBridge.nsError(
+                from: LLMServiceError.protocolError(
+                    "Failed to decode LLMCountTokensRequest: \(error.localizedDescription)"
+                )
+            ))
+            return
+        }
+
+        let holder = holder
+        Task {
+            do {
+                guard let conn = await holder.conn else {
+                    reply(0, LLMNSErrorBridge.nsError(
+                        from: LLMServiceError.serviceUnavailable("No model loaded")
+                    ))
+                    return
+                }
+                let count = try await conn.countTokens(
+                    system: request.system,
+                    user: request.user,
+                    applyChatTemplate: request.applyChatTemplate,
+                    thinking: request.thinking
+                )
+                // Int -> Int32 narrowing for the @objc wire. Token counts
+                // are well under Int32.max, but guard defensively.
+                guard let count32 = Int32(exactly: count) else {
+                    reply(0, LLMNSErrorBridge.nsError(
+                        from: LLMServiceError.protocolError(
+                            "Token count \(count) overflows Int32"
+                        )
+                    ))
+                    return
+                }
+                reply(count32, nil)
+            } catch {
+                reply(0, LLMNSErrorBridge.nsError(from: error))
+            }
+        }
+    }
+
+    func reconfigure(
+        contextSize: Int32,
+        reply: @escaping @Sendable (Error?) -> Void
+    ) {
+        let holder = holder
+        Task {
+            do {
+                guard let conn = await holder.conn else {
+                    reply(LLMNSErrorBridge.nsError(
+                        from: LLMServiceError.serviceUnavailable("No model loaded")
+                    ))
+                    return
+                }
+                try await conn.reconfigure(contextSize: Int(contextSize))
+                reply(nil)
+            } catch {
+                reply(LLMNSErrorBridge.nsError(from: error))
+            }
+        }
+    }
+
     func generate(
         requestData: Data,
         reply: @escaping @Sendable (Data?, Error?) -> Void

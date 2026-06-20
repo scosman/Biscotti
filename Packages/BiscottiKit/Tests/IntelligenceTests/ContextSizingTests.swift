@@ -1,101 +1,96 @@
+import LocalLLM
 import Testing
 @testable import Intelligence
 
+// MARK: - Mock session for async ContextSizing tests
+
+/// Minimal `LLMSession` that returns scriptable token counts and records
+/// calls. Used exclusively by the async `ContextSizing` tests.
+private final class MockCountingSession: LLMSession, @unchecked Sendable {
+    /// Token counts to return, keyed by call index.
+    var tokenCounts: [Int]
+    /// If set, thrown on the next `countTokens` call.
+    var errorToThrow: (any Error)?
+    /// Number of `countTokens` calls made.
+    var callCount = 0
+
+    init(tokenCounts: [Int] = [100]) {
+        self.tokenCounts = tokenCounts
+    }
+
+    func countTokens(system _: String, user _: String) async throws -> Int {
+        if let error = errorToThrow {
+            throw error
+        }
+        let idx = callCount
+        callCount += 1
+        guard idx < tokenCounts.count else {
+            return tokenCounts.last ?? 0
+        }
+        return tokenCounts[idx]
+    }
+
+    func reconfigure(contextSize _: Int) async throws {}
+
+    func generate(
+        system _: String, user _: String,
+        options _: GenerationOptions
+    ) async throws -> String {
+        ""
+    }
+
+    func generateStreaming(
+        system _: String, user _: String,
+        options _: GenerationOptions
+    ) async -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+}
+
 @Suite("ContextSizing")
 struct ContextSizingTests {
-    // MARK: - estimateInputTokens
+    // MARK: - contextSize(forInputTokens:)
 
-    @Test("estimateInputTokens divides total character count by 2")
-    func estimateBasic() {
-        // 1000 system + 2000 user = 3000 chars / 2 = 1500
-        #expect(ContextSizing.estimateInputTokens(systemCharCount: 1000, userCharCount: 2000) == 1500)
-    }
-
-    @Test("estimateInputTokens with no system message")
-    func estimateNoSystem() {
-        #expect(ContextSizing.estimateInputTokens(systemCharCount: 0, userCharCount: 500) == 250)
-    }
-
-    @Test("estimateInputTokens floors to minimum of 1")
-    func estimateMinimum() {
-        // Both empty: (0 + 0) / 2 = 0, clamped to 1
-        #expect(ContextSizing.estimateInputTokens(systemCharCount: 0, userCharCount: 0) == 1)
-        // Single char: (0 + 1) / 2 = 0 (integer division), clamped to 1
-        #expect(ContextSizing.estimateInputTokens(systemCharCount: 0, userCharCount: 1) == 1)
-    }
-
-    @Test("estimateInputTokens with odd total truncates via integer division")
-    func estimateOddTotal() {
-        // 3 + 4 = 7, / 2 = 3 (integer division)
-        #expect(ContextSizing.estimateInputTokens(systemCharCount: 3, userCharCount: 4) == 3)
-    }
-
-    // MARK: - contextSize (single pair)
-
-    @Test("contextSize adds output reservation for short messages")
-    func contextSizeShortMessages() {
-        let system = String(repeating: "x", count: 400)
-        let user = String(repeating: "y", count: 600)
-        // (400 + 600) / 2 = 500 estimated tokens + 3072 = 3572
-        let size = ContextSizing.contextSize(forSystem: system, user: user)
+    @Test("contextSize adds output reservation for a small token count")
+    func contextSizeSmall() {
+        let size = ContextSizing.contextSize(forInputTokens: 500)
         #expect(size == 500 + ContextSizing.outputTokenReservation)
     }
 
-    @Test("contextSize caps at maxContextSize for long inputs")
+    @Test("contextSize caps at maxContextSize for large token counts")
     func contextSizeCapped() {
-        // 60000 chars user -> (0 + 60000) / 2 = 30000 + 3072 = 33072, capped at 32768
-        let system = ""
-        let user = String(repeating: "z", count: 60000)
-        let size = ContextSizing.contextSize(forSystem: system, user: user)
+        let size = ContextSizing.contextSize(forInputTokens: 30000)
         #expect(size == ContextSizing.maxContextSize)
+    }
+
+    @Test("contextSize floors input tokens to 1")
+    func contextSizeMinimum() {
+        let sizeZero = ContextSizing.contextSize(forInputTokens: 0)
+        #expect(sizeZero == 1 + ContextSizing.outputTokenReservation)
+
+        let sizeNegative = ContextSizing.contextSize(forInputTokens: -5)
+        #expect(sizeNegative == 1 + ContextSizing.outputTokenReservation)
     }
 
     @Test("contextSize with typical summary prompt")
-    func contextSizeTypicalSummary() {
-        // System ~300 chars, user ~10000 chars (short transcript)
-        let system = String(repeating: "s", count: 300)
-        let user = String(repeating: "u", count: 10000)
-        // (300 + 10000) / 2 = 5150 + 3072 = 8222
-        let size = ContextSizing.contextSize(forSystem: system, user: user)
-        #expect(size == 5150 + ContextSizing.outputTokenReservation)
+    func contextSizeTypical() {
+        // A typical short transcript tokenizes to ~1500 tokens
+        let size = ContextSizing.contextSize(forInputTokens: 1500)
+        #expect(size == 1500 + ContextSizing.outputTokenReservation)
     }
 
-    // MARK: - contextSize (multi-pair)
+    @Test("contextSize exactly at boundary")
+    func contextSizeExactBoundary() {
+        // maxContextSize - outputTokenReservation = 29696
+        let boundary = ContextSizing.maxContextSize - ContextSizing.outputTokenReservation
+        let sizeAtBoundary = ContextSizing.contextSize(forInputTokens: boundary)
+        #expect(sizeAtBoundary == ContextSizing.maxContextSize)
 
-    @Test("contextSize forPairs uses the largest pair")
-    func multiPairUsesMax() {
-        let smallSystem = String(repeating: "a", count: 100)
-        let smallUser = String(repeating: "b", count: 200)
-        let largeSystem = String(repeating: "c", count: 500)
-        let largeUser = String(repeating: "d", count: 10000)
+        let sizeJustOver = ContextSizing.contextSize(forInputTokens: boundary + 1)
+        #expect(sizeJustOver == ContextSizing.maxContextSize)
 
-        let pairs = [
-            (system: smallSystem, user: smallUser),
-            (system: largeSystem, user: largeUser)
-        ]
-        let size = ContextSizing.contextSize(forPairs: pairs)
-
-        // Large pair: (500 + 10000) / 2 = 5250
-        // Small pair: (100 + 200) / 2 = 150
-        // Max = 5250 + 3072 = 8322
-        #expect(size == 5250 + ContextSizing.outputTokenReservation)
-    }
-
-    @Test("contextSize forPairs with empty array returns minimum + reservation")
-    func multiPairEmpty() {
-        let size = ContextSizing.contextSize(forPairs: [])
-        // max of empty is nil, fallback to 1, so 1 + 3072 = 3073
-        #expect(size == 1 + ContextSizing.outputTokenReservation)
-    }
-
-    @Test("contextSize forPairs caps at maxContextSize")
-    func multiPairCapped() {
-        let longUser = String(repeating: "x", count: 65000)
-        let pairs = [
-            (system: "", user: longUser)
-        ]
-        let size = ContextSizing.contextSize(forPairs: pairs)
-        #expect(size == ContextSizing.maxContextSize)
+        let sizeJustUnder = ContextSizing.contextSize(forInputTokens: boundary - 1)
+        #expect(sizeJustUnder == ContextSizing.maxContextSize - 1)
     }
 
     // MARK: - Constants
@@ -114,22 +109,106 @@ struct ContextSizingTests {
 
     @Test("Short meeting transcript: context well under 32k")
     func endToEndShortTranscript() {
-        // Typical short meeting: ~300 char system, ~5000 char transcript
-        let system = String(repeating: "s", count: 300)
-        let user = String(repeating: "t", count: 5000)
-        let size = ContextSizing.contextSize(forSystem: system, user: user)
-        // (300 + 5000) / 2 = 2650 + 3072 = 5722 — saves ~27k vs static 32k
-        #expect(size == 5722)
+        // A short transcript with ~1200 real tokens
+        let size = ContextSizing.contextSize(forInputTokens: 1200)
+        // 1200 + 3072 = 4272 — saves ~28k vs static 32k
+        #expect(size == 4272)
         #expect(size < ContextSizing.maxContextSize)
     }
 
     @Test("Long meeting transcript: hits cap, no memory regression")
     func endToEndLongTranscript() {
-        // Long meeting: ~300 char system, ~60000 char transcript
-        let system = String(repeating: "s", count: 300)
-        let user = String(repeating: "t", count: 60000)
-        let size = ContextSizing.contextSize(forSystem: system, user: user)
+        // A long transcript tokenizing to 30000+ tokens
+        let size = ContextSizing.contextSize(forInputTokens: 30000)
         // Capped at 32768 — identical to the old static allocation
         #expect(size == ContextSizing.maxContextSize)
+    }
+
+    // MARK: - Async overload: contextSize(forPairs:session:)
+
+    @Test("multi-pair selects the largest token count")
+    func multiPairMaxSelection() async throws {
+        let session = MockCountingSession(tokenCounts: [200, 800, 400])
+        let pairs: [(system: String, user: String)] = [
+            (system: "s1", user: "u1"),
+            (system: "s2", user: "u2"),
+            (system: "s3", user: "u3")
+        ]
+        let size = try await ContextSizing.contextSize(
+            forPairs: pairs, session: session
+        )
+        // Should use the largest count (800) + reservation
+        #expect(size == 800 + ContextSizing.outputTokenReservation)
+        #expect(session.callCount == 3)
+    }
+
+    @Test("single-pair returns correct context size")
+    func singlePair() async throws {
+        let session = MockCountingSession(tokenCounts: [500])
+        let pairs = [
+            (system: "sys", user: "usr")
+        ]
+        let size = try await ContextSizing.contextSize(
+            forPairs: pairs, session: session
+        )
+        #expect(size == 500 + ContextSizing.outputTokenReservation)
+    }
+
+    @Test("multi-pair caps at maxContextSize")
+    func multiPairCapped() async throws {
+        let session = MockCountingSession(tokenCounts: [30000, 100])
+        let pairs: [(system: String, user: String)] = [
+            (system: "s1", user: "u1"),
+            (system: "s2", user: "u2")
+        ]
+        let size = try await ContextSizing.contextSize(
+            forPairs: pairs, session: session
+        )
+        #expect(size == ContextSizing.maxContextSize)
+    }
+
+    @Test("multi-pair propagates countTokens errors")
+    func multiPairError() async throws {
+        let session = MockCountingSession(tokenCounts: [100])
+        session.errorToThrow = LLMServiceError.serviceUnavailable("test")
+        let pairs = [
+            (system: "s1", user: "u1")
+        ]
+        await #expect(throws: LLMServiceError.self) {
+            _ = try await ContextSizing.contextSize(
+                forPairs: pairs, session: session
+            )
+        }
+    }
+
+    // MARK: - Async overload: contextSize(forSystem:user:session:)
+
+    @Test("single-prompt returns correct context size")
+    func singlePrompt() async throws {
+        let session = MockCountingSession(tokenCounts: [1200])
+        let size = try await ContextSizing.contextSize(
+            forSystem: "system", user: "user", session: session
+        )
+        #expect(size == 1200 + ContextSizing.outputTokenReservation)
+    }
+
+    @Test("single-prompt caps at maxContextSize")
+    func singlePromptCapped() async throws {
+        let session = MockCountingSession(tokenCounts: [31000])
+        let size = try await ContextSizing.contextSize(
+            forSystem: "system", user: "user", session: session
+        )
+        #expect(size == ContextSizing.maxContextSize)
+    }
+
+    @Test("single-prompt propagates countTokens errors")
+    func singlePromptError() async throws {
+        let session = MockCountingSession(tokenCounts: [100])
+        session.errorToThrow = LLMServiceError.serviceUnavailable("test")
+        await #expect(throws: LLMServiceError.self) {
+            _ = try await ContextSizing.contextSize(
+                forSystem: "system", user: "user", session: session
+            )
+        }
     }
 }

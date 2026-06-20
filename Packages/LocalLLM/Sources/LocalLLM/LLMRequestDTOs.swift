@@ -17,6 +17,36 @@ public struct LLMLoadRequest: Codable, Sendable, Equatable {
     }
 }
 
+/// Request payload for `LLMServiceProtocol.countTokens(requestData:reply:)`.
+///
+/// Bundles the prompt, optional system message, and template settings into a
+/// single JSON-encoded `Data` blob for transport across the `@objc` XPC boundary.
+public struct LLMCountTokensRequest: Codable, Sendable, Equatable {
+    /// The user prompt.
+    public let user: String
+
+    /// Optional system message.
+    public let system: String?
+
+    /// Whether to apply the chat template before tokenizing.
+    public let applyChatTemplate: Bool
+
+    /// Thinking mode for template rendering.
+    public let thinking: ThinkingMode
+
+    public init(
+        user: String,
+        system: String?,
+        applyChatTemplate: Bool = true,
+        thinking: ThinkingMode = .off
+    ) {
+        self.user = user
+        self.system = system
+        self.applyChatTemplate = applyChatTemplate
+        self.thinking = thinking
+    }
+}
+
 /// Request payload for `LLMServiceProtocol.generate` and `generateStreaming`.
 ///
 /// Bundles the prompt, optional system message, and generation options into a

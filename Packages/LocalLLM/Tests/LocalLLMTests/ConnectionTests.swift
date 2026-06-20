@@ -377,6 +377,17 @@ private final class FailingBackend: ServiceBackend, @unchecked Sendable {
         // No-op: transitions to ready.
     }
 
+    func countTokens(
+        system _: String?, user _: String,
+        applyChatTemplate _: Bool, thinking _: ThinkingMode
+    ) async throws -> Int {
+        throw error
+    }
+
+    func reconfigure(contextSize _: Int) async throws {
+        throw error
+    }
+
     func generate(
         id _: UInt64, prompt _: String, system _: String?,
         options _: GenerationOptions

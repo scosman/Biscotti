@@ -189,6 +189,7 @@
     /// No-op LLM runner for previews.
     private struct PreviewLLMRunner: LLMRunning {
         func withSession<T: Sendable>(
+            config _: LocalLLM.EngineConfig,
             _ body: @Sendable (any LLMSession) async throws -> T
         ) async throws -> T {
             try await body(PreviewLLMSession())

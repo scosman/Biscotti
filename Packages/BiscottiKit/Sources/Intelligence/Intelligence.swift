@@ -101,7 +101,39 @@ public final class Intelligence {
         let existingNames: [Int: String] = transcript.speakerAssignments
             .mapValues(\.name)
 
-        try await llm.withSession { session in
+        // Pre-compute prompt pairs to right-size the LLM context for this
+        // session. We format with existingNames here, but actual generation
+        // formats speaker-ID with `[:]` and summary with the resolved nameMap.
+        // The char-count difference is negligible (names are a tiny fraction
+        // of the transcript) and the chars/2 heuristic deliberately overestimates,
+        // so this approximation is intentional — don't try to match exact
+        // generation-time formatting here.
+        let formattedTranscript = TranscriptFormatter.plain(
+            transcript, names: existingNames
+        )
+
+        var promptPairs: [(system: String, user: String)] = []
+        if doSpeakers {
+            promptPairs.append((
+                system: IntelligencePrompts.speakerSystem,
+                user: IntelligencePrompts.speakerUser(
+                    transcript: formattedTranscript, invitees: invitees
+                )
+            ))
+        }
+        if doSummary {
+            promptPairs.append((
+                system: IntelligencePrompts.summarySystem,
+                user: IntelligencePrompts.summaryUser(
+                    transcript: formattedTranscript
+                )
+            ))
+        }
+
+        let contextSize = ContextSizing.contextSize(forPairs: promptPairs)
+        let config = EngineConfig(contextSize: contextSize)
+
+        try await llm.withSession(config: config) { session in
             var nameMap = existingNames
 
             if doSpeakers {
@@ -154,7 +186,19 @@ public final class Intelligence {
 
         do {
             jobs[meetingID] = .summarizing
-            try await llm.withSession { session in
+
+            let formattedTranscript = TranscriptFormatter.plain(
+                transcript, names: nameMap
+            )
+            let contextSize = ContextSizing.contextSize(
+                forSystem: IntelligencePrompts.summarySystem,
+                user: IntelligencePrompts.summaryUser(
+                    transcript: formattedTranscript
+                )
+            )
+            let config = EngineConfig(contextSize: contextSize)
+
+            try await llm.withSession(config: config) { session in
                 let context = Summarizer.Context(
                     meetingID: meetingID,
                     transcript: transcript,

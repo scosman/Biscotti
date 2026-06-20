@@ -15,11 +15,13 @@ public struct LiveLLMRunner: LLMRunning {
     }
 
     public func withSession<T: Sendable>(
+        config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         try await LLMService.withConnection(
             model: modelProvider.modelURL,
-            backend: .hosted(serviceName: Self.serviceName)
+            backend: .hosted(serviceName: Self.serviceName),
+            config: config
         ) { connection in
             try await body(LiveLLMSession(connection: connection))
         }

@@ -4,6 +4,7 @@ import LocalLLM
 /// Real impl wraps `LLMService.withConnection`; fakes in tests.
 public protocol LLMRunning: Sendable {
     func withSession<T: Sendable>(
+        config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T
 }

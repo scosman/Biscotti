@@ -18,10 +18,15 @@ final class FakeLLMRunner: LLMRunning, @unchecked Sendable {
         self.session = session
     }
 
+    /// The most recently passed `EngineConfig`.
+    var lastConfig: EngineConfig?
+
     func withSession<T: Sendable>(
+        config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1
+        lastConfig = config
         return try await body(session)
     }
 }
@@ -177,6 +182,7 @@ final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
     }
 
     func withSession<T: Sendable>(
+        config _: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         // Signal that we've entered the session
@@ -758,6 +764,42 @@ struct IntelligenceOrchestrationTests {
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "CANONICAL FINAL")
     }
+
+    @Test("auto-enhancement passes right-sized context config to LLM runner")
+    @MainActor func contextSizingAutoEnhancement() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(
+            store: store, session: session
+        )
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Compute the exact expected context size from the deterministic test
+        // transcript. Intelligence builds both prompt pairs with the same
+        // formatted transcript and takes the max estimate.
+        let detail = try await store.meetingDetail(id: meetingID)
+        let transcript = try #require(detail?.preferredTranscript)
+        let formatted = TranscriptFormatter.plain(transcript, names: [:])
+        let speakerUser = IntelligencePrompts.speakerUser(
+            transcript: formatted, invitees: []
+        )
+        let summaryUser = IntelligencePrompts.summaryUser(
+            transcript: formatted
+        )
+        let speakerChars = IntelligencePrompts.speakerSystem.count + speakerUser.count
+        let summaryChars = IntelligencePrompts.summarySystem.count + summaryUser.count
+        // Formula: max(pair estimates) + 3072, where estimate = chars / 2
+        let expectedContextSize = max(speakerChars, summaryChars) / 2 + 3072
+
+        let config = fixture.runner.lastConfig
+        #expect(config != nil)
+        #expect(config?.contextSize == expectedContextSize)
+    }
 }
 
 // MARK: - Intelligence Generate Summary Tests
@@ -880,6 +922,36 @@ struct IntelligenceGenerateSummaryTests {
 
         blocker.release()
         await task1.value
+    }
+
+    @Test("manual generateSummary passes right-sized context config")
+    @MainActor func contextSizingManualGenerate() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(
+            store: store, session: session, guessSpeakers: false
+        )
+        await fixture.intel.generateSummary(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        // Compute the exact expected context size. Manual generate uses summary
+        // only, so the context is sized for the summary prompt pair.
+        let transcript = try #require(await store.transcript(id: transcriptID))
+        let formatted = TranscriptFormatter.plain(transcript, names: [:])
+        let userMsg = IntelligencePrompts.summaryUser(transcript: formatted)
+        let totalChars = IntelligencePrompts.summarySystem.count + userMsg.count
+        let expectedContextSize = totalChars / 2 + 3072
+
+        let config = fixture.runner.lastConfig
+        #expect(config != nil)
+        #expect(config?.contextSize == expectedContextSize)
     }
 }
 

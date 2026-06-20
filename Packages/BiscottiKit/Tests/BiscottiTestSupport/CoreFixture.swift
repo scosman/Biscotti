@@ -349,6 +349,7 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
     public init() {}
 
     public func withSession<T: Sendable>(
+        config _: LocalLLM.EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1

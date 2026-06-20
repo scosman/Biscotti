@@ -434,14 +434,38 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         return Array(tokens.prefix(Int(nTokens)))
     }
 
+    /// Evaluate the prompt tokens in chunks of at most `n_batch`.
+    ///
+    /// llama.cpp asserts that a single `llama_decode` call receives no more than
+    /// `n_batch` tokens. For prompts longer than that limit we split the prefill
+    /// into multiple decode calls. `llama_batch_get_one` auto-assigns KV-cache
+    /// positions from the context's running counter, so consecutive calls produce
+    /// a contiguous sequence with no manual position bookkeeping. Only the final
+    /// chunk needs logits (for sampling); earlier chunks set logits = false via
+    /// the default `llama_batch_get_one` behavior (logits on last token only),
+    /// which is correct because we never sample from intermediate chunks.
     private func promptEval(tokens: [llama_token], ctx: OpaquePointer) throws {
-        var mutableTokens = tokens
-        let result = mutableTokens.withUnsafeMutableBufferPointer { buf in
-            let batch = llama_batch_get_one(buf.baseAddress, Int32(tokens.count))
-            return llama_decode(ctx, batch)
+        let batchSize = Int(llama_n_batch(ctx))
+        guard batchSize > 0 else {
+            throw LocalLLMError.generationFailed(
+                "Context batch size is \(batchSize); expected a positive value"
+            )
         }
-        if result != 0 {
-            throw LocalLLMError.decodeFailed(code: result)
+        var mutableTokens = tokens
+        var offset = 0
+        let total = tokens.count
+
+        while offset < total {
+            let chunkSize = min(batchSize, total - offset)
+            let result = mutableTokens.withUnsafeMutableBufferPointer { buf in
+                guard let base = buf.baseAddress else { return Int32(-1) }
+                let batch = llama_batch_get_one(base + offset, Int32(chunkSize))
+                return llama_decode(ctx, batch)
+            }
+            if result != 0 {
+                throw LocalLLMError.decodeFailed(code: result)
+            }
+            offset += chunkSize
         }
     }
 

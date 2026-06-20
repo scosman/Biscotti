@@ -44,6 +44,12 @@ import SwiftData
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
+    /// Whether to automatically generate a summary after transcription.
+    public var summarizeTranscripts: Bool = true
+
+    /// Whether to automatically guess speaker names after transcription.
+    public var guessSpeakerNames: Bool = true
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -78,7 +84,9 @@ import SwiftData
         stopRecordingAutomatically: Bool = true,
         calendarNotificationModeRaw: String = "allMeetings",
         onboardingComplete: Bool = false,
-        enabledCalendarIDs: Set<String>? = nil
+        enabledCalendarIDs: Set<String>? = nil,
+        summarizeTranscripts: Bool = true,
+        guessSpeakerNames: Bool = true
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -92,5 +100,7 @@ import SwiftData
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()
         }
+        self.summarizeTranscripts = summarizeTranscripts
+        self.guessSpeakerNames = guessSpeakerNames
     }
 }

@@ -221,6 +221,27 @@ public actor DataStore {
         try save()
     }
 
+    // MARK: - Internal Fetch Helpers
+
+    /// Fetches a `TranscriptRecord` by ID, or nil if not found.
+    /// Shared by `transcript(id:)` (read model) and speaker-assignment mutations.
+    func transcriptRecord(id: UUID) throws -> TranscriptRecord? {
+        let descriptor = FetchDescriptor<TranscriptRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return try context.fetch(descriptor).first
+    }
+
+    /// Fetches a `Person` by ID, or nil if not found.
+    /// Used by read-model resolution to look up individual persons from
+    /// speaker assignment maps without scanning the full Person table.
+    func fetchPerson(id personID: UUID) throws -> Person? {
+        let descriptor = FetchDescriptor<Person>(
+            predicate: #Predicate { $0.id == personID }
+        )
+        return try context.fetch(descriptor).first
+    }
+
     // MARK: - Private
 
     func save() throws {

@@ -58,6 +58,10 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let notes: String
     /// All transcript versions for this meeting.
     public let versions: [TranscriptVersionData]
+    /// AI-generated or user-edited markdown meeting summary.
+    public let summary: String
+    /// Whether the user has manually edited the summary.
+    public let editedSummary: Bool
 
     public init(
         id: UUID,
@@ -70,7 +74,9 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         preferredTranscript: TranscriptData?,
         calendar: CalendarContextData? = nil,
         notes: String = "",
-        versions: [TranscriptVersionData] = []
+        versions: [TranscriptVersionData] = [],
+        summary: String = "",
+        editedSummary: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -83,6 +89,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.calendar = calendar
         self.notes = notes
         self.versions = versions
+        self.summary = summary
+        self.editedSummary = editedSummary
     }
 }
 
@@ -92,25 +100,50 @@ public struct TranscriptData: Sendable, Identifiable, Equatable {
     public let createdAt: Date
     public let speakerCount: Int
     public let segments: [SegmentData]
+    /// Speaker ID -> resolved person data. Dangling IDs (referencing
+    /// deleted Person records) are dropped during read-model resolution.
+    public let speakerAssignments: [Int: PersonData]
 
-    public init(id: UUID, createdAt: Date, speakerCount: Int, segments: [SegmentData]) {
+    public init(
+        id: UUID,
+        createdAt: Date,
+        speakerCount: Int,
+        segments: [SegmentData],
+        speakerAssignments: [Int: PersonData] = [:]
+    ) {
         self.id = id
         self.createdAt = createdAt
         self.speakerCount = speakerCount
         self.segments = segments
+        self.speakerAssignments = speakerAssignments
+    }
+
+    /// Returns the display name for a diarization speaker ID, or nil if unassigned.
+    public func speakerName(forID speakerID: Int) -> String? {
+        speakerAssignments[speakerID]?.name
     }
 }
 
 /// A single transcript segment mapped from `TranscriptSegmentRecord`.
 public struct SegmentData: Sendable, Identifiable, Equatable {
     public let id: UUID
+    /// Diarization cluster id (nil = no match).
+    public let speakerID: Int?
     public let speakerLabel: String
     public let startTime: TimeInterval
     public let endTime: TimeInterval
     public let text: String
 
-    public init(id: UUID, speakerLabel: String, startTime: TimeInterval, endTime: TimeInterval, text: String) {
+    public init(
+        id: UUID,
+        speakerID: Int? = nil,
+        speakerLabel: String,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        text: String
+    ) {
         self.id = id
+        self.speakerID = speakerID
         self.speakerLabel = speakerLabel
         self.startTime = startTime
         self.endTime = endTime
@@ -141,6 +174,10 @@ public struct AppSettingsData: Sendable, Equatable {
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
+    /// Whether to automatically generate a summary after transcription.
+    public var summarizeTranscripts: Bool
+    /// Whether to automatically guess speaker names after transcription.
+    public var guessSpeakerNames: Bool
 
     public init(
         customVocabulary: [String] = [],
@@ -152,7 +189,9 @@ public struct AppSettingsData: Sendable, Equatable {
         stopRecordingAutomatically: Bool = true,
         calendarNotificationMode: CalendarNotificationMode = .allMeetings,
         onboardingComplete: Bool = false,
-        enabledCalendarIDs: Set<String>? = nil
+        enabledCalendarIDs: Set<String>? = nil,
+        summarizeTranscripts: Bool = true,
+        guessSpeakerNames: Bool = true
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -164,6 +203,8 @@ public struct AppSettingsData: Sendable, Equatable {
         self.calendarNotificationMode = calendarNotificationMode
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
+        self.summarizeTranscripts = summarizeTranscripts
+        self.guessSpeakerNames = guessSpeakerNames
     }
 }
 
@@ -335,7 +376,7 @@ public extension DataStore {
         let transcript: TranscriptData? = if let preferredID = meeting.preferredTranscriptID,
                                              let record = meeting.transcripts.first(where: { $0.id == preferredID })
         {
-            mapTranscript(record)
+            try mapTranscript(record)
         } else {
             nil
         }
@@ -359,7 +400,9 @@ public extension DataStore {
             preferredTranscript: transcript,
             calendar: calendarContext(meetingID: id),
             notes: meeting.notes,
-            versions: transcriptVersions(meetingID: id)
+            versions: transcriptVersions(meetingID: id),
+            summary: meeting.summary,
+            editedSummary: meeting.editedSummary
         )
     }
 
@@ -412,7 +455,9 @@ public extension DataStore {
                 stopRecordingAutomatically: existing.stopRecordingAutomatically,
                 calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
                 onboardingComplete: existing.onboardingComplete,
-                enabledCalendarIDs: existing.enabledCalendarIDs
+                enabledCalendarIDs: existing.enabledCalendarIDs,
+                summarizeTranscripts: existing.summarizeTranscripts,
+                guessSpeakerNames: existing.guessSpeakerNames
             )
         }
         // Create the singleton with defaults
@@ -444,7 +489,9 @@ public extension DataStore {
             stopRecordingAutomatically: model.stopRecordingAutomatically,
             calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
             onboardingComplete: model.onboardingComplete,
-            enabledCalendarIDs: model.enabledCalendarIDs
+            enabledCalendarIDs: model.enabledCalendarIDs,
+            summarizeTranscripts: model.summarizeTranscripts,
+            guessSpeakerNames: model.guessSpeakerNames
         )
         mutate(&dto)
 
@@ -458,6 +505,8 @@ public extension DataStore {
         model.calendarNotificationModeRaw = dto.calendarNotificationMode.rawValue
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
+        model.summarizeTranscripts = dto.summarizeTranscripts
+        model.guessSpeakerNames = dto.guessSpeakerNames
         try save()
     }
 
@@ -515,11 +564,8 @@ public extension DataStore {
 
     /// Returns the full transcript data for a specific transcript version.
     func transcript(id transcriptID: UUID) throws -> TranscriptData? {
-        let descriptor = FetchDescriptor<TranscriptRecord>(
-            predicate: #Predicate { $0.id == transcriptID }
-        )
-        guard let record = try context.fetch(descriptor).first else { return nil }
-        return mapTranscript(record)
+        guard let record = try transcriptRecord(id: transcriptID) else { return nil }
+        return try mapTranscript(record)
     }
 
     // MARK: - Notes
@@ -635,22 +681,39 @@ public extension DataStore {
 
     // MARK: - Private Mappers
 
-    private func mapTranscript(_ record: TranscriptRecord) -> TranscriptData {
+    private func mapTranscript(_ record: TranscriptRecord) throws -> TranscriptData {
         let sortedSegments = record.segments.sorted(by: { $0.index < $1.index })
         let segments = sortedSegments.map { seg in
             SegmentData(
                 id: seg.id,
+                speakerID: seg.speakerID,
                 speakerLabel: seg.speakerLabel,
                 startTime: seg.startTime,
                 endTime: seg.endTime,
                 text: seg.text
             )
         }
+
+        // Resolve speaker assignments: fetch each referenced Person by ID, drop dangling IDs.
+        // Typically only 2-5 speakers, so individual fetches are more efficient than a
+        // full Person table scan.
+        let rawAssignments = record.speakerAssignments
+        var resolvedAssignments: [Int: PersonData] = [:]
+        for (speakerID, personID) in rawAssignments {
+            if let person = try fetchPerson(id: personID) {
+                resolvedAssignments[speakerID] = PersonData(
+                    id: person.id, name: person.name, email: person.email
+                )
+            }
+            // Dangling IDs (Person deleted) are silently dropped
+        }
+
         return TranscriptData(
             id: record.id,
             createdAt: record.createdAt,
             speakerCount: record.speakerCount,
-            segments: segments
+            segments: segments,
+            speakerAssignments: resolvedAssignments
         )
     }
 

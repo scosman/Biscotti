@@ -19,6 +19,13 @@ import SwiftData
     /// association will NOT overwrite the title with the event name.
     public var editedTitle: Bool = false
 
+    /// AI-generated or user-edited markdown meeting summary.
+    public var summary: String = ""
+
+    /// Whether the user has manually edited the summary. When `true`,
+    /// the auto-run will not overwrite it (mirrors `editedTitle` semantics).
+    public var editedSummary: Bool = false
+
     /// The recording's wall-clock duration in seconds, captured when the
     /// recording stops. `nil` for meetings that were never recorded (e.g.
     /// calendar-only entries) or recordings from before this field existed.

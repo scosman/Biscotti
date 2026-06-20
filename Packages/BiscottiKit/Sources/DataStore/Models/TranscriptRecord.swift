@@ -27,6 +27,17 @@ import SwiftData
     /// The calendar event the recording was mapped to at transcription time.
     public var mappedEventIdentifier: String?
 
+    /// JSON-encoded backing store for `speakerAssignments`. Maps diarization
+    /// speaker IDs to `Person.id` UUIDs. Same Data-backed pattern as `vocabularyUsedData`.
+    private var speakerAssignmentsData = Data()
+
+    /// Diarization speaker ID -> `Person.id` mapping. Empty = no assignments
+    /// (all show "Speaker N"). Resets to empty on re-transcription.
+    @Transient public var speakerAssignments: [Int: UUID] {
+        get { (try? JSONDecoder().decode([Int: UUID].self, from: speakerAssignmentsData)) ?? [:] }
+        set { speakerAssignmentsData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
+
     // MARK: Outputs
 
     public var language: String = ""

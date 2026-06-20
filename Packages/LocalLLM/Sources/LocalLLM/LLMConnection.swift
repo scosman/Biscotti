@@ -81,10 +81,18 @@ public actor LLMConnection {
 
         try guardReady()
 
-        return try await backend.countTokens(
+        let start = ContinuousClock.now
+        let count = try await backend.countTokens(
             system: system, user: user,
             applyChatTemplate: applyChatTemplate, thinking: thinking
         )
+        let elapsed = ContinuousClock.now - start
+        let elapsedMs = Double(elapsed.components.seconds) * 1000
+            + Double(elapsed.components.attoseconds) / 1e15
+        Self.logger.info(
+            "Token count roundtrip: \(String(format: "%.1f", elapsedMs)) ms (\(count) tokens)"
+        )
+        return count
     }
 
     // MARK: - Context reconfiguration

@@ -1,5 +1,6 @@
 import Foundation
 import LlamaSwift
+import os
 
 /// Reference-type wrapper around `StreamingChannelSplitter` so an `@Sendable`
 /// closure can capture and mutate it. The splitter runs synchronously inside
@@ -41,6 +42,17 @@ private let backendInitOnce: Void = {
     }
 }()
 
+// 8-bit (Q8_0) KV-cache experiment — LEFT DISABLED. KV cache stays 16-bit (F16).
+// HW testing on Apple-silicon/Metal found F16 is the right default:
+//  - Quantizing the V cache requires flash attention (llama.cpp constraint).
+//  - Flash attention can't be enabled for this Gemma model on Metal: the FA kernel
+//    at head_dim 256 needs ~36 KB threadgroup memory, over the 32 KB Apple-GPU limit
+//    (asserts: length(36864) must be <= 32768).
+//  - 8-bit K-only (the only Q8 variant that runs here) reduces KV memory but slows
+//    generation a lot — not worth the trade.
+// Flip experimentalKVCacheQ8 to true to re-test 8-bit K-only.
+private let experimentalKVCacheQ8 = false
+
 /// A single-model LLM engine backed by llama.cpp.
 ///
 /// Loads a GGUF model once and serves many independent single-turn generations.
@@ -63,6 +75,9 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     private var config: EngineConfig
     private var loadDuration: TimeInterval?
     private var isFirstGenerate = true
+    private static let log = Logger(
+        subsystem: "net.scosman.biscotti", category: "LLMEngine"
+    )
 
     /// Load a model and create a context.
     ///
@@ -178,6 +193,12 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             ctxParams.n_threads = Int32(threadCount)
             ctxParams.n_threads_batch = Int32(threadCount)
         }
+
+        // 8-bit K cache toggle — see `experimentalKVCacheQ8` above for findings.
+        if experimentalKVCacheQ8 {
+            ctxParams.type_k = GGML_TYPE_Q8_0
+        }
+
         guard let ctx = llama_init_from_model(model, ctxParams) else {
             throw LocalLLMError.contextCreationFailed(
                 "llama_init_from_model returned null (contextSize=\(config.contextSize))"
@@ -380,10 +401,16 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             promptTokenCount: promptTokenCount, contextSize: config.contextSize
         )
 
-        // 3. Prompt eval
+        // 3. Prompt eval (prefill)
         let evalStart = ContinuousClock.now
         try promptEval(tokens: tokens, ctx: ctx)
         let evalEnd = ContinuousClock.now
+        let prefillSeconds = Self.durationSeconds(from: evalStart, to: evalEnd)
+        let prefillTPS = prefillSeconds > 0
+            ? Double(promptTokenCount) / prefillSeconds : 0
+        Self.log.info(
+            "Prefill complete: \(Self.formatMs(prefillSeconds)) ms, \(promptTokenCount) tokens (\(String(format: "%.1f", prefillTPS)) t/s)"
+        )
 
         // 4. Build sampler
         let sampler = SamplerBuilder.buildChain(options: options, engineSeed: config.seed)
@@ -462,6 +489,12 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         }
 
         let genEnd = ContinuousClock.now
+        let genSeconds = Self.durationSeconds(from: genStart, to: genEnd)
+        let genTPS = genSeconds > 0
+            ? Double(generatedCount) / genSeconds : 0
+        Self.log.info(
+            "Generation complete: \(Self.formatMs(genSeconds)) ms, \(generatedCount) tokens (\(String(format: "%.1f", genTPS)) t/s)"
+        )
 
         // 6. Post-process
         let parsed = OutputParser.parse(
@@ -647,5 +680,10 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     ) -> TimeInterval {
         let duration = end - start
         return Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+
+    /// Format a duration in seconds as a millisecond string (e.g. "123.4").
+    private static func formatMs(_ seconds: TimeInterval) -> String {
+        String(format: "%.1f", seconds * 1000)
     }
 }

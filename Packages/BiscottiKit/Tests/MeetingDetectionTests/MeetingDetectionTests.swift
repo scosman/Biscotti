@@ -67,8 +67,8 @@ struct HeuristicTests {
         #expect(collector.events.isEmpty)
     }
 
-    @Test("Input only does not trigger in-call")
-    func inputOnlyNoEvent() async {
+    @Test("Mic (input) alone triggers detection — output is not required")
+    func inputAloneTriggersDetection() async {
         let source = FakeActivitySource()
         let catalog = FakeMeetingCatalog(
             meetingBundleIDs: ["us.zoom.xos"],
@@ -81,17 +81,22 @@ struct HeuristicTests {
         collector.start(from: detector)
         detector.start()
 
+        // Mic on, speaker off: a watch-listed app holding the mic IS the
+        // meeting signal. Output is deliberately not part of the signal.
         source.emit([makeProcess(
             bundleID: "us.zoom.xos",
             isRunningInput: true,
             isRunningOutput: false
         )])
-        await collector.settle()
-        detector.stop()
-        await collector.settle()
-        collector.cancel()
+        await collector.waitForEvents(count: 1)
 
-        #expect(collector.events.isEmpty)
+        #expect(collector.events == [
+            .started(app: DetectedApp(
+                bundleID: "us.zoom.xos", displayName: "Zoom"
+            ))
+        ])
+        detector.stop()
+        collector.cancel()
     }
 
     @Test("No event for non-watchlist app")
@@ -488,80 +493,36 @@ struct MicStopDebounceTests {
     }
 }
 
-// MARK: - Start flap tolerance tests
+// MARK: - Start sustain semantics
 
-@Suite("MeetingDetection — Start Flap Tolerance")
+@Suite("MeetingDetection — Start Sustain")
 @MainActor
-struct StartFlapToleranceTests {
-    @Test("flap during start window then steady in-call emits started")
-    func flapDuringStartWindowThenSteady() async {
+struct StartSustainTests {
+    @Test("Mic must stay up: a drop during the start window aborts (no started)")
+    func micDropDuringStartWindowAborts() async {
         let source = FakeActivitySource()
         let catalog = FakeMeetingCatalog(
             meetingBundleIDs: ["us.zoom.xos"],
             displayNames: ["us.zoom.xos": "Zoom"]
         )
-        // ImmediateClock: debounce fires quickly but not before buffered
-        // snapshots are processed (the for-await loop drains the
-        // buffered snapshots before yielding to the debounce Task).
-        let detector = makeImmediateDetector(
-            catalog: catalog, source: source
-        )
+        // NeverClock: the sustained-mic timer never fires on its own, so a
+        // `.started` could only appear if the engine promoted WITHOUT a
+        // sustained mic. The mid-window mic drop must abort the pending
+        // start back to idle — detection is edge-driven with no
+        // instantaneous resolve check.
+        let detector = makeNeverDetector(catalog: catalog, source: source)
         let collector = EventCollector()
         collector.start(from: detector)
         detector.start()
 
-        // Sequence: in-call -> flap (not in-call) -> back to in-call
-        // Emit all three rapidly so they're buffered before the start
-        // debounce Task resolves.
         source.emit([makeProcess(
             bundleID: "us.zoom.xos",
             isRunningInput: true,
             isRunningOutput: true
         )])
-        source.emit([makeProcess(
-            bundleID: "us.zoom.xos",
-            isRunningInput: false,
-            isRunningOutput: true
-        )])
-        source.emit([makeProcess(
-            bundleID: "us.zoom.xos",
-            isRunningInput: true,
-            isRunningOutput: true
-        )])
-        await collector.waitForEvents(count: 1)
-
-        let zoom = DetectedApp(
-            bundleID: "us.zoom.xos", displayName: "Zoom"
-        )
-        #expect(collector.events == [.started(app: zoom)])
-
-        detector.stop()
         await collector.settle()
-        collector.cancel()
-    }
 
-    @Test("in-call briefly then genuinely idle at resolve does not emit started")
-    func genuinelyIdleAtResolveNoStarted() async {
-        let source = FakeActivitySource()
-        let catalog = FakeMeetingCatalog(
-            meetingBundleIDs: ["us.zoom.xos"],
-            displayNames: ["us.zoom.xos": "Zoom"]
-        )
-        // ImmediateClock so the debounce fires quickly.
-        let detector = makeImmediateDetector(
-            catalog: catalog, source: source
-        )
-        let collector = EventCollector()
-        collector.start(from: detector)
-        detector.start()
-
-        // Brief in-call then immediately idle — debounce should see
-        // latestIsInCall == false and not emit .started.
-        source.emit([makeProcess(
-            bundleID: "us.zoom.xos",
-            isRunningInput: true,
-            isRunningOutput: true
-        )])
+        // Mic drops before the sustained window elapses.
         source.emit([makeProcess(
             bundleID: "us.zoom.xos",
             isRunningInput: false,
@@ -569,15 +530,11 @@ struct StartFlapToleranceTests {
         )])
         await collector.settle()
 
-        // No .started because the app was idle at resolve time
-        let startedEvents = collector.events.filter {
-            if case .started = $0 { return true }; return false
-        }
-        #expect(startedEvents.isEmpty)
-
         detector.stop()
         await collector.settle()
         collector.cancel()
+
+        #expect(collector.events.isEmpty)
     }
 }
 

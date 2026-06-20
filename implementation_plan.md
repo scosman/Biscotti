@@ -119,12 +119,13 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **Depends on:** Project 4 (something to ship). Off the feature critical path — can run any time post-MVP, whenever we want to ship to real users.
 - **Risk:** **medium.**
 
-### Project 10 — Intelligence (LLM)  ·  [P2]
+### Project 10 — Intelligence (LLM)  ·  [partially built]
 - **Archetype:** library + feature.
 - **Delivers:** LLM summaries, action items, speaker-name inference, and vocab extraction from invites.
-- **In scope:** the `Intelligence` package (provider abstraction — local via `LocalLLM` + external OpenAI-compatible; the four features); `AppCore` additions (invoke); `MeetingDetailUI` additions (render summaries/action items, speaker-name UI); `SettingsUI` additions (provider/API-key config); `DataStore` additions (store outputs).
-- **Depends on:** Project 4 (transcripts), Project 3. **Note:** the `LocalLLM` runtime and `BiscottiLLM.xpc` service are already graduated and hardware-validated (via the `graduate_llm_package` spec project); Project 10 consumes them through the `Intelligence` package.
-- **Risk:** **high.**
+- **Status:** The **`llm_features` spec project** built the core AI features ahead of this roadmap entry: **summarization** (streamed, editable, auto-run + manual generate/regenerate) and **speaker-name inference** (LLM-based + manual mapping sheet). These are implemented as the `Intelligence` module in `BiscottiKit` (not a separate package), wired into `AppCore` (auto-run after transcription), `MeetingDetailUI` (Summary tab, speaker names in transcript, mapping sheet), and `SettingsUI` (AI Enhancements section with toggles + model download). `DataStore` additions (summary, editedSummary, speakerAssignments, allPersonData) are also built.
+- **Remaining scope:** provider abstraction (external OpenAI-compatible provider + API-key config in Settings), vocab extraction from invites.
+- **Depends on:** Project 4 (transcripts), Project 3. **Note:** the `LocalLLM` runtime and `BiscottiLLM.xpc` service are already graduated and hardware-validated (via the `graduate_llm_package` spec project).
+- **Risk:** **medium** (core features built; remaining work is the provider abstraction and vocab extraction).
 
 ### Project 11 — Auto-Speaker Identification  ·  [P2]
 - **Archetype:** library + feature (deepens Transcription's speaker smarts).
@@ -177,7 +178,7 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 | 7 | Home, Library & Search | feature/integration | yes | 4,5 | low-med |
 | 8 | Onboarding / Settings / Vocab | feature/integration | yes | 4,5,1 | medium |
 | 9 | Distribution & Release | release-enablement | ships | 4 | medium · post-MVP |
-| 10 | Intelligence (LLM) | library+feature | yes | 4,3 | high · P2 |
+| 10 | Intelligence (LLM) | library+feature | yes | 4,3 | medium · partially built |
 | 11 | Auto-Speaker Identification | library+feature | yes | 1,3,4 | high · P2 |
 | 12 | iCloud Sync | feature/integration | yes | 3,4 | med-high · P2 |
 | 13 | Power-User & Storage Polish | feature/integration | yes | 4 | low-med · P2/P3 |

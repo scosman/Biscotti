@@ -141,11 +141,61 @@ struct ScriptShapeTests {
         }
     }
 
+    @Test("AI Features script has a non-empty id and title")
+    func aiFeaturesIdentity() {
+        let script = TestScript.aiFeatures
+        #expect(!script.id.isEmpty)
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "ai_features")
+    }
+
+    @Test("AI Features script has exactly 21 steps")
+    func aiFeaturesStepCount() {
+        #expect(TestScript.aiFeatures.steps.count == 21)
+    }
+
+    @Test("AI Features step IDs match the canonical set")
+    func aiFeaturesStepIDs() {
+        let ids = Set(TestScript.aiFeatures.steps.map(\.id))
+        let expected: Set = [
+            "ai_setup",
+            "ai_settings_section",
+            "ai_settings_no_model",
+            "ai_model_download",
+            "ai_toggles_persist",
+            "ai_record_setup",
+            "ai_auto_speaker_id",
+            "ai_auto_summary_stream",
+            "ai_summary_speaker_names",
+            "ai_summary_edit",
+            "ai_regenerate_edited_confirm",
+            "ai_regenerate_result",
+            "ai_regenerate_no_confirm",
+            "ai_speaker_link_opens_sheet",
+            "ai_manual_rename",
+            "ai_manual_unassign",
+            "ai_model_free_setup",
+            "ai_model_free_no_auto",
+            "ai_model_free_manual",
+            "ai_summary_empty_generate",
+            "ai_status_indicator"
+        ]
+        #expect(ids == expected)
+    }
+
+    @Test("Every step ID in AI Features is non-empty")
+    func aiFeaturesStepIDsNonEmpty() {
+        for step in TestScript.aiFeatures.steps {
+            #expect(!step.id.isEmpty, "Empty step ID in AI Features script")
+        }
+    }
+
     @Test("All step IDs across all scripts are unique")
     func allStepIDsUnique() {
         let allSteps = TestScript.audioCapture.steps
             + TestScript.transcription.steps
             + TestScript.localLLM.steps
+            + TestScript.aiFeatures.steps
         let ids = allSteps.map(\.id)
         let uniqueIDs = Set(ids)
         #expect(ids.count == uniqueIDs.count, "Duplicate step IDs found")
@@ -157,7 +207,8 @@ struct ScriptShapeTests {
         #expect(ids.contains("audio_capture"))
         #expect(ids.contains("transcription"))
         #expect(ids.contains("local_llm"))
-        #expect(allScripts.count == 3)
+        #expect(ids.contains("ai_features"))
+        #expect(allScripts.count == 4)
     }
 
     @Test("Step IDs within Audio Capture are unique")
@@ -175,6 +226,12 @@ struct ScriptShapeTests {
     @Test("Step IDs within Local LLM are unique")
     func localLLMInternalUniqueness() {
         let ids = TestScript.localLLM.steps.map(\.id)
+        #expect(ids.count == Set(ids).count)
+    }
+
+    @Test("Step IDs within AI Features are unique")
+    func aiFeaturesInternalUniqueness() {
+        let ids = TestScript.aiFeatures.steps.map(\.id)
         #expect(ids.count == Set(ids).count)
     }
 }

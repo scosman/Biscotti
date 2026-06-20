@@ -41,7 +41,6 @@ This directly answers the overview's open question ("small package vs. component
 │   ├── AudioCapture/              # own package (reason 2 + 3)
 │   ├── Transcription/             # own package (reason 1: argmax-oss-swift; +2, +3)
 │   ├── LocalLLM/                  # own package (reason 1: llama.cpp; graduated from experiments/llm)
-│   └── Intelligence/   [P2]       # own package (reason 1: consumes LocalLLM)
 ├── App/                           # the Xcode project — thin glue only
 │   ├── Biscotti (app target)         # composition root + Apple-platform glue
 │   ├── BiscottiTranscriber (.xpc)    # XPC service target; links Transcription
@@ -64,8 +63,8 @@ L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI
                     MenuBarUI · OnboardingUI · SettingsUI            (+ DesignSystem)
 L2  Coordination    AppCore  (the headless "background app" engine)
 L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary
-L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem
-        engines     AudioCapture(pkg) · Transcription(pkg) · LocalLLM(pkg) · Intelligence(pkg,P2)
+L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem · Intelligence
+        engines     AudioCapture(pkg) · Transcription(pkg) · LocalLLM(pkg)
 ```
 
 ---
@@ -98,23 +97,23 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 
 #### 3. LocalLLM  ·  *own package*  ·  [graduated]
 - **Home:** own package (`Packages/LocalLLM`), graduated from `experiments/llm`.
-- **Owns:** on-device LLM inference over llama.cpp/Gemma 4 — the runtime engine that the future `Intelligence` package will consume.
-- **Provides:** `LLMService`/`LLMConnection` actor API (scoped + explicit lifecycle), `.inProcess` and `.hosted(serviceName:)` backends, `LLMEngine` (buffered + streaming generation, thinking mode, sampled decoding), `GemmaChatTemplate`, `ModelDownloader`, CLI (`localllm`). The production transport — `BiscottiLLM.xpc` (XPC service host, mirroring BiscottiTranscriber) — is built and embedded in ManualTestApp ahead of Project 10.
-- **Out of scope:** provider abstraction, external providers, summary/action-item/speaker-name *product features* (those are Intelligence/Project 10).
+- **Owns:** on-device LLM inference over llama.cpp/Gemma 4 — the runtime engine that the `Intelligence` module consumes.
+- **Provides:** `LLMService`/`LLMConnection` actor API (scoped + explicit lifecycle), `.inProcess` and `.hosted(serviceName:)` backends, `LLMEngine` (buffered + streaming generation, thinking mode, sampled decoding), `GemmaChatTemplate`, `ModelDownloader`, CLI (`localllm`). The production transport — `BiscottiLLM.xpc` (XPC service host, mirroring BiscottiTranscriber) — is built and embedded in ManualTestApp and consumed by the `Intelligence` module.
+- **Out of scope:** provider abstraction, external providers, product features (those are in the `Intelligence` module).
 - **Depends on:** `llama.swift` (llama.cpp SPM wrapper), `swift-argument-parser` (CLI only). No internal deps.
 - **Tested by:** unit tests (MockEngine + InProcessBackend); AI integration tests (`make test-ai`, model-backed); ManualTestApp `Local LLM` tab for the XPC path (hardware-validated).
 - **Deep-dive risk:** **medium** (runtime is validated; XPC path validated on hardware via ManualTestApp).
 - **From:** `experiments/llm`.
 
-#### 4. Intelligence  ·  *own package*  ·  [P2]
-- **Home:** own package (`Packages/Intelligence`).
-- **Owns:** LLM-powered enhancements over transcripts. Consumes `LocalLLM` for the local provider.
-- **Must provide:** summaries, action-item extraction, speaker-name inference, custom-vocab extraction from invites; a pluggable provider abstraction with a **local** (via `LocalLLM`) and an **external** (OpenAI-compatible base URL + key) implementation.
-- **Out of scope:** the data store, transcription itself, UI, the LLM runtime (that's `LocalLLM`).
-- **Depends on:** `LocalLLM` (local provider); consumes transcript values produced upstream. No other internal deps.
-- **Tested by:** unit tests with stubbed providers; integration test against a small local model.
-- **Deep-dive risk:** **high**, but deferred (P2).
-- **From:** none (new; builds on `LocalLLM`).
+#### 4. Intelligence  ·  *module in BiscottiKit*  ·  [built]
+- **Home:** module in `BiscottiKit` (not a separate package — the LLM features project placed it here as a target consuming `LocalLLM` via BiscottiKit's package dependency).
+- **Owns:** LLM-powered enhancements over transcripts: summarization (streamed markdown with action items) and speaker-name inference (diarization speaker IDs mapped to real people via transcript + invitee evidence). Consumes `LocalLLM` for on-device inference via the `BiscottiLLM.xpc` service.
+- **Provides:** `Intelligence` service (orchestration: `runAutoEnhancements`, `generateSummary`, download state), `Summarizer` (streamed summary generation), `SpeakerIdentifier` (speaker-to-person mapping), `SpeakerMappingParser` (defensive line-oriented parsing), `TranscriptFormatter` (turn-by-turn transcript rendering for prompts), `IntelligencePrompts` (Swift-constant prompt catalog), model download/presence status. Wired into `AppCore` (auto-run after transcription) and surfaced in `MeetingDetailUI` (Summary tab, speaker names in transcript, mapping sheet) and `SettingsUI` (AI Enhancements section with toggles + model download).
+- **Out of scope:** transcription itself, the LLM runtime (that's `LocalLLM`), provider abstraction / external providers (future).
+- **Depends on:** `LocalLLM` (local provider), `DataStore` (reads transcripts, persists generated summaries and speaker assignments).
+- **Tested by:** unit tests with fakes/stubs (IntelligenceTests) covering gating, ordering, edited-summary guard, streaming, parser edge cases, download state machine, cancellation.
+- **Deep-dive risk:** **medium** (core features built and tested; prompt tuning pending hardware validation).
+- **From:** none (new; builds on `LocalLLM`). Built by the `llm_features` spec project.
 
 ### Foundation modules (in `BiscottiKit`)
 
@@ -214,9 +213,9 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 
 #### 14. AppCore  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the headless "background app" engine — the flows that run with no window open.
-- **Must provide:** wire detection → notification → recording → transcription into coherent flows ("meeting app started → prompt → record → on stop, queue transcription"); own app-wide run state the UIs observe; drive auto-stop and the recording/upcoming/recent data the menu bar shows; remain operational with no window. **[P2]** dispatch global-shortcut actions; **[P2]** invoke Intelligence features.
+- **Must provide:** wire detection → notification → recording → transcription → AI enhancements into coherent flows ("meeting app started → prompt → record → on stop, queue transcription → auto speaker-ID + summary"); own app-wide run state the UIs observe; drive auto-stop and the recording/upcoming/recent data the menu bar shows; remain operational with no window. **[P2]** dispatch global-shortcut actions.
 - **Out of scope:** rendering (UI modules), low-level capabilities (delegates to services), Apple-lifecycle glue (app target).
-- **Depends on:** Recording, MeetingDetection, TranscriptionService, Calendar, Notifications, DataStore. **[P2]** Intelligence.
+- **Depends on:** Recording, MeetingDetection, TranscriptionService, Calendar, Notifications, DataStore, Intelligence.
 - **Tested by:** unit tests with stubbed services — the core of the app is validated headlessly, no UI.
 - **Deep-dive risk:** **medium** (orchestration is where edge cases live).
 - **From:** none (new).
@@ -249,8 +248,8 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 #### 18. MeetingDetailUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the single-meeting screen.
-- **Must provide:** render a meeting's diarized transcript, metadata (title/participants/times), notes, and calendar context; audio playback; transcript-version switching + a re-transcribe action; event-association correction entry point.
-- **Depends on:** DataStore, TranscriptionService (re-transcribe/status), AppCore, DesignSystem.
+- **Must provide:** render a meeting's diarized transcript, metadata (title/participants/times), notes, and calendar context; audio playback; transcript-version switching + a re-transcribe action; event-association correction entry point; **Summary tab** (streamed/editable markdown summary with generate/regenerate); **speaker-name display** (resolved names replacing "Speaker N" in transcript, clickable speaker links); **speaker mapping sheet** (manual speaker-to-person assignment, works without a model).
+- **Depends on:** DataStore, TranscriptionService (re-transcribe/status), AppCore, Intelligence, DesignSystem.
 - **Tested by:** view-model unit tests; previews.
 - **Deep-dive risk:** **medium** (richest screen). **From:** none.
 
@@ -277,8 +276,8 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 #### 22. SettingsUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** settings screens.
-- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle. **[P3]** audio file-usage view + deletion.
-- **Depends on:** Calendar, Vocabulary, DataStore, DesignSystem.
+- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle; **AI Enhancements section** (summarize/speaker-name toggles + model download row with progress). **[P3]** audio file-usage view + deletion.
+- **Depends on:** Calendar, Vocabulary, DataStore, Intelligence, DesignSystem.
 - **Tested by:** view-model unit tests.
 - **Deep-dive risk:** **low.** **From:** none.
 
@@ -325,8 +324,9 @@ graph TD
     CORE[AppCore]
     REC[Recording]; DET[MeetingDetection]; TS[TranscriptionService]; CAL[Calendar]; NOTIF[Notifications]; VOC[Vocabulary]
     STORE[DataStore]; PERM[Permissions]; RC[RemoteConfig]
+    INT[Intelligence]
   end
-  AUD[(AudioCapture pkg)]; TRX[(Transcription pkg)]; LLM[(LocalLLM pkg)]; INT[(Intelligence pkg P2)]
+  AUD[(AudioCapture pkg)]; TRX[(Transcription pkg)]; LLM[(LocalLLM pkg)]
 
   APP --> SHELL & MENU & CORE & STORE
   XPC --> TRX
@@ -334,15 +334,15 @@ graph TD
   SHELL --> HOME & RECUI & DETAIL & LIST & CORE & DS
   HOME --> CORE & STORE & CAL & DS
   RECUI --> CORE & REC & DS
-  DETAIL --> STORE & TS & CORE & DS
+  DETAIL --> STORE & TS & CORE & INT & DS
   LIST --> STORE & CORE & DS
   MENU & ONB & SET --> CORE & DS
   ONB --> PERM & CAL & TS
-  SET --> CAL & VOC & STORE
+  SET --> CAL & VOC & STORE & INT
   MENU --> STORE
   CORE --> REC & DET & TS & CAL & NOTIF & STORE
-  INT --> LLM
-  CORE -.P2.-> INT
+  INT --> LLM & STORE
+  CORE --> INT
   REC --> AUD & STORE & PERM
   DET --> AUD & RC
   TS --> TRX & STORE & VOC & PERM
@@ -351,7 +351,7 @@ graph TD
   VOC --> STORE
 ```
 
-No cycles. Leaves: `DataStore`, `Permissions`, `RemoteConfig`, `DesignSystem`, and the four engine packages.
+No cycles. Leaves: `DataStore`, `Permissions`, `RemoteConfig`, `DesignSystem`, and the three engine packages.
 
 ---
 
@@ -381,7 +381,7 @@ Not components — conventions every component follows, recorded so they don't f
 
 | Future capability | Home | Notes |
 |---|---|---|
-| LLM summaries / action items / speaker-naming / vocab-extraction | **Intelligence** (new pkg, consumes **LocalLLM**) + AppCore + MeetingDetailUI | Provider abstraction (local via LocalLLM + external). LocalLLM runtime + BiscottiLLM.xpc already graduated. |
+| ~~LLM summaries / action items / speaker-naming~~ | ~~Intelligence + AppCore + MeetingDetailUI + SettingsUI~~ | **Built** by the `llm_features` spec project. Summarization (streamed, editable) + speaker-name inference are live; auto-run after transcription; Settings AI section with model download. **Remaining future:** provider abstraction (external OpenAI-compatible provider), vocab extraction from invites. |
 | iCloud/CloudKit sync | **DataStore** (config) | SwiftData sync option; not a new package. |
 | Global keyboard shortcut | **Biscotti app** (glue) + AppCore (dispatch) | Mostly Apple glue. |
 | Per-recording manual vocab | **Vocabulary** + MeetingDetailUI/SettingsUI | Extends existing modules. |
@@ -403,4 +403,4 @@ The package-vs-module calls, with their resolutions:
 2. **Recording / MeetingDetection split from AudioCapture.** **Kept** — the low-level engine (package) stays separate from the app-level services (modules) so the engine remains app/data-free and reusable.
 3. **DataStore as one module** (vs. splitting pure model types from the store/queries). **DECIDED: one module** — idiomatic for SwiftData `@Model`; the boundary-crossing data already uses plain `Sendable` DTOs from the engine packages, so the usual reason to split doesn't apply here. *Escape hatch:* if the DataStore build project hits real view-model-testing or strict-concurrency friction with live `@Model` objects, it may extract a pure `Models` leaf + mappers then — an internal, additive refactor (new leaf below DataStore; type-only dependents repoint), not a re-topology.
 4. **One UI module per screen** (Home, Recording, MeetingDetail, MeetingList, plus MenuBar/Onboarding/Settings), with `AppShellUI` composing the window screens. **Chosen over a single `AppWindowUI`** so screens come online in different Projects (MVP ships Recording + MeetingDetail + basic List + Shell; Home arrives later), each view-model unit-tests in isolation, and no screen becomes a god-module. Targets are cheap; this is the granularity sweet spot for UI. Collapse only if a screen is too thin to warrant its own module. *(SearchUI was originally planned as a separate screen module but was folded into MeetingListUI's in-place search mode during the Meetings 3-pane project.)*
-5. **Intelligence as its own package** — **kept** (consumes `LocalLLM`; P2, easy to revisit). The `LocalLLM` runtime itself is now a graduated package (`Packages/LocalLLM`), with `BiscottiLLM.xpc` built ahead of Project 10.
+5. **Intelligence as a BiscottiKit module** — originally planned as its own package, but built as a module in `BiscottiKit` by the `llm_features` spec project (the `LocalLLM` package dependency is on `BiscottiKit`, so no separate package was needed). The `LocalLLM` runtime itself is a graduated package (`Packages/LocalLLM`), with `BiscottiLLM.xpc` built and hardware-validated.

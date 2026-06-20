@@ -25,11 +25,13 @@ let package = Package(
         .library(name: "HomeUI", targets: ["HomeUI"]),
         .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
-        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"])
+        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
+        .library(name: "Intelligence", targets: ["Intelligence"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
+        .package(name: "LocalLLM", path: "../LocalLLM"),
         .package(url: "https://github.com/scosman/swift-markdown-engine", revision: "6edaa33637bcfc39272415f635c5f2ed6ff2853b")
     ],
     targets: [
@@ -473,6 +475,23 @@ let package = Package(
         .testTarget(
             name: "MarkdownEditorUITests",
             dependencies: ["MarkdownEditorUI"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Intelligence",
+            dependencies: [
+                "DataStore",
+                .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "IntelligenceTests",
+            dependencies: [
+                "Intelligence",
+                "DataStore",
+                .product(name: "Transcription", package: "Transcription")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

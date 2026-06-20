@@ -8,19 +8,23 @@ The in-process owner of all Biscotti LLM scenario logic. BiscottiKit target depe
 
 ## File layout (`Packages/BiscottiKit/Sources/Intelligence/`)
 ```
-Intelligence.swift            // @MainActor @Observable service; public API; orchestration
+Intelligence.swift            // @MainActor @Observable service; public API; orchestration + download state machine
 EnhancementStatus.swift       // status + ModelDownloadState + AISettings enums
 LLMRunning.swift              // LLMRunning / LLMSession protocols
 LiveLLMRunning.swift          // real impl over LLMService.withConnection / LLMConnection
 ModelProviding.swift          // ModelProviding protocol
 LiveModelProvider.swift       // real impl over ModelDownloader + LocalLLMPaths
-ModelManager.swift            // download state machine (drives ModelDownloadState)
 IntelligencePrompts.swift     // Swift-constant prompt catalog (system prompts + user builders)
 TranscriptFormatter.swift     // segments + name map -> plain-text turns
 SpeakerMappingParser.swift    // "idx | name | email" line parser
 SpeakerIdentifier.swift       // speaker-ID step (build -> generate -> parse -> resolve -> persist)
 Summarizer.swift              // summary step (build -> stream -> persist)
 ```
+
+> **Note:** The original design listed a separate `ModelManager.swift` for the download
+> state machine. In implementation, the download state machine was inlined into
+> `Intelligence.swift` — the logic is small (a single `downloadModel()` method +
+> `refreshModelState()`) and didn't warrant a separate type.
 
 ## Orchestration — `runAutoEnhancements(meetingID:)`
 ```

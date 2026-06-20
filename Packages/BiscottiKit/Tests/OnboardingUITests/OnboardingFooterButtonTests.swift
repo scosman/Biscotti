@@ -5,7 +5,7 @@ import Permissions
 import Testing
 @testable import OnboardingUI
 
-@Suite("OnboardingViewModel — Footer button state")
+@Suite("OnboardingViewModel -- Footer button state")
 @MainActor
 struct OnboardingFooterButtonTests {
     // MARK: - Welcome & Done always show Continue
@@ -47,137 +47,76 @@ struct OnboardingFooterButtonTests {
         )
     }
 
-    // MARK: - Launch at Login shows custom (No/Yes)
+    // MARK: - Permissions: Skip until all four granted
 
-    @Test("launch at login step shows custom footer")
-    func launchAtLoginStepShowsCustom() throws {
-        let fixture = try makeCoreFixture()
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-        #expect(
-            model.footerButton(for: .launchAtLogin) == .custom
-        )
-    }
-
-    // MARK: - Microphone: Skip before grant, Continue after
-
-    @Test("microphone step shows Skip before grant, Continue after")
-    func microphoneSkipThenContinue() async throws {
+    @Test("permissions shows Skip when no permissions granted")
+    func permissionsShowsSkipInitially() async throws {
         let fixture = try makeCoreFixture(
             micStatus: .notDetermined,
-            micRequestResult: true
-        )
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-
-        // Before granting: should show Skip
-        #expect(model.footerButton(for: .microphone) == .skip)
-        #expect(model.isCurrentStepComplete == false)
-
-        // Request permission (grants it)
-        await model.requestPermission()
-
-        // After granting: should show Continue
-        #expect(model.footerButton(for: .microphone) == .continueButton)
-        #expect(model.isCurrentStepComplete == true)
-    }
-
-    // MARK: - System Audio: Skip before grant, Continue after
-
-    @Test("system audio step shows Skip before grant, Continue after")
-    func systemAudioSkipThenContinue() async throws {
-        let fixture = try makeCoreFixture(
-            micStatus: .notDetermined
-        )
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-
-        // Before granting: should show Skip
-        #expect(model.footerButton(for: .systemAudio) == .skip)
-
-        // Walk to system audio step and simulate granting
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
-
-        // System audio may or may not be granted by the fake;
-        // verify the footer tracks the granted state correctly
-        let expectedButton: OnboardingViewModel.FooterButton =
-            model.systemAudioGranted ? .continueButton : .skip
-        #expect(
-            model.footerButton(for: .systemAudio) == expectedButton
-        )
-    }
-
-    // MARK: - Calendar: Skip before grant, Continue after
-
-    @Test("calendar step shows Skip before grant, Continue after")
-    func calendarSkipThenContinue() async throws {
-        let fixture = try makeCoreFixture(
             calendarAuthStatus: .notDetermined
         )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
 
-        // Before granting: should show Skip
-        #expect(model.footerButton(for: .calendar) == .skip)
-
-        // Walk to calendar step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-
-        // Still not granted
-        #expect(model.footerButton(for: .calendar) == .skip)
+        #expect(model.footerButton(for: .permissions) == .skip)
         #expect(model.isCurrentStepComplete == false)
-
-        // Simulate the OS granting access: update the fake event
-        // store's auth status before calling requestPermission
-        // (CalendarService re-reads authorizationStatus() after the
-        // request call).
-        fixture.fakeEventStore.authStatus = .authorized
-        await model.requestPermission()
-        #expect(model.calendarGranted == true)
-        #expect(model.footerButton(for: .calendar) == .continueButton)
-        #expect(model.isCurrentStepComplete == true)
     }
 
-    // MARK: - Notifications: Skip before grant, Continue after
-
-    @Test("notifications step shows Skip before grant, Continue after")
-    func notificationsSkipThenContinue() async throws {
+    @Test("permissions shows Skip when only some permissions granted")
+    func permissionsShowsSkipWhenPartiallyGranted() async throws {
         let fakeNotif = FakeNotificationAuthorizer(
             status: .notDetermined, requestResult: true
         )
         let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: true,
+            calendarAuthStatus: .notDetermined,
             notificationAuthorizer: fakeNotif
         )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
 
-        // Before granting: should show Skip
-        #expect(model.footerButton(for: .notifications) == .skip)
+        // Grant mic only
+        await model.requestMicrophone()
+        #expect(model.microphoneGranted == true)
+        #expect(model.footerButton(for: .permissions) == .skip)
 
-        // Walk to notifications step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
-
-        #expect(model.currentStep == .notifications)
-        #expect(model.footerButton(for: .notifications) == .skip)
-
-        // Request permission (grants it via fake authorizer)
-        await model.requestPermission()
+        // Grant notifications too -- still not all
+        await model.requestNotifications()
         #expect(model.notificationsGranted == true)
+        #expect(model.footerButton(for: .permissions) == .skip)
+    }
+
+    @Test("permissions shows Continue when all four granted")
+    func permissionsShowsContinueWhenAllGranted() async throws {
+        let fakeNotif = FakeNotificationAuthorizer(
+            status: .notDetermined, requestResult: true
+        )
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            micRequestResult: true,
+            calendarAuthStatus: .notDetermined,
+            notificationAuthorizer: fakeNotif
+        )
+        defer { fixture.cleanup() }
+        fixture.fakeRecorder.backing.probeResult = true
+        fixture.fakeEventStore.authStatus = .authorized
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
+
+        await model.requestMicrophone()
+        await model.requestSystemAudio()
+        await model.requestCalendar()
+        await model.requestNotifications()
+
+        #expect(model.allPermissionsGranted == true)
         #expect(
-            model.footerButton(for: .notifications)
-                == .continueButton
+            model.footerButton(for: .permissions) == .continueButton
         )
         #expect(model.isCurrentStepComplete == true)
     }
@@ -186,7 +125,9 @@ struct OnboardingFooterButtonTests {
 
     @Test("model download step shows Skip before download, Continue after")
     func modelDownloadSkipThenContinue() async throws {
-        let fixture = try makeCoreFixture()
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
@@ -195,10 +136,7 @@ struct OnboardingFooterButtonTests {
         #expect(model.footerButton(for: .modelDownload) == .skip)
 
         // Walk to model download step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
         #expect(model.currentStep == .modelDownload)
@@ -217,23 +155,36 @@ struct OnboardingFooterButtonTests {
 
     // MARK: - Already-granted permission shows Continue on entry
 
-    @Test("already-granted mic shows Continue on step entry")
-    func alreadyGrantedMicShowsContinue() async throws {
+    @Test("already-granted permissions show Continue on permissions step entry")
+    func alreadyGrantedShowsContinue() async throws {
+        let fakeNotif = FakeNotificationAuthorizer(
+            status: .authorized, requestResult: true
+        )
         let fixture = try makeCoreFixture(
-            micStatus: .authorized
+            micStatus: .authorized,
+            calendarAuthStatus: .authorized,
+            notificationAuthorizer: fakeNotif
         )
         defer { fixture.cleanup() }
+        // Pre-populate system audio and notifications state so
+        // syncLivePermissionState reads them as already-granted.
+        fixture.permissions.setSystemAudio(.approved)
+        fixture.permissions.noteNotifications(.authorized)
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Before entering mic step, result is .notDetermined
-        #expect(model.footerButton(for: .microphone) == .skip)
+        // Before entering permissions, result is .notDetermined
+        #expect(model.allPermissionsGranted == false)
 
-        // Advance into microphone step -- syncLivePermissionState fires
-        await model.advance() // welcome -> microphone
+        // Advance into permissions -- syncLivePermissionState fires for all four
+        await model.advance() // welcome -> permissions
         #expect(model.microphoneGranted == true)
+        #expect(model.calendarGranted == true)
+        #expect(model.notificationsGranted == true)
+        #expect(model.systemAudioGranted == true)
+        #expect(model.allPermissionsGranted == true)
         #expect(
-            model.footerButton(for: .microphone) == .continueButton
+            model.footerButton(for: .permissions) == .continueButton
         )
         #expect(model.isCurrentStepComplete == true)
     }

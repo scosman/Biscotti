@@ -4,7 +4,6 @@ import Calendar
 import DataStore
 import Foundation
 import Permissions
-import ServiceManagement
 import TranscriptionService
 
 /// A group of calendars from the same source, for the onboarding
@@ -26,50 +25,38 @@ public struct OnboardingCalendarGroup: Identifiable, Sendable, Equatable {
 }
 
 /// View model for the onboarding wizard. Drives a linear step state
-/// machine through Welcome -> permissions -> model download -> Done.
+/// machine through Welcome -> Grant access -> Calendar selection ->
+/// Download models -> Done.
 ///
 /// All permission requests, calendar selection, and model download are
-/// delegated to `AppCore` services. Every step is skippable (C3).
+/// delegated to `AppCore` services. Every step is skippable.
 @MainActor @Observable
-public final class OnboardingViewModel { // swiftlint:disable:this type_body_length
+public final class OnboardingViewModel {
     private let core: AppCore
 
     // MARK: - Step state machine
 
-    /// The steps in the onboarding wizard.
+    /// The screens in the onboarding wizard. Raw values provide the
+    /// fixed progress-bar positions (0-4 -> 20/40/60/80/100%).
     public enum Step: Int, CaseIterable, Sendable {
         case welcome = 0
-        case microphone
-        case systemAudio
-        case calendar
+        case permissions
         case calendarSelection
-        case notifications
         case modelDownload
-        case launchAtLogin
         case done
     }
 
     /// The current step.
     public private(set) var currentStep: Step = .welcome
 
-    /// Total visible steps for the progress indicator (calendar
-    /// selection is treated as part of the calendar step).
+    /// Total visible steps for the progress indicator.
     public var totalSteps: Int {
-        8
+        Step.allCases.count
     }
 
-    /// The 0-based progress index for the step indicator dots.
+    /// The 0-based progress index derived from the step's raw value.
     public var progressIndex: Int {
-        switch currentStep {
-        case .welcome: 0
-        case .microphone: 1
-        case .systemAudio: 2
-        case .calendar, .calendarSelection: 3
-        case .notifications: 4
-        case .modelDownload: 5
-        case .launchAtLogin: 6
-        case .done: 7
-        }
+        currentStep.rawValue
     }
 
     // MARK: - Per-step state
@@ -112,38 +99,32 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         calendarResult == .authorized
     }
 
+    /// Whether all four permissions have been granted.
+    public var allPermissionsGranted: Bool {
+        microphoneGranted && systemAudioGranted && calendarGranted && notificationsGranted
+    }
+
     /// The footer button to display for a given step.
     public enum FooterButton: Equatable, Sendable {
         /// Show the primary "Continue" button (step action is done).
         case continueButton
         /// Show the secondary "Skip" button (step action is not done).
         case skip
-        /// Show a custom footer (e.g. No/Yes for Launch at Login).
-        case custom
     }
 
     /// Returns the footer button state for the given step.
     ///
-    /// Gated permission/download steps show "Skip" before their
-    /// action is completed and "Continue" after. Non-gated steps
-    /// (welcome, calendar selection, done) always show Continue.
-    /// The launch-at-login step uses a custom No/Yes footer.
+    /// The Grant access screen shows "Skip" until all four permissions
+    /// are granted, then "Continue". Model download shows "Skip"
+    /// until download completes. Other screens always show Continue.
     public func footerButton(for step: Step) -> FooterButton {
         switch step {
         case .welcome, .calendarSelection, .done:
             .continueButton
-        case .microphone:
-            microphoneGranted ? .continueButton : .skip
-        case .systemAudio:
-            systemAudioGranted ? .continueButton : .skip
-        case .calendar:
-            calendarGranted ? .continueButton : .skip
-        case .notifications:
-            notificationsGranted ? .continueButton : .skip
+        case .permissions:
+            allPermissionsGranted ? .continueButton : .skip
         case .modelDownload:
             downloadComplete ? .continueButton : .skip
-        case .launchAtLogin:
-            .custom
         }
     }
 
@@ -195,94 +176,51 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
 
     /// Advance to the next step. Called by the Continue button.
     public func advance() async {
-        switch currentStep {
-        case .welcome:
-            currentStep = .microphone
-        case .microphone:
-            currentStep = .systemAudio
-        case .systemAudio:
-            currentStep = .calendar
-        case .calendar:
-            if calendarResult == .authorized {
-                let infos = await core.calendar.calendars()
-                calendarGroups = Self.groupCalendars(infos)
-                currentStep = .calendarSelection
-            } else {
-                currentStep = .notifications
-            }
-        case .calendarSelection:
-            currentStep = .notifications
-        case .notifications:
-            checkDiskSpace()
-            currentStep = .modelDownload
-        case .modelDownload:
-            currentStep = .launchAtLogin
-        case .launchAtLogin:
-            currentStep = .done
-        case .done:
-            await completeOnboarding()
-        }
-        syncLivePermissionState()
+        await proceed()
     }
 
     /// Skip the current step without performing its action.
     public func skip() async {
-        switch currentStep {
-        case .welcome:
-            currentStep = .microphone
-        case .microphone:
-            currentStep = .systemAudio
-        case .systemAudio:
-            currentStep = .calendar
-        case .calendar:
-            currentStep = .notifications
-        case .calendarSelection:
-            currentStep = .notifications
-        case .notifications:
-            checkDiskSpace()
-            currentStep = .modelDownload
-        case .modelDownload:
-            currentStep = .launchAtLogin
-        case .launchAtLogin:
-            currentStep = .done
-        case .done:
-            await completeOnboarding()
-        }
-        syncLivePermissionState()
+        await proceed()
     }
 
-    /// Request the permission for the current step.
-    public func requestPermission() async {
-        switch currentStep {
-        case .microphone:
-            let granted = await core.permissions.requestMicrophone()
-            microphoneResult = granted ? .authorized : .denied
-        case .systemAudio:
-            isValidatingSystemAudio = true
-            await core.requestSystemAudioPermission()
-            systemAudioResult = core.permissions.systemAudio
-            isValidatingSystemAudio = false
-        case .calendar:
-            // Request through CalendarService (which owns the EventKit
-            // seam) and map to PermissionState for the UI.
-            let authResult = await core.calendar.requestAccess()
-            switch authResult {
-            case .authorized:
-                calendarResult = .authorized
-            case .denied, .restricted:
-                calendarResult = .denied
-            case .notDetermined:
-                calendarResult = .notDetermined
-            }
-            // Also update Permissions so the settings pane stays consistent
-            core.permissions.noteCalendar(calendarResult)
-        case .notifications:
-            let granted = await core.permissions
-                .requestNotifications()
-            notificationsGranted = granted
-        default:
-            break
+    /// Request microphone permission. Called by the mic row's Grant control.
+    public func requestMicrophone() async {
+        let granted = await core.permissions.requestMicrophone()
+        microphoneResult = granted ? .authorized : .denied
+    }
+
+    /// Request system audio permission with tone-probe validation.
+    /// Called by the system audio row's Grant/Retry control.
+    public func requestSystemAudio() async {
+        isValidatingSystemAudio = true
+        await core.requestSystemAudioPermission()
+        systemAudioResult = core.permissions.systemAudio
+        isValidatingSystemAudio = false
+    }
+
+    /// Request calendar access. Called by the calendar row's Grant control.
+    public func requestCalendar() async {
+        // Request through CalendarService (which owns the EventKit
+        // seam) and map to PermissionState for the UI.
+        let authResult = await core.calendar.requestAccess()
+        switch authResult {
+        case .authorized:
+            calendarResult = .authorized
+        case .denied, .restricted:
+            calendarResult = .denied
+        case .notDetermined:
+            calendarResult = .notDetermined
         }
+        // Also update Permissions so the settings pane stays consistent
+        core.permissions.noteCalendar(calendarResult)
+    }
+
+    /// Request notification permission. Called by the notifications row's Grant control.
+    public func requestNotifications() async {
+        let granted = await core.permissions
+            .requestNotifications()
+        notificationsGranted = granted
     }
 
     /// Whether a calendar is enabled (checked).
@@ -358,30 +296,6 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
         core.permissions.openSystemAudioSettings()
     }
 
-    /// Set the launch-at-login preference. Persists to settings and
-    /// updates `SMAppService` registration (same path as SettingsViewModel).
-    public func setLaunchAtLogin(_ enabled: Bool) async {
-        do {
-            try await core.store.updateSettings { settings in
-                settings.launchAtLogin = enabled
-            }
-        } catch {
-            // Non-fatal: best-effort persistence
-        }
-
-        let service = SMAppService.mainApp
-        do {
-            if enabled {
-                try service.register()
-            } else {
-                try await service.unregister()
-            }
-        } catch {
-            // Non-fatal: service management may fail in
-            // sandboxed/debug environments.
-        }
-    }
-
     /// Complete onboarding: persist the flag and navigate to Home.
     public func completeOnboarding() async {
         await core.completeOnboarding()
@@ -408,17 +322,42 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
 
     // MARK: - Private
 
+    /// State-based forward navigation. Both `advance()` and `skip()`
+    /// delegate here -- the destination depends only on `currentStep`
+    /// and permission state, not on the user's button choice.
+    private func proceed() async {
+        switch currentStep {
+        case .welcome:
+            currentStep = .permissions
+        case .permissions:
+            if calendarResult == .authorized {
+                let infos = await core.calendar.calendars()
+                calendarGroups = Self.groupCalendars(infos)
+                currentStep = .calendarSelection
+            } else {
+                checkDiskSpace()
+                currentStep = .modelDownload
+            }
+        case .calendarSelection:
+            checkDiskSpace()
+            currentStep = .modelDownload
+        case .modelDownload:
+            currentStep = .done
+        case .done:
+            await completeOnboarding()
+        }
+        syncLivePermissionState()
+    }
+
     /// Reads the live system permission state for the current step
     /// so that already-granted permissions show the checkmark
     /// immediately (e.g. when re-running onboarding or when the
     /// user granted the permission outside the wizard).
     private func syncLivePermissionState() {
         switch currentStep {
-        case .microphone:
+        case .permissions:
             microphoneResult = core.permissions.microphone
-        case .systemAudio:
             systemAudioResult = core.permissions.systemAudio
-        case .calendar:
             switch core.calendar.auth {
             case .authorized:
                 calendarResult = .authorized
@@ -427,7 +366,6 @@ public final class OnboardingViewModel { // swiftlint:disable:this type_body_len
             case .notDetermined:
                 calendarResult = .notDetermined
             }
-        case .notifications:
             notificationsGranted =
                 core.permissions.notifications == .authorized
         default:

@@ -8,21 +8,20 @@ import Testing
 struct OnboardingSystemAudioTests {
     // MARK: - Validating flag
 
-    @Test("requestPermission on systemAudio toggles isValidating")
-    func requestPermissionTogglesValidating() async throws {
+    @Test("requestSystemAudio toggles isValidating")
+    func requestSystemAudioTogglesValidating() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to system audio step
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        // Walk to permissions step
+        await model.advance() // welcome -> permissions
 
         #expect(model.isValidatingSystemAudio == false)
 
         // Request triggers probe
-        await model.requestPermission()
+        await model.requestSystemAudio()
 
         // After completion, validating is false
         #expect(model.isValidatingSystemAudio == false)
@@ -37,10 +36,9 @@ struct OnboardingSystemAudioTests {
         fixture.fakeRecorder.backing.probeResult = true
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        await model.requestPermission()
+        await model.requestSystemAudio()
 
         #expect(model.systemAudioResult == .approved)
         #expect(model.systemAudioGranted == true)
@@ -53,10 +51,9 @@ struct OnboardingSystemAudioTests {
         fixture.fakeRecorder.backing.probeResult = false
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        await model.requestPermission()
+        await model.requestSystemAudio()
 
         #expect(model.systemAudioResult == .requestedNotVerified)
         #expect(model.systemAudioGranted == false)
@@ -64,55 +61,65 @@ struct OnboardingSystemAudioTests {
 
     // MARK: - No Validate button (implicit: no action for approved)
 
-    @Test("approved state in onboarding shows no Validate (just granted)")
-    func approvedStateNoValidate() async throws {
-        let fixture = try makeCoreFixture()
+    @Test("approved state shows Continue on permissions step")
+    func approvedStateShowsContinueForSystemAudio() async throws {
+        let fakeNotif = FakeNotificationAuthorizer(
+            status: .notDetermined, requestResult: true
+        )
+        let fixture = try makeCoreFixture(
+            micStatus: .authorized,
+            calendarAuthStatus: .authorized,
+            notificationAuthorizer: fakeNotif
+        )
         defer { fixture.cleanup() }
         fixture.fakeRecorder.backing.probeResult = true
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        // Grant it
-        await model.requestPermission()
+        // Grant all to check footer state
+        await model.requestSystemAudio()
         #expect(model.systemAudioGranted == true)
 
-        // Verify the step shows Continue (granted), not Skip
+        await model.requestNotifications()
+
+        // All granted -> Continue
         #expect(model.isCurrentStepComplete == true)
-        #expect(model.footerButton(for: .systemAudio) == .continueButton)
+        #expect(model.footerButton(for: .permissions) == .continueButton)
     }
 
     // MARK: - Non-blocking (Continue/Skip always available)
 
-    @Test("system audio step is non-blocking: skip always works")
-    func systemAudioNonBlockingSkip() async throws {
-        let fixture = try makeCoreFixture()
+    @Test("permissions step is non-blocking: skip always works")
+    func permissionsNonBlockingSkip() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        #expect(model.currentStep == .systemAudio)
+        #expect(model.currentStep == .permissions)
 
-        // Skip without requesting permission
+        // Skip without requesting any permission
         await model.skip()
-        #expect(model.currentStep == .calendar)
+        #expect(model.currentStep == .modelDownload)
     }
 
-    @Test("system audio step is non-blocking: advance works even if not approved")
-    func systemAudioNonBlockingAdvance() async throws {
-        let fixture = try makeCoreFixture()
+    @Test("permissions step is non-blocking: advance works even if not all approved")
+    func permissionsNonBlockingAdvance() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
         // Advance without requesting (footer shows Skip, but advance still works)
         await model.advance()
-        #expect(model.currentStep == .calendar)
+        #expect(model.currentStep == .modelDownload)
     }
 
     // MARK: - Fix permissions alert
@@ -133,16 +140,15 @@ struct OnboardingSystemAudioTests {
 
     // MARK: - No auto-probe on step entry
 
-    @Test("entering system audio step does not trigger a probe")
+    @Test("entering permissions step does not trigger a probe")
     func noAutoProbeOnStepEntry() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        #expect(model.currentStep == .systemAudio)
+        #expect(model.currentStep == .permissions)
         #expect(model.isValidatingSystemAudio == false)
         #expect(fixture.fakeRecorder.backing.probeSystemAudioWithToneCalled == false)
     }
@@ -155,10 +161,9 @@ struct OnboardingSystemAudioTests {
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> microphone
-        await model.advance() // microphone -> systemAudio
+        await model.advance() // welcome -> permissions
 
-        await model.requestPermission()
+        await model.requestSystemAudio()
         model.showFixPermissionsAlert = true
 
         model.resetForReplay()

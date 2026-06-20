@@ -11,7 +11,7 @@ struct OnboardingViewModelTests {
     // MARK: - Step advancement
 
     @Test("advances through all steps when calendar authorized")
-    func onboardingAdvancesThroughAllSteps() async throws {
+    func advancesThroughAllSteps() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .authorized
         )
@@ -21,26 +21,19 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .welcome)
         await model.advance()
-        #expect(model.currentStep == .microphone)
-        await model.advance()
-        #expect(model.currentStep == .systemAudio)
-        await model.advance()
-        #expect(model.currentStep == .calendar)
-        // Calendar authorized (synced from live state) -> calendarSelection
+        #expect(model.currentStep == .permissions)
+        // Grant calendar so calendarSelection appears
+        await model.requestCalendar()
         await model.advance()
         #expect(model.currentStep == .calendarSelection)
         await model.advance()
-        #expect(model.currentStep == .notifications)
-        await model.advance()
         #expect(model.currentStep == .modelDownload)
-        await model.advance()
-        #expect(model.currentStep == .launchAtLogin)
         await model.advance()
         #expect(model.currentStep == .done)
     }
 
     @Test("advances skipping calendar selection when denied")
-    func onboardingAdvancesSkippingCalendarSelection() async throws {
+    func advancesSkippingCalendarSelection() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied
         )
@@ -50,24 +43,16 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .welcome)
         await model.advance()
-        #expect(model.currentStep == .microphone)
-        await model.advance()
-        #expect(model.currentStep == .systemAudio)
-        await model.advance()
-        #expect(model.currentStep == .calendar)
-        // Calendar denied (synced from live state) -> skip calendarSelection
-        await model.advance()
-        #expect(model.currentStep == .notifications)
+        #expect(model.currentStep == .permissions)
+        // Calendar denied -> skip calendarSelection
         await model.advance()
         #expect(model.currentStep == .modelDownload)
-        await model.advance()
-        #expect(model.currentStep == .launchAtLogin)
         await model.advance()
         #expect(model.currentStep == .done)
     }
 
     @Test("skip skips permission without requesting")
-    func onboardingSkipSkipsPermission() async throws {
+    func skipSkipsPermission() async throws {
         let fixture = try makeCoreFixture(
             micStatus: .notDetermined,
             micRequestResult: false
@@ -75,18 +60,18 @@ struct OnboardingViewModelTests {
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        // microphoneResult starts as .notDetermined
 
-        await model.advance() // welcome -> microphone
-        #expect(model.currentStep == .microphone)
-        await model.skip() // skip microphone -> systemAudio
-        #expect(model.currentStep == .systemAudio)
-        // Mic was not requested -- state stays .notDetermined
+        await model.advance() // welcome -> permissions
+        #expect(model.currentStep == .permissions)
+        // microphoneResult starts as .notDetermined (synced from live state)
+        // Skip the entire permissions screen without requesting anything
+        await model.skip()
+        // Permission was not requested -- state reflects live state only
         #expect(model.microphoneResult == .notDetermined)
     }
 
     @Test("calendar selection shown when granted")
-    func onboardingCalendarSelectionShownWhenGranted() async throws {
+    func calendarSelectionShownWhenGranted() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .authorized,
             calendarInfos: [
@@ -100,15 +85,12 @@ struct OnboardingViewModelTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to calendar step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
+        await model.advance() // welcome -> permissions
 
-        #expect(model.currentStep == .calendar)
+        #expect(model.currentStep == .permissions)
 
-        // Request calendar access (already authorized)
-        await model.requestPermission()
+        // Request calendar access (already authorized via live state sync)
+        await model.requestCalendar()
         #expect(model.calendarResult == .authorized)
 
         // Advance should go to calendarSelection
@@ -117,7 +99,7 @@ struct OnboardingViewModelTests {
     }
 
     @Test("calendar selection skipped when denied")
-    func onboardingCalendarSelectionSkippedWhenDenied() async throws {
+    func calendarSelectionSkippedWhenDenied() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied
         )
@@ -125,48 +107,43 @@ struct OnboardingViewModelTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to calendar step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
+        await model.advance() // welcome -> permissions
 
         // Calendar is denied, so advance should skip selection
         await model.advance()
-        #expect(model.currentStep == .notifications)
+        #expect(model.currentStep == .modelDownload)
     }
 
     @Test("model download is skippable")
-    func onboardingModelDownloadSkippable() async throws {
-        let fixture = try makeCoreFixture()
+    func modelDownloadSkippable() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to modelDownload step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
-        await model.skip() // -> modelDownload
+        await model.advance() // welcome -> permissions
+        await model.skip() // -> modelDownload (calendar denied, skips calendarSelection)
 
         #expect(model.currentStep == .modelDownload)
         await model.skip()
-        #expect(model.currentStep == .launchAtLogin)
+        #expect(model.currentStep == .done)
     }
 
     @Test("model download sets isDownloading and updates status")
-    func onboardingModelDownloadProgress() async throws {
-        let fixture = try makeCoreFixture()
+    func modelDownloadProgress() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to modelDownload step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
+
+        #expect(model.currentStep == .modelDownload)
 
         await model.startDownload()
         // FakeTranscriber's ensureModelsDownloaded succeeds immediately
@@ -175,7 +152,7 @@ struct OnboardingViewModelTests {
     }
 
     @Test("completeOnboarding calls core.completeOnboarding")
-    func onboardingCompletePersistsFlag() async throws {
+    func completePersistsFlag() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
@@ -193,61 +170,39 @@ struct OnboardingViewModelTests {
     }
 
     @Test("progress index maps correctly for each step")
-    func onboardingProgressIndexMapsCorrectly() async throws {
-        let fixture = try makeCoreFixture()
+    func progressIndexMapsCorrectly() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
         #expect(model.progressIndex == 0) // welcome
         await model.advance()
-        #expect(model.progressIndex == 1) // microphone
-        await model.skip()
-        #expect(model.progressIndex == 2) // systemAudio
-        await model.skip()
-        #expect(model.progressIndex == 3) // calendar
-        await model.skip()
-        #expect(model.progressIndex == 4) // notifications
-        await model.skip()
-        #expect(model.progressIndex == 5) // modelDownload
-        await model.skip()
-        #expect(model.progressIndex == 6) // launchAtLogin
-        await model.skip()
-        #expect(model.progressIndex == 7) // done
+        #expect(model.progressIndex == 1) // permissions
+        await model.requestCalendar()
+        await model.advance()
+        #expect(model.progressIndex == 2) // calendarSelection
+        await model.advance()
+        #expect(model.progressIndex == 3) // modelDownload
+        await model.advance()
+        #expect(model.progressIndex == 4) // done
     }
 
-    @Test("disk check surfaces warning when insufficient")
-    func onboardingDiskCheckSurfacesWarning() async throws {
-        let fixture = try makeCoreFixture()
+    @Test("progress jumps 40% to 80% when calendar not granted")
+    func progressJumpsWhenCalendarNotGranted() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
-        // Inject low disk space (1 MB -- well below the 2000 MB threshold)
-        let lowDiskModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 1_048_576 }
-        )
+        let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to the model download step (advance triggers checkDiskSpace)
-        await lowDiskModel.advance() // welcome -> microphone
-        await lowDiskModel.skip() // -> systemAudio
-        await lowDiskModel.skip() // -> calendar
-        await lowDiskModel.skip() // -> notifications
-        await lowDiskModel.skip() // -> modelDownload (checkDiskSpace runs here)
-
-        #expect(lowDiskModel.hasSufficientDisk == false)
-
-        // Verify the default (plenty of disk) works too
-        let okModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 100_000_000_000 }
-        )
-        await okModel.advance()
-        await okModel.skip()
-        await okModel.skip()
-        await okModel.skip()
-        await okModel.skip()
-
-        #expect(okModel.hasSufficientDisk == true)
+        await model.advance() // welcome -> permissions
+        #expect(model.progressIndex == 1) // 40%
+        await model.advance() // -> modelDownload (skipping calendarSelection)
+        #expect(model.progressIndex == 3) // 80%
     }
 
     // MARK: - Calendar selection
@@ -284,29 +239,28 @@ struct OnboardingViewModelTests {
         #expect(model.isCalendarEnabled("any-id") == true)
     }
 
-    @Test("total steps is 8")
-    func totalStepsIs8() throws {
+    @Test("total steps is 5")
+    func totalStepsIs5() throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
-        #expect(model.totalSteps == 8)
+        #expect(model.totalSteps == 5)
     }
 
     // MARK: - Replay reset
 
     @Test("resetForReplay resets step and all per-step state")
     func resetForReplayResetsEverything() async throws {
-        let fixture = try makeCoreFixture()
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
         // Advance partway through the wizard
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
         #expect(model.currentStep == .modelDownload)

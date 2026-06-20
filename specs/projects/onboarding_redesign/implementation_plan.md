@@ -20,7 +20,7 @@ See `functional_spec.md` (behavior contract), `ui_design.md` (visuals),
   to use `BrandFooter().padding(.top, 30)` so Home is pixel-identical. Pure
   refactor; `make ci` green. (architecture §3.1)
 
-- [ ] **Phase 2 — Onboarding refresh (atomic).**
+- [x] **Phase 2 — Onboarding refresh (atomic).**
   - **VM step-machine refactor** (architecture §2): 5-case `Step` enum;
     `rawValue`-based `progressIndex`/`totalSteps`; split `requestPermission()`
     into `requestMicrophone/SystemAudio/Calendar/Notifications`; unify

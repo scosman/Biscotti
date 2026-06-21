@@ -1,9 +1,9 @@
 import DataStore
 import Foundation
-import Intelligence
 import LocalLLM
 import Testing
 import Transcription
+@testable import Intelligence
 
 // MARK: - Fakes
 
@@ -18,10 +18,15 @@ final class FakeLLMRunner: LLMRunning, @unchecked Sendable {
         self.session = session
     }
 
+    /// The most recently passed `EngineConfig`.
+    var lastConfig: EngineConfig?
+
     func withSession<T: Sendable>(
+        config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1
+        lastConfig = config
         return try await body(session)
     }
 }
@@ -44,8 +49,24 @@ final class FakeSession: LLMSession, @unchecked Sendable {
     /// tokens. Used to test that the Summarizer prefers canonical `.done` text.
     var canonicalDoneText: String?
 
+    /// Canned token count for `countTokens`. Returns this value for every call.
+    var tokenCount: Int = 100
+
+    /// Recorded reconfigure calls (context sizes).
+    var reconfigureCalls: [Int] = []
+
     private var generateCallIndex = 0
     private var streamingCallIndex = 0
+
+    func countTokens(
+        system _: String, user _: String
+    ) async throws -> Int {
+        tokenCount
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        reconfigureCalls.append(contextSize)
+    }
 
     func generate(
         system: String, user: String, options _: GenerationOptions
@@ -177,6 +198,7 @@ final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
     }
 
     func withSession<T: Sendable>(
+        config _: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         // Signal that we've entered the session
@@ -758,6 +780,34 @@ struct IntelligenceOrchestrationTests {
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "CANONICAL FINAL")
     }
+
+    @Test("auto-enhancement opens model-only and reconfigures to right size")
+    @MainActor func contextSizingAutoEnhancement() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+        session.tokenCount = 500
+
+        let fixture = makeIntelligence(
+            store: store, session: session
+        )
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Session opens in model-only mode (contextSize=0, no KV-cache)
+        let config = fixture.runner.lastConfig
+        #expect(config != nil)
+        #expect(config?.contextSize == 0)
+
+        // Reconfigure called with right-sized context: tokenCount + 3072
+        #expect(session.reconfigureCalls.count == 1)
+        let expectedContextSize = ContextSizing.contextSize(
+            forInputTokens: session.tokenCount
+        )
+        #expect(session.reconfigureCalls.first == expectedContextSize)
+    }
 }
 
 // MARK: - Intelligence Generate Summary Tests
@@ -880,6 +930,37 @@ struct IntelligenceGenerateSummaryTests {
 
         blocker.release()
         await task1.value
+    }
+
+    @Test("manual generateSummary opens model-only and reconfigures")
+    @MainActor func contextSizingManualGenerate() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        session.streamingTokens = [["Summary"]]
+        session.tokenCount = 200
+
+        let fixture = makeIntelligence(
+            store: store, session: session, guessSpeakers: false
+        )
+        await fixture.intel.generateSummary(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        // Session opens in model-only mode (contextSize=0, no KV-cache)
+        let config = fixture.runner.lastConfig
+        #expect(config != nil)
+        #expect(config?.contextSize == 0)
+
+        // Reconfigure called with right-sized context: tokenCount + 3072
+        #expect(session.reconfigureCalls.count == 1)
+        let expectedContextSize = ContextSizing.contextSize(
+            forInputTokens: session.tokenCount
+        )
+        #expect(session.reconfigureCalls.first == expectedContextSize)
     }
 }
 

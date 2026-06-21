@@ -189,6 +189,7 @@
     /// No-op LLM runner for previews.
     private struct PreviewLLMRunner: LLMRunning {
         func withSession<T: Sendable>(
+            config _: LocalLLM.EngineConfig,
             _ body: @Sendable (any LLMSession) async throws -> T
         ) async throws -> T {
             try await body(PreviewLLMSession())
@@ -197,6 +198,14 @@
 
     /// No-op LLM session for previews.
     private struct PreviewLLMSession: LLMSession {
+        func countTokens(
+            system _: String, user _: String
+        ) async throws -> Int {
+            100
+        }
+
+        func reconfigure(contextSize _: Int) async throws {}
+
         func generate(
             system _: String, user _: String,
             options _: LocalLLM.GenerationOptions

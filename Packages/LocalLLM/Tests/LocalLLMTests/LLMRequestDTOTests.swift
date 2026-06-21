@@ -52,6 +52,64 @@ struct LLMLoadRequestTests {
     }
 }
 
+// MARK: - LLMCountTokensRequest
+
+@Suite("LLMCountTokensRequest Codable")
+struct LLMCountTokensRequestTests {
+    @Test("Default request round-trips")
+    func defaultRoundTrip() throws {
+        let request = LLMCountTokensRequest(
+            user: "Hello world",
+            system: "You are helpful.",
+            applyChatTemplate: true,
+            thinking: .off
+        )
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.user == "Hello world")
+        #expect(decoded.system == "You are helpful.")
+        #expect(decoded.applyChatTemplate == true)
+        #expect(decoded.thinking == .off)
+    }
+
+    @Test("Request with nil system round-trips")
+    func nilSystemRoundTrip() throws {
+        let request = LLMCountTokensRequest(
+            user: "Test prompt",
+            system: nil
+        )
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.system == nil)
+    }
+
+    @Test("Request with thinking auto round-trips")
+    func thinkingAutoRoundTrip() throws {
+        let request = LLMCountTokensRequest(
+            user: "Analyze this.",
+            system: "Think carefully.",
+            applyChatTemplate: true,
+            thinking: .auto
+        )
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.thinking == .auto)
+    }
+
+    @Test("Request with raw mode (no template) round-trips")
+    func rawModeRoundTrip() throws {
+        let request = LLMCountTokensRequest(
+            user: "Raw prompt text",
+            system: nil,
+            applyChatTemplate: false,
+            thinking: .off
+        )
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.applyChatTemplate == false)
+    }
+}
+
 // MARK: - LLMGenerateRequest
 
 @Suite("LLMGenerateRequest Codable")

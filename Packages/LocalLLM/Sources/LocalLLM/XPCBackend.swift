@@ -86,6 +86,56 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
         }
     }
 
+    func countTokens(
+        system: String?, user: String,
+        applyChatTemplate: Bool, thinking: ThinkingMode
+    ) async throws -> Int {
+        let proxy = try requireProxy()
+        let request = LLMCountTokensRequest(
+            user: user, system: system,
+            applyChatTemplate: applyChatTemplate, thinking: thinking
+        )
+        let requestData = try XPCCodingHelpers.encode(
+            request, label: "LLMCountTokensRequest"
+        )
+
+        return try await withCheckedThrowingContinuation { continuation in
+            proxy.countTokens(requestData: requestData) { count, error in
+                if let error {
+                    continuation.resume(
+                        throwing: XPCErrorMapper.map(error)
+                    )
+                    return
+                }
+                continuation.resume(returning: Int(count))
+            }
+        }
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        let proxy = try requireProxy()
+
+        // Int -> Int32 narrowing for the @objc wire. Context sizes are always
+        // well under Int32.max (~2B), but guard against programmer error.
+        guard let size32 = Int32(exactly: contextSize) else {
+            throw LLMServiceError.protocolError(
+                "Context size \(contextSize) overflows Int32"
+            )
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            proxy.reconfigure(contextSize: size32) { error in
+                if let error {
+                    continuation.resume(
+                        throwing: XPCErrorMapper.map(error)
+                    )
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
     func generate(
         id _: UInt64,
         prompt: String,

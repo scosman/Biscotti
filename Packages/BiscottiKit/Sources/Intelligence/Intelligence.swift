@@ -101,7 +101,26 @@ public final class Intelligence {
         let existingNames: [Int: String] = transcript.speakerAssignments
             .mapValues(\.name)
 
-        try await llm.withSession { session in
+        let promptPairs = buildPromptPairs(
+            doSpeakers: doSpeakers, doSummary: doSummary,
+            transcript: transcript, names: existingNames,
+            invitees: invitees
+        )
+
+        // Nothing to do: both tasks were skipped (e.g. guessSpeakers off +
+        // summary skipped by edited-summary guard). Return early without
+        // loading the model at all.
+        guard !promptPairs.isEmpty else { return }
+
+        // Open session in model-only mode (no context/KV-cache allocated).
+        // Count tokens, then reconfigure to the right-sized context before
+        // generating. This avoids a transient 32k allocation.
+        try await llm.withSession(config: .modelOnly) { session in
+            let contextSize = try await ContextSizing.contextSize(
+                forPairs: promptPairs, session: session
+            )
+            try await session.reconfigure(contextSize: contextSize)
+
             var nameMap = existingNames
 
             if doSpeakers {
@@ -123,6 +142,42 @@ public final class Intelligence {
                 try await Summarizer.run(session, context)
             }
         }
+    }
+
+    /// Build prompt pairs for context sizing. Extracted to keep
+    /// `runEnhancementSession` under the function body length lint limit.
+    private func buildPromptPairs(
+        doSpeakers: Bool, doSummary: Bool,
+        transcript: TranscriptData, names: [Int: String],
+        invitees: [(name: String, email: String?)]
+    ) -> [(system: String, user: String)] {
+        // Pre-compute prompt pairs for token counting. We format with
+        // existing names here, but actual generation formats speaker-ID
+        // with `[:]` and summary with the resolved nameMap. The
+        // token-count difference is negligible (names are a tiny
+        // fraction of the transcript).
+        let formattedTranscript = TranscriptFormatter.plain(
+            transcript, names: names
+        )
+
+        var pairs: [(system: String, user: String)] = []
+        if doSpeakers {
+            pairs.append((
+                system: IntelligencePrompts.speakerSystem,
+                user: IntelligencePrompts.speakerUser(
+                    transcript: formattedTranscript, invitees: invitees
+                )
+            ))
+        }
+        if doSummary {
+            pairs.append((
+                system: IntelligencePrompts.summarySystem,
+                user: IntelligencePrompts.summaryUser(
+                    transcript: formattedTranscript
+                )
+            ))
+        }
+        return pairs
     }
 
     // MARK: - Manual summary generation
@@ -154,7 +209,23 @@ public final class Intelligence {
 
         do {
             jobs[meetingID] = .summarizing
-            try await llm.withSession { session in
+
+            let formattedTranscript = TranscriptFormatter.plain(
+                transcript, names: nameMap
+            )
+
+            // Open in model-only mode (no context/KV-cache), count tokens,
+            // then reconfigure to the right-sized context before generating.
+            try await llm.withSession(config: .modelOnly) { session in
+                let contextSize = try await ContextSizing.contextSize(
+                    forSystem: IntelligencePrompts.summarySystem,
+                    user: IntelligencePrompts.summaryUser(
+                        transcript: formattedTranscript
+                    ),
+                    session: session
+                )
+                try await session.reconfigure(contextSize: contextSize)
+
                 let context = Summarizer.Context(
                     meetingID: meetingID,
                     transcript: transcript,

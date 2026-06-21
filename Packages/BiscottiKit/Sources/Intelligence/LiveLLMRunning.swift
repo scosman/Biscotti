@@ -15,11 +15,13 @@ public struct LiveLLMRunner: LLMRunning {
     }
 
     public func withSession<T: Sendable>(
+        config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         try await LLMService.withConnection(
             model: modelProvider.modelURL,
-            backend: .hosted(serviceName: Self.serviceName)
+            backend: .hosted(serviceName: Self.serviceName),
+            config: config
         ) { connection in
             try await body(LiveLLMSession(connection: connection))
         }
@@ -29,6 +31,16 @@ public struct LiveLLMRunner: LLMRunning {
 /// Production `LLMSession` wrapping a live `LLMConnection`.
 struct LiveLLMSession: LLMSession, @unchecked Sendable {
     let connection: LLMConnection
+
+    func countTokens(
+        system: String, user: String
+    ) async throws -> Int {
+        try await connection.countTokens(system: system, user: user)
+    }
+
+    func reconfigure(contextSize: Int) async throws {
+        try await connection.reconfigure(contextSize: contextSize)
+    }
 
     func generate(
         system: String, user: String, options: GenerationOptions

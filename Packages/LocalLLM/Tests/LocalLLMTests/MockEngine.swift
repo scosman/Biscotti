@@ -90,6 +90,26 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
 
     // MARK: - InferenceEngine
 
+    /// Canned token count for `countTokens`. Defaults to 100.
+    var tokenCount: Int {
+        get { lock.withLock { _tokenCount } }
+        set { lock.withLock { _tokenCount = newValue } }
+    }
+
+    private var _tokenCount: Int = 100
+
+    func countTokens(
+        system _: String?,
+        user _: String,
+        applyChatTemplate _: Bool,
+        thinking _: ThinkingMode
+    ) async throws -> Int {
+        if let error = errorToThrow {
+            throw error
+        }
+        return tokenCount
+    }
+
     func generate(
         prompt _: String,
         system _: String?,

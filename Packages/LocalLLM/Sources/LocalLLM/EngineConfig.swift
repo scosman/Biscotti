@@ -30,4 +30,13 @@ public struct EngineConfig: Sendable, Codable, Equatable {
 
     /// Sensible defaults for Gemma 4 12B on Apple Silicon.
     public static let `default` = EngineConfig()
+
+    /// Model-only configuration: loads model + vocab without allocating a
+    /// context or KV cache. The engine is ready for `countTokens` immediately;
+    /// call `createContext(config:)` (or `reconfigure(contextSize:)` through
+    /// the service layer) before generating.
+    ///
+    /// `contextSize == 0` is the sentinel that `InProcessBackend.start()` and
+    /// the XPC host check to select the model-only init path.
+    public static let modelOnly = EngineConfig(contextSize: 0)
 }

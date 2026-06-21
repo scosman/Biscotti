@@ -16,22 +16,33 @@ enum ContextSizing {
         category: "ContextSizing"
     )
 
-    /// Tokens reserved for model output. Chosen to accommodate a full summary
-    /// (~2k tokens) or speaker-ID output (~512 tokens) with headroom.
-    static let outputTokenReservation = 3072
+    /// Base tokens reserved for model output. Chosen to accommodate a full
+    /// summary (~2k tokens) or speaker-ID output (~512 tokens) with headroom.
+    static let outputReservationBase = 3072
+
+    /// Fraction of input tokens added to the base reservation so that longer
+    /// meetings get proportionally more output headroom.
+    static let outputReservationInputFraction = 0.15
 
     /// Maximum context size — matches the prior static default so this change
     /// never allocates MORE than before.
     static let maxContextSize = 32768
 
+    /// Dynamic output reservation: base + a fraction of input token count,
+    /// so longer meetings get proportionally more output headroom.
+    static func outputReservation(forInputTokens inputTokens: Int) -> Int {
+        outputReservationBase + Int((outputReservationInputFraction * Double(inputTokens)).rounded())
+    }
+
     /// Compute the context size for a generation, given the real input token
     /// count from the model's tokenizer.
     ///
-    /// Returns `inputTokens + outputTokenReservation`, capped at
+    /// Returns `inputTokens + outputReservation(forInputTokens:)`, capped at
     /// `maxContextSize`.
     static func contextSize(forInputTokens inputTokens: Int) -> Int {
         let clamped = max(inputTokens, 1)
-        return min(clamped + outputTokenReservation, maxContextSize)
+        let reservation = outputReservation(forInputTokens: clamped)
+        return min(clamped + reservation, maxContextSize)
     }
 
     /// Count tokens for each prompt pair using the session's tokenizer and
@@ -52,10 +63,11 @@ enum ContextSizing {
             maxTokens = max(maxTokens, count)
         }
 
-        let size = min(maxTokens + outputTokenReservation, maxContextSize)
+        let reservation = outputReservation(forInputTokens: maxTokens)
+        let size = min(maxTokens + reservation, maxContextSize)
 
         log.info(
-            "Context sized (multi-task): maxInputTokens=\(maxTokens), contextSize=\(size)"
+            "Context sized (multi-task): maxInputTokens=\(maxTokens), reservation=\(reservation), contextSize=\(size)"
         )
 
         return size
@@ -70,10 +82,12 @@ enum ContextSizing {
         let count = try await session.countTokens(
             system: system, user: user
         )
-        let size = min(max(count, 1) + outputTokenReservation, maxContextSize)
+        let clamped = max(count, 1)
+        let reservation = outputReservation(forInputTokens: clamped)
+        let size = min(clamped + reservation, maxContextSize)
 
         log.info(
-            "Context sized: inputTokens=\(count), contextSize=\(size)"
+            "Context sized: inputTokens=\(count), reservation=\(reservation), contextSize=\(size)"
         )
 
         return size

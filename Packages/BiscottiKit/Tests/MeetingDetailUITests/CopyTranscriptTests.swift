@@ -118,14 +118,14 @@ struct CopyTranscriptTests {
     }
 }
 
-// MARK: - Transcript cache tests
+// MARK: - hasDisplayableTranscript tests
 
-@Suite("MeetingDetailViewModel -- transcript cache")
-struct TranscriptCacheTests {
-    @Test("load populates cachedTranscriptAttributed when transcript exists")
+@Suite("MeetingDetailViewModel -- hasDisplayableTranscript")
+struct HasDisplayableTranscriptTests {
+    @Test("hasDisplayableTranscript true when transcript has segments")
     @MainActor
-    func loadPopulatesCache() async throws {
-        let fix = try makeCoreFixture(testName: "TxCache")
+    func hasDisplayableTrueWithTranscript() async throws {
+        let fix = try makeCoreFixture(testName: "TxDisplay")
         defer { fix.cleanup() }
 
         let meetingID = try await fix.createMeetingWithAudio()
@@ -144,14 +144,13 @@ struct TranscriptCacheTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.cachedTranscriptAttributed != nil)
         #expect(viewModel.hasDisplayableTranscript == true)
     }
 
     @Test("hasDisplayableTranscript false when no transcript")
     @MainActor
     func hasDisplayableFalseWithoutTranscript() async throws {
-        let fix = try makeCoreFixture(testName: "TxCache")
+        let fix = try makeCoreFixture(testName: "TxDisplay")
         defer { fix.cleanup() }
 
         let meetingID = try await fix.store.createMeeting(
@@ -164,14 +163,13 @@ struct TranscriptCacheTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.cachedTranscriptAttributed == nil)
         #expect(viewModel.hasDisplayableTranscript == false)
     }
 
-    @Test("selectVersion rebuilds cache for the new version")
+    @Test("selectVersion updates displayedTranscript to new version")
     @MainActor
-    func selectVersionRebuildsCache() async throws {
-        let fix = try makeCoreFixture(testName: "TxCache")
+    func selectVersionUpdatesTranscript() async throws {
+        let fix = try makeCoreFixture(testName: "TxDisplay")
         defer { fix.cleanup() }
 
         let meetingID = try await fix.createMeetingWithAudio()
@@ -211,15 +209,17 @@ struct TranscriptCacheTests {
         )
         await viewModel.load()
 
-        let cachedBefore = viewModel.cachedTranscriptAttributed
-        #expect(cachedBefore != nil)
+        #expect(viewModel.hasDisplayableTranscript == true)
+        let segmentsBefore = viewModel.displayedTranscript?.segments.count
+        #expect(segmentsBefore == 2)
 
         // Switch to version 2
         await viewModel.selectVersion(id2)
 
-        #expect(viewModel.cachedTranscriptAttributed != nil)
-        // Cache should differ because the transcript content changed
-        #expect(viewModel.cachedTranscriptAttributed != cachedBefore)
+        #expect(viewModel.hasDisplayableTranscript == true)
+        let segmentsAfter = viewModel.displayedTranscript?.segments.count
+        #expect(segmentsAfter == 1)
+        #expect(viewModel.displayedTranscript?.segments.first?.speakerLabel == "Carol")
     }
 }
 

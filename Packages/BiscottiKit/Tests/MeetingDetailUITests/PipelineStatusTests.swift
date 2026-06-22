@@ -300,12 +300,125 @@ struct PipelinePillRemovedTests {
 
         // isEnhancing is still used for disabling Regenerate button
         #expect(viewModel.isEnhancing == false)
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.isEnhancing == true)
         fix.intelligence.jobs[meetingID] = .identifyingSpeakers
         #expect(viewModel.isEnhancing == true)
         fix.intelligence.jobs[meetingID] = .summarizing
         #expect(viewModel.isEnhancing == true)
         fix.intelligence.jobs[meetingID] = .completed
         #expect(viewModel.isEnhancing == false)
+    }
+}
+
+// MARK: - Preparing status prevents Generate flash
+
+@Suite("Pipeline status -- preparing prevents Generate flash")
+struct PipelinePreparingTests {
+    @Test("pipelineStages is non-nil during .preparing (no Generate gap)")
+    @MainActor
+    func preparingShowsPipeline() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Preparing Test"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Before: no pipeline
+        #expect(viewModel.pipelineStages == nil)
+
+        // Set .preparing (as runAutoEnhancements does synchronously)
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        // Pipeline must be non-nil
+        let stages = try #require(viewModel.pipelineStages)
+
+        // Transcribing should be done (no transcription in progress)
+        #expect(stages[0].label == "Transcribing")
+        #expect(stages[0].state == .done)
+
+        // Gated stages should be .pending during .preparing
+        #expect(stages[1].label == "Inferring participant names")
+        #expect(stages[1].state == .pending)
+        #expect(stages[2].label == "Summarizing")
+        #expect(stages[2].state == .pending)
+    }
+
+    @Test("isPipelineActive is true during .preparing")
+    @MainActor
+    func isPipelineActiveDuringPreparing() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Active Check"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        #expect(viewModel.isPipelineActive == false)
+
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.isPipelineActive == true)
+
+        fix.intelligence.jobs[meetingID] = .completed
+        #expect(viewModel.isPipelineActive == false)
+    }
+
+    @Test("full lifecycle with preparing: preparing -> speakers -> summarizing -> done")
+    @MainActor
+    func fullLifecycleWithPreparing() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Lifecycle"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Phase 0: Preparing (before model load)
+        fix.intelligence.jobs[meetingID] = .preparing
+        var stages = try #require(viewModel.pipelineStages)
+        #expect(stages[0].state == .done) // Transcribing (not running)
+        #expect(stages[1].state == .pending) // Inferring
+        #expect(stages[2].state == .pending) // Summarizing
+
+        // Phase 1: Speaker ID starts
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages[0].state == .done) // Transcribing
+        #expect(stages[1].state == .active) // Inferring
+        #expect(stages[2].state == .pending) // Summarizing
+
+        // Phase 2: Summarizing starts
+        fix.intelligence.jobs[meetingID] = .summarizing
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages[0].state == .done) // Transcribing
+        #expect(stages[1].state == .done) // Inferring
+        #expect(stages[2].state == .active) // Summarizing
+
+        // Phase 3: All done
+        fix.intelligence.jobs[meetingID] = .completed
+        #expect(viewModel.pipelineStages == nil)
     }
 }
 

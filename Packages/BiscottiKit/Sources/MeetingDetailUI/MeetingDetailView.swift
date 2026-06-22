@@ -618,45 +618,54 @@ private extension MeetingDetailView {
 private extension MeetingDetailView {
     @ViewBuilder
     func summaryTabContent(fill: CGFloat) -> some View {
-        // 1. Streaming OR has content: render through ONE editor instance
-        //    (single documentId, isEditable flipped) so scroll is retained
-        //    across the streaming→final transition and no empty-state flash
-        //    occurs (§13.2).
-        if let streaming = viewModel.streamingSummary {
-            summaryEditorContent(
-                text: streaming, isStreaming: true, fill: fill
-            )
-
-            // 2. Error: banner + existing summary below
-        } else if case .failed = viewModel.enhancementStatus {
+        // 1. Error: banner + existing summary below. Checked FIRST so
+        //    a failed Regenerate on a meeting with existing content still
+        //    shows the error banner + Retry button (not just the old summary).
+        if case .failed = viewModel.enhancementStatus {
             summaryErrorContent(fill: fill)
 
-            // 3. Has content: editable summary
-        } else if !viewModel.summaryText.isEmpty {
+            // 2. Streaming, in-flight generating, OR has content: render
+            //    through ONE editor instance (single documentId, isEditable
+            //    flipped) so SwiftUI reuses the same NSView across the
+            //    streaming→final transition, preserving scroll position.
+            //    Also covers Bug 2 (Regenerate spinner) by treating an
+            //    in-flight .summarizing status as the generating state.
+        } else if viewModel.streamingSummary != nil
+            || viewModel.enhancementStatus == .summarizing
+            || !viewModel.summaryText.isEmpty
+        {
+            let generating = viewModel.streamingSummary != nil
+                || viewModel.enhancementStatus == .summarizing
+            // When generating but no tokens have arrived yet, show empty
+            // text so the old summary is hidden immediately on Regenerate.
+            let editorText = viewModel.streamingSummary
+                ?? (generating ? "" : viewModel.summaryText)
             summaryEditorContent(
-                text: viewModel.summaryText,
-                isStreaming: false, fill: fill
+                text: editorText,
+                isStreaming: generating, fill: fill
             )
 
-            // 4. Pipeline active: show stage progress instead of
-            //    "No transcript available." (§13.1)
+            // 3. Pipeline active (transcribing / identifying speakers /
+            //    preparing): show stage progress instead of "No transcript
+            //    available." (§13.1)
         } else if let stages = viewModel.pipelineStages {
             summaryPipelineContent(stages: stages)
                 .frame(height: fill)
 
-            // 5. Empty + no transcript: muted placeholder
+            // 4. Empty + no transcript: muted placeholder
         } else if viewModel.displayedTranscript == nil {
             summaryNoTranscriptContent
                 .frame(height: fill)
 
-            // 6. Empty + model available + feature on: Generate Summary button
+            // 5. Empty + model available + feature on: Generate Summary button
             // (ui_design.md §1c/1d, functional_spec §3.4: model present →
             // Generate button; feature off OR no model → settings hint.)
+            // Only shown when truly idle + empty + no run in flight.
         } else if viewModel.modelAvailable, viewModel.summarizeEnabled {
             summaryGenerateContent
                 .frame(height: fill)
 
-            // 7. Empty + no model or feature off: hint + Open Settings
+            // 6. Empty + no model or feature off: hint + Open Settings
         } else {
             summarySettingsHintContent
                 .frame(height: fill)

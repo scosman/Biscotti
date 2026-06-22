@@ -67,13 +67,26 @@ public final class Intelligence {
         inFlightMeetingID = meetingID
         defer { inFlightMeetingID = nil }
 
+        // Set preparing SYNCHRONOUSLY before any await, so the UI never
+        // falls back to the "Generate Summary" button during the async gap.
+        jobs[meetingID] = .preparing
+
         let settings = await settingsProvider()
-        guard models.isDownloaded() else { return }
-        guard settings.summarize || settings.guessSpeakers else { return }
+        guard models.isDownloaded() else {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
+        guard settings.summarize || settings.guessSpeakers else {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
 
         guard let detail = try? await store.meetingDetail(id: meetingID),
               let transcript = detail.preferredTranscript
-        else { return }
+        else {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
 
         do {
             try await runEnhancementSession(
@@ -196,20 +209,28 @@ public final class Intelligence {
 
         guard models.isDownloaded() else { return }
 
+        // Set summarizing SYNCHRONOUSLY before any await, so the UI
+        // shows the spinner immediately (not after the DataStore reads).
+        jobs[meetingID] = .summarizing
+
         guard let detail = try? await store.meetingDetail(id: meetingID),
               let transcript = try? await store.transcript(id: transcriptID)
-        else { return }
+        else {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
 
         // Guard against overwriting user edits unless forced
-        if detail.editedSummary, !force { return }
+        if detail.editedSummary, !force {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
 
         // Use existing name map from the transcript
         let nameMap: [Int: String] = transcript.speakerAssignments
             .mapValues(\.name)
 
         do {
-            jobs[meetingID] = .summarizing
-
             let formattedTranscript = TranscriptFormatter.plain(
                 transcript, names: nameMap
             )

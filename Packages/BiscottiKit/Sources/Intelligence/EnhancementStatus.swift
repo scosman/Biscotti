@@ -1,5 +1,10 @@
 /// Per-meeting AI enhancement status, observed by the UI for status indicators.
 public enum EnhancementStatus: Sendable, Equatable {
+    /// Set synchronously at the start of an auto-enhancement or manual
+    /// generate run, before any async work (settings reads, model load).
+    /// Prevents the UI from flashing the "Generate Summary" button
+    /// during the async gap between triggering and the first real stage.
+    case preparing
     case identifyingSpeakers
     case summarizing
     case completed

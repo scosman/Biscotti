@@ -595,7 +595,7 @@ struct IntelligenceOrchestrationTests {
         #expect(fixture.intel.jobs[meetingID] == .completed)
     }
 
-    @Test("both toggles off is no-op")
+    @Test("both toggles off is no-op and clears preparing status")
     @MainActor func bothOff() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
@@ -606,10 +606,11 @@ struct IntelligenceOrchestrationTests {
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         #expect(fixture.runner.sessionCount == 0)
-        #expect(fixture.intel.jobs[meetingID] == nil) // No status set
+        // .preparing was set synchronously then cleared on bail
+        #expect(fixture.intel.jobs[meetingID] == nil)
     }
 
-    @Test("no model is no-op")
+    @Test("no model is no-op and clears preparing status")
     @MainActor func noModel() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
@@ -620,6 +621,7 @@ struct IntelligenceOrchestrationTests {
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         #expect(fixture.runner.sessionCount == 0)
+        // .preparing was set synchronously then cleared on bail
         #expect(fixture.intel.jobs[meetingID] == nil)
     }
 
@@ -781,6 +783,63 @@ struct IntelligenceOrchestrationTests {
         #expect(detail?.summary == "CANONICAL FINAL")
     }
 
+    @Test("Summarizer pushes canonical .done text as final partial for scroll preservation")
+    @MainActor func doneEventPushedAsPartial() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        // Tokens accumulate to "par" + "tial" = "partial", but the
+        // .done event carries a different canonical text.
+        session.streamingTokens = [["par", "tial"]]
+        session.canonicalDoneText = "CANONICAL FINAL"
+
+        // Capture all partial callbacks to verify the final one
+        var partials: [String] = []
+        let fixture = makeIntelligence(
+            store: store, session: session, guessSpeakers: false
+        )
+
+        // Run through auto-enhancements; the streaming callback
+        // accumulates in intel.streamingSummary which we observe
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // After completion, streaming is cleared, but verify the
+        // persisted summary matches the canonical text (proving it
+        // was pushed through). The streaming→final text equality
+        // is what preserves scroll in the UI.
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "CANONICAL FINAL")
+
+        // Also verify via a direct Summarizer.run with an onPartial spy
+        let (meetingID2, _) = try await makeMeetingWithTranscript(
+            store: store, title: "Meeting 2"
+        )
+        let session2 = FakeSession()
+        session2.streamingTokens = [["tok1", "tok2"]]
+        session2.canonicalDoneText = "DONE TEXT"
+
+        let detail2 = try await store.meetingDetail(id: meetingID2)
+        let transcript2 = try #require(detail2?.preferredTranscript)
+
+        let context = Summarizer.Context(
+            meetingID: meetingID2,
+            transcript: transcript2,
+            names: [:],
+            store: store
+        ) { partial in
+            partials.append(partial)
+        }
+
+        try await Summarizer.run(session2, context)
+
+        // The final partial must be the canonical .done text
+        #expect(partials.last == "DONE TEXT")
+        // And earlier partials were the token accumulation
+        #expect(partials.contains("tok1"))
+        #expect(partials.contains("tok1tok2"))
+    }
+
     @Test("auto-enhancement opens model-only and reconfigures to right size")
     @MainActor func contextSizingAutoEnhancement() async throws {
         let store = try makeStore()
@@ -839,7 +898,7 @@ struct IntelligenceGenerateSummaryTests {
         #expect(detail?.editedSummary == false)
     }
 
-    @Test("manual generate respects editedSummary guard when not forced")
+    @Test("manual generate respects editedSummary guard when not forced and clears status")
     @MainActor func editedGuardNotForced() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
@@ -854,6 +913,8 @@ struct IntelligenceGenerateSummaryTests {
 
         // Should not have run
         #expect(fixture.runner.sessionCount == 0)
+        // .summarizing was set synchronously then cleared on bail
+        #expect(fixture.intel.jobs[meetingID] == nil)
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "User's notes")
     }
@@ -923,10 +984,12 @@ struct IntelligenceGenerateSummaryTests {
         await intel.generateSummary(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
-        // The first run is still blocked in withSession (body hasn't run),
-        // so jobs has no status yet — the key point is that the second call
-        // returned without crashing or starting a second session.
-        #expect(intel.jobs[meetingID] == nil)
+        // The first run is still blocked in withSession (body hasn't run).
+        // jobs[meetingID] is .preparing (set synchronously at the start
+        // of runAutoEnhancements before the model load). The key point is
+        // that the second call returned without crashing or starting a
+        // second session.
+        #expect(intel.jobs[meetingID] == .preparing)
 
         blocker.release()
         await task1.value

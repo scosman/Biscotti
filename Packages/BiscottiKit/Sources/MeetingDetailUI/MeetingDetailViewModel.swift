@@ -242,37 +242,29 @@ public final class MeetingDetailViewModel {
 
     // MARK: - Actions
 
-    /// Loads the meeting detail from the store.
+    /// Loads the meeting detail from the store (initial load).
     ///
     /// Cancels any in-flight debounced autosave tasks and resets their
     /// dirty flags **before** overwriting stored text. Without this,
     /// a stale debounce firing after the reload would re-persist the
     /// old user text via `setSummary` (marking `editedSummary = true`)
     /// and silently clobber the freshly-loaded value.
+    ///
+    /// Sets `isLoading` true/false around the fetch so the view shows
+    /// a centered spinner on the initial load. For mid-lifecycle
+    /// refreshes (enhancement completion, etc.) use `refreshData()`
+    /// directly to avoid tearing down and recreating the entire view
+    /// hierarchy (which resets scroll position).
     public func load() async {
         // Cancel pending autosaves so stale debounces cannot fire
         // after we overwrite summaryText / notes below.
-        notesAutosaveTask?.cancel()
-        notesAutosaveTask = nil
-        summaryAutosaveTask?.cancel()
-        summaryAutosaveTask = nil
-        summaryDirty = false
+        cancelPendingAutosaves()
 
         isLoading = true
         do {
-            detail = try await core.store.meetingDetail(id: meetingID)
-            calendarContext = detail?.calendar
-            editableTitle = detail?.title ?? ""
-            notes = detail?.notes ?? ""
-            summaryText = detail?.summary ?? ""
-            editedSummary = detail?.editedSummary ?? false
-            versions = detail?.versions ?? []
-            let settings = try? await core.store.settings()
-            summarizeEnabled = settings?.summarizeTranscripts ?? true
-            guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
+            try await refreshData()
             hasAutoJumpedForPipeline = false
             await loadAudioPlayer()
-            rebuildTranscriptCacheIfNeeded()
         } catch {
             detail = nil
             calendarContext = nil
@@ -568,7 +560,8 @@ public extension MeetingDetailViewModel {
 
     /// Whether an AI enhancement run is currently in progress.
     var isEnhancing: Bool {
-        enhancementStatus == .identifyingSpeakers
+        enhancementStatus == .preparing
+            || enhancementStatus == .identifyingSpeakers
             || enhancementStatus == .summarizing
     }
 
@@ -616,13 +609,13 @@ public extension MeetingDetailViewModel {
         let enhStatus = core.intelligence.jobs[meetingID]
 
         // Pipeline is active when transcription is downloading/transcribing
-        // OR an enhancement is in progress.
+        // OR an enhancement is in progress (including .preparing).
         let transcriptionActive = switch jobStatus {
         case .downloadingModel, .transcribing: true
         default: false
         }
         let enhancementActive = switch enhStatus {
-        case .identifyingSpeakers, .summarizing: true
+        case .preparing, .identifyingSpeakers, .summarizing: true
         default: false
         }
 
@@ -645,15 +638,16 @@ public extension MeetingDetailViewModel {
         // Stage 2: Inferring participant names (gated)
         let showSpeakers = guessSpeakersEnabled && modelAvailable
         if showSpeakers {
-            let speakerState: StageState = if enhStatus == .identifyingSpeakers {
-                .active
-            } else if transcriptionActive {
-                .pending
-            } else {
-                // Transcription done. Enhancement active but not on speakers
-                // means speakers are done (summary is running).
-                .done
-            }
+            let speakerState: StageState =
+                if enhStatus == .identifyingSpeakers {
+                    .active
+                } else if transcriptionActive || enhStatus == .preparing {
+                    .pending
+                } else {
+                    // Transcription done. Enhancement active but not on speakers
+                    // means speakers are done (summary is running).
+                    .done
+                }
             stages.append(PipelineStage(
                 label: "Inferring participant names",
                 state: speakerState
@@ -664,19 +658,28 @@ public extension MeetingDetailViewModel {
         let showSummary = summarizeEnabled && modelAvailable
             && !editedSummary
         if showSummary {
-            let summaryState: StageState = if enhStatus == .summarizing {
-                .active
-            } else if transcriptionActive
-                || enhStatus == .identifyingSpeakers
-            {
-                .pending
-            } else {
-                .done
-            }
+            let summaryState: StageState =
+                if enhStatus == .summarizing {
+                    .active
+                } else if transcriptionActive
+                    || enhStatus == .identifyingSpeakers
+                    || enhStatus == .preparing
+                {
+                    .pending
+                } else {
+                    .done
+                }
             stages.append(PipelineStage(
                 label: "Summarizing", state: summaryState
             ))
         }
+
+        // When .preparing and no gated stages are visible (both toggles off
+        // or no model), the pipeline would show only "Transcribing: done"
+        // which is misleading. This state is transient: .preparing is set
+        // synchronously before the model/toggle guards, but those guards
+        // clear it on the same MainActor continuation when they bail --
+        // so the UI may observe it briefly but it resolves within one tick.
 
         return stages
     }
@@ -1010,6 +1013,38 @@ public extension MeetingDetailViewModel {
 // MARK: - Private helpers
 
 private extension MeetingDetailViewModel {
+    /// Cancels pending autosave debounces and resets the dirty flag so
+    /// stale writes cannot clobber freshly-loaded data.
+    func cancelPendingAutosaves() {
+        notesAutosaveTask?.cancel()
+        notesAutosaveTask = nil
+        summaryAutosaveTask?.cancel()
+        summaryAutosaveTask = nil
+        summaryDirty = false
+    }
+
+    /// Refreshes all meeting data from the store WITHOUT flipping
+    /// `isLoading`. Used by `load()` (which wraps it with the loading
+    /// flag for the initial load) and by `onEnhancementStatusChange`
+    /// (which must NOT tear down the view hierarchy -- toggling
+    /// `isLoading` recreates the ScrollView/MarkdownEditor, resetting
+    /// scroll to top). Mirrors the lightweight pattern of
+    /// `onJobStatusChange(.completed)` but also refreshes summary,
+    /// notes, settings, and title.
+    func refreshData() async throws {
+        detail = try await core.store.meetingDetail(id: meetingID)
+        calendarContext = detail?.calendar
+        editableTitle = detail?.title ?? ""
+        notes = detail?.notes ?? ""
+        summaryText = detail?.summary ?? ""
+        editedSummary = detail?.editedSummary ?? false
+        versions = detail?.versions ?? []
+        let settings = try? await core.store.settings()
+        summarizeEnabled = settings?.summarizeTranscripts ?? true
+        guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
+        rebuildTranscriptCacheIfNeeded()
+    }
+
     func loadAudioPlayer() async {
         do {
             let refs = try await core.store.audioFileRefs(
@@ -1147,10 +1182,12 @@ public extension MeetingDetailViewModel {
     /// Reloads data on completion so the summary and speaker names
     /// are picked up from the store.
     ///
-    /// **Flash prevention (§13.2):** before calling `load()`, seeds
-    /// `summaryText` from the captured `lastStreamedSummary` so the
-    /// view never falls through to the empty/Generate state between
-    /// streaming clearing and load() repopulating.
+    /// Uses `refreshData()` instead of `load()` to avoid flipping
+    /// `isLoading`, which would tear down and recreate the entire
+    /// view hierarchy (ScrollView + MarkdownEditor), resetting
+    /// scroll to top. Seeds `summaryText` from the captured
+    /// `lastStreamedSummary` first so the view never falls through
+    /// to the empty/Generate state during the async refresh.
     func onEnhancementStatusChange(
         _ newStatus: EnhancementStatus?
     ) async {
@@ -1159,7 +1196,8 @@ public extension MeetingDetailViewModel {
                 summaryText = streamed
             }
             lastStreamedSummary = nil
-            await load()
+            cancelPendingAutosaves()
+            try? await refreshData()
             await core.reloadSummaries()
         }
     }
@@ -1182,6 +1220,13 @@ public extension MeetingDetailViewModel {
         } else if newValue == nil, let oldValue, !oldValue.isEmpty {
             // Streaming just ended: capture the final streamed content
             lastStreamedSummary = oldValue
+            // Synchronously seed summaryText on successful completion so the
+            // Summary view never leaves the editor branch between the stream
+            // clearing and the async onEnhancementStatusChange refresh — keeps
+            // the MarkdownEditor NSView alive so scroll position is retained.
+            if enhancementStatus == .completed {
+                summaryText = oldValue
+            }
         }
     }
 

@@ -55,8 +55,13 @@ enum Summarizer {
                 accumulated += text
                 context.onPartial(accumulated)
             case let .done(result):
-                // Use the canonical final text from the result
+                // Use the canonical final text from the result.
+                // Push it to the stream consumer so the last value
+                // in streamingSummary equals exactly what gets persisted,
+                // making the streaming->final text change a no-op for
+                // scroll preservation (lastSyncedText == text).
                 accumulated = result.text
+                context.onPartial(accumulated)
             case .reasoningToken:
                 // Reasoning tokens ignored (thinking: .off)
                 break

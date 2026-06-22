@@ -403,6 +403,11 @@ struct SummaryTabPillTests {
         #expect(viewModel.isEnhancing == false)
         #expect(viewModel.enhancementStatus == nil)
 
+        // preparing
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.isEnhancing == true)
+        #expect(viewModel.enhancementStatus == .preparing)
+
         // identifyingSpeakers
         fix.intelligence.jobs[meetingID] = .identifyingSpeakers
         #expect(viewModel.isEnhancing == true)
@@ -424,6 +429,97 @@ struct SummaryTabPillTests {
         // cleared
         fix.intelligence.jobs.removeValue(forKey: meetingID)
         #expect(viewModel.isEnhancing == false)
+    }
+}
+
+// MARK: - In-flight generating state
+
+@Suite("Summary tab -- in-flight generating routes through editor")
+struct SummaryTabInFlightGeneratingTests {
+    @Test("summarizing status with empty summary shows editor (not Generate button)")
+    @MainActor
+    func summarizingStatusShowsEditor() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Initially: empty summary, has transcript, model available
+        #expect(viewModel.summaryText.isEmpty)
+        #expect(viewModel.displayedTranscript != nil)
+        #expect(viewModel.modelAvailable == true)
+
+        // Set .summarizing (as generateSummary does synchronously)
+        fix.intelligence.jobs[meetingID] = .summarizing
+
+        // The view should now route through the editor branch (not
+        // the Generate button). We verify this by checking that
+        // enhancementStatus == .summarizing is true and the view's
+        // condition for the unified editor branch is satisfied:
+        // streamingSummary != nil || enhancementStatus == .summarizing || !summaryText.isEmpty
+        let inEditor = viewModel.streamingSummary != nil
+            || viewModel.enhancementStatus == .summarizing
+            || !viewModel.summaryText.isEmpty
+        #expect(inEditor == true)
+
+        // And the pipeline is NOT shown (summarizing uses the editor)
+        // pipelineStages is non-nil because .summarizing is active,
+        // but the view checks the editor condition first
+        #expect(viewModel.enhancementStatus == .summarizing)
+    }
+
+    @Test("preparing status with empty summary shows pipeline (not Generate button)")
+    @MainActor
+    func preparingStatusShowsPipeline() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Set .preparing (as runAutoEnhancements does synchronously)
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        // The view should NOT show the editor (streaming is nil,
+        // status is .preparing not .summarizing, summaryText is empty)
+        let inEditor = viewModel.streamingSummary != nil
+            || viewModel.enhancementStatus == .summarizing
+            || !viewModel.summaryText.isEmpty
+        #expect(inEditor == false)
+
+        // Pipeline should be shown (non-nil stages)
+        #expect(viewModel.pipelineStages != nil)
     }
 }
 
@@ -594,6 +690,42 @@ struct SummaryTabEnhancementCompletionTests {
         #expect(viewModel.editedSummary == false)
     }
 
+    @Test("completion reload does not flip isLoading (scroll preservation)")
+    @MainActor
+    func completionReloadDoesNotFlipIsLoading() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Scroll Fix"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // After initial load, isLoading must be false
+        #expect(viewModel.isLoading == false)
+
+        // Persist a summary behind the scenes (as if the Summarizer did)
+        try await fix.store.applyGeneratedSummary(
+            "Streamed summary", for: meetingID
+        )
+
+        // Trigger the enhancement completion handler
+        await viewModel.onEnhancementStatusChange(.completed)
+
+        // isLoading must remain false throughout -- toggling it would
+        // tear down and recreate the entire view hierarchy (ScrollView
+        // + MarkdownEditor), resetting scroll to top.
+        #expect(viewModel.isLoading == false)
+
+        // Data must still have been refreshed (proving refreshData()
+        // ran, not a no-op skip)
+        #expect(viewModel.summaryText == "Streamed summary")
+        #expect(viewModel.editedSummary == false)
+    }
+
     @Test("Reload after enhancement drops stale user edit and does not mark editedSummary")
     @MainActor
     func reloadDropsStaleDirtyEdit() async throws {
@@ -653,6 +785,9 @@ struct SummaryTabEnhancementCompletionTests {
         )
 
         // Non-completed statuses should not reload
+        await viewModel.onEnhancementStatusChange(.preparing)
+        #expect(viewModel.summaryText.isEmpty)
+
         await viewModel.onEnhancementStatusChange(.summarizing)
         #expect(viewModel.summaryText.isEmpty)
 
@@ -897,5 +1032,64 @@ struct SummaryStreamingCompletionTests {
 
         // And streamingSummary is nil (no longer streaming)
         #expect(viewModel.streamingSummary == nil)
+    }
+
+    @Test("onStreamingSummaryChange seeds summaryText synchronously when completed")
+    @MainActor
+    func streamingClearSeedsSummaryTextOnCompleted() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Sync Seed Test"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Verify summaryText starts empty
+        #expect(viewModel.summaryText.isEmpty)
+
+        // Intelligence sets .completed BEFORE clearing streamingSummary,
+        // so enhancementStatus is already .completed when onChange fires.
+        fix.intelligence.jobs[meetingID] = .completed
+
+        // Simulate the streaming-cleared onChange
+        viewModel.onStreamingSummaryChange(
+            oldValue: "Final summary", newValue: nil
+        )
+
+        // summaryText must be seeded synchronously (no await needed)
+        #expect(viewModel.summaryText == "Final summary")
+    }
+
+    @Test("onStreamingSummaryChange does NOT seed summaryText when failed")
+    @MainActor
+    func streamingClearDoesNotSeedOnFailure() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Fail No Seed Test"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        #expect(viewModel.summaryText.isEmpty)
+
+        // Enhancement failed (not completed)
+        fix.intelligence.jobs[meetingID] = .failed(message: "err")
+
+        // Simulate the streaming-cleared onChange
+        viewModel.onStreamingSummaryChange(
+            oldValue: "partial text", newValue: nil
+        )
+
+        // summaryText must NOT be seeded -- partial content should not
+        // be shown for a failed run
+        #expect(viewModel.summaryText.isEmpty)
     }
 }

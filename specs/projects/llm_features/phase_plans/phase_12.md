@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Phase 12: End-to-end verification & docs

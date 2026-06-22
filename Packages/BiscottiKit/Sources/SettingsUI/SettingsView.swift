@@ -25,8 +25,8 @@ public struct SettingsView: View {
     static let sectionTitles = [
         "General",
         "Permissions",
-        "AI Enhancements",
         "Notifications",
+        "AI Enhancements",
         "Calendars"
     ]
 
@@ -39,8 +39,8 @@ public struct SettingsView: View {
             Form {
                 generalSection
                 permissionsSection
-                aiEnhancementsSection
                 notificationsSection
+                aiEnhancementsSection
                 calendarSection
 
                 #if DEBUG
@@ -324,7 +324,7 @@ private extension SettingsView {
             }
         } header: {
             HStack {
-                Text(Self.sectionTitles[2])
+                Text(Self.sectionTitles[3])
                 Spacer()
                 Text(Self.aiEnhancementsHeaderCaption)
                     .font(Tokens.metadataFont)
@@ -412,7 +412,7 @@ private extension SettingsView {
 
 private extension SettingsView {
     var notificationsSection: some View {
-        Section(Self.sectionTitles[3]) {
+        Section(Self.sectionTitles[2]) {
             // Row 1: Monitor for Meetings
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

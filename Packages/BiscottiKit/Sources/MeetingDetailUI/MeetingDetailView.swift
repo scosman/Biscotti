@@ -9,14 +9,21 @@ import TranscriptionService
 /// The Meeting Detail screen showing metadata, transcript, calendar
 /// context, audio playback, notes, and status.
 ///
-/// Layout: while loading, shows a centered spinner. Once loaded, a
-/// single outer `ScrollView` containing a chrome section (header,
-/// calendar card, tab bar) measured via a preference key, and a
-/// tab-content area. The audio transport bar is pinned to the bottom
-/// of the panel via `safeAreaInset`, staying fixed regardless of
-/// scroll position. Both the Notes editor (via `.fitsContent`) and
-/// the Transcript tab grow with content -- the outer scroll handles
-/// overflow for both.
+/// Layout: while loading, shows a centered spinner. Once loaded, there
+/// are two layout paths depending on the active tab:
+///
+/// 1. **Transcript list path** -- when the transcript tab has segments,
+///    the recycling `List` in `TranscriptListView` is the sole scroll
+///    container. Chrome (header + calendar card + tab bar) is a
+///    non-recycled header row inside the same `List`, so everything
+///    scrolls together with no nested scroll views.
+///
+/// 2. **ScrollView path** -- for the Notes tab and non-ready transcript
+///    states (processing / failed / empty / not-transcribed). A single
+///    outer `ScrollView` wraps chrome + tab content as before.
+///
+/// The audio transport bar is pinned to the bottom of the panel via
+/// `safeAreaInset` in both paths.
 public struct MeetingDetailView: View {
     @Bindable private var viewModel: MeetingDetailViewModel
 
@@ -25,6 +32,11 @@ public struct MeetingDetailView: View {
 
     /// Measured height of the pinned transport bar at the bottom.
     @State private var transportHeight: CGFloat = 0
+
+    /// Bottom breathing room between scroll content and the pinned
+    /// transport bar. Applied via `safeAreaInset(spacing:)` in both
+    /// layout paths so every tab gets the same bottom space.
+    private static let transportSpacing: CGFloat = Tokens.spacingMD + Tokens.spacingXS
 
     /// Transient "Copied" feedback: true for ~1.5s after a copy action.
     @State private var didCopy = false
@@ -118,18 +130,64 @@ public struct MeetingDetailView: View {
     // MARK: - Loaded content
 
     /// The main content shown after the initial data load completes.
-    /// Extracted from `body` to keep each function under the line limit.
     ///
-    /// The ScrollView fills the full pane width (scrollbar at the
-    /// window's right edge). Inside, the readable content is capped at
-    /// `Tokens.readableContentMaxWidth` and left-aligned, with whitespace
-    /// filling the right.
+    /// Two layout paths avoid nested scroll containers:
+    ///
+    /// 1. **Transcript list path** -- when the transcript tab is active
+    ///    and has segments, the recycling `List` inside
+    ///    `TranscriptListView` *is* the sole scroll container. Chrome
+    ///    (header + calendar card + tab bar) is a non-recycled header
+    ///    row inside the same `List`, scrolling with the transcript.
+    ///
+    /// 2. **ScrollView path** -- for the Notes tab and non-ready
+    ///    transcript states (processing / failed / empty / not yet
+    ///    transcribed). The outer `ScrollView` wraps chrome + tab
+    ///    content as before.
     ///
     /// The `AudioTransport` is pinned to the bottom of the panel via
-    /// `safeAreaInset(edge: .bottom)`, which automatically adjusts the
-    /// scroll content inset and scroll indicator so the last line of
-    /// content is never hidden behind the bar.
+    /// `safeAreaInset(edge: .bottom)` in both paths.
+    @ViewBuilder
     private func loadedContent(geo: GeometryProxy) -> some View {
+        if useTranscriptListLayout {
+            transcriptListLayout(geo: geo)
+        } else {
+            scrollViewLayout(geo: geo)
+        }
+    }
+
+    /// True when the transcript tab is showing a ready, non-empty transcript
+    /// -- the case where `TranscriptListView` provides its own scroll.
+    private var useTranscriptListLayout: Bool {
+        guard viewModel.selectedTab == .transcript else { return false }
+        guard case .transcript = viewModel.displayState else { return false }
+        guard let transcript = viewModel.displayedTranscript,
+              !transcript.segments.isEmpty,
+              viewModel.activeVersionID != nil
+        else { return false }
+        return true
+    }
+
+    // MARK: - Transcript list layout (single List scroll)
+
+    /// The `List` is the sole scroll container, spanning the full pane
+    /// width so the scrollbar sits flush at the right window edge. Row
+    /// content is constrained to the page max width inside each row via
+    /// `listRowMaxWidth`, matching the ScrollView path's layout.
+    private func transcriptListLayout(geo _: GeometryProxy) -> some View {
+        transcriptReadyContent
+            .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
+            .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
+            .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
+                pinnedTransportBar
+            }
+    }
+
+    // MARK: - ScrollView layout (Notes + non-ready transcript states)
+
+    /// The original outer `ScrollView` layout used by the Notes tab and
+    /// transcript states that don't need a recycling List (processing,
+    /// failed, empty, not-transcribed).
+    private func scrollViewLayout(geo: GeometryProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 chrome
@@ -143,17 +201,17 @@ public struct MeetingDetailView: View {
             .padding(.top, Tokens.homeVerticalPadding)
             .padding(.bottom, Tokens.homeVerticalPadding)
             .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
         .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
             pinnedTransportBar
         }
     }
 
     /// Height available for tab content after subtracting chrome, padding,
-    /// and the pinned transport bar.
+    /// and the pinned transport bar. Used by the `scrollViewLayout` path.
     ///
     /// The caller applies a 250pt floor via `max(250, contentFill(...))` so
     /// the notes editor stays usable in small windows. In normal/large
@@ -161,17 +219,18 @@ public struct MeetingDetailView: View {
     /// preserving the single-scroll-region behavior.
     ///
     /// **Layout coupling:** the `verticalOverhead` constant mirrors the
-    /// padding and divider in `loadedContent(geo:)`. If you change the
-    /// padding values or divider there, update this calculation to match.
-    /// The `transportHeight` is measured via `TransportHeightKey` in
-    /// `pinnedTransportBar` — it accounts for the bottom `safeAreaInset`
-    /// that the outer `GeometryReader` does not subtract from its reported
-    /// size.
+    /// padding and divider in `scrollViewLayout(geo:)`. If you change
+    /// the padding values or divider there, update this calculation to
+    /// match. The `transportHeight` is measured via `TransportHeightKey`
+    /// in `pinnedTransportBar` -- it accounts for the bottom
+    /// `safeAreaInset` that the outer `GeometryReader` does not subtract
+    /// from its reported size.
     private func contentFill(viewportHeight: CGFloat) -> CGFloat {
         let verticalOverhead =
             Tokens.homeVerticalPadding * 2 // top + bottom page padding
             + Tokens.spacingMD * 2 // divider vertical padding
             + 1 // divider pixel height
+            + Self.transportSpacing // gap between content and transport bar
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
 
@@ -249,7 +308,7 @@ private extension MeetingDetailView {
                 maxWidth: Tokens.readableContentMaxWidth,
                 alignment: .leading
             )
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
         .pinnedBarBackground()
         .background(GeometryReader { transportProxy in
@@ -529,6 +588,10 @@ private extension MeetingDetailView {
 // MARK: - Transcript tab states
 
 private extension MeetingDetailView {
+    /// Transcript tab content for the ScrollView path. The ready-with-
+    /// segments case is handled by `transcriptListLayout` which bypasses
+    /// the ScrollView entirely, so `.transcript` here only covers empty/
+    /// not-transcribed states.
     @ViewBuilder
     func transcriptTabContent(fill: CGFloat) -> some View {
         switch viewModel.displayState {
@@ -537,7 +600,7 @@ private extension MeetingDetailView {
                 .frame(height: fill)
 
         case .transcript:
-            transcriptReadyContent(fill: fill)
+            transcriptScrollContent(fill: fill)
 
         case let .failed(message, retriable):
             failedContent(message: message, retriable: retriable)
@@ -574,30 +637,51 @@ private extension MeetingDetailView {
         .frame(maxWidth: .infinity)
     }
 
+    /// The `TranscriptListView` for the list-layout path. Chrome
+    /// (header + calendar card + tab bar + divider) is passed as the
+    /// non-recycled header row so everything scrolls in one `List`.
     @ViewBuilder
-    func transcriptReadyContent(fill: CGFloat) -> some View {
-        // A: read the pre-built cached attributed string (rebuilt reactively
-        // by the VM when inputs change -- never mutated during render).
-        // Invariant: non-nil cachedTranscriptAttributed implies non-nil
-        // activeVersionID -- the cache is only populated when a version
-        // exists. The guard unwraps both to satisfy the type system.
-        if let attributed = viewModel.cachedTranscriptAttributed,
+    var transcriptReadyContent: some View {
+        if let transcript = viewModel.displayedTranscript,
+           !transcript.segments.isEmpty,
            let transcriptID = viewModel.activeVersionID
         {
-            SelectableTranscriptView(
+            TranscriptListView(
                 transcriptID: transcriptID,
                 canSeek: viewModel.canPlay,
-                attributed: attributed,
-                onSeek: { viewModel.seekAndPlay(to: $0) }
+                segments: transcript.segments,
+                onSeek: { viewModel.seekAndPlay(to: $0) },
+                header: transcriptListHeader
             )
             .equatable()
-            .frame(minHeight: fill, alignment: .topLeading)
-        } else if viewModel.hasBeenTranscribed {
-            // C: transcription ran but produced no text.
+        }
+    }
+
+    /// The chrome content rendered as a non-recycled header row inside
+    /// the `TranscriptListView`'s `List`. Mirrors the chrome + divider
+    /// from the ScrollView path so the visual appearance is identical.
+    private var transcriptListHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            chrome
+
+            Divider()
+                .padding(.vertical, Tokens.spacingMD)
+        }
+        .padding(.top, Tokens.homeVerticalPadding)
+    }
+
+    /// Transcript states for the ScrollView path: processing / failed /
+    /// empty / not-transcribed all use the outer `ScrollView` with a
+    /// fixed fill height. The ready-with-segments case is handled by
+    /// `transcriptListLayout` instead, so it never reaches here.
+    @ViewBuilder
+    func transcriptScrollContent(fill: CGFloat) -> some View {
+        if viewModel.hasBeenTranscribed {
+            // Transcription ran but produced no text.
             emptyTranscriptionContent
                 .frame(height: fill)
         } else {
-            // C: never transcribed -- offer "Transcribe now".
+            // Never transcribed -- offer "Transcribe now".
             notTranscribedContent
                 .frame(height: fill)
         }

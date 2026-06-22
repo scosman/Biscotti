@@ -26,11 +26,15 @@ public enum TranscriptContent {
     ///   - canSeek: Whether timestamps should be clickable seek links.
     ///   - names: A map of diarization speaker ID to display name. When
     ///     a segment's `speakerID` is in this map, the assigned name is
-    ///     shown instead of `speakerLabel`. Color is always keyed on
-    ///     `speakerID` so it stays stable across renames.
+    ///     shown instead of `speakerLabel`.
+    ///   - colorKeys: A map of diarization speaker ID to color-key string.
+    ///     When a speaker is assigned to a person, the key is
+    ///     `"person-<Person.id>"` so all speakers mapped to the same person
+    ///     share one color. Absent entries fall back to `"speaker-<id>"`.
     public static func attributedString(
         _ segments: [SegmentData], canSeek: Bool,
-        names: [Int: String] = [:]
+        names: [Int: String] = [:],
+        colorKeys: [Int: String] = [:]
     ) -> AttributedString {
         var result = AttributedString()
 
@@ -47,7 +51,9 @@ public enum TranscriptContent {
             // Speaker label
             var speaker = AttributedString(displayName)
             speaker.font = .system(size: 14, weight: .semibold)
-            speaker.foregroundColor = speakerColor(for: segment)
+            speaker.foregroundColor = speakerColor(
+                for: segment, colorKeys: colorKeys
+            )
 
             // Make speaker span clickable when the segment has a speaker ID
             if let sid = segment.speakerID {
@@ -123,16 +129,51 @@ public enum TranscriptContent {
 
     /// Stable per-speaker color from the shared avatar palette.
     ///
-    /// When the segment has a non-nil `speakerID`, the color is keyed on
-    /// a canonical string `"speaker-<id>"` so the color stays the same
-    /// regardless of whether a name is assigned. Falls back to
-    /// `speakerLabel` for segments without diarization data.
-    public static func speakerColor(for segment: SegmentData) -> Color {
-        let colorKey: String = if let sid = segment.speakerID {
+    /// Color key priority:
+    /// 1. If `colorKeys[speakerID]` is present, use that key (typically
+    ///    `"person-<UUID>"` so merged speakers share a color).
+    /// 2. Otherwise fall back to `"speaker-<id>"`.
+    /// 3. Segments without diarization data use `speakerLabel`.
+    ///
+    /// - Parameters:
+    ///   - segment: The segment whose speaker color to determine.
+    ///   - colorKeys: Per-speaker-ID override keys derived from person
+    ///     assignments. Defaults to empty (no overrides).
+    public static func speakerColor(
+        for segment: SegmentData,
+        colorKeys: [Int: String] = [:]
+    ) -> Color {
+        let colorKey: String = if let sid = segment.speakerID,
+                                  let override = colorKeys[sid]
+        {
+            override
+        } else if let sid = segment.speakerID {
             "speaker-\(sid)"
         } else {
             segment.speakerLabel
         }
+        return Tokens.avatarPalette[
+            avatarColorIndex(
+                forKey: colorKey,
+                paletteCount: Tokens.avatarPalette.count
+            )
+        ]
+    }
+
+    /// Stable per-speaker color for a given speaker ID, respecting
+    /// color-key overrides. Used by the speaker mapping sheet to render
+    /// color dots consistent with the transcript.
+    ///
+    /// - Parameters:
+    ///   - speakerID: The diarization speaker ID.
+    ///   - colorKeys: Per-speaker-ID override keys (same map used by
+    ///     `attributedString`). When the speaker has an override, the
+    ///     color is keyed on that value; otherwise `"speaker-<id>"`.
+    public static func speakerColor(
+        forSpeakerID speakerID: Int,
+        colorKeys: [Int: String] = [:]
+    ) -> Color {
+        let colorKey = colorKeys[speakerID] ?? "speaker-\(speakerID)"
         return Tokens.avatarPalette[
             avatarColorIndex(
                 forKey: colorKey,

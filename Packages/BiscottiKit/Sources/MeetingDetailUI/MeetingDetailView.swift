@@ -869,6 +869,7 @@ private extension MeetingDetailView {
                 transcriptID: transcriptID,
                 canSeek: viewModel.canPlay,
                 speakerNames: viewModel.displayedSpeakerNames,
+                speakerColorKeys: viewModel.displayedSpeakerColorKeys,
                 attributed: attributed,
                 onSeek: { viewModel.seekAndPlay(to: $0) },
                 onSpeaker: { speakerID in

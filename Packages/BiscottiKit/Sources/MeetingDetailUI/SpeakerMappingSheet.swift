@@ -82,8 +82,12 @@ struct SpeakerMappingSheet: View {
     private func speakerRow(_ row: SpeakerRow) -> some View {
         HStack(spacing: Tokens.spacingSM) {
             // Color dot matching the transcript color for this speaker
+            // (respects merged-speaker color keys from §13.5)
             Circle()
-                .fill(speakerColor(for: row.speakerID))
+                .fill(TranscriptContent.speakerColor(
+                    forSpeakerID: row.speakerID,
+                    colorKeys: data.colorKeys
+                ))
                 .frame(width: 10, height: 10)
 
             Text(row.label)
@@ -251,16 +255,5 @@ struct SpeakerMappingSheet: View {
                     .foregroundStyle(.inkSecondary)
             }
         }
-    }
-
-    /// Speaker color matching the transcript rendering.
-    private func speakerColor(for speakerID: Int) -> Color {
-        let colorKey = "speaker-\(speakerID)"
-        return Tokens.avatarPalette[
-            avatarColorIndex(
-                forKey: colorKey,
-                paletteCount: Tokens.avatarPalette.count
-            )
-        ]
     }
 }

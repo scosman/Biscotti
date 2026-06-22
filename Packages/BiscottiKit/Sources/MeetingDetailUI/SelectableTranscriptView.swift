@@ -34,6 +34,10 @@ struct SelectableTranscriptView: View, Equatable {
     /// check.
     let speakerNames: [Int: String]
 
+    /// Speaker color-key overrides; included in equality so a color-key
+    /// change (e.g. merging two speakers to one person) triggers re-render.
+    let speakerColorKeys: [Int: String]
+
     private let attributed: AttributedString
     private let onSeek: (TimeInterval) -> Void
     private let onSpeaker: (Int) -> Void
@@ -42,6 +46,7 @@ struct SelectableTranscriptView: View, Equatable {
         transcriptID: UUID,
         canSeek: Bool,
         speakerNames: [Int: String] = [:],
+        speakerColorKeys: [Int: String] = [:],
         attributed: AttributedString,
         onSeek: @escaping (TimeInterval) -> Void,
         onSpeaker: @escaping (Int) -> Void = { _ in }
@@ -49,6 +54,7 @@ struct SelectableTranscriptView: View, Equatable {
         self.transcriptID = transcriptID
         self.canSeek = canSeek
         self.speakerNames = speakerNames
+        self.speakerColorKeys = speakerColorKeys
         self.attributed = attributed
         self.onSeek = onSeek
         self.onSpeaker = onSpeaker
@@ -61,6 +67,7 @@ struct SelectableTranscriptView: View, Equatable {
         lhs.transcriptID == rhs.transcriptID
             && lhs.canSeek == rhs.canSeek
             && lhs.speakerNames == rhs.speakerNames
+            && lhs.speakerColorKeys == rhs.speakerColorKeys
     }
 
     var body: some View {

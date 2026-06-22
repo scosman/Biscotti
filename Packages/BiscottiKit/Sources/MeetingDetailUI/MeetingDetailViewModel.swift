@@ -115,14 +115,15 @@ public final class MeetingDetailViewModel {
     /// SwiftUI render.
     public private(set) var cachedTranscriptAttributed: AttributedString?
 
-    /// The transcript ID + canPlay + names state that the cached attributed
-    /// string was built for. When any changes we rebuild.
+    /// The transcript ID + canPlay + names + colorKeys state that the cached
+    /// attributed string was built for. When any changes we rebuild.
     private var cachedTranscriptKey: CachedTranscriptKey?
 
     private struct CachedTranscriptKey: Equatable {
         let transcriptID: UUID
         let canPlay: Bool
         let names: [Int: String]
+        let colorKeys: [Int: String]
     }
 
     // MARK: - Phase 8: Notes
@@ -589,6 +590,20 @@ public extension MeetingDetailViewModel {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
     }
 
+    /// Speaker ID -> color-key string map derived from assignments.
+    /// When a speaker is assigned to a person, key is `"person-<UUID>"`
+    /// so all speakers mapped to the same person share one color.
+    /// Unassigned speakers are absent (fall back to `"speaker-<id>"`).
+    var displayedSpeakerColorKeys: [Int: String] {
+        guard let assignments = displayedTranscript?.speakerAssignments
+        else { return [:] }
+        var result: [Int: String] = [:]
+        for (speakerID, person) in assignments {
+            result[speakerID] = "person-\(person.id.uuidString)"
+        }
+        return result
+    }
+
     /// Ordered processing-pipeline stages for the Summary tab.
     ///
     /// Merges `TranscriptionService.jobs[id]` and `Intelligence.jobs[id]`
@@ -754,7 +769,7 @@ public extension MeetingDetailViewModel {
 
     /// Rebuilds the cached `AttributedString` from the current displayed
     /// transcript. Called reactively when inputs change (job status,
-    /// version switch, canPlay flip, speaker name changes) -- never
+    /// version switch, canPlay flip, speaker name/color changes) -- never
     /// during `body` evaluation.
     func rebuildTranscriptCacheIfNeeded() {
         guard let transcript = displayedTranscript,
@@ -766,16 +781,19 @@ public extension MeetingDetailViewModel {
         }
 
         let names = displayedSpeakerNames
+        let colorKeys = displayedSpeakerColorKeys
         let key = CachedTranscriptKey(
             transcriptID: transcript.id,
             canPlay: canPlay,
-            names: names
+            names: names,
+            colorKeys: colorKeys
         )
         guard key != cachedTranscriptKey else { return }
 
         cachedTranscriptAttributed = TranscriptContent.attributedString(
             transcript.segments, canSeek: canPlay,
-            names: names
+            names: names,
+            colorKeys: colorKeys
         )
         cachedTranscriptKey = key
     }
@@ -1355,18 +1373,24 @@ public struct SpeakerSheetData: Sendable, Equatable {
     /// Can be used to pre-focus or scroll to that speaker's row.
     public let focusedSpeakerID: Int?
 
+    /// Per-speaker color-key overrides so merged speakers (multiple IDs
+    /// assigned to the same person) share a color dot in the sheet.
+    public let colorKeys: [Int: String]
+
     public init(
         transcriptID: UUID,
         rows: [SpeakerRow],
         invitees: [PersonData],
         people: [PersonData],
-        focusedSpeakerID: Int? = nil
+        focusedSpeakerID: Int? = nil,
+        colorKeys: [Int: String] = [:]
     ) {
         self.transcriptID = transcriptID
         self.rows = rows
         self.invitees = invitees
         self.people = people
         self.focusedSpeakerID = focusedSpeakerID
+        self.colorKeys = colorKeys
     }
 }
 
@@ -1433,12 +1457,19 @@ public extension MeetingDetailViewModel {
             // Non-fatal
         }
 
+        // Build color keys from speaker assignments
+        var colorKeys: [Int: String] = [:]
+        for (speakerID, person) in transcript.speakerAssignments {
+            colorKeys[speakerID] = "person-\(person.id.uuidString)"
+        }
+
         return SpeakerSheetData(
             transcriptID: transcript.id,
             rows: rows,
             invitees: invitees,
             people: people,
-            focusedSpeakerID: focusedSpeakerID
+            focusedSpeakerID: focusedSpeakerID,
+            colorKeys: colorKeys
         )
     }
 

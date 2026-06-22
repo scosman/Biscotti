@@ -438,6 +438,64 @@ struct TranscriptCacheNameTests {
     }
 }
 
+// MARK: - Cache key includes color keys (Phase 11)
+
+@Suite("Transcript cache key includes speaker color keys")
+struct TranscriptCacheColorKeyTests {
+    @Test("cache rebuilds when speaker color keys change (assignment adds person)")
+    @MainActor
+    func cacheRebuildsOnColorKeyChange() async throws {
+        let fix = try makeCoreFixture(testName: "SpeakerSheet")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Initially no color keys
+        #expect(viewModel.displayedSpeakerColorKeys.isEmpty)
+
+        // Assign two speakers to the same person
+        let personID = try await fix.store.findOrCreatePerson(
+            name: "Shared Person", email: nil
+        )
+
+        await viewModel.openSpeakerSheet(speakerID: 0)
+        await viewModel.assignSpeaker(
+            speakerID: 0, personID: personID
+        )
+
+        // Color keys should now include speaker 0
+        let keys1 = viewModel.displayedSpeakerColorKeys
+        #expect(keys1[0] == "person-\(personID.uuidString)")
+
+        // Assign speaker 1 to the same person
+        await viewModel.assignSpeaker(
+            speakerID: 1, personID: personID
+        )
+
+        // Both speakers should have the same color key
+        let keys2 = viewModel.displayedSpeakerColorKeys
+        #expect(keys2[0] == keys2[1])
+        #expect(keys2[0] == "person-\(personID.uuidString)")
+
+        // Cache should have been rebuilt (the attributed string reflects
+        // the merged color). Verify the cache is non-nil.
+        #expect(viewModel.cachedTranscriptAttributed != nil)
+    }
+}
+
 // MARK: - Sheet works without model
 
 @Suite("Speaker mapping sheet -- works without model")

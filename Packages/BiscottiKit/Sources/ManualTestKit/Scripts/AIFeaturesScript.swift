@@ -155,12 +155,103 @@ public extension TestScript {
                     + "summary stream in?"
             ),
 
-            // -- Status indicator --
+            // -- Pipeline status control (Phase 7 polish) --
             .humanQuestion(
-                id: "ai_status_indicator",
-                prompt: "During an auto-run (after a new transcription), is there a "
-                    + "subtle processing indicator visible (e.g. in the Summary tab "
-                    + "header or meeting row) showing AI work is in progress?"
+                id: "ai_pipeline_status",
+                prompt: "After stopping a new recording, switch to the Summary tab. "
+                    + "Does a pipeline status control appear showing ordered stages "
+                    + "(e.g. 'Transcribing → Inferring participant names → "
+                    + "Summarizing') with done/active/pending indicators? Is it "
+                    + "shown in place of 'No transcript available.'?"
+            ),
+            .humanQuestion(
+                id: "ai_pipeline_auto_jump",
+                prompt: "When the processing pipeline activates for the open meeting, "
+                    + "does the detail view automatically switch to the Summary tab "
+                    + "(so the pipeline status is visible)? Confirm it only jumps "
+                    + "once and does not fight subsequent manual tab changes."
+            ),
+            .humanQuestion(
+                id: "ai_pipeline_gating",
+                prompt: "With 'Guess Speaker Names' OFF (but model present and "
+                    + "'Summarize Transcripts' ON), start a new recording/transcription. "
+                    + "Does the pipeline status omit the 'Inferring participant names' "
+                    + "stage (showing only Transcribing → Summarizing)?"
+            ),
+            .humanQuestion(
+                id: "ai_pipeline_no_pill",
+                prompt: "While the pipeline is active, confirm there is NO trailing "
+                    + "pill/badge in the tab bar row (the old 'Enhancing...' pill from "
+                    + "earlier designs should be gone)."
+            ),
+
+            // -- Re-transcribe re-runs AI (Phase 7 polish) --
+            .instruction(
+                id: "ai_retranscribe_setup",
+                text: "Ensure both AI toggles are ON and a model is downloaded. Open a "
+                    + "meeting that already has a transcript and AI-generated summary. "
+                    + "Use the '...' overflow menu to tap 'Re-transcribe'."
+            ),
+            .humanQuestion(
+                id: "ai_retranscribe_reruns",
+                prompt: "After re-transcribing, does the AI auto-run fire again "
+                    + "(pipeline status appears, then speaker-ID + summary re-run)? "
+                    + "Does the new summary reflect the re-transcribed content?"
+            ),
+
+            // -- Summary completion: no flash / scroll (Phase 8 polish) --
+            .humanQuestion(
+                id: "ai_summary_no_flash",
+                prompt: "Watch carefully as a streamed summary finishes (last token). "
+                    + "Does the view transition smoothly to the editable summary "
+                    + "WITHOUT flashing to an empty/Generate state? The content "
+                    + "should stay visible continuously."
+            ),
+            .humanQuestion(
+                id: "ai_summary_scroll_retained",
+                prompt: "During summary streaming, scroll down in the Summary tab so "
+                    + "the top is not visible. When streaming completes, is your "
+                    + "scroll position retained (not reset to top)?"
+            ),
+
+            // -- Settings layout (Phase 9 polish) --
+            .humanQuestion(
+                id: "ai_settings_header_caption",
+                prompt: "In Settings, look at the 'AI Enhancements' section. Is 'AI "
+                    + "runs locally on your Mac.' shown as muted/grey text trailing "
+                    + "the section header (same line as the title), NOT as a section "
+                    + "footer below the toggles?"
+            ),
+            .humanQuestion(
+                id: "ai_settings_section_order",
+                prompt: "Verify the Settings section order from top to bottom is: "
+                    + "General → Permissions → AI Enhancements → Notifications → "
+                    + "Calendars (with Debug last if present). Is Permissions the "
+                    + "2nd section, immediately after General?"
+            ),
+
+            // -- Manual assignment survives re-run (Phase 10 polish) --
+            .humanQuestion(
+                id: "ai_userset_survives_rerun",
+                prompt: "Manually assign a speaker to a specific person via the mapping "
+                    + "sheet. Then re-transcribe (or trigger a new AI auto-run). After "
+                    + "the AI run completes, does your manual assignment survive "
+                    + "unchanged (the LLM did NOT overwrite it)?"
+            ),
+
+            // -- Merged speaker color (Phase 11 polish) --
+            .humanQuestion(
+                id: "ai_merged_speaker_color",
+                prompt: "Assign two different speaker IDs (e.g. Speaker 0 and Speaker 2) "
+                    + "to the SAME person via the mapping sheet. In the transcript, do "
+                    + "both speakers now share one color? And does the mapping sheet's "
+                    + "leading color dot also match for both?"
+            ),
+            .humanQuestion(
+                id: "ai_unassigned_speaker_color",
+                prompt: "Confirm that speakers that are NOT assigned to a person still "
+                    + "have their own stable per-speaker-ID color (distinct from the "
+                    + "merged color of assigned speakers)."
             )
         ]
     )

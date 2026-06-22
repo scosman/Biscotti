@@ -26,9 +26,9 @@ Final phase: update the repo-root roadmap docs to reflect that LLM/AI features a
 
 ## Tests
 
-- Structural tests added to `ScriptShapeTests.swift` for the new AI Features script (identity, step count, step IDs, uniqueness).
-- `CIGateTests` satisfied by adding 18 `not-run` entries to the results JSON for the new recordable `ai_*` steps.
-- The new `ai_*` steps appear as `not-run` in `manual_tests_check`, which is expected (the gate is non-gating).
+- Structural tests in `ScriptShapeTests.swift` for the AI Features script (identity, step count = 33, step IDs = 33 canonical IDs, uniqueness).
+- `CIGateTests` satisfied by 29 `not-run` entries in the results JSON for all recordable `ai_*` steps.
+- The `ai_*` steps appear as `not-run` in `manual_tests_check`, which is expected (the gate is non-gating).
 
 ## Deferred to human (on-hardware)
 

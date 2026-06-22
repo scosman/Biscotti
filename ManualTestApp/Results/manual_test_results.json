@@ -51,9 +51,37 @@
     "status" : "not-run",
     "stepID" : "ai_speaker_link_opens_sheet"
   },
-  "ai_status_indicator" : {
+  "ai_merged_speaker_color" : {
     "status" : "not-run",
-    "stepID" : "ai_status_indicator"
+    "stepID" : "ai_merged_speaker_color"
+  },
+  "ai_pipeline_auto_jump" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_auto_jump"
+  },
+  "ai_pipeline_gating" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_gating"
+  },
+  "ai_pipeline_no_pill" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_no_pill"
+  },
+  "ai_pipeline_status" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_status"
+  },
+  "ai_retranscribe_reruns" : {
+    "status" : "not-run",
+    "stepID" : "ai_retranscribe_reruns"
+  },
+  "ai_settings_header_caption" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_header_caption"
+  },
+  "ai_settings_section_order" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_section_order"
   },
   "ai_summary_edit" : {
     "status" : "not-run",
@@ -63,6 +91,14 @@
     "status" : "not-run",
     "stepID" : "ai_summary_empty_generate"
   },
+  "ai_summary_no_flash" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_no_flash"
+  },
+  "ai_summary_scroll_retained" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_scroll_retained"
+  },
   "ai_summary_speaker_names" : {
     "status" : "not-run",
     "stepID" : "ai_summary_speaker_names"
@@ -70,6 +106,14 @@
   "ai_toggles_persist" : {
     "status" : "not-run",
     "stepID" : "ai_toggles_persist"
+  },
+  "ai_unassigned_speaker_color" : {
+    "status" : "not-run",
+    "stepID" : "ai_unassigned_speaker_color"
+  },
+  "ai_userset_survives_rerun" : {
+    "status" : "not-run",
+    "stepID" : "ai_userset_survives_rerun"
   },
   "ac_crash_safety_check" : {
     "status" : "pass",

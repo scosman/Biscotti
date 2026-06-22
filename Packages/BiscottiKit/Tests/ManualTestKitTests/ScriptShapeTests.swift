@@ -149,9 +149,9 @@ struct ScriptShapeTests {
         #expect(script.id == "ai_features")
     }
 
-    @Test("AI Features script has exactly 21 steps")
+    @Test("AI Features script has exactly 33 steps")
     func aiFeaturesStepCount() {
-        #expect(TestScript.aiFeatures.steps.count == 21)
+        #expect(TestScript.aiFeatures.steps.count == 33)
     }
 
     @Test("AI Features step IDs match the canonical set")
@@ -178,7 +178,19 @@ struct ScriptShapeTests {
             "ai_model_free_no_auto",
             "ai_model_free_manual",
             "ai_summary_empty_generate",
-            "ai_status_indicator"
+            "ai_pipeline_status",
+            "ai_pipeline_auto_jump",
+            "ai_pipeline_gating",
+            "ai_pipeline_no_pill",
+            "ai_retranscribe_setup",
+            "ai_retranscribe_reruns",
+            "ai_summary_no_flash",
+            "ai_summary_scroll_retained",
+            "ai_settings_header_caption",
+            "ai_settings_section_order",
+            "ai_userset_survives_rerun",
+            "ai_merged_speaker_color",
+            "ai_unassigned_speaker_color"
         ]
         #expect(ids == expected)
     }

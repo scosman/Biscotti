@@ -23,12 +23,12 @@ public enum ModelDownloadState: Sendable, Equatable {
 }
 
 /// Settings that gate the AI auto-run. Read from DataStore on each run.
+/// Phase 3 collapses the two old bools into a single `enabled` flag;
+/// Phase 4 will align the DataStore field (`aiAnalysisEnabled`).
 public struct AISettings: Sendable {
-    public var summarize: Bool
-    public var guessSpeakers: Bool
+    public var enabled: Bool
 
-    public init(summarize: Bool, guessSpeakers: Bool) {
-        self.summarize = summarize
-        self.guessSpeakers = guessSpeakers
+    public init(enabled: Bool) {
+        self.enabled = enabled
     }
 }

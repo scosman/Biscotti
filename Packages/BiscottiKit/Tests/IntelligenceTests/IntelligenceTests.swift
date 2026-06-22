@@ -32,21 +32,21 @@ final class FakeLLMRunner: LLMRunning, @unchecked Sendable {
 }
 
 /// Fake session that records generate/generateStreaming calls and returns
-/// scripted responses.
+/// scripted responses. Uses the messages API.
 final class FakeSession: LLMSession, @unchecked Sendable {
-    /// Recorded (system, user) pairs from generate calls.
-    var generateCalls: [(system: String, user: String)] = []
+    /// Recorded message lists from generate calls.
+    var generateCalls: [[LLMMessage]] = []
     /// Scripted responses for sequential generate calls.
     var generateResponses: [String] = []
     /// Error to throw on generate (if set).
     var generateError: (any Error)?
 
-    /// Recorded (system, user) pairs from generateStreaming calls.
-    var streamingCalls: [(system: String, user: String)] = []
+    /// Recorded message lists from generateStreaming calls.
+    var streamingCalls: [[LLMMessage]] = []
     /// Scripted token sequences for streaming calls.
     var streamingTokens: [[String]] = []
     /// When set, the `.done` event carries this text instead of the joined
-    /// tokens. Used to test that the Summarizer prefers canonical `.done` text.
+    /// tokens. Used to test that the summary path prefers canonical `.done` text.
     var canonicalDoneText: String?
 
     /// Canned token count for `countTokens`. Returns this value for every call.
@@ -59,7 +59,7 @@ final class FakeSession: LLMSession, @unchecked Sendable {
     private var streamingCallIndex = 0
 
     func countTokens(
-        system _: String, user _: String
+        messages _: [LLMMessage]
     ) async throws -> Int {
         tokenCount
     }
@@ -69,9 +69,9 @@ final class FakeSession: LLMSession, @unchecked Sendable {
     }
 
     func generate(
-        system: String, user: String, options _: GenerationOptions
+        messages: [LLMMessage], options _: GenerationOptions
     ) async throws -> String {
-        generateCalls.append((system: system, user: user))
+        generateCalls.append(messages)
         if let error = generateError {
             throw error
         }
@@ -84,9 +84,9 @@ final class FakeSession: LLMSession, @unchecked Sendable {
     }
 
     func generateStreaming(
-        system: String, user: String, options _: GenerationOptions
+        messages: [LLMMessage], options _: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error> {
-        streamingCalls.append((system: system, user: user))
+        streamingCalls.append(messages)
         let idx = streamingCallIndex
         streamingCallIndex += 1
 
@@ -110,8 +110,6 @@ final class FakeSession: LLMSession, @unchecked Sendable {
 /// Constructs a `GenerationResult` via JSON decoding. The struct has no
 /// public init (memberwise is internal to LocalLLM), but it is `Codable`.
 private func makeGenerationResult(text: String) -> GenerationResult {
-    // Swift's auto-synthesized Codable for enums without associated values
-    // encodes as {"caseName":{}} (keyed container), not a bare string.
     let json: [String: Any] = [
         "text": text,
         "promptTokenCount": 0,
@@ -166,14 +164,9 @@ final class FakeModelProvider: ModelProviding, @unchecked Sendable {
 }
 
 /// An LLM runner that blocks in `withSession` until explicitly released.
-/// Uses `AsyncStream` channels for signaling to avoid NSLock (which is
-/// unavailable in async contexts under Swift 6).
 final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
-    // "entered" channel: withSession yields a value when it starts
     private let enteredStream: AsyncStream<Void>
     private let enteredContinuation: AsyncStream<Void>.Continuation
-
-    // "release" channel: release() yields a value to unblock withSession
     private let releaseStream: AsyncStream<Void>
     private let releaseContinuation: AsyncStream<Void>.Continuation
 
@@ -181,19 +174,16 @@ final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
         let (eStream, eCont) = AsyncStream<Void>.makeStream()
         enteredStream = eStream
         enteredContinuation = eCont
-
         let (rStream, rCont) = AsyncStream<Void>.makeStream()
         releaseStream = rStream
         releaseContinuation = rCont
     }
 
-    /// Wait until `withSession` has been entered by the first caller.
     func waitUntilEntered() async {
         var iterator = enteredStream.makeAsyncIterator()
         _ = await iterator.next()
     }
 
-    /// Allow the blocked `withSession` to proceed and return.
     func release() {
         releaseContinuation.yield()
     }
@@ -202,13 +192,9 @@ final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
         config _: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
-        // Signal that we've entered the session
         enteredContinuation.yield()
-
-        // Block until released
         var iterator = releaseStream.makeAsyncIterator()
         _ = await iterator.next()
-
         return try await body(FakeSession())
     }
 }
@@ -271,14 +257,11 @@ struct IntelligenceFixture {
     store: DataStore,
     session: FakeSession = FakeSession(),
     downloaded: Bool = true,
-    summarize: Bool = true,
-    guessSpeakers: Bool = true
+    enabled: Bool = true
 ) -> IntelligenceFixture {
     let runner = FakeLLMRunner(session: session)
     let models = FakeModelProvider(downloaded: downloaded)
-    let settings = AISettings(
-        summarize: summarize, guessSpeakers: guessSpeakers
-    )
+    let settings = AISettings(enabled: enabled)
     let intel = Intelligence(
         store: store, llm: runner, models: models,
         settings: { settings }
@@ -351,7 +334,6 @@ struct SpeakerMappingParserTests {
         2 |  |
         """
         let result = SpeakerMappingParser.parse(raw)
-        // Only line 0 is valid; "x" is non-numeric, missing index, empty name
         #expect(result.count == 1)
         #expect(result[0]?.name == "Alice")
     }
@@ -478,44 +460,166 @@ struct TranscriptFormatterTests {
 
 @Suite("IntelligencePrompts")
 struct IntelligencePromptsTests {
-    @Test("system prompts are non-empty")
-    func systemPromptsNonEmpty() {
-        #expect(!IntelligencePrompts.summarySystem.isEmpty)
-        #expect(!IntelligencePrompts.speakerSystem.isEmpty)
+    @Test("analysisSystem is non-empty")
+    func analysisSystemNonEmpty() {
+        #expect(!IntelligencePrompts.analysisSystem.isEmpty)
     }
 
-    @Test("summaryUser includes the transcript")
-    func summaryUserContent() {
-        let result = IntelligencePrompts.summaryUser(
-            transcript: "Alice: Hello\nBob: Hi"
+    @Test("meetingDetailsBlock includes title and date")
+    func meetingDetailsBlockBasic() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Standup", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
         )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(result.contains("<meeting_details>"))
+        #expect(result.contains("Title: Standup"))
+        #expect(result.contains("Date:"))
+        #expect(result.contains("</meeting_details>"))
+    }
+
+    @Test("meetingDetailsBlock omits empty title")
+    func meetingDetailsBlockNoTitle() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(!result.contains("Title:"))
+        // Should still have the date line
+        #expect(result.contains("Date:"))
+    }
+
+    @Test("meetingDetailsBlock includes end date when present")
+    func meetingDetailsBlockWithEndDate() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Meeting", date: Date(),
+            endDate: Date().addingTimeInterval(3600),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(result.contains(" - "))
+    }
+
+    @Test("meetingDetailsBlock omits location when absent")
+    func meetingDetailsBlockNoLocation() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Meeting", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(!result.contains("Location:"))
+    }
+
+    @Test("meetingDetailsBlock includes calendar fields")
+    func meetingDetailsBlockCalendar() {
+        let calendar = CalendarContextData(
+            conferencePlatform: "Zoom",
+            location: "Room 42",
+            organizer: PersonData(id: UUID(), name: "Org", email: "org@x.com"),
+            attendees: [PersonData(id: UUID(), name: "Att", email: "att@x.com")],
+            eventNotes: "Discuss roadmap"
+        )
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Planning", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil,
+            calendar: calendar
+        )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(result.contains("Location: Room 42"))
+        #expect(result.contains("Conference: Zoom"))
+        #expect(result.contains("Invitees:"))
+        #expect(result.contains("- Org <org@x.com>"))
+        #expect(result.contains("- Att <att@x.com>"))
+        #expect(result.contains("Description:\nDiscuss roadmap"))
+    }
+
+    @Test("meetingDetailsBlock omits empty eventNotes")
+    func meetingDetailsBlockNoNotes() {
+        let calendar = CalendarContextData(eventNotes: "")
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Meeting", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil,
+            calendar: calendar
+        )
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(!result.contains("Description:"))
+    }
+
+    @Test("meetingDetailsBlock always includes date even when other fields empty")
+    func meetingDetailsBlockMinimalFields() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        // Date is non-optional, so the block always has at least a date line
+        let result = IntelligencePrompts.meetingDetailsBlock(detail)
+        #expect(result.contains("Date:"))
+        #expect(!result.contains("Title:"))
+    }
+
+    @Test("userSpeakerMappingBlock renders entries sorted by key")
+    func userSpeakerMappingBlock() {
+        let human: [Int: PersonData] = [
+            1: PersonData(id: UUID(), name: "Bob", email: "bob@x.com"),
+            0: PersonData(id: UUID(), name: "Alice", email: nil)
+        ]
+        let result = IntelligencePrompts.userSpeakerMappingBlock(human)
+        #expect(result.contains("<user_speaker_person_mapping>"))
+        #expect(result.contains("0 | Alice | "))
+        #expect(result.contains("1 | Bob | bob@x.com"))
+        // Check sorted order: 0 before 1
+        let lines = result.components(separatedBy: "\n")
+        let dataLines = lines.filter { $0.contains("|") }
+        #expect(dataLines[0].hasPrefix("0"))
+        #expect(dataLines[1].hasPrefix("1"))
+    }
+
+    @Test("userSpeakerMappingBlock returns empty for empty map")
+    func userSpeakerMappingBlockEmpty() {
+        let result = IntelligencePrompts.userSpeakerMappingBlock([:])
+        #expect(result == "")
+    }
+
+    @Test("analysisFirstUser includes transcript with Speaker-N labels and speaker task")
+    func analysisFirstUserContent() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.analysisFirstUser(
+            detail: detail, human: [:],
+            transcriptSpeakerLabeled: "Speaker 0: Hello\nSpeaker 1: Hi"
+        )
+        #expect(result.contains("<transcript>"))
+        #expect(result.contains("Speaker 0: Hello"))
+        #expect(result.contains("Speaker 1: Hi"))
+        #expect(result.contains("</transcript>"))
+        #expect(result.contains("Match diarization speakers"))
+        #expect(result.contains("<speakerIndex> | <Full Name>"))
+    }
+
+    @Test("summaryOnlyFirstUser includes named transcript and summary task")
+    func summaryOnlyFirstUserContent() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail,
+            transcriptNamed: "Alice: Hello\nBob: Hi"
+        )
+        #expect(result.contains("<transcript>"))
         #expect(result.contains("Alice: Hello"))
-        #expect(result.contains("Bob: Hi"))
+        #expect(result.contains("</transcript>"))
+        #expect(result.contains("## Action Items"))
+        #expect(!result.contains("Match diarization"))
     }
 
-    @Test("speakerUser includes invitees and transcript")
-    func speakerUserWithInvitees() {
-        let result = IntelligencePrompts.speakerUser(
-            transcript: "Speaker 0: Hello",
-            invitees: [
-                (name: "Alice Smith", email: "alice@x.com"),
-                (name: "Bob Jones", email: nil)
-            ]
-        )
-        #expect(result.contains("Alice Smith <alice@x.com>"))
-        #expect(result.contains("Bob Jones"))
-        #expect(result.contains("Speaker 0: Hello"))
-        #expect(result.contains("Meeting invitees:"))
-    }
-
-    @Test("speakerUser handles empty invitees")
-    func speakerUserNoInvitees() {
-        let result = IntelligencePrompts.speakerUser(
-            transcript: "Speaker 0: Hello",
-            invitees: []
-        )
-        #expect(result.contains("No invitee list available."))
-        #expect(result.contains("Speaker 0: Hello"))
+    @Test("summaryFollowUpUser is the summary instructions")
+    func summaryFollowUpContent() {
+        #expect(IntelligencePrompts.summaryFollowUpUser.contains("## Action Items"))
+        #expect(!IntelligencePrompts.summaryFollowUpUser.contains("<transcript>"))
     }
 }
 
@@ -523,91 +627,92 @@ struct IntelligencePromptsTests {
 
 @Suite("Intelligence orchestration")
 struct IntelligenceOrchestrationTests {
-    @Test("both toggles on runs speaker-ID then summary in one session")
-    @MainActor func bothTogglesOn() async throws {
+    @Test("auto-run runs speaker-ID then summary in one session (multi-turn)")
+    @MainActor func bothTasks() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
 
         let session = FakeSession()
-        // Speaker-ID returns a mapping
         session.generateResponses = ["0 | Alice |\n1 | Bob |"]
-        // Summary streaming tokens
         session.streamingTokens = [["## Meeting Notes\n", "Summary text"]]
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // Exactly one session opened
         #expect(fixture.runner.sessionCount == 1)
-        // Speaker-ID generate called first, then streaming summary
+        // Speaker-ID = buffered generate, Summary = streaming
         #expect(session.generateCalls.count == 1)
         #expect(session.streamingCalls.count == 1)
-        // Status should be completed
+
+        // Verify multi-turn message sequencing
+        let speakerMsgs = session.generateCalls[0]
+        #expect(speakerMsgs.count == 2) // system + user
+        #expect(speakerMsgs[0].role == .system)
+        #expect(speakerMsgs[1].role == .user)
+
+        let summaryMsgs = session.streamingCalls[0]
+        #expect(summaryMsgs.count == 4) // system + user + assistant + user
+        #expect(summaryMsgs[0].role == .system)
+        #expect(summaryMsgs[1].role == .user)
+        #expect(summaryMsgs[2].role == .assistant)
+        #expect(summaryMsgs[2].content == "0 | Alice |\n1 | Bob |") // verbatim
+        #expect(summaryMsgs[3].role == .user)
+
+        // KV-reuse invariant: summary follow-up is lean (just summary
+        // instructions), NOT a second copy of the transcript.
+        let followUp = summaryMsgs[3].content
+        #expect(!followUp.contains("<transcript>"))
+        #expect(!followUp.contains("Hello everyone"))
+        #expect(followUp.contains("## Action Items")) // summary instructions
+
         #expect(fixture.intel.jobs[meetingID] == .completed)
 
-        // Summary should be persisted
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "## Meeting Notes\nSummary text")
         #expect(detail?.editedSummary == false)
 
-        // Speaker assignments should be persisted
         let transcript = detail?.preferredTranscript
         #expect(transcript?.speakerAssignments[0]?.name == "Alice")
         #expect(transcript?.speakerAssignments[1]?.name == "Bob")
     }
 
-    @Test("only summarize runs summary only (no speaker-ID)")
-    @MainActor func summarizeOnly() async throws {
+    @Test("auto-run skips speakers when all are human-set (summary-only)")
+    @MainActor func allSpeakersHumanSet() async throws {
         let store = try makeStore()
-        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        // Manually assign both speakers
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
 
         let session = FakeSession()
         session.streamingTokens = [["Summary"]]
 
-        let fixture = makeIntelligence(
-            store: store, session: session, guessSpeakers: false
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         #expect(fixture.runner.sessionCount == 1)
         #expect(session.generateCalls.isEmpty) // No speaker-ID
         #expect(session.streamingCalls.count == 1) // Summary only
-        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        // Summary-only uses named transcript (single turn)
+        let msgs = session.streamingCalls[0]
+        #expect(msgs.count == 2) // system + user (no multi-turn)
+        // Transcript should use resolved names, not Speaker-N
+        #expect(msgs[1].content.contains("Alice:"))
     }
 
-    @Test("only guessSpeakers runs speaker-ID only (no summary)")
-    @MainActor func speakersOnly() async throws {
+    @Test("auto-run with settings disabled is no-op")
+    @MainActor func settingsDisabled() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
 
-        let session = FakeSession()
-        session.generateResponses = ["0 | Alice |"]
-
-        let fixture = makeIntelligence(
-            store: store, session: session, summarize: false
-        )
-        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
-
-        #expect(fixture.runner.sessionCount == 1)
-        #expect(session.generateCalls.count == 1) // Speaker-ID
-        #expect(session.streamingCalls.isEmpty) // No summary
-        #expect(fixture.intel.jobs[meetingID] == .completed)
-    }
-
-    @Test("both toggles off is no-op and clears preparing status")
-    @MainActor func bothOff() async throws {
-        let store = try makeStore()
-        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
-
-        let fixture = makeIntelligence(
-            store: store, summarize: false, guessSpeakers: false
-        )
+        let fixture = makeIntelligence(store: store, enabled: false)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         #expect(fixture.runner.sessionCount == 0)
-        // .preparing was set synchronously then cleared on bail
         #expect(fixture.intel.jobs[meetingID] == nil)
     }
 
@@ -616,13 +721,10 @@ struct IntelligenceOrchestrationTests {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
 
-        let fixture = makeIntelligence(
-            store: store, downloaded: false
-        )
+        let fixture = makeIntelligence(store: store, downloaded: false)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         #expect(fixture.runner.sessionCount == 0)
-        // .preparing was set synchronously then cleared on bail
         #expect(fixture.intel.jobs[meetingID] == nil)
     }
 
@@ -631,25 +733,40 @@ struct IntelligenceOrchestrationTests {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
 
-        // User edits the summary
         try await store.setSummary("My notes", for: meetingID)
 
         let session = FakeSession()
         session.generateResponses = ["0 | Alice |"]
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // Speaker-ID ran
         #expect(session.generateCalls.count == 1)
-        // Summary was skipped
         #expect(session.streamingCalls.isEmpty)
-        // Summary not overwritten
+
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "My notes")
         #expect(detail?.editedSummary == true)
+    }
+
+    @Test("no-session when both tasks skipped (all human-set + edited summary)")
+    @MainActor func noSessionWhenBothSkipped() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        // All speakers human-set
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+
+        // Summary edited
+        try await store.setSummary("My notes", for: meetingID)
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
     }
 
     @Test("streaming accumulation flows into streamingSummary")
@@ -660,14 +777,11 @@ struct IntelligenceOrchestrationTests {
         let session = FakeSession()
         session.streamingTokens = [["Hello", " World"]]
 
-        let fixture = makeIntelligence(
-            store: store, session: session, guessSpeakers: false
-        )
+        // Set up all human-set speakers so only summary runs (simpler test)
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // After completion, streaming summary is cleared
         #expect(fixture.intel.streamingSummary[meetingID] == nil)
-        // But the final summary is persisted
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "Hello World")
     }
@@ -683,9 +797,7 @@ struct IntelligenceOrchestrationTests {
             userInfo: [NSLocalizedDescriptionKey: "Test error"]
         )
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
         if case let .failed(message) = fixture.intel.jobs[meetingID] {
@@ -693,26 +805,6 @@ struct IntelligenceOrchestrationTests {
         } else {
             Issue.record("Expected .failed status")
         }
-    }
-
-    @Test("summary user message contains resolved names after speaker-ID")
-    @MainActor func summaryUsesResolvedNames() async throws {
-        let store = try makeStore()
-        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
-
-        let session = FakeSession()
-        // Speaker-ID maps speaker 0 to Alice
-        session.generateResponses = ["0 | Alice |"]
-        session.streamingTokens = [["Summary"]]
-
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
-        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
-
-        // The summary call's user message should contain "Alice" not "Speaker 0"
-        let summaryUser = session.streamingCalls.first?.user ?? ""
-        #expect(summaryUser.contains("Alice"))
     }
 
     @Test("no transcript is no-op")
@@ -726,7 +818,7 @@ struct IntelligenceOrchestrationTests {
         #expect(fixture.runner.sessionCount == 0)
     }
 
-    @Test("second concurrent runAutoEnhancements is rejected while one is in-flight")
+    @Test("second concurrent runAutoEnhancements is rejected")
     @MainActor func inFlightGuard() async throws {
         let store = try makeStore()
         let (meetingID1, _) = try await makeMeetingWithTranscript(
@@ -736,109 +828,40 @@ struct IntelligenceOrchestrationTests {
             store: store, title: "Meeting 2"
         )
 
-        // Use a blocking runner that holds the session open until released
         let blocker = BlockingLLMRunner()
         let models = FakeModelProvider(downloaded: true)
         let intel = Intelligence(
             store: store, llm: blocker, models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: false) }
+            settings: { AISettings(enabled: true) }
         )
 
-        // Start the first run (it will block in withSession)
         let task1 = Task { @MainActor in
             await intel.runAutoEnhancements(meetingID: meetingID1)
         }
-        // Wait for the first run to enter the session
         await blocker.waitUntilEntered()
 
-        // Second run should be immediately rejected (in-flight guard)
         await intel.runAutoEnhancements(meetingID: meetingID2)
-        #expect(intel.jobs[meetingID2] == nil) // Never started
+        #expect(intel.jobs[meetingID2] == nil)
 
-        // Release the first run
         blocker.release()
         await task1.value
         #expect(intel.jobs[meetingID1] == .completed)
     }
 
-    @Test("Summarizer uses canonical .done text over accumulated tokens")
+    @Test("canonical .done text used over accumulated tokens")
     @MainActor func doneEventCanonicalText() async throws {
         let store = try makeStore()
         let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
 
         let session = FakeSession()
-        // Tokens accumulate to "par" + "tial" = "partial", but the
-        // .done event carries a different canonical text.
         session.streamingTokens = [["par", "tial"]]
         session.canonicalDoneText = "CANONICAL FINAL"
 
-        let fixture = makeIntelligence(
-            store: store, session: session, guessSpeakers: false
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // The persisted summary must equal the .done result's text,
-        // not the concatenated tokens — proving the Summarizer
-        // overrides token accumulation with the canonical result.
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "CANONICAL FINAL")
-    }
-
-    @Test("Summarizer pushes canonical .done text as final partial for scroll preservation")
-    @MainActor func doneEventPushedAsPartial() async throws {
-        let store = try makeStore()
-        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
-
-        let session = FakeSession()
-        // Tokens accumulate to "par" + "tial" = "partial", but the
-        // .done event carries a different canonical text.
-        session.streamingTokens = [["par", "tial"]]
-        session.canonicalDoneText = "CANONICAL FINAL"
-
-        // Capture all partial callbacks to verify the final one
-        var partials: [String] = []
-        let fixture = makeIntelligence(
-            store: store, session: session, guessSpeakers: false
-        )
-
-        // Run through auto-enhancements; the streaming callback
-        // accumulates in intel.streamingSummary which we observe
-        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
-
-        // After completion, streaming is cleared, but verify the
-        // persisted summary matches the canonical text (proving it
-        // was pushed through). The streaming→final text equality
-        // is what preserves scroll in the UI.
-        let detail = try await store.meetingDetail(id: meetingID)
-        #expect(detail?.summary == "CANONICAL FINAL")
-
-        // Also verify via a direct Summarizer.run with an onPartial spy
-        let (meetingID2, _) = try await makeMeetingWithTranscript(
-            store: store, title: "Meeting 2"
-        )
-        let session2 = FakeSession()
-        session2.streamingTokens = [["tok1", "tok2"]]
-        session2.canonicalDoneText = "DONE TEXT"
-
-        let detail2 = try await store.meetingDetail(id: meetingID2)
-        let transcript2 = try #require(detail2?.preferredTranscript)
-
-        let context = Summarizer.Context(
-            meetingID: meetingID2,
-            transcript: transcript2,
-            names: [:],
-            store: store
-        ) { partial in
-            partials.append(partial)
-        }
-
-        try await Summarizer.run(session2, context)
-
-        // The final partial must be the canonical .done text
-        #expect(partials.last == "DONE TEXT")
-        // And earlier partials were the token accumulation
-        #expect(partials.contains("tok1"))
-        #expect(partials.contains("tok1tok2"))
     }
 
     @Test("auto-enhancement opens model-only and reconfigures to right size")
@@ -851,43 +874,39 @@ struct IntelligenceOrchestrationTests {
         session.streamingTokens = [["Summary"]]
         session.tokenCount = 500
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
+        let fixture = makeIntelligence(store: store, session: session)
         await fixture.intel.runAutoEnhancements(meetingID: meetingID)
 
-        // Session opens in model-only mode (contextSize=0, no KV-cache)
         let config = fixture.runner.lastConfig
         #expect(config != nil)
         #expect(config?.contextSize == 0)
 
-        // Reconfigure called with right-sized context: tokenCount + 3072
         #expect(session.reconfigureCalls.count == 1)
+        // Token count = 500 base + 512 assistant reserve = 1012
         let expectedContextSize = ContextSizing.contextSize(
-            forInputTokens: session.tokenCount
+            forInputTokens: session.tokenCount + MeetingAnalyzer.speakerOptions.maxTokens
         )
         #expect(session.reconfigureCalls.first == expectedContextSize)
     }
 }
 
-// MARK: - Intelligence Generate Summary Tests
+// MARK: - Intelligence runAnalysis Tests
 
-@Suite("Intelligence generateSummary")
-struct IntelligenceGenerateSummaryTests {
-    @Test("manual generate summary works")
-    @MainActor func manualGenerate() async throws {
+@Suite("Intelligence runAnalysis")
+struct IntelligenceRunAnalysisTests {
+    @Test("manual runAnalysis works")
+    @MainActor func manualRunAnalysis() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
             store: store
         )
 
         let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
         session.streamingTokens = [["Generated summary"]]
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
-        await fixture.intel.generateSummary(
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
 
@@ -899,7 +918,30 @@ struct IntelligenceGenerateSummaryTests {
         #expect(detail?.editedSummary == false)
     }
 
-    @Test("manual generate respects editedSummary guard when not forced and clears status")
+    @Test("manual runAnalysis ignores settings.enabled")
+    @MainActor func manualIgnoresSettings() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        // settings disabled, but manual still runs
+        let fixture = makeIntelligence(
+            store: store, session: session, enabled: false
+        )
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        #expect(fixture.runner.sessionCount == 1)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+    }
+
+    @Test("manual runAnalysis respects editedSummary guard when not forced")
     @MainActor func editedGuardNotForced() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
@@ -907,20 +949,23 @@ struct IntelligenceGenerateSummaryTests {
         )
         try await store.setSummary("User's notes", for: meetingID)
 
-        let fixture = makeIntelligence(store: store)
-        await fixture.intel.generateSummary(
+        let session = FakeSession()
+        // Speaker-ID still runs; summary is skipped
+        session.generateResponses = ["0 | Alice |"]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
 
-        // Should not have run
-        #expect(fixture.runner.sessionCount == 0)
-        // .summarizing was set synchronously then cleared on bail
-        #expect(fixture.intel.jobs[meetingID] == nil)
+        // Speaker-ID ran, summary did not
+        #expect(session.generateCalls.count == 1)
+        #expect(session.streamingCalls.isEmpty)
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "User's notes")
     }
 
-    @Test("manual generate with force overwrites edited summary")
+    @Test("manual runAnalysis with force overwrites edited summary")
     @MainActor func forceOverwrites() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
@@ -929,40 +974,37 @@ struct IntelligenceGenerateSummaryTests {
         try await store.setSummary("User's notes", for: meetingID)
 
         let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
         session.streamingTokens = [["New summary"]]
 
-        let fixture = makeIntelligence(
-            store: store, session: session
-        )
-        await fixture.intel.generateSummary(
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: true
         )
 
         #expect(fixture.runner.sessionCount == 1)
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.summary == "New summary")
-        #expect(detail?.editedSummary == false) // Reset after AI generation
+        #expect(detail?.editedSummary == false)
     }
 
-    @Test("no model is no-op for manual generate")
-    @MainActor func noModelManualGenerate() async throws {
+    @Test("no model is no-op for manual runAnalysis")
+    @MainActor func noModelManualRunAnalysis() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
             store: store
         )
 
-        let fixture = makeIntelligence(
-            store: store, downloaded: false
-        )
-        await fixture.intel.generateSummary(
+        let fixture = makeIntelligence(store: store, downloaded: false)
+        await fixture.intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
 
         #expect(fixture.runner.sessionCount == 0)
     }
 
-    @Test("generateSummary is rejected while another run is in-flight")
-    @MainActor func generateSummaryInFlightGuard() async throws {
+    @Test("runAnalysis is rejected while another run is in-flight")
+    @MainActor func runAnalysisInFlightGuard() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
             store: store
@@ -972,59 +1014,45 @@ struct IntelligenceGenerateSummaryTests {
         let models = FakeModelProvider(downloaded: true)
         let intel = Intelligence(
             store: store, llm: blocker, models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: false) }
+            settings: { AISettings(enabled: true) }
         )
 
-        // Start auto-run (blocks in withSession)
         let task1 = Task { @MainActor in
             await intel.runAutoEnhancements(meetingID: meetingID)
         }
         await blocker.waitUntilEntered()
 
-        // Manual generate should be silently rejected (in-flight guard)
-        await intel.generateSummary(
+        await intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
-        // The first run is still blocked in withSession (body hasn't run).
-        // jobs[meetingID] is .preparing (set synchronously at the start
-        // of runAutoEnhancements before the model load). The key point is
-        // that the second call returned without crashing or starting a
-        // second session.
         #expect(intel.jobs[meetingID] == .preparing)
 
         blocker.release()
         await task1.value
     }
 
-    @Test("manual generateSummary opens model-only and reconfigures")
-    @MainActor func contextSizingManualGenerate() async throws {
+    @Test("manual runAnalysis opens model-only and reconfigures")
+    @MainActor func contextSizingManualRunAnalysis() async throws {
         let store = try makeStore()
         let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
             store: store
         )
 
         let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
         session.streamingTokens = [["Summary"]]
         session.tokenCount = 200
 
-        let fixture = makeIntelligence(
-            store: store, session: session, guessSpeakers: false
-        )
-        await fixture.intel.generateSummary(
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
             meetingID: meetingID, transcriptID: transcriptID, force: false
         )
 
-        // Session opens in model-only mode (contextSize=0, no KV-cache)
         let config = fixture.runner.lastConfig
         #expect(config != nil)
         #expect(config?.contextSize == 0)
 
-        // Reconfigure called with right-sized context: tokenCount + 3072
         #expect(session.reconfigureCalls.count == 1)
-        let expectedContextSize = ContextSizing.contextSize(
-            forInputTokens: session.tokenCount
-        )
-        #expect(session.reconfigureCalls.first == expectedContextSize)
     }
 }
 
@@ -1040,7 +1068,7 @@ struct IntelligenceDownloadTests {
             store: store,
             llm: FakeLLMRunner(),
             models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: true) }
+            settings: { AISettings(enabled: true) }
         )
 
         #expect(intel.download == .notDownloaded)
@@ -1062,7 +1090,7 @@ struct IntelligenceDownloadTests {
             store: store,
             llm: FakeLLMRunner(),
             models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: true) }
+            settings: { AISettings(enabled: true) }
         )
 
         await intel.downloadModel()
@@ -1082,7 +1110,7 @@ struct IntelligenceDownloadTests {
             store: store,
             llm: FakeLLMRunner(),
             models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: true) }
+            settings: { AISettings(enabled: true) }
         )
 
         await intel.downloadModel()
@@ -1102,11 +1130,128 @@ struct IntelligenceDownloadTests {
             store: store,
             llm: FakeLLMRunner(),
             models: models,
-            settings: { AISettings(summarize: true, guessSpeakers: true) }
+            settings: { AISettings(enabled: true) }
         )
 
         #expect(intel.isModelDownloaded == true)
         models.downloaded = false
         #expect(intel.isModelDownloaded == false)
+    }
+}
+
+// MARK: - Gating truth table
+
+@Suite("Gating truth table")
+struct GatingTruthTableTests {
+    @Test("doSpeakers iff at least one non-human-set speaker")
+    @MainActor func doSpeakersGating() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        // No human-set speakers: speaker-ID should run
+        let session1 = FakeSession()
+        session1.generateResponses = [""]
+        session1.streamingTokens = [["S"]]
+        let fixture1 = makeIntelligence(store: store, session: session1)
+        await fixture1.intel.runAutoEnhancements(meetingID: meetingID)
+        #expect(session1.generateCalls.count == 1) // speakers ran
+    }
+
+    @Test("auto doSummary = !editedSummary")
+    @MainActor func autoDoSummary() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        // Not edited: summary runs
+        let session1 = FakeSession()
+        session1.generateResponses = [""]
+        session1.streamingTokens = [["S"]]
+        let fixture1 = makeIntelligence(store: store, session: session1)
+        await fixture1.intel.runAutoEnhancements(meetingID: meetingID)
+        #expect(session1.streamingCalls.count == 1)
+    }
+
+    @Test("manual runAnalysis not gated by settings.enabled")
+    @MainActor func manualNotGatedByToggle() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = [""]
+        session.streamingTokens = [["S"]]
+        let fixture = makeIntelligence(store: store, session: session, enabled: false)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+        // Should still have opened a session despite settings.enabled = false
+        #expect(fixture.runner.sessionCount == 1)
+    }
+}
+
+// MARK: - humanSetSpeakerMappings DataStore Tests
+
+@Suite("DataStore humanSetSpeakerMappings")
+struct HumanSetSpeakerMappingsTests {
+    @Test("returns only human-set mappings")
+    func returnsOnlyHumanSet() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: "alice@x.com")
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+
+        // Manually assign speaker 0 (userSet=true)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        // AI assigns speaker 1 (userSet=false)
+        try await store.setSpeakerAssignments([1: bob], for: transcriptID)
+
+        let human = try await store.humanSetSpeakerMappings(for: transcriptID)
+        #expect(human.count == 1)
+        #expect(human[0]?.name == "Alice")
+        #expect(human[0]?.email == "alice@x.com")
+        #expect(human[1] == nil)
+    }
+
+    @Test("returns empty when no human-set mappings")
+    func returnsEmptyWhenNone() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignments([0: bob], for: transcriptID)
+
+        let human = try await store.humanSetSpeakerMappings(for: transcriptID)
+        #expect(human.isEmpty)
+    }
+
+    @Test("drops dangling person IDs")
+    func dropsDangling() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+
+        // Manually inject a dangling person ID
+        let danglingID = UUID()
+        try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            var assignments = record.speakerAssignments
+            assignments[1] = SpeakerAssignmentEntry(personID: danglingID, userSet: true)
+            record.speakerAssignments = assignments
+        }
+
+        let human = try await store.humanSetSpeakerMappings(for: transcriptID)
+        #expect(human.count == 1) // Only Alice; dangling dropped
+        #expect(human[0]?.name == "Alice")
+    }
+
+    @Test("throws notFound for missing transcript")
+    func throwsForMissingTranscript() async throws {
+        let store = try makeStore()
+        await #expect(throws: DataStoreError.self) {
+            try await store.humanSetSpeakerMappings(for: UUID())
+        }
     }
 }

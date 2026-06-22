@@ -1099,13 +1099,13 @@ public extension MeetingDetailViewModel {
 // MARK: - Summary generation (private)
 
 private extension MeetingDetailViewModel {
-    /// Runs summary generation from the currently selected transcript version.
-    /// Auto-switches to the Summary tab.
+    /// Runs the full analysis (speakers + summary) from the currently
+    /// selected transcript version. Auto-switches to the Summary tab.
     func runSummary(force: Bool) {
         guard let transcriptID = activeVersionID else { return }
         selectedTab = .summary
         Task {
-            await core.intelligence.generateSummary(
+            await core.intelligence.runAnalysis(
                 meetingID: meetingID,
                 transcriptID: transcriptID,
                 force: force

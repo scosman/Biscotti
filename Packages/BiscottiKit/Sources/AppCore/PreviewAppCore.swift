@@ -59,7 +59,7 @@
                 store: store,
                 llm: PreviewLLMRunner(),
                 models: PreviewModelProvider(),
-                settings: { AISettings(summarize: true, guessSpeakers: true) }
+                settings: { AISettings(enabled: true) }
             )
 
             return AppCore(
@@ -199,7 +199,7 @@
     /// No-op LLM session for previews.
     private struct PreviewLLMSession: LLMSession {
         func countTokens(
-            system _: String, user _: String
+            messages _: [LocalLLM.LLMMessage]
         ) async throws -> Int {
             100
         }
@@ -207,14 +207,14 @@
         func reconfigure(contextSize _: Int) async throws {}
 
         func generate(
-            system _: String, user _: String,
+            messages _: [LocalLLM.LLMMessage],
             options _: LocalLLM.GenerationOptions
         ) async throws -> String {
             ""
         }
 
         func generateStreaming(
-            system _: String, user _: String,
+            messages _: [LocalLLM.LLMMessage],
             options _: LocalLLM.GenerationOptions
         ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
             AsyncThrowingStream { $0.finish() }

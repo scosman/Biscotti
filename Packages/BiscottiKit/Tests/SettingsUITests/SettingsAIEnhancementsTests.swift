@@ -322,7 +322,7 @@ private func buildAppCore(
     let intelligence = Intelligence(
         store: store, llm: FakeCoreLLMRunner(),
         models: FakeCoreModelProvider(downloaded: false),
-        settings: { AISettings(summarize: true, guessSpeakers: true) }
+        settings: { AISettings(enabled: true) }
     )
     return AppCore(
         store: store, permissions: permissions,

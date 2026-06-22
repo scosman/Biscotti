@@ -24,7 +24,7 @@ enum ContextSizing {
     /// meetings get proportionally more output headroom.
     static let outputReservationInputFraction = 0.15
 
-    /// Maximum context size — matches the prior static default so this change
+    /// Maximum context size -- matches the prior static default so this change
     /// never allocates MORE than before.
     static let maxContextSize = 32768
 
@@ -45,49 +45,37 @@ enum ContextSizing {
         return min(clamped + reservation, maxContextSize)
     }
 
-    /// Count tokens for each prompt pair using the session's tokenizer and
-    /// return the context size needed for the largest pair.
+    /// Conversation-aware context sizing for the multi-turn analysis.
     ///
-    /// Used when a session serves multiple sequential tasks (e.g., speaker-ID
-    /// then summary) that share a single context allocation.
-    static func contextSize(
-        forPairs pairs: [(system: String, user: String)],
+    /// Counts the transcript once (in `firstUser`) and adds budget for the
+    /// assistant-1 turn (speaker output) and the follow-up user-2 turn.
+    ///
+    /// - Parameters:
+    ///   - firstUser: The first user turn content (contains the transcript).
+    ///   - system: The system prompt.
+    ///   - followUpUser: The second user turn (summary instructions), or nil
+    ///     if the conversation is single-turn.
+    ///   - assistantReserveTokens: Budget for the assistant-1 reply sitting
+    ///     in context during the summary turn (e.g. `speakerOptions.maxTokens`
+    ///     when `doSpeakers`, else 0).
+    ///   - session: The LLM session for token counting.
+    static func contextSizeForAnalysis(
+        firstUser: String,
+        system: String,
+        followUpUser: String?,
+        assistantReserveTokens: Int,
         session: any LLMSession
     ) async throws -> Int {
-        precondition(!pairs.isEmpty, "pairs must not be empty")
-        var maxTokens = 1
-        for pair in pairs {
-            let count = try await session.countTokens(
-                system: pair.system, user: pair.user
-            )
-            maxTokens = max(maxTokens, count)
+        var msgs: [LLMMessage] = [.system(system), .user(firstUser)]
+        if let followUp = followUpUser {
+            msgs.append(.user(followUp))
         }
-
-        let reservation = outputReservation(forInputTokens: maxTokens)
-        let size = min(maxTokens + reservation, maxContextSize)
-
-        log.info(
-            "Context sized (multi-task): maxInputTokens=\(maxTokens), reservation=\(reservation), contextSize=\(size)"
-        )
-
-        return size
-    }
-
-    /// Count tokens for a single prompt pair and return the context size.
-    static func contextSize(
-        forSystem system: String,
-        user: String,
-        session: any LLMSession
-    ) async throws -> Int {
-        let count = try await session.countTokens(
-            system: system, user: user
-        )
-        let clamped = max(count, 1)
-        let reservation = outputReservation(forInputTokens: clamped)
-        let size = min(clamped + reservation, maxContextSize)
+        let base = try await session.countTokens(messages: msgs)
+        let total = base + assistantReserveTokens
+        let size = contextSize(forInputTokens: total)
 
         log.info(
-            "Context sized: inputTokens=\(count), reservation=\(reservation), contextSize=\(size)"
+            "Context sized (analysis): baseTokens=\(base), assistantReserve=\(assistantReserveTokens), contextSize=\(size)"
         )
 
         return size

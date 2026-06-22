@@ -11,12 +11,12 @@ public protocol LLMRunning: Sendable {
 
 /// A single generation call within a session. Real impl wraps `LLMConnection`.
 public protocol LLMSession: Sendable {
-    /// Count the tokens for a prompt using the model's tokenizer.
+    /// Count the tokens for a message list using the model's tokenizer.
     ///
     /// Same template and tokenization as `generate`, but returns only the
     /// count. No context/KV-cache work, no sampling.
     func countTokens(
-        system: String, user: String
+        messages: [LLMMessage]
     ) async throws -> Int
 
     /// Recreate the inference context with a new size.
@@ -27,10 +27,10 @@ public protocol LLMSession: Sendable {
     func reconfigure(contextSize: Int) async throws
 
     func generate(
-        system: String, user: String, options: GenerationOptions
+        messages: [LLMMessage], options: GenerationOptions
     ) async throws -> String
 
     func generateStreaming(
-        system: String, user: String, options: GenerationOptions
+        messages: [LLMMessage], options: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error>
 }

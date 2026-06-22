@@ -18,7 +18,7 @@ private final class MockCountingSession: LLMSession, @unchecked Sendable {
         self.tokenCounts = tokenCounts
     }
 
-    func countTokens(system _: String, user _: String) async throws -> Int {
+    func countTokens(messages _: [LLMMessage]) async throws -> Int {
         if let error = errorToThrow {
             throw error
         }
@@ -33,14 +33,14 @@ private final class MockCountingSession: LLMSession, @unchecked Sendable {
     func reconfigure(contextSize _: Int) async throws {}
 
     func generate(
-        system _: String, user _: String,
+        messages _: [LLMMessage],
         options _: GenerationOptions
     ) async throws -> String {
         ""
     }
 
     func generateStreaming(
-        system _: String, user _: String,
+        messages _: [LLMMessage],
         options _: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { $0.finish() }
@@ -165,114 +165,80 @@ struct ContextSizingTests {
         #expect(size == ContextSizing.maxContextSize)
     }
 
-    // MARK: - Async overload: contextSize(forPairs:session:)
+    // MARK: - contextSizeForAnalysis (conversation-aware)
 
-    @Test("multi-pair selects the largest token count")
-    func multiPairMaxSelection() async throws {
-        let session = MockCountingSession(tokenCounts: [200, 800, 400])
-        let pairs: [(system: String, user: String)] = [
-            (system: "s1", user: "u1"),
-            (system: "s2", user: "u2"),
-            (system: "s3", user: "u3")
-        ]
-        let size = try await ContextSizing.contextSize(
-            forPairs: pairs, session: session
-        )
-        // Reservation based on max (800): 3072 + round(0.15*800) = 3072 + 120 = 3192
-        // contextSize = 800 + 3192 = 3992
-        #expect(size == 800 + ContextSizing.outputReservation(forInputTokens: 800))
-        #expect(size == 3992)
-        #expect(session.callCount == 3)
-    }
-
-    @Test("single-pair returns correct context size")
-    func singlePair() async throws {
+    @Test("contextSizeForAnalysis with followUp adds reserve tokens")
+    func analysisWithFollowUp() async throws {
         let session = MockCountingSession(tokenCounts: [500])
-        let pairs = [
-            (system: "sys", user: "usr")
-        ]
-        let size = try await ContextSizing.contextSize(
-            forPairs: pairs, session: session
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user content",
+            system: "system",
+            followUpUser: "follow up",
+            assistantReserveTokens: 512,
+            session: session
         )
-        // 500 + 3072 + 75 = 3647
-        #expect(size == 500 + ContextSizing.outputReservation(forInputTokens: 500))
-        #expect(size == 3647)
+        // base = 500 (from countTokens), total = 500 + 512 = 1012
+        let expected = ContextSizing.contextSize(forInputTokens: 1012)
+        #expect(size == expected)
+        #expect(session.callCount == 1)
     }
 
-    @Test("multi-pair caps at maxContextSize")
-    func multiPairCapped() async throws {
-        let session = MockCountingSession(tokenCounts: [30000, 100])
-        let pairs: [(system: String, user: String)] = [
-            (system: "s1", user: "u1"),
-            (system: "s2", user: "u2")
-        ]
-        let size = try await ContextSizing.contextSize(
-            forPairs: pairs, session: session
+    @Test("contextSizeForAnalysis without followUp (single-turn)")
+    func analysisSingleTurn() async throws {
+        let session = MockCountingSession(tokenCounts: [800])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user content",
+            system: "system",
+            followUpUser: nil,
+            assistantReserveTokens: 0,
+            session: session
         )
-        #expect(size == ContextSizing.maxContextSize)
+        // base = 800, total = 800 + 0 = 800
+        let expected = ContextSizing.contextSize(forInputTokens: 800)
+        #expect(size == expected)
     }
 
-    @Test("multi-pair propagates countTokens errors")
-    func multiPairError() async throws {
-        let session = MockCountingSession(tokenCounts: [100])
-        session.errorToThrow = LLMServiceError.serviceUnavailable("test")
-        let pairs = [
-            (system: "s1", user: "u1")
-        ]
-        await #expect(throws: LLMServiceError.self) {
-            _ = try await ContextSizing.contextSize(
-                forPairs: pairs, session: session
-            )
-        }
-    }
-
-    // MARK: - Async overload: contextSize(forSystem:user:session:)
-
-    @Test("single-prompt returns correct context size")
-    func singlePrompt() async throws {
-        let session = MockCountingSession(tokenCounts: [1200])
-        let size = try await ContextSizing.contextSize(
-            forSystem: "system", user: "user", session: session
-        )
-        // 1200 + (3072 + 180) = 4452
-        #expect(size == 1200 + ContextSizing.outputReservation(forInputTokens: 1200))
-        #expect(size == 4452)
-    }
-
-    @Test("single-prompt caps at maxContextSize")
-    func singlePromptCapped() async throws {
-        let session = MockCountingSession(tokenCounts: [31000])
-        let size = try await ContextSizing.contextSize(
-            forSystem: "system", user: "user", session: session
+    @Test("contextSizeForAnalysis caps at max")
+    func analysisCapped() async throws {
+        let session = MockCountingSession(tokenCounts: [30000])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "big transcript",
+            system: "system",
+            followUpUser: "follow up",
+            assistantReserveTokens: 512,
+            session: session
         )
         #expect(size == ContextSizing.maxContextSize)
     }
 
-    @Test("single-prompt propagates countTokens errors")
-    func singlePromptError() async throws {
+    @Test("contextSizeForAnalysis propagates errors")
+    func analysisError() async throws {
         let session = MockCountingSession(tokenCounts: [100])
         session.errorToThrow = LLMServiceError.serviceUnavailable("test")
         await #expect(throws: LLMServiceError.self) {
-            _ = try await ContextSizing.contextSize(
-                forSystem: "system", user: "user", session: session
+            _ = try await ContextSizing.contextSizeForAnalysis(
+                firstUser: "user",
+                system: "system",
+                followUpUser: nil,
+                assistantReserveTokens: 0,
+                session: session
             )
         }
     }
 
-    @Test("multi-pair with large input shows dynamic reservation and cap")
-    func multiPairLargeInputDynamic() async throws {
-        // 20000 tokens: reservation = 6072, total = 26072 (under cap)
-        let session = MockCountingSession(tokenCounts: [5000, 20000, 3000])
-        let pairs: [(system: String, user: String)] = [
-            (system: "s1", user: "u1"),
-            (system: "s2", user: "u2"),
-            (system: "s3", user: "u3")
-        ]
-        let size = try await ContextSizing.contextSize(
-            forPairs: pairs, session: session
+    @Test("large analysis input shows dynamic reservation")
+    func analysisLargeInput() async throws {
+        let session = MockCountingSession(tokenCounts: [20000])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "big transcript",
+            system: "system",
+            followUpUser: "follow up",
+            assistantReserveTokens: 512,
+            session: session
         )
-        #expect(size == 20000 + ContextSizing.outputReservation(forInputTokens: 20000))
-        #expect(size == 26072)
+        // total = 20000 + 512 = 20512
+        let expected = ContextSizing.contextSize(forInputTokens: 20512)
+        #expect(size == expected)
         #expect(size < ContextSizing.maxContextSize)
     }
 }

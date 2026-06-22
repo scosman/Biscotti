@@ -28,7 +28,7 @@ this is the ordered checklist.
   mark `llm_*` not-run. Confirm the position-continuation mechanism on hardware (§2.3). Tests:
   `commonPrefixLength` unit; `test-ai` reuse. (Arch §2)
 
-- [ ] **Phase 3 — App analysis integration.** Add `DataStore.humanSetSpeakerMappings(for:)`;
+- [x] **Phase 3 — App analysis integration.** Add `DataStore.humanSetSpeakerMappings(for:)`;
   convert `LLMSession`/`LiveLLMSession` to the messages API; rewrite `IntelligencePrompts`
   (analysis system + turn builders with `<meeting_details>` / `<user_speaker_person_mapping>`
   / `<transcript>`); add `MeetingAnalyzer` (remove `SpeakerIdentifier` + `Summarizer`, reuse

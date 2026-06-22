@@ -74,6 +74,31 @@ public extension DataStore {
     }
 }
 
+// MARK: - Human-Set Speaker Mappings
+
+public extension DataStore {
+    /// Returns only the human-set (`userSet == true`) speaker assignments,
+    /// resolved to `PersonData`. Dangling person IDs (referencing deleted
+    /// Person records) are dropped, matching the `mapTranscript` policy.
+    func humanSetSpeakerMappings(
+        for transcriptID: UUID
+    ) throws -> [Int: PersonData] {
+        guard let record = try transcriptRecord(id: transcriptID) else {
+            throw DataStoreError.notFound(transcriptID)
+        }
+        let raw = record.speakerAssignments
+        var result: [Int: PersonData] = [:]
+        for (speakerID, entry) in raw where entry.userSet {
+            if let person = try fetchPerson(id: entry.personID) {
+                result[speakerID] = PersonData(
+                    id: person.id, name: person.name, email: person.email
+                )
+            }
+        }
+        return result
+    }
+}
+
 // MARK: - People
 
 public extension DataStore {

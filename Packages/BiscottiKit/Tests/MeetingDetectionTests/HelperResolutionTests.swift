@@ -136,7 +136,8 @@ struct HelperResolutionTests {
         collector.start(from: detector)
         detector.start()
 
-        // Neither alone has both flags; OR-merge makes isInCall=true
+        // avconferenced supplies the mic; OR-merge across the shared
+        // parent makes the merged mic flag true.
         source.emit([
             makeProcess(
                 bundleID: "com.apple.FaceTime",

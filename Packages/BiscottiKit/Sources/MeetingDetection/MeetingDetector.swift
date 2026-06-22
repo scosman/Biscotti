@@ -12,43 +12,46 @@ private let logger = Logger(
 
 private enum CallPhase {
     case idle
-    case pendingStarted(since: ContinuousClock.Instant)
+    /// Mic came up; waiting for it to stay up for `startDebounce` before
+    /// treating this as a real meeting.
+    case pendingStart
+    /// Meeting confirmed — `.started` has been emitted.
     case active
-    case pendingStop(since: ContinuousClock.Instant)
-
-    var isPendingStop: Bool {
-        if case .pendingStop = self { return true }
-        return false
-    }
+    /// Mic went down while active; waiting for sustained silence
+    /// (`stopDebounce`) before treating the meeting as ended.
+    case pendingStop
 }
 
 private struct AppCallState {
     let app: DetectedApp
     var phase: CallPhase = .idle
-    /// Tracks the most recent in-call flag so debounce resolution can
-    /// decide based on current reality, not stale state at entry time.
-    var latestIsInCall: Bool = false
 }
 
-/// Accumulates OR-merged input/output flags across processes sharing a parent.
+/// OR-merges the mic (input) flag across processes sharing a parent app.
+///
+/// Detection keys on the microphone ONLY. Output is intentionally not a
+/// signal: far too many non-meeting apps play audio. A watch-listed app
+/// *holding the mic*, persistently, is the meeting signal.
 private struct MergedFlags {
     let app: DetectedApp
-    var input: Bool
-    var output: Bool
-
-    var isInCall: Bool {
-        input && output
-    }
+    var mic: Bool
 }
 
 // MARK: - MeetingDetector
 
 /// Observes audio process activity and emits debounced detection events
-/// when meeting apps transition between in-call and idle states.
+/// when a watch-listed meeting app starts or stops using the microphone.
 ///
-/// Uses the `MeetingCatalog` watchlist to filter relevant apps, resolves
-/// helper processes to their parent app, and applies a per-app state
-/// machine with configurable debounce to suppress flapping.
+/// Detection is mic-driven and edge-triggered, with no instantaneous
+/// polling: a meeting becomes `.started` once a watch-listed app holds the
+/// mic *continuously* for `startDebounce`, and `.stopped` once the mic
+/// stays released for `stopDebounce`. Any mic-drop during the start window
+/// aborts (so a brief mic probe never notifies); the debounce timers are
+/// cancelled on the opposite edge rather than re-sampled at fire time, so
+/// the outcome never depends on which instant the timer happens to land on.
+///
+/// Uses the `MeetingCatalog` watchlist to filter relevant apps and resolves
+/// helper processes to their parent app.
 @MainActor @Observable
 public final class MeetingDetector {
     // MARK: - Dependencies
@@ -158,7 +161,7 @@ public final class MeetingDetector {
             switch state.phase {
             case .active, .pendingStop:
                 emit(.stopped(app: state.app))
-            case .idle, .pendingStarted:
+            case .idle, .pendingStart:
                 break
             }
         }
@@ -176,8 +179,8 @@ public final class MeetingDetector {
         // Fires .allMicUsersStopped on the >=1 -> 0 transition.
         updateMicUserTracking(snapshot)
 
-        // Step 1 & 2: Filter to watchlist, resolve helpers, OR-merge
-        // raw input/output flags for processes that share a parent.
+        // Step 1 & 2: Filter to watchlist, resolve helpers, OR-merge the
+        // mic flag for processes that share a parent.
         var merged: [String: MergedFlags] = [:]
 
         for process in snapshot {
@@ -190,37 +193,27 @@ public final class MeetingDetector {
             let name = catalog.displayName(forBundleID: parentID) ?? parentID
 
             if var existing = merged[parentID] {
-                existing.input = existing.input || process.isRunningInput
-                existing.output = existing.output || process.isRunningOutput
+                existing.mic = existing.mic || process.isRunningInput
                 merged[parentID] = existing
             } else {
                 let app = DetectedApp(bundleID: parentID, displayName: name)
                 merged[parentID] = MergedFlags(
                     app: app,
-                    input: process.isRunningInput,
-                    output: process.isRunningOutput
+                    mic: process.isRunningInput
                 )
             }
         }
 
-        // Step 3: Feed per-app state machines.
+        // Step 3: Feed per-app state machines (mic signal only).
         for (parentID, flags) in merged {
-            feedStateMachine(
-                parentID: parentID,
-                app: flags.app,
-                isInCall: flags.isInCall
-            )
+            feedStateMachine(parentID: parentID, app: flags.app, mic: flags.mic)
         }
 
         // Step 4: Handle apps that disappeared from the snapshot.
         let presentParentIDs = Set(merged.keys)
         for parentID in appStates.keys where !presentParentIDs.contains(parentID) {
             guard let state = appStates[parentID] else { continue }
-            feedStateMachine(
-                parentID: parentID,
-                app: state.app,
-                isInCall: false
-            )
+            feedStateMachine(parentID: parentID, app: state.app, mic: false)
         }
     }
 
@@ -229,53 +222,59 @@ public final class MeetingDetector {
     private func feedStateMachine(
         parentID: String,
         app: DetectedApp,
-        isInCall: Bool
+        mic: Bool
     ) {
         let state = appStates[parentID] ?? AppCallState(app: app)
 
         switch state.phase {
         case .idle:
-            if isInCall {
-                enterPendingStarted(parentID: parentID, app: app)
+            if mic {
+                enterPendingStart(parentID: parentID, app: app)
             }
 
-        case .pendingStarted:
-            // Track the latest in-call state so the debounce resolution
-            // can decide based on current reality rather than the state
-            // at the moment pendingStarted began. A brief !isInCall flap
-            // no longer aborts detection — the timer checks at resolve.
-            appStates[parentID]?.latestIsInCall = isInCall
-            if !isInCall {
-                logger.debug("Start-window flap for \(app.displayName) — waiting for debounce resolve")
+        case .pendingStart:
+            if !mic {
+                // Mic dropped before it stayed up for `startDebounce`. Abort
+                // back to idle — a meeting requires the mic to come up AND
+                // stay up. A later sustained mic starts a fresh window. The
+                // timer firing therefore *proves* the mic never dropped, so
+                // there is no instantaneous resolve check.
+                cancelDebounce(for: parentID)
+                appStates.removeValue(forKey: parentID)
+                logger.debug(
+                    "Start aborted for \(app.displayName) — mic dropped before sustained"
+                )
             }
 
         case .active:
-            if !isInCall {
+            if !mic {
                 enterPendingStop(parentID: parentID, app: app)
             }
 
         case .pendingStop:
-            if isInCall {
-                // Cancel stop, return to active
+            if mic {
+                // Mic returned before sustained silence elapsed — still in
+                // the meeting. Cancel the stop and return to active.
                 cancelDebounce(for: parentID)
                 appStates[parentID]?.phase = .active
                 logger.debug(
-                    "Stop cancelled for \(app.displayName) — IO resumed"
+                    "Stop cancelled for \(app.displayName) — mic resumed"
                 )
             }
-            // If still !isInCall, the debounce timer handles the transition
+            // If still no mic, the debounce timer handles the transition.
         }
     }
 
     // MARK: - Debounce scheduling
 
-    private func enterPendingStarted(
-        parentID: String,
-        app: DetectedApp
-    ) {
-        let now = ContinuousClock.now
-        appStates[parentID] = AppCallState(app: app, latestIsInCall: true)
-        appStates[parentID]?.phase = .pendingStarted(since: now)
+    /// Mic came up while idle. Enter `pendingStart` and schedule the
+    /// sustained-mic timer. If the mic drops before it fires,
+    /// `feedStateMachine` cancels this task and returns to idle, so the
+    /// timer only ever fires when the mic stayed up the whole window.
+    private func enterPendingStart(parentID: String, app: DetectedApp) {
+        var newState = AppCallState(app: app)
+        newState.phase = .pendingStart
+        appStates[parentID] = newState
 
         let clock = clock
         let debounce = startDebounce
@@ -286,32 +285,25 @@ public final class MeetingDetector {
         }
     }
 
+    /// The sustained-mic timer fired without being cancelled — i.e. the mic
+    /// stayed up for the whole `startDebounce` window — so promote to active
+    /// and emit `.started`. No instantaneous flag check: the
+    /// cancel-on-mic-drop path guarantees the mic never dropped.
     private func resolveStartDebounce(for parentID: String) {
         guard let state = appStates[parentID],
-              case .pendingStarted = state.phase
+              case .pendingStart = state.phase
         else { return }
 
         debounceTasks.removeValue(forKey: parentID)
-
-        if state.latestIsInCall {
-            appStates[parentID]?.phase = .active
-            emit(.started(app: state.app))
-            logger.info(
-                "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
-            )
-        } else {
-            // App was not in-call at resolve time — genuine blip, not a meeting
-            appStates.removeValue(forKey: parentID)
-            logger.debug("Start debounce resolved idle for \(state.app.displayName)")
-        }
+        appStates[parentID]?.phase = .active
+        emit(.started(app: state.app))
+        logger.info(
+            "Meeting detected: \(state.app.displayName) (\(state.app.bundleID))"
+        )
     }
 
-    private func enterPendingStop(
-        parentID: String,
-        app _: DetectedApp
-    ) {
-        let now = ContinuousClock.now
-        appStates[parentID]?.phase = .pendingStop(since: now)
+    private func enterPendingStop(parentID: String, app _: DetectedApp) {
+        appStates[parentID]?.phase = .pendingStop
 
         let clock = clock
         let debounce = stopDebounce
@@ -438,7 +430,9 @@ extension MeetingDetector {
         // restored mic users (cancellation is the primary guard, but
         // this is the belt-and-suspenders check).
         guard !hadNonSelfMicUsers else {
-            logger.debug("Mic-stop debounce resolved but non-self mic users reappeared -- suppressing")
+            logger.debug(
+                "Mic-stop debounce resolved but non-self mic users reappeared -- suppressing"
+            )
             return
         }
         emit(.allMicUsersStopped)

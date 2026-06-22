@@ -3,203 +3,70 @@ import Foundation
 import Testing
 @testable import MeetingDetailUI
 
-// MARK: - Name replacement in attributed string
+// MARK: - Name replacement (display-name resolution)
 
-@Suite("TranscriptContent name replacement")
+@Suite("TranscriptContent.displayName")
 struct SpeakerNameReplacementTests {
-    private func makeSegments() -> [SegmentData] {
-        [
-            SegmentData(
-                id: UUID(),
-                speakerID: 0,
-                speakerLabel: "Speaker 0",
-                startTime: 14,
-                endTime: 25,
-                text: "Hello"
-            ),
-            SegmentData(
-                id: UUID(),
-                speakerID: 1,
-                speakerLabel: "Speaker 1",
-                startTime: 31,
-                endTime: 45,
-                text: "Hi"
-            ),
-            SegmentData(
-                id: UUID(),
-                speakerID: 0,
-                speakerLabel: "Speaker 0",
-                startTime: 50,
-                endTime: 60,
-                text: "How are you?"
-            )
-        ]
+    private func segment(speakerID: Int?, label: String) -> SegmentData {
+        SegmentData(
+            id: UUID(),
+            speakerID: speakerID,
+            speakerLabel: label,
+            startTime: 0,
+            endTime: 5,
+            text: "x"
+        )
     }
 
     @Test("shows assigned name instead of Speaker N")
     func nameReplacement() {
-        let segments = makeSegments()
         let names: [Int: String] = [0: "Daniel", 1: "Priya"]
 
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false, names: names
+        #expect(
+            TranscriptContent.displayName(
+                for: segment(speakerID: 0, label: "Speaker 0"),
+                names: names
+            ) == "Daniel"
         )
-        let plain = String(attributed.characters)
-
-        #expect(plain.contains("Daniel"))
-        #expect(plain.contains("Priya"))
-        #expect(!plain.contains("Speaker 0"))
-        #expect(!plain.contains("Speaker 1"))
+        #expect(
+            TranscriptContent.displayName(
+                for: segment(speakerID: 1, label: "Speaker 1"),
+                names: names
+            ) == "Priya"
+        )
     }
 
     @Test("keeps Speaker N for unmapped speakers")
     func unmappedKeepsLabel() {
-        let segments = makeSegments()
-        // Only map speaker 0, leave speaker 1 unmapped
+        // Only map speaker 0; speaker 1 stays unmapped.
         let names = [0: "Daniel"]
 
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false, names: names
+        #expect(
+            TranscriptContent.displayName(
+                for: segment(speakerID: 1, label: "Speaker 1"),
+                names: names
+            ) == "Speaker 1"
         )
-        let plain = String(attributed.characters)
-
-        #expect(plain.contains("Daniel"))
-        #expect(plain.contains("Speaker 1"))
-        #expect(!plain.contains("Speaker 0"))
     }
 
-    @Test("empty names map shows original labels")
+    @Test("empty names map shows original label")
     func emptyNamesMap() {
-        let segments = makeSegments()
-
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false, names: [:]
-        )
-        let plain = String(attributed.characters)
-
-        #expect(plain.contains("Speaker 0"))
-        #expect(plain.contains("Speaker 1"))
-    }
-
-    @Test("no names param defaults to empty map")
-    func defaultNoNames() {
-        let segments = makeSegments()
-
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false
-        )
-        let plain = String(attributed.characters)
-
-        #expect(plain.contains("Speaker 0"))
-        #expect(plain.contains("Speaker 1"))
-    }
-}
-
-// MARK: - Speaker links in attributed string
-
-@Suite("TranscriptContent speaker links")
-struct SpeakerLinkRenderingTests {
-    @Test("speaker spans have speaker links when speakerID is non-nil")
-    func speakerLinksPresent() {
-        let segments = [
-            SegmentData(
-                id: UUID(),
-                speakerID: 0,
-                speakerLabel: "Speaker 0",
-                startTime: 0,
-                endTime: 10,
-                text: "Hello"
-            ),
-            SegmentData(
-                id: UUID(),
-                speakerID: 1,
-                speakerLabel: "Speaker 1",
-                startTime: 15,
-                endTime: 25,
-                text: "Hi"
-            )
-        ]
-
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false
-        )
-
-        var speakerLinks: [URL] = []
-        for run in attributed.runs {
-            if let link = run.link,
-               SpeakerLink.speakerID(from: link) != nil
-            {
-                speakerLinks.append(link)
-            }
-        }
-
-        #expect(speakerLinks.count == 2)
         #expect(
-            SpeakerLink.speakerID(from: speakerLinks[0]) == 0
+            TranscriptContent.displayName(
+                for: segment(speakerID: 0, label: "Speaker 0"),
+                names: [:]
+            ) == "Speaker 0"
         )
+    }
+
+    @Test("segment without speakerID shows its label")
+    func nilSpeakerIDUsesLabel() {
         #expect(
-            SpeakerLink.speakerID(from: speakerLinks[1]) == 1
+            TranscriptContent.displayName(
+                for: segment(speakerID: nil, label: "Unknown"),
+                names: [0: "Daniel"]
+            ) == "Unknown"
         )
-    }
-
-    @Test("segments without speakerID have no speaker link")
-    func noSpeakerIDNoLink() {
-        let segments = [
-            SegmentData(
-                id: UUID(),
-                speakerID: nil,
-                speakerLabel: "Unknown",
-                startTime: 0,
-                endTime: 10,
-                text: "Hello"
-            )
-        ]
-
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: false
-        )
-
-        for run in attributed.runs {
-            if let link = run.link {
-                #expect(
-                    SpeakerLink.speakerID(from: link) == nil,
-                    "Segment without speakerID should not have a speaker link"
-                )
-            }
-        }
-    }
-
-    @Test("both speaker and seek links coexist")
-    func speakerAndSeekLinksCoexist() {
-        let segments = [
-            SegmentData(
-                id: UUID(),
-                speakerID: 0,
-                speakerLabel: "Speaker 0",
-                startTime: 5,
-                endTime: 10,
-                text: "Hello"
-            )
-        ]
-
-        let attributed = TranscriptContent.attributedString(
-            segments, canSeek: true
-        )
-
-        var seekLinks: [URL] = []
-        var speakerLinks: [URL] = []
-        for run in attributed.runs {
-            if let link = run.link {
-                if SpeakerLink.speakerID(from: link) != nil {
-                    speakerLinks.append(link)
-                } else if SeekLink.seconds(from: link) != nil {
-                    seekLinks.append(link)
-                }
-            }
-        }
-
-        #expect(speakerLinks.count == 1)
-        #expect(seekLinks.count == 1)
     }
 }
 

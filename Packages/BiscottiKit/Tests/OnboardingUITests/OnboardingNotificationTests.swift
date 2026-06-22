@@ -6,8 +6,8 @@ import Testing
 @Suite("OnboardingViewModel -- Notification authorization wiring")
 @MainActor
 struct OnboardingNotificationTests {
-    @Test("Allow Notifications invokes provider requestAuthorization and updates granted state")
-    func allowNotificationsInvokesProvider() async throws {
+    @Test("requestNotifications invokes provider requestAuthorization and updates granted state")
+    func requestNotificationsInvokesProvider() async throws {
         let fakeNotif = FakeNotificationAuthorizer(
             status: .notDetermined, requestResult: true
         )
@@ -18,17 +18,14 @@ struct OnboardingNotificationTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to the notifications step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        // Walk to the permissions step
+        await model.advance() // welcome -> permissions
 
-        #expect(model.currentStep == .notifications)
+        #expect(model.currentStep == .permissions)
         #expect(model.notificationsGranted == false)
 
         // Request notification permission
-        await model.requestPermission()
+        await model.requestNotifications()
 
         // Verify the fake's request was called
         #expect(fakeNotif.backing.requestCalled == true)
@@ -38,8 +35,8 @@ struct OnboardingNotificationTests {
         #expect(fixture.permissions.notifications == .authorized)
     }
 
-    @Test("Allow Notifications denied updates state to denied")
-    func allowNotificationsDeniedUpdatesState() async throws {
+    @Test("requestNotifications denied updates state to denied")
+    func requestNotificationsDeniedUpdatesState() async throws {
         let fakeNotif = FakeNotificationAuthorizer(
             status: .notDetermined, requestResult: false
         )
@@ -50,13 +47,10 @@ struct OnboardingNotificationTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Walk to the notifications step
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        // Walk to the permissions step
+        await model.advance() // welcome -> permissions
 
-        await model.requestPermission()
+        await model.requestNotifications()
 
         #expect(fakeNotif.backing.requestCalled == true)
         #expect(model.notificationsGranted == false)
@@ -71,12 +65,9 @@ struct OnboardingNotificationTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        await model.advance() // welcome -> microphone
-        await model.skip() // -> systemAudio
-        await model.skip() // -> calendar
-        await model.skip() // -> notifications
+        await model.advance() // welcome -> permissions
 
-        await model.requestPermission()
+        await model.requestNotifications()
 
         // With no authorizer, requestNotifications returns false
         #expect(model.notificationsGranted == false)

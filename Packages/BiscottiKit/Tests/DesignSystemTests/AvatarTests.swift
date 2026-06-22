@@ -254,3 +254,97 @@ struct AvatarNameLimitTests {
         ) == 6)
     }
 }
+
+// MARK: - Adjusted Total Count (dedup correction)
+
+@Suite("adjustedAvatarTotalCount")
+struct AdjustedAvatarTotalCountTests {
+    @Test("No duplicates — totalCount unchanged")
+    func noDuplicates() {
+        // 5 people, 5 unique, totalCount 5 → 5
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 5, uniqueCount: 5, totalCount: 5
+        ) == 5)
+    }
+
+    @Test("Duplicates within people — totalCount reduced by duplicates removed")
+    func duplicatesReduceTotal() {
+        // 5 people, 4 unique (1 dup), totalCount 5 → 5 - 1 = 4
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 5, uniqueCount: 4, totalCount: 5
+        ) == 4)
+    }
+
+    @Test("All duplicates — collapses to 1")
+    func allDuplicates() {
+        // 4 people, 1 unique (3 dups), totalCount 4 → max(1, 4 - 3) = 1
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 4, uniqueCount: 1, totalCount: 4
+        ) == 1)
+    }
+
+    @Test("Zero people — returns zero")
+    func zeroPeople() {
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 0, uniqueCount: 0, totalCount: 0
+        ) == 0)
+    }
+
+    @Test("totalCount exceeds peopleCount — overflow preserved minus duplicates")
+    func totalExceedsPeopleWithDuplicates() {
+        // 5 people, 4 unique (1 dup), totalCount 8
+        // → max(4, 8 - 1) = 7 — 3 unseen people remain
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 5, uniqueCount: 4, totalCount: 8
+        ) == 7)
+    }
+
+    @Test("totalCount exceeds peopleCount, no duplicates — unchanged")
+    func totalExceedsPeopleNoDuplicates() {
+        // 3 people, 3 unique, totalCount 7 → 7
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 3, uniqueCount: 3, totalCount: 7
+        ) == 7)
+    }
+
+    @Test("totalCount equals peopleCount, no duplicates — unchanged")
+    func totalEqualsPeopleNoDuplicates() {
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 4, uniqueCount: 4, totalCount: 4
+        ) == 4)
+    }
+
+    @Test("Floor at uniqueCount — subtraction cannot go below unique count")
+    func floorAtUniqueCount() {
+        // 5 people, 3 unique (2 dups), totalCount 3
+        // Naive: 3 - 2 = 1, but floor is max(3, 1) = 3
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 5, uniqueCount: 3, totalCount: 3
+        ) == 3)
+    }
+
+    @Test("Result never negative — extreme case")
+    func neverNegative() {
+        // 10 people, 1 unique (9 dups), totalCount 2
+        // Naive: 2 - 9 = -7, but floor is max(1, -7) = 1
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 10, uniqueCount: 1, totalCount: 2
+        ) == 1)
+    }
+
+    @Test("Duplicates beyond display limit — totalCount still adjusted correctly")
+    func duplicatesBeyondDisplayLimit() {
+        // 6 people, 5 unique (1 dup), totalCount 10
+        // Even though only ~4 might display, the total adjusts: max(5, 10 - 1) = 9
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 6, uniqueCount: 5, totalCount: 10
+        ) == 9)
+    }
+
+    @Test("Single person, no duplicates — returns 1")
+    func singlePerson() {
+        #expect(adjustedAvatarTotalCount(
+            peopleCount: 1, uniqueCount: 1, totalCount: 1
+        ) == 1)
+    }
+}

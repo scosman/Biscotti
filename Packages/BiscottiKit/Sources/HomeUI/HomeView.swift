@@ -30,7 +30,8 @@ public struct HomeView: View {
                     HomePastSection(viewModel: viewModel)
                         .padding(.top, Tokens.cardToGroupGap)
 
-                    HomeFooter()
+                    BrandFooter()
+                        .padding(.top, 30)
                 }
                 .frame(maxWidth: Tokens.homeColumnMaxWidth, alignment: .leading)
                 .padding(.vertical, Tokens.homeVerticalPadding)
@@ -408,29 +409,6 @@ private struct HomePastSection: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Footer (brand lockup)
-
-/// A quiet brand sign-off at the bottom of the Home content column.
-private struct HomeFooter: View {
-    var body: some View {
-        VStack(spacing: 3) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(.sage)
-
-            Text("Biscotti")
-                .font(.system(size: 13, weight: .semibold))
-                .tracking(-0.1)
-                .foregroundStyle(.ink)
-            Text("Total recall, total privacy.")
-                .font(.system(size: 12))
-                .foregroundStyle(.inkTertiary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 30)
     }
 }
 

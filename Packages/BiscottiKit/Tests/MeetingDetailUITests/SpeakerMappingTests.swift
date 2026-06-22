@@ -386,13 +386,13 @@ struct SpeakerAssignmentTests {
     }
 }
 
-// MARK: - Cache key includes names
+// MARK: - Displayed names update on assignment
 
-@Suite("Transcript cache key includes speaker names")
+@Suite("Displayed transcript reflects speaker name assignments")
 struct TranscriptCacheNameTests {
-    @Test("cache rebuilds when speaker names change")
+    @Test("displayed name updates when a speaker is assigned")
     @MainActor
-    func cacheRebuildsOnNameChange() async throws {
+    func nameUpdatesOnAssignment() async throws {
         let fix = try makeCoreFixture(testName: "SpeakerSheet")
         defer { fix.cleanup() }
 
@@ -411,12 +411,13 @@ struct TranscriptCacheNameTests {
         )
         await viewModel.load()
 
-        // Cache should be built
-        let cached1 = viewModel.cachedTranscriptAttributed
-        #expect(cached1 != nil)
-
-        // Should contain "Speaker 0"
-        let text1 = try String(#require(cached1?.characters))
+        // Before assignment: speaker 0 is unmapped and the rendered
+        // transcript (the path used for display and copy) shows "Speaker 0".
+        #expect(viewModel.displayedSpeakerNames[0] == nil)
+        let segments1 = try #require(viewModel.displayedTranscript?.segments)
+        let text1 = TranscriptContent.plainText(
+            segments1, names: viewModel.displayedSpeakerNames
+        )
         #expect(text1.contains("Speaker 0"))
 
         // Now assign a name
@@ -429,22 +430,25 @@ struct TranscriptCacheNameTests {
             speakerID: 0, personID: personID
         )
 
-        // Cache should have been rebuilt with the new name
-        let cached2 = viewModel.cachedTranscriptAttributed
-        #expect(cached2 != nil)
-        let text2 = try String(#require(cached2?.characters))
+        // After assignment: the name map updates and the rendered transcript
+        // shows "Daniel" in place of "Speaker 0".
+        #expect(viewModel.displayedSpeakerNames[0] == "Daniel")
+        let segments2 = try #require(viewModel.displayedTranscript?.segments)
+        let text2 = TranscriptContent.plainText(
+            segments2, names: viewModel.displayedSpeakerNames
+        )
         #expect(text2.contains("Daniel"))
         #expect(!text2.contains("Speaker 0"))
     }
 }
 
-// MARK: - Cache key includes color keys (Phase 11)
+// MARK: - Color keys update on assignment (Phase 11)
 
-@Suite("Transcript cache key includes speaker color keys")
+@Suite("Displayed speaker color keys reflect assignments")
 struct TranscriptCacheColorKeyTests {
-    @Test("cache rebuilds when speaker color keys change (assignment adds person)")
+    @Test("color keys update when speakers are assigned to a person")
     @MainActor
-    func cacheRebuildsOnColorKeyChange() async throws {
+    func colorKeysUpdateOnAssignment() async throws {
         let fix = try makeCoreFixture(testName: "SpeakerSheet")
         defer { fix.cleanup() }
 
@@ -485,14 +489,11 @@ struct TranscriptCacheColorKeyTests {
             speakerID: 1, personID: personID
         )
 
-        // Both speakers should have the same color key
+        // Both speakers should have the same color key, so the transcript
+        // rows render them with a shared color.
         let keys2 = viewModel.displayedSpeakerColorKeys
         #expect(keys2[0] == keys2[1])
         #expect(keys2[0] == "person-\(personID.uuidString)")
-
-        // Cache should have been rebuilt (the attributed string reflects
-        // the merged color). Verify the cache is non-nil.
-        #expect(viewModel.cachedTranscriptAttributed != nil)
     }
 }
 

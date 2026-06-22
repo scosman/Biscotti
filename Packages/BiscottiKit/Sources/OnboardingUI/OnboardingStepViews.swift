@@ -3,101 +3,57 @@ import DesignSystem
 import Permissions
 import SwiftUI
 
-// MARK: - Individual step views (extracted for type_body_length)
+// MARK: - Per-screen views
 
 extension OnboardingView {
     // MARK: - Welcome
 
     var welcomeStep: some View {
-        wizardPage(
-            title: "Welcome to Biscotti",
-            explanation: "Private, on-device meeting transcripts. "
-                + "Nothing leaves your Mac."
-        ) {
-            EmptyView()
+        VStack(spacing: 0) {
+            Text("Welcome to Biscotti")
+                .font(.biscottiSerif(46))
+                .foregroundStyle(.ink)
+
+            Text(
+                "Private, on-device meeting transcripts.\nNothing you say ever leaves your Mac."
+            )
+            .font(.system(size: 16))
+            .foregroundStyle(.inkSecondary)
+            .frame(maxWidth: 460)
+            .padding(.top, 16)
+
+            Button("Continue") {
+                Task { await viewModel.advance() }
+            }
+            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .padding(.top, 30)
         }
     }
 
-    // MARK: - Microphone
+    // MARK: - Grant Access (consolidated permissions)
 
-    var microphoneStep: some View {
-        wizardPage(
-            title: "Microphone access",
-            explanation: "Biscotti records your voice locally to "
-                + "transcribe your meetings."
-        ) {
-            VStack(spacing: Tokens.spacingSM) {
-                if !viewModel.microphoneGranted {
-                    Button("Allow Microphone") {
-                        Task { await viewModel.requestPermission() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
+    var grantAccessStep: some View {
+        VStack(spacing: 0) {
+            Text("Grant access")
+                .font(.biscottiSerif(34))
+                .foregroundStyle(.ink)
 
-                denialGuidance(
-                    state: viewModel.microphoneResult,
-                    kind: .microphone
-                )
-            }
-        }
-    }
+            Text(
+                "A few quick permissions \u{2014} every one is used "
+                    + "locally, nothing is sent anywhere."
+            )
+            .font(.system(size: 16))
+            .foregroundStyle(.inkSecondary)
+            .frame(maxWidth: 440)
+            .padding(.top, 12)
 
-    // MARK: - System Audio
+            // Permission card
+            permissionCard
+                .padding(.top, 20)
 
-    var systemAudioStep: some View {
-        wizardPage(
-            title: "Record meeting audio",
-            explanation: "Biscotti captures the other side of your "
-                + "call from your speakers/headphones."
-        ) {
-            VStack(spacing: Tokens.spacingSM) {
-                if viewModel.isValidatingSystemAudio {
-                    HStack(spacing: Tokens.spacingXS) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Validating\u{2026}")
-                            .font(Tokens.metadataFont)
-                            .foregroundStyle(Tokens.secondaryText)
-                    }
-                } else {
-                    switch viewModel.systemAudioResult {
-                    case .notRequested:
-                        Button("Request Access") {
-                            Task { await viewModel.requestPermission() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-
-                    case .requestedNotVerified:
-                        Text("Not approved")
-                            .font(Tokens.metadataFont)
-                            .foregroundStyle(Tokens.secondaryText)
-
-                        HStack(spacing: Tokens.spacingSM) {
-                            Button("Retry") {
-                                Task { await viewModel.requestPermission() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-
-                            Button("Fix permissions") {
-                                viewModel.showFixPermissionsAlert = true
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.large)
-                        }
-
-                    case .approved:
-                        Label(
-                            "Granted \u{2713}",
-                            systemImage: "checkmark.circle.fill"
-                        )
-                        .foregroundStyle(.sage)
-                        .font(Tokens.metadataFont)
-                    }
-                }
-            }
+            // Footer: Skip or Continue
+            footerButton
+                .padding(.top, 24)
         }
         .fixPermissionsAlert(
             isPresented: $viewModel.showFixPermissionsAlert,
@@ -107,27 +63,138 @@ extension OnboardingView {
         )
     }
 
-    // MARK: - Calendar
+    // MARK: - Permission card
 
-    var calendarStep: some View {
-        wizardPage(
-            title: "Calendar access",
-            explanation: "See upcoming meetings and auto-link "
-                + "recordings to events."
+    private var permissionCard: some View {
+        VStack(spacing: 0) {
+            microphoneRow
+
+            InsetDivider(leadingInset: 48)
+
+            systemAudioRow
+
+            InsetDivider(leadingInset: 48)
+
+            calendarRow
+
+            InsetDivider(leadingInset: 48)
+
+            notificationsRow
+        }
+        .homeCard()
+        .frame(maxWidth: 520)
+    }
+
+    // MARK: - Microphone row
+
+    private var microphoneRow: some View {
+        PermissionRow(
+            icon: "mic.fill",
+            name: "Microphone",
+            why: "Record your voice locally to transcribe your meetings."
         ) {
-            VStack(spacing: Tokens.spacingSM) {
-                if !viewModel.calendarGranted {
-                    Button("Allow Calendar Access") {
-                        Task { await viewModel.requestPermission() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+            if viewModel.microphoneGranted {
+                GrantedTag()
+            } else {
+                GrantPill {
+                    Task { await viewModel.requestMicrophone() }
                 }
+            }
+        } denial: {
+            if viewModel.microphoneResult == .denied {
+                DenialGuidanceView {
+                    viewModel.openSettings(for: .microphone)
+                }
+            }
+        }
+    }
 
-                denialGuidance(
-                    state: viewModel.calendarResult,
-                    kind: .calendar
-                )
+    // MARK: - System Audio row
+
+    private var systemAudioRow: some View {
+        PermissionRow(
+            icon: "speaker.wave.2.fill",
+            name: "System Audio",
+            why: "Capture the other side of your call."
+        ) {
+            if viewModel.isValidatingSystemAudio {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Validating\u{2026}")
+                        .font(.biscottiMono(11))
+                        .foregroundStyle(.inkSecondary)
+                }
+            } else {
+                switch viewModel.systemAudioResult {
+                case .notRequested:
+                    GrantPill {
+                        Task { await viewModel.requestSystemAudio() }
+                    }
+                case .requestedNotVerified:
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text("Not approved")
+                            .font(.biscottiMono(11))
+                            .foregroundStyle(.inkSecondary)
+                        HStack(spacing: 8) {
+                            Button("Retry") {
+                                Task { await viewModel.requestSystemAudio() }
+                            }
+                            .buttonStyle(JoinRecordButtonStyle())
+
+                            Button("Fix") {
+                                viewModel.showFixPermissionsAlert = true
+                            }
+                            .font(.system(size: 13))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.sage)
+                        }
+                    }
+                case .approved:
+                    GrantedTag()
+                }
+            }
+        }
+    }
+
+    // MARK: - Calendar row
+
+    private var calendarRow: some View {
+        PermissionRow(
+            icon: "calendar",
+            name: "Calendar",
+            why: "Join meetings and connect event data"
+        ) {
+            if viewModel.calendarGranted {
+                GrantedTag()
+            } else {
+                GrantPill {
+                    Task { await viewModel.requestCalendar() }
+                }
+            }
+        } denial: {
+            if viewModel.calendarResult == .denied {
+                DenialGuidanceView {
+                    viewModel.openSettings(for: .calendar)
+                }
+            }
+        }
+    }
+
+    // MARK: - Notifications row
+
+    private var notificationsRow: some View {
+        PermissionRow(
+            icon: "bell.fill",
+            name: "Notifications",
+            why: "Alerts when meetings are starting"
+        ) {
+            if viewModel.notificationsGranted {
+                GrantedTag()
+            } else {
+                GrantPill {
+                    Task { await viewModel.requestNotifications() }
+                }
             }
         }
     }
@@ -135,37 +202,53 @@ extension OnboardingView {
     // MARK: - Calendar Selection
 
     var calendarSelectionStep: some View {
-        wizardPage(
-            title: "Choose calendars",
-            explanation: "Select which calendars to monitor for "
-                + "meetings."
-        ) {
+        VStack(spacing: 0) {
+            Text("Choose calendars")
+                .font(.biscottiSerif(34))
+                .foregroundStyle(.ink)
+
+            Text("Select which calendars to monitor for meetings.")
+                .font(.system(size: 16))
+                .foregroundStyle(.inkSecondary)
+                .padding(.top, 12)
+
             calendarToggles
+                .padding(.top, 20)
+
+            Button("Continue") {
+                Task { await viewModel.advance() }
+            }
+            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .padding(.top, 24)
         }
     }
 
     private var calendarToggles: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(viewModel.calendarGroups) { group in
                     Text(group.sourceTitle)
-                        .font(Tokens.sectionHeaderFont)
-                        .foregroundStyle(Tokens.secondaryText)
+                        .kicker()
+                        .foregroundStyle(.inkSecondary)
 
                     ForEach(group.calendars) { cal in
                         Toggle(isOn: calendarBinding(cal.id)) {
-                            HStack(spacing: Tokens.spacingSM) {
+                            HStack(spacing: 8) {
                                 Circle()
                                     .fill(Color(hex: cal.colorHex))
                                     .frame(width: 10, height: 10)
                                 Text(cal.title)
+                                    .font(.system(size: 14.5))
                             }
                         }
+                        .tint(.sage)
                     }
                 }
             }
-            .frame(maxWidth: 400)
+            .padding(16)
         }
+        .homeCard()
+        .frame(maxWidth: 520, maxHeight: 280)
     }
 
     private func calendarBinding(_ calID: String) -> Binding<Bool> {
@@ -175,186 +258,124 @@ extension OnboardingView {
         )
     }
 
-    // MARK: - Notifications
-
-    var notificationsStep: some View {
-        wizardPage(
-            title: "Notifications",
-            explanation: "Get notified when meetings start so you "
-                + "can record."
-        ) {
-            VStack(spacing: Tokens.spacingSM) {
-                if !viewModel.notificationsGranted {
-                    Button("Allow Notifications") {
-                        Task { await viewModel.requestPermission() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                } else {
-                    Label("Notifications enabled", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.sage)
-                        .font(Tokens.metadataFont)
-                }
-            }
-        }
-    }
-
     // MARK: - Model Download
 
     var modelDownloadStep: some View {
-        wizardPage(
-            title: "Download Local AI Models",
-            explanation: "A one-time download (~1.5 GB). Runs "
-                + "entirely on your Mac."
-        ) {
-            VStack(spacing: Tokens.spacingSM) {
-                if !viewModel.hasSufficientDisk {
-                    Banner(
-                        "Not enough disk space. Need ~"
-                            + "\(OnboardingViewModel.requiredDiskSpaceMB) MB.",
-                        style: .warning
+        VStack(spacing: 0) {
+            Text("Download Local AI Models")
+                .font(.biscottiSerif(34))
+                .foregroundStyle(.ink)
+
+            (
+                Text("A one-time download (")
+                    .font(.system(size: 16))
+                    +
+                    Text("~1.5 GB")
+                    .font(.biscottiMono(15))
+                    +
+                    Text(
+                        ").\nEverything runs entirely on your Mac \u{2014} no cloud, ever."
                     )
-                } else if viewModel.downloadComplete {
-                    Label("Models ready", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.sage)
-                } else if viewModel.isDownloading {
-                    VStack(spacing: Tokens.spacingXS) {
-                        ProgressView()
-                        if let status = viewModel.downloadStatus {
-                            Text(status)
-                                .font(Tokens.metadataFont)
-                                .foregroundStyle(Tokens.secondaryText)
-                        }
-                    }
-                } else {
-                    Button("Download Now") {
-                        Task { await viewModel.startDownload() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
-            }
+                    .font(.system(size: 16))
+            )
+            .foregroundStyle(.inkSecondary)
+            .frame(maxWidth: 430)
+            .padding(.top, 12)
+
+            downloadContent
+                .padding(.top, 24)
+
+            footerButton
+                .padding(.top, 24)
         }
     }
 
-    // MARK: - Launch at Login
-
-    var launchAtLoginStep: some View {
-        VStack(spacing: Tokens.spacingLG) {
-            Text("Launch at Login")
-                .font(.serifHeadline)
-
-            Text(
-                "Start Biscotti when you start your computer?"
+    @ViewBuilder
+    private var downloadContent: some View {
+        if !viewModel.hasSufficientDisk {
+            Banner(
+                "Not enough disk space. Need ~"
+                    + "\(OnboardingViewModel.requiredDiskSpaceMB) MB.",
+                style: .warning
             )
-            .font(Tokens.metadataFont)
-            .foregroundStyle(Tokens.secondaryText)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: 400)
-
-            HStack(spacing: Tokens.spacingMD) {
-                Button("No") {
-                    Task {
-                        await viewModel.setLaunchAtLogin(false)
-                        await viewModel.advance()
-                    }
+            .frame(maxWidth: 520)
+        } else if viewModel.downloadComplete {
+            GrantedTag("COMPLETE")
+        } else if viewModel.isDownloading {
+            VStack(spacing: 8) {
+                // Static indeterminate bar -- the download stream
+                // provides status text but no numeric fraction.
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.hairline)
+                        .frame(width: 240, height: 3)
+                    Capsule()
+                        .fill(Color.sage)
+                        .frame(width: 120, height: 3)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
 
-                Button("Yes") {
-                    Task {
-                        await viewModel.setLaunchAtLogin(true)
-                        await viewModel.advance()
-                    }
+                if let status = viewModel.downloadStatus {
+                    Text(status)
+                        .font(.biscottiMono(11))
+                        .foregroundStyle(.inkSecondary)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
             }
+        } else {
+            Button {
+                Task { await viewModel.startDownload() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 15, weight: .medium))
+                    Text("Download Now")
+                }
+            }
+            .buttonStyle(OnboardingPrimaryButtonStyle())
         }
     }
 
     // MARK: - Done
 
     var doneStep: some View {
-        VStack(spacing: Tokens.spacingLG) {
-            Text("You\u{2019}re all set!")
-                .font(.serifHeadline)
+        VStack(spacing: 0) {
+            Text("You\u{2019}re all set")
+                .font(.biscottiSerif(50))
+                .foregroundStyle(.ink)
 
-            Text("Start recording your first meeting.")
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
+            Text("Start recording your first meeting whenever you like.")
+                .font(.system(size: 16))
+                .foregroundStyle(.inkSecondary)
+                .padding(.top, 18)
 
             Button("Get Started") {
                 Task { await viewModel.completeOnboarding() }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .padding(.top, 30)
         }
     }
 
-    // MARK: - Wizard page scaffold
+    // MARK: - Shared footer button
 
-    func wizardPage(
-        title: String,
-        explanation: String,
-        @ViewBuilder content: () -> some View
-    ) -> some View {
-        VStack(spacing: Tokens.spacingLG) {
-            Text(title)
-                .font(.serifHeadline)
-
-            Text(explanation)
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
-
-            content()
-
-            // Single conditional footer button: Continue (prominent)
-            // when the step's action is done, Skip (secondary) when not.
+    var footerButton: some View {
+        // Fixed min-height so toggling Skip <-> Continue doesn't
+        // shift the layout vertically (the primary button is taller
+        // than the plain Skip link).
+        Group {
             if viewModel.isCurrentStepComplete {
                 Button("Continue") {
                     Task { await viewModel.advance() }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(OnboardingPrimaryButtonStyle())
             } else {
                 Button("Skip") {
                     Task { await viewModel.skip() }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Tokens.secondaryText)
+                .font(.system(size: 13.5))
+                .foregroundStyle(.inkTertiary)
             }
         }
-    }
-
-    // MARK: - Denial guidance
-
-    @ViewBuilder
-    func denialGuidance(
-        state: PermissionState,
-        kind: PermissionKind
-    ) -> some View {
-        if state == .denied {
-            HStack(spacing: Tokens.spacingXS) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.warningOchre)
-                Text("Denied?")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                Button("Open System Settings") {
-                    viewModel.openSettings(for: kind)
-                }
-                .font(Tokens.metadataFont)
-                .buttonStyle(.plain)
-                .foregroundStyle(.sage)
-            }
-        } else if state == .authorized {
-            Label("Granted", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.sage)
-                .font(Tokens.metadataFont)
-        }
+        .frame(minHeight: 40)
     }
 }

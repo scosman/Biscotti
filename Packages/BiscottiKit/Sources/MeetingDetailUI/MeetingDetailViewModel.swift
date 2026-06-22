@@ -105,27 +105,6 @@ public final class MeetingDetailViewModel {
     /// The loaded transcript for the selected (non-preferred) version.
     public private(set) var selectedTranscript: TranscriptData?
 
-    // MARK: - Cached attributed transcript
-
-    /// Cached `AttributedString` for the displayed transcript. Building the
-    /// attributed string synchronously for long transcripts (~hundreds of
-    /// segments) is expensive enough to cause a visible load delay. We cache
-    /// it keyed by transcript ID + canPlay + speaker names so it is only
-    /// rebuilt when the underlying data actually changes, not on every
-    /// SwiftUI render.
-    public private(set) var cachedTranscriptAttributed: AttributedString?
-
-    /// The transcript ID + canPlay + names + colorKeys state that the cached
-    /// attributed string was built for. When any changes we rebuild.
-    private var cachedTranscriptKey: CachedTranscriptKey?
-
-    private struct CachedTranscriptKey: Equatable {
-        let transcriptID: UUID
-        let canPlay: Bool
-        let names: [Int: String]
-        let colorKeys: [Int: String]
-    }
-
     // MARK: - Phase 8: Notes
 
     /// The user-editable notes, two-way bound to the text editor.
@@ -280,9 +259,6 @@ public final class MeetingDetailViewModel {
                 versions = detail?.versions ?? []
                 selectedVersionID = nil
                 selectedTranscript = nil
-                // Rebuild cached attributed string for the new transcript.
-                cachedTranscriptKey = nil
-                rebuildTranscriptCacheIfNeeded()
             } catch {
                 // Non-fatal.
             }
@@ -576,9 +552,9 @@ public extension MeetingDetailViewModel {
     }
 
     /// Speaker ID -> display name map derived from the displayed
-    /// transcript's speaker assignments. Used by `TranscriptContent`
-    /// and `SelectableTranscriptView` for name replacement and
-    /// cache-key equality.
+    /// transcript's speaker assignments. Passed to `TranscriptListView`
+    /// (and `TranscriptContent`) for name replacement in each row and
+    /// for the view's `Equatable` re-render trigger.
     var displayedSpeakerNames: [Int: String] {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
     }
@@ -691,13 +667,10 @@ public extension MeetingDetailViewModel {
     /// Selects and loads a specific transcript version.
     func selectVersion(_ versionID: UUID) async {
         selectedVersionID = versionID
-        // Invalidate cache key so rebuild picks up the new version.
-        cachedTranscriptKey = nil
 
         // If selecting the preferred version, clear the override
         if versionID == detail?.preferredTranscript?.id {
             selectedTranscript = nil
-            rebuildTranscriptCacheIfNeeded()
             return
         }
 
@@ -708,7 +681,6 @@ public extension MeetingDetailViewModel {
         } catch {
             selectedTranscript = nil
         }
-        rebuildTranscriptCacheIfNeeded()
     }
 
     /// Updates notes and debounces autosave to the store.
@@ -751,7 +723,7 @@ public extension MeetingDetailViewModel {
     }
 }
 
-// MARK: - Cached attributed transcript
+// MARK: - Transcript display helpers
 
 public extension MeetingDetailViewModel {
     /// Whether the meeting has ever been transcribed (has at least one
@@ -760,45 +732,13 @@ public extension MeetingDetailViewModel {
         !versions.isEmpty
     }
 
-    /// Non-mutating check: true when the displayed transcript has segments
-    /// and a cached `AttributedString` is available. Safe to call during
-    /// SwiftUI `body` evaluation (no state mutation).
+    /// Non-mutating check: true when the displayed transcript has segments.
+    /// Safe to call during SwiftUI `body` evaluation (no state mutation).
     var hasDisplayableTranscript: Bool {
         guard let transcript = displayedTranscript,
               !transcript.segments.isEmpty
         else { return false }
-        return cachedTranscriptAttributed != nil
-    }
-
-    /// Rebuilds the cached `AttributedString` from the current displayed
-    /// transcript. Called reactively when inputs change (job status,
-    /// version switch, canPlay flip, speaker name/color changes) -- never
-    /// during `body` evaluation.
-    func rebuildTranscriptCacheIfNeeded() {
-        guard let transcript = displayedTranscript,
-              !transcript.segments.isEmpty
-        else {
-            cachedTranscriptKey = nil
-            cachedTranscriptAttributed = nil
-            return
-        }
-
-        let names = displayedSpeakerNames
-        let colorKeys = displayedSpeakerColorKeys
-        let key = CachedTranscriptKey(
-            transcriptID: transcript.id,
-            canPlay: canPlay,
-            names: names,
-            colorKeys: colorKeys
-        )
-        guard key != cachedTranscriptKey else { return }
-
-        cachedTranscriptAttributed = TranscriptContent.attributedString(
-            transcript.segments, canSeek: canPlay,
-            names: names,
-            colorKeys: colorKeys
-        )
-        cachedTranscriptKey = key
+        return true
     }
 }
 
@@ -1042,7 +982,6 @@ private extension MeetingDetailViewModel {
         let settings = try? await core.store.settings()
         summarizeEnabled = settings?.summarizeTranscripts ?? true
         guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
-        rebuildTranscriptCacheIfNeeded()
     }
 
     func loadAudioPlayer() async {
@@ -1589,8 +1528,6 @@ public extension MeetingDetailViewModel {
             } else {
                 selectedTranscript = nil
             }
-            cachedTranscriptKey = nil
-            rebuildTranscriptCacheIfNeeded()
             // Refresh the sheet data so rows reflect new assignments.
             // Preserve the focusedSpeakerID from the current sheet so
             // the scroll position stays coherent across reloads.

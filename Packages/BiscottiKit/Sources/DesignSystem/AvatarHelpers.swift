@@ -62,6 +62,32 @@ public func avatarNameLimit(
     return min(peopleCount, available)
 }
 
+/// Adjusts a reported total-participant count after view-layer deduplication.
+///
+/// Upstream data may contain duplicate `AvatarPerson` values (same
+/// `displayName` + `email` but different underlying IDs). When the view
+/// deduplicates these, the reported `totalCount` can overstate the number
+/// of distinct people. This function subtracts the duplicates removed and
+/// floors the result at `uniqueCount` so the overflow "+N" badge is
+/// accurate.
+///
+/// - Parameters:
+///   - peopleCount: Original number of people before dedup (array length
+///     as received from the caller).
+///   - uniqueCount: Number of distinct people after dedup.
+///   - totalCount: Reported total participants (may include duplicates or
+///     exceed `peopleCount` when the source knows the count but not every
+///     name).
+/// - Returns: The adjusted total, guaranteed >= `uniqueCount` and >= 0.
+public func adjustedAvatarTotalCount(
+    peopleCount: Int,
+    uniqueCount: Int,
+    totalCount: Int
+) -> Int {
+    let duplicatesRemoved = peopleCount - uniqueCount
+    return max(uniqueCount, totalCount - duplicatesRemoved)
+}
+
 /// Returns a deterministic palette index for a given key string.
 ///
 /// Uses FNV-1a 32-bit hash (stable across launches, unlike Swift's

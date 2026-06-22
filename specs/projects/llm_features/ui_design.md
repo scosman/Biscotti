@@ -167,8 +167,41 @@ A small, non-modal status **pill in the `tabBar` row, trailing side** (next to t
 
 ## 6. Resolved choices
 
-1. **Auto-run status location** — tab-bar trailing pill (§5).
+1. **Auto-run status location** — tab-bar trailing pill (§5). *(Superseded by §7.1 — moved to a main-area pipeline control; pill removed.)*
 2. **Speaker-rename entry** — **inline clickable speaker labels only** (no tip line, no separate button) (§3.2).
 3. **Sheet apply timing** — apply each change immediately; **Done** just dismisses.
 
 Everything else follows existing components/styles; no new visual language is introduced.
+
+---
+
+## 7. Polish Revisions (Round 2)
+
+Screen-level refinements added after on-screen review. These **supersede** the noted earlier sections. See `functional_spec.md` §13 for behavior and `implementation_plan.md` Phases 7–11.
+
+### 7.1 Processing-pipeline status in the Summary tab (supersedes §5)
+The trailing tab-bar pill (§5) is **removed**. While a meeting is processing, the Summary tab's main content area shows a **stacked stage list** (replacing the old "No transcript available." placeholder):
+```
+   ✓  Transcribing
+   ⟳  Inferring participant names        ← active (small spinner)
+   ◦  Summarizing                         ← pending (depends on the two above)
+```
+- One row per stage that will run; **leading glyph** = done (✓/checkmark, `inkSecondary`), active (small `ProgressView`), or pending (dim circle, `inkTertiary`). Labels in the standard muted `monoMeta`/secondary style — no new visual language.
+- Stages are gated (§13.1): no model or both toggles off → only **Transcribing** shows. The summary row reads as gated on the first two.
+- Uses the existing small-spinner idiom already used by `summaryStreamingContent` (the "Generating summary…" affordance) — reuse, don't reinvent.
+- **Auto-jump:** detail view switches to the Summary tab once when the pipeline goes active (so this control, then the streaming summary, are in view).
+- When summarizing begins, the existing **streaming view (§1b)** takes over the tab; the pipeline control is the pre-summary signal.
+
+### 7.2 Summary completion — no flash / scroll retained (refines §1a/§1b)
+Render streaming and final summary through **one `MarkdownEditor`** (single `documentId`, flip `isEditable`), and populate the editable text atomically as streaming clears — no transient empty/Generate frame, scroll offset preserved across the last token.
+
+### 7.3 Settings — header caption + section order (supersedes §4)
+- "AI runs locally on your Mac." renders as **muted text trailing the section header** rather than as a section footer:
+  ```
+  AI Enhancements                       AI runs locally on your Mac.
+  ```
+  (header row: title · `Spacer()` · `inkSecondary` caption in `metadataFont`).
+- **Section order:** General → **Permissions** → AI Enhancements → Notifications → Calendars (Debug last).
+
+### 7.4 Shared speaker color (supersedes §3.1)
+When multiple speaker IDs are assigned to the **same person**, they share that person's color (color keyed on `Person.id` when assigned; speaker-ID key only when unassigned). The mapping sheet's leading **● color dot** follows the same rule.

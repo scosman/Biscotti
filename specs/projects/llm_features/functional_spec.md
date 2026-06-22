@@ -242,3 +242,43 @@ These were decided with defaults rather than asked — flag any you want changed
 8. **Manual "Generate/Regenerate Summary" does summary only** (not speaker-ID).
 9. **Additive schema** (no explicit `V2`) unless review prefers otherwise.
 10. **No model-delete UI**, **no staleness banner**, **no download resume** in v1.
+
+---
+
+## 13. Polish Revisions (Round 2)
+
+After Phases 1–6 shipped and the UI was reviewed on-screen, the following behavioral refinements were added. They **supersede** the noted earlier sections; everything else stands. Implemented in Phases 7–11 (see `implementation_plan.md`).
+
+### 13.1 Shared processing-pipeline status (supersedes §5.4 and the §11 "subtle auto-run status" pill)
+**Problem:** right after a recording, the Summary tab showed the muted "No transcript available." placeholder while transcription was actually still running — misleading, because work *is* happening (transcription → speaker-ID → summary), the summary is just waiting on its dependencies.
+
+- A **shared pipeline status control** renders in the **Summary tab's main content area** while the meeting is processing, showing the ordered stages:
+  **`Transcribing` → `Inferring participant names` → `Summarizing`.** Each stage shows **done / active / pending**, and the summary stage is presented as **dependent on the first two** (it stays pending until they complete).
+- The control composes **two independent status sources**: `TranscriptionService.jobs[id]` (`.downloadingModel`/`.transcribing`) and `Intelligence.jobs[id]` (`.identifyingSpeakers`/`.summarizing`). A new VM-level computed pipeline model merges them into the ordered stage list.
+- **Stage gating ("inlined dependencies"):** only stages that will actually run are shown. "Inferring participant names" appears only when *Guess Speaker Names* is on **and** a model is present; "Summarizing" only when *Summarize Transcripts* is on, a model is present, and the summary isn't human-edited. With no model (or both toggles off) only **Transcribing** shows; when it finishes the tab moves to its normal empty/Generate/content state.
+- This control **replaces** the "No transcript available." placeholder on the Summary tab whenever the pipeline is active (the Transcript/Notes tabs keep their existing processing UI).
+- The **tab-bar trailing "Summarizing/Identifying speakers…" pill is removed** (§5.4 / UI §5 superseded).
+- **Auto-jump:** when the auto-run pipeline becomes active for the open meeting, the detail view **switches to the Summary tab once** (if not already there) so the status — and then the streaming summary — are visible. It does not fight subsequent manual tab changes. (Manual Generate/Regenerate already jumps.)
+- **Re-transcribe conformance:** the manual **Re-transcribe** path now calls `runAutoEnhancements` after re-transcription (closing a gap where it previously did not), so the pipeline status and AI re-run cover re-transcription as §5.1 / Decision #6 always intended.
+
+### 13.2 Summary completion: no flash, preserve scroll (refines §3.4(b))
+When a streamed summary finishes, the displayed content must **not** flash through an empty/Generate state, and the **scroll position must be preserved**:
+- The final markdown populates the editable view **atomically** with the streaming state clearing — there is no frame where `streamingSummary` is `nil` while the persisted `summaryText` is still stale/empty.
+- Streaming and final summary render through **one editor instance** (single `documentId`, `isEditable` flipped from `false`→`true`) rather than swapping a `-summary-streaming` editor for a `-summary` editor, so the editor is not recreated and the user's scroll offset is retained. Scrolling already worked *during* streaming; this extends that smoothness across the final token.
+
+### 13.3 Settings layout (supersedes UI §4 footer placement and the §6.1 / §11 section order)
+- The **"AI runs locally on your Mac."** caption moves from the Section *footer* to **muted/secondary text trailing the section header** ("AI Enhancements" title · spacer · grey caption), per review.
+- **Section order:** Permissions returns to **2nd position, immediately after General**: **General → Permissions → AI Enhancements → Notifications → Calendars** (Debug last in debug builds).
+
+### 13.4 Speaker-assignment provenance — never overwrite a manual assignment (supersedes §4.4 / §8 data shape)
+A human's manual speaker→person assignment must **never** be replaced by a later LLM auto-run.
+- The per-transcript speaker map gains **per-entry provenance**: each assignment carries a **`userSet: Bool`** flag (stored value becomes `{ personID, userSet }` instead of a bare `UUID`; JSON-backed, with **lenient decode** of the prior `[Int: UUID]` shape → treated as empty/not-user-set, since the feature has no shipped data).
+- **Manual** assignment (sheet dropdown pick, Add person…, and re-assign) sets **`userSet = true`**. (Unassign clears the entry.)
+- The **LLM auto-run** (`SpeakerIdentifier` → bulk persist) **merges** rather than full-replaces: it **skips any speaker whose current assignment is `userSet = true`**, writing only AI-derived entries for speakers the user hasn't set. AI entries are `userSet = false`.
+- Re-transcription still yields a fresh transcript with an empty map (nothing to preserve); the guard matters for re-runs against a transcript a user already touched.
+
+### 13.5 Shared color for merged speakers (supersedes §4.5 / UI §3.1 "color keyed on speaker ID")
+Diarization sometimes splits one real person across multiple speaker IDs. When a user maps several speaker IDs to the **same person**, those labels should read as one person — **same name *and* same color**.
+- Transcript speaker color is keyed on the **assigned `Person.id`** when a speaker is assigned (so all speaker IDs mapped to one person share that person's color), and falls back to the existing **speaker-ID** key only for unassigned speakers.
+- The same rule applies to the **Speaker mapping sheet** row color dots, for consistency.
+- Requires plumbing a per-speaker `Person.id` (or precomputed color key) from the resolved read model (`TranscriptData.speakerAssignments: [Int: PersonData]`) to `TranscriptContent`, and including it in the transcript render cache key.

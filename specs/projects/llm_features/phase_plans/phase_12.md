@@ -2,9 +2,9 @@
 status: draft
 ---
 
-# Phase 7: End-to-end verification & docs
+# Phase 12: End-to-end verification & docs
 
-> **Agent portion done; awaiting human on-hardware run.**
+> **Renumbered from Phase 7** when the polish round (Phases 7–11) was inserted; moved to the end so it validates the polished build in one on-hardware pass. The agent portion below (docs + `ai_*` script) was completed under the original Phase 7. **Awaiting human on-hardware run** — now covering the polish-round behaviors too (pipeline status, no completion flash, `userSet` preservation, merged-speaker color, Settings layout/order); the `ai_*` results were invalidated by Phases 7–11 and must be re-run.
 
 ## Overview
 
@@ -32,7 +32,7 @@ Final phase: update the repo-root roadmap docs to reflect that LLM/AI features a
 
 ## Deferred to human (on-hardware)
 
-The following must be done on real Apple Silicon hardware to complete Phase 7:
+The following must be done on real Apple Silicon hardware to complete Phase 12:
 
 1. **Download model** — Open Biscotti app Settings, navigate to AI Enhancements, download the LLM model
 2. **Record and transcribe** — Record a real meeting (2+ speakers, 30+ seconds), stop, wait for transcription
@@ -45,4 +45,14 @@ The following must be done on real Apple Silicon hardware to complete Phase 7:
 9. **Manual unassign** — Set a speaker back to "Unassigned", confirm "Speaker N" label returns
 10. **Model-free manual assignment** — Turn off AI toggles, record/transcribe, confirm no auto-run, but manual mapping still works
 11. **Tune `IntelligencePrompts` if needed** — Based on real model output quality, adjust prompt wording
-12. **Fill in `ai_*` manual test results** — Record pass/fail for all 18 `ai_*` steps in `ManualTestApp/Results/manual_test_results.json`, then commit
+
+### Polish-round (Phases 7–11) checks
+12. **Pipeline status** — Right after recording, the Summary tab shows the `Transcribing → Inferring participant names → Summarizing` stage control (not "No transcript available."); the view auto-jumps to Summary; no tab-bar pill
+13. **Re-transcribe re-runs AI** — Use Re-transcribe; confirm speaker-ID + summary re-run and the pipeline status shows
+14. **No completion flash** — When the streamed summary finishes, it does not flash to empty/Generate, and scroll position is retained
+15. **`userSet` preserved** — Manually rename a speaker, then re-transcribe/re-run; confirm the manual assignment is NOT overwritten by the LLM
+16. **Merged-speaker color** — Assign two speaker IDs to the same person; confirm they share one color (and the sheet's dot matches)
+17. **Settings layout** — "AI runs locally on your Mac." is grey text trailing the section header; Permissions is the 2nd section (after General)
+
+### Record results
+18. **Fill in `ai_*` manual test results** — Record pass/fail for all recordable `ai_*` steps in `ManualTestApp/Results/manual_test_results.json` (now `not-run` after Phases 7–11), then commit

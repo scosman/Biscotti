@@ -1,120 +1,4 @@
 {
-  "ai_auto_speaker_id" : {
-    "status" : "not-run",
-    "stepID" : "ai_auto_speaker_id"
-  },
-  "ai_auto_summary_stream" : {
-    "status" : "not-run",
-    "stepID" : "ai_auto_summary_stream"
-  },
-  "ai_manual_rename" : {
-    "status" : "not-run",
-    "stepID" : "ai_manual_rename"
-  },
-  "ai_manual_unassign" : {
-    "status" : "not-run",
-    "stepID" : "ai_manual_unassign"
-  },
-  "ai_model_download" : {
-    "status" : "not-run",
-    "stepID" : "ai_model_download"
-  },
-  "ai_model_free_manual" : {
-    "status" : "not-run",
-    "stepID" : "ai_model_free_manual"
-  },
-  "ai_model_free_no_auto" : {
-    "status" : "not-run",
-    "stepID" : "ai_model_free_no_auto"
-  },
-  "ai_regenerate_edited_confirm" : {
-    "status" : "not-run",
-    "stepID" : "ai_regenerate_edited_confirm"
-  },
-  "ai_regenerate_no_confirm" : {
-    "status" : "not-run",
-    "stepID" : "ai_regenerate_no_confirm"
-  },
-  "ai_regenerate_result" : {
-    "status" : "not-run",
-    "stepID" : "ai_regenerate_result"
-  },
-  "ai_settings_no_model" : {
-    "status" : "not-run",
-    "stepID" : "ai_settings_no_model"
-  },
-  "ai_settings_section" : {
-    "status" : "not-run",
-    "stepID" : "ai_settings_section"
-  },
-  "ai_speaker_link_opens_sheet" : {
-    "status" : "not-run",
-    "stepID" : "ai_speaker_link_opens_sheet"
-  },
-  "ai_merged_speaker_color" : {
-    "status" : "not-run",
-    "stepID" : "ai_merged_speaker_color"
-  },
-  "ai_pipeline_auto_jump" : {
-    "status" : "not-run",
-    "stepID" : "ai_pipeline_auto_jump"
-  },
-  "ai_pipeline_gating" : {
-    "status" : "not-run",
-    "stepID" : "ai_pipeline_gating"
-  },
-  "ai_pipeline_no_pill" : {
-    "status" : "not-run",
-    "stepID" : "ai_pipeline_no_pill"
-  },
-  "ai_pipeline_status" : {
-    "status" : "not-run",
-    "stepID" : "ai_pipeline_status"
-  },
-  "ai_retranscribe_reruns" : {
-    "status" : "not-run",
-    "stepID" : "ai_retranscribe_reruns"
-  },
-  "ai_settings_header_caption" : {
-    "status" : "not-run",
-    "stepID" : "ai_settings_header_caption"
-  },
-  "ai_settings_section_order" : {
-    "status" : "not-run",
-    "stepID" : "ai_settings_section_order"
-  },
-  "ai_summary_edit" : {
-    "status" : "not-run",
-    "stepID" : "ai_summary_edit"
-  },
-  "ai_summary_empty_generate" : {
-    "status" : "not-run",
-    "stepID" : "ai_summary_empty_generate"
-  },
-  "ai_summary_no_flash" : {
-    "status" : "not-run",
-    "stepID" : "ai_summary_no_flash"
-  },
-  "ai_summary_scroll_retained" : {
-    "status" : "not-run",
-    "stepID" : "ai_summary_scroll_retained"
-  },
-  "ai_summary_speaker_names" : {
-    "status" : "not-run",
-    "stepID" : "ai_summary_speaker_names"
-  },
-  "ai_toggles_persist" : {
-    "status" : "not-run",
-    "stepID" : "ai_toggles_persist"
-  },
-  "ai_unassigned_speaker_color" : {
-    "status" : "not-run",
-    "stepID" : "ai_unassigned_speaker_color"
-  },
-  "ai_userset_survives_rerun" : {
-    "status" : "not-run",
-    "stepID" : "ai_userset_survives_rerun"
-  },
   "ac_crash_safety_check" : {
     "status" : "pass",
     "stepID" : "ac_crash_safety_check",
@@ -186,65 +70,197 @@
     "stepID" : "ac_two_dialogs",
     "timestamp" : "2026-06-19T16:18:54Z"
   },
-  "llm_action_items_quality" : {
+  "ai_auto_speaker_id" : {
     "status" : "not-run",
-    "stepID" : "llm_action_items_quality"
+    "stepID" : "ai_auto_speaker_id"
+  },
+  "ai_auto_summary_stream" : {
+    "status" : "not-run",
+    "stepID" : "ai_auto_summary_stream"
+  },
+  "ai_manual_rename" : {
+    "status" : "not-run",
+    "stepID" : "ai_manual_rename"
+  },
+  "ai_manual_unassign" : {
+    "status" : "not-run",
+    "stepID" : "ai_manual_unassign"
+  },
+  "ai_merged_speaker_color" : {
+    "status" : "not-run",
+    "stepID" : "ai_merged_speaker_color"
+  },
+  "ai_model_download" : {
+    "status" : "not-run",
+    "stepID" : "ai_model_download"
+  },
+  "ai_model_free_manual" : {
+    "status" : "not-run",
+    "stepID" : "ai_model_free_manual"
+  },
+  "ai_model_free_no_auto" : {
+    "status" : "not-run",
+    "stepID" : "ai_model_free_no_auto"
+  },
+  "ai_pipeline_auto_jump" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_auto_jump"
+  },
+  "ai_pipeline_gating" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_gating"
+  },
+  "ai_pipeline_no_pill" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_no_pill"
+  },
+  "ai_pipeline_status" : {
+    "status" : "not-run",
+    "stepID" : "ai_pipeline_status"
+  },
+  "ai_regenerate_edited_confirm" : {
+    "status" : "not-run",
+    "stepID" : "ai_regenerate_edited_confirm"
+  },
+  "ai_regenerate_no_confirm" : {
+    "status" : "not-run",
+    "stepID" : "ai_regenerate_no_confirm"
+  },
+  "ai_regenerate_result" : {
+    "status" : "not-run",
+    "stepID" : "ai_regenerate_result"
+  },
+  "ai_retranscribe_reruns" : {
+    "status" : "not-run",
+    "stepID" : "ai_retranscribe_reruns"
+  },
+  "ai_settings_header_caption" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_header_caption"
+  },
+  "ai_settings_no_model" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_no_model"
+  },
+  "ai_settings_section" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_section"
+  },
+  "ai_settings_section_order" : {
+    "status" : "not-run",
+    "stepID" : "ai_settings_section_order"
+  },
+  "ai_speaker_link_opens_sheet" : {
+    "status" : "not-run",
+    "stepID" : "ai_speaker_link_opens_sheet"
+  },
+  "ai_summary_edit" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_edit"
+  },
+  "ai_summary_empty_generate" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_empty_generate"
+  },
+  "ai_summary_no_flash" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_no_flash"
+  },
+  "ai_summary_scroll_retained" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_scroll_retained"
+  },
+  "ai_summary_speaker_names" : {
+    "status" : "not-run",
+    "stepID" : "ai_summary_speaker_names"
+  },
+  "ai_toggles_persist" : {
+    "status" : "not-run",
+    "stepID" : "ai_toggles_persist"
+  },
+  "ai_unassigned_speaker_color" : {
+    "status" : "not-run",
+    "stepID" : "ai_unassigned_speaker_color"
+  },
+  "ai_userset_survives_rerun" : {
+    "status" : "not-run",
+    "stepID" : "ai_userset_survives_rerun"
+  },
+  "llm_action_items_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_action_items_quality",
+    "timestamp" : "2026-06-22T15:53:04Z"
   },
   "llm_action_items_run" : {
-    "status" : "not-run",
-    "stepID" : "llm_action_items_run"
+    "status" : "pass",
+    "stepID" : "llm_action_items_run",
+    "timestamp" : "2026-06-22T15:52:58Z"
   },
   "llm_ai_tests_passed" : {
-    "status" : "not-run",
-    "stepID" : "llm_ai_tests_passed"
+    "status" : "pass",
+    "stepID" : "llm_ai_tests_passed",
+    "timestamp" : "2026-06-22T15:51:13Z"
   },
   "llm_model_disk" : {
-    "status" : "not-run",
-    "stepID" : "llm_model_disk"
+    "status" : "pass",
+    "stepID" : "llm_model_disk",
+    "timestamp" : "2026-06-22T15:43:25Z"
   },
   "llm_model_download" : {
-    "status" : "not-run",
-    "stepID" : "llm_model_download"
+    "status" : "pass",
+    "stepID" : "llm_model_download",
+    "timestamp" : "2026-06-22T15:43:22Z"
   },
   "llm_reclamation" : {
-    "status" : "not-run",
-    "stepID" : "llm_reclamation"
+    "note" : "No BiscottiLLM service process found (reclaimed)",
+    "status" : "pass",
+    "stepID" : "llm_reclamation",
+    "timestamp" : "2026-06-22T15:56:51Z"
   },
   "llm_speaker_names_quality" : {
-    "status" : "not-run",
-    "stepID" : "llm_speaker_names_quality"
+    "status" : "pass",
+    "stepID" : "llm_speaker_names_quality",
+    "timestamp" : "2026-06-22T15:54:38Z"
   },
   "llm_speaker_names_run" : {
-    "status" : "not-run",
-    "stepID" : "llm_speaker_names_run"
+    "status" : "pass",
+    "stepID" : "llm_speaker_names_run",
+    "timestamp" : "2026-06-22T15:53:20Z"
   },
   "llm_streaming_channels" : {
-    "status" : "not-run",
-    "stepID" : "llm_streaming_channels"
+    "status" : "pass",
+    "stepID" : "llm_streaming_channels",
+    "timestamp" : "2026-06-22T15:56:47Z"
   },
   "llm_streaming_run" : {
-    "status" : "not-run",
-    "stepID" : "llm_streaming_run"
+    "status" : "pass",
+    "stepID" : "llm_streaming_run",
+    "timestamp" : "2026-06-22T15:56:31Z"
   },
   "llm_summarize_quality" : {
-    "status" : "not-run",
-    "stepID" : "llm_summarize_quality"
+    "status" : "pass",
+    "stepID" : "llm_summarize_quality",
+    "timestamp" : "2026-06-22T15:52:47Z"
   },
   "llm_summarize_run" : {
-    "status" : "not-run",
-    "stepID" : "llm_summarize_run"
+    "status" : "pass",
+    "stepID" : "llm_summarize_run",
+    "timestamp" : "2026-06-22T15:52:43Z"
   },
   "llm_thinking_mode" : {
-    "status" : "not-run",
-    "stepID" : "llm_thinking_mode"
+    "status" : "pass",
+    "stepID" : "llm_thinking_mode",
+    "timestamp" : "2026-06-22T15:56:03Z"
   },
   "llm_thinking_run" : {
-    "status" : "not-run",
-    "stepID" : "llm_thinking_run"
+    "status" : "pass",
+    "stepID" : "llm_thinking_run",
+    "timestamp" : "2026-06-22T15:55:29Z"
   },
   "llm_xpc_inference" : {
-    "status" : "not-run",
-    "stepID" : "llm_xpc_inference"
+    "status" : "pass",
+    "stepID" : "llm_xpc_inference",
+    "timestamp" : "2026-06-22T15:51:28Z"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

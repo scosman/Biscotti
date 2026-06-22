@@ -72,6 +72,14 @@ public struct MeetingDetailView: View {
                 await viewModel.onEnhancementStatusChange(newStatus)
             }
         }
+        .onChange(of: viewModel.streamingSummary) { oldValue, newValue in
+            // Track both old and new: during streaming, each new value
+            // is captured; when streaming clears (nil), the old value
+            // is the final streamed text that seeds summaryText.
+            viewModel.onStreamingSummaryChange(
+                oldValue: oldValue, newValue: newValue
+            )
+        }
         .onChange(of: viewModel.isPipelineActive) { _, active in
             viewModel.onPipelineActiveChange(active)
         }
@@ -610,10 +618,13 @@ private extension MeetingDetailView {
 private extension MeetingDetailView {
     @ViewBuilder
     func summaryTabContent(fill: CGFloat) -> some View {
-        // 1. Streaming: read-only editor with "Generating summary..." header
+        // 1. Streaming OR has content: render through ONE editor instance
+        //    (single documentId, isEditable flipped) so scroll is retained
+        //    across the streaming→final transition and no empty-state flash
+        //    occurs (§13.2).
         if let streaming = viewModel.streamingSummary {
-            summaryStreamingContent(
-                text: streaming, fill: fill
+            summaryEditorContent(
+                text: streaming, isStreaming: true, fill: fill
             )
 
             // 2. Error: banner + existing summary below
@@ -622,7 +633,10 @@ private extension MeetingDetailView {
 
             // 3. Has content: editable summary
         } else if !viewModel.summaryText.isEmpty {
-            summaryEditorContent(fill: fill)
+            summaryEditorContent(
+                text: viewModel.summaryText,
+                isStreaming: false, fill: fill
+            )
 
             // 4. Pipeline active: show stage progress instead of
             //    "No transcript available." (§13.1)
@@ -649,25 +663,48 @@ private extension MeetingDetailView {
         }
     }
 
-    /// Streaming state: read-only MarkdownEditor with a generating header.
-    func summaryStreamingContent(
-        text: String, fill: CGFloat
+    /// Unified summary editor for both streaming and final states.
+    ///
+    /// Uses a single `documentId` (`"<id>-summary"`) and flips `isEditable`
+    /// so the MarkdownEditor is not recreated across the streaming→final
+    /// transition, preserving scroll position (§13.2).
+    func summaryEditorContent(
+        text: String, isStreaming: Bool, fill: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: Tokens.spacingSM) {
-            HStack(spacing: Tokens.spacingXS) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Generating summary\u{2026}")
-                    .font(.monoMeta)
-                    .foregroundStyle(.inkSecondary)
+            if isStreaming {
+                HStack(spacing: Tokens.spacingXS) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Generating summary\u{2026}")
+                        .font(.monoMeta)
+                        .foregroundStyle(.inkSecondary)
+                }
             }
 
             MarkdownEditor(
-                text: .constant(text),
-                documentId: "\(viewModel.meetingID.uuidString)-summary-streaming",
-                isEditable: false
+                text: isStreaming
+                    ? .constant(text)
+                    : Binding(
+                        get: { viewModel.summaryText },
+                        set: { viewModel.updateSummary($0) }
+                    ),
+                documentId: "\(viewModel.meetingID.uuidString)-summary",
+                placeholder: "",
+                isEditable: !isStreaming
             )
-            .frame(minHeight: max(100, fill - 30), alignment: .top)
+            .frame(
+                minHeight: max(
+                    100,
+                    fill - (isStreaming ? 30 : 0)
+                ),
+                alignment: .top
+            )
+            .background {
+                if !isStreaming {
+                    TextViewFocusForwarder()
+                }
+            }
         }
     }
 
@@ -698,20 +735,6 @@ private extension MeetingDetailView {
                 .background(TextViewFocusForwarder())
             }
         }
-    }
-
-    /// Has-content state: editable MarkdownEditor mirroring Notes.
-    func summaryEditorContent(fill: CGFloat) -> some View {
-        MarkdownEditor(
-            text: Binding(
-                get: { viewModel.summaryText },
-                set: { viewModel.updateSummary($0) }
-            ),
-            documentId: "\(viewModel.meetingID.uuidString)-summary",
-            placeholder: ""
-        )
-        .frame(minHeight: max(100, fill), alignment: .top)
-        .background(TextViewFocusForwarder())
     }
 
     /// Pipeline active: stacked stage list showing processing progress.

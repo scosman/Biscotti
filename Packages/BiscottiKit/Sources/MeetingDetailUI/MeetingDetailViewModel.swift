@@ -215,6 +215,12 @@ public final class MeetingDetailViewModel {
     /// activation. Reset on `load()` so it fires once per lifecycle.
     private var hasAutoJumpedForPipeline: Bool = false
 
+    /// The last non-nil streaming summary seen for this meeting.
+    /// Captured in the view's `.onChange(of: streamingSummary)` so
+    /// `onEnhancementStatusChange` can seed `summaryText` after
+    /// Intelligence clears the streaming value (§13.2 flash fix).
+    private var lastStreamedSummary: String?
+
     /// Debounce interval for summary autosave.
     private static let summaryDebounceInterval: Duration = .seconds(1)
 
@@ -1122,12 +1128,42 @@ public extension MeetingDetailViewModel {
     /// Called when enhancement status changes for this meeting.
     /// Reloads data on completion so the summary and speaker names
     /// are picked up from the store.
+    ///
+    /// **Flash prevention (§13.2):** before calling `load()`, seeds
+    /// `summaryText` from the captured `lastStreamedSummary` so the
+    /// view never falls through to the empty/Generate state between
+    /// streaming clearing and load() repopulating.
     func onEnhancementStatusChange(
         _ newStatus: EnhancementStatus?
     ) async {
         if newStatus == .completed {
+            if let streamed = lastStreamedSummary, !streamed.isEmpty {
+                summaryText = streamed
+            }
+            lastStreamedSummary = nil
             await load()
             await core.reloadSummaries()
+        }
+    }
+
+    /// Tracks the live streaming summary value. Called by the view's
+    /// `.onChange(of: streamingSummary)` so the last non-nil value is
+    /// captured before Intelligence clears it on the same MainActor
+    /// pass as setting `.completed`. This saved value is used in
+    /// `onEnhancementStatusChange` to seed `summaryText` and prevent
+    /// the empty-state flash (§13.2).
+    ///
+    /// When `newValue` is non-nil, it's the latest streaming token batch.
+    /// When `newValue` is nil (streaming just cleared), `oldValue` holds
+    /// the final streamed text — captured by SwiftUI before the batch.
+    func onStreamingSummaryChange(
+        oldValue: String?, newValue: String?
+    ) {
+        if let newValue, !newValue.isEmpty {
+            lastStreamedSummary = newValue
+        } else if newValue == nil, let oldValue, !oldValue.isEmpty {
+            // Streaming just ended: capture the final streamed content
+            lastStreamedSummary = oldValue
         }
     }
 

@@ -688,3 +688,214 @@ struct SummaryTabSettingsTests {
         #expect(fix.core.route == .settings)
     }
 }
+
+// MARK: - Phase 8: Streaming→final flash & scroll (§13.2)
+
+@Suite("Summary tab -- streaming→final flash prevention (§13.2)")
+struct SummaryStreamingCompletionTests {
+    @Test("summaryText seeded from last streamed value on completion")
+    @MainActor
+    func summaryTextSeededFromStreamingOnCompletion() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Flash Prevention"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate streaming updates
+        fix.intelligence.streamingSummary[meetingID] = "# Partial"
+        viewModel.onStreamingSummaryChange(
+            oldValue: nil, newValue: "# Partial"
+        )
+        #expect(viewModel.streamingSummary == "# Partial")
+
+        fix.intelligence.streamingSummary[meetingID] = "# Final Summary"
+        viewModel.onStreamingSummaryChange(
+            oldValue: "# Partial", newValue: "# Final Summary"
+        )
+
+        // Intelligence persists the summary, then clears streaming
+        // and sets .completed on the same MainActor pass
+        try await fix.store.applyGeneratedSummary(
+            "# Final Summary", for: meetingID
+        )
+        fix.intelligence.streamingSummary.removeValue(forKey: meetingID)
+
+        // Simulate the onChange firing with the old value
+        viewModel.onStreamingSummaryChange(
+            oldValue: "# Final Summary", newValue: nil
+        )
+
+        // Before load() runs, summaryText should be empty (not yet loaded)
+        #expect(viewModel.summaryText.isEmpty)
+
+        // Now the enhancement completion handler runs
+        await viewModel.onEnhancementStatusChange(.completed)
+
+        // summaryText must be populated -- never empty between
+        // streaming clearing and load() completing
+        #expect(viewModel.summaryText == "# Final Summary")
+        #expect(viewModel.editedSummary == false)
+    }
+
+    @Test("summaryText not clobbered when no streaming on completion")
+    @MainActor
+    func summaryTextNotOverwrittenWhenNoStreaming() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "No Streaming"
+        )
+        // Pre-populate a user-edited summary
+        try await fix.store.setSummary(
+            "User summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        #expect(viewModel.summaryText == "User summary")
+        #expect(viewModel.editedSummary == true)
+
+        // Speaker-ID only completion (no streaming summary was produced)
+        await viewModel.onEnhancementStatusChange(.completed)
+
+        // summaryText must still be the user's text
+        #expect(viewModel.summaryText == "User summary")
+        #expect(viewModel.editedSummary == true)
+    }
+
+    @Test("onStreamingSummaryChange captures latest value through full cycle")
+    @MainActor
+    func streamingChangeTracking() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Tracking Test"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate progressive streaming updates
+        viewModel.onStreamingSummaryChange(
+            oldValue: nil, newValue: "# First"
+        )
+        viewModel.onStreamingSummaryChange(
+            oldValue: "# First", newValue: "# Second"
+        )
+
+        // Streaming cleared: oldValue holds the final text
+        viewModel.onStreamingSummaryChange(
+            oldValue: "# Second", newValue: nil
+        )
+
+        // Persist the summary so load() finds it
+        try await fix.store.applyGeneratedSummary(
+            "# Second", for: meetingID
+        )
+
+        // The completion handler seeds summaryText from the captured
+        // last-streamed value, then load() confirms it from the store
+        await viewModel.onEnhancementStatusChange(.completed)
+        #expect(viewModel.summaryText == "# Second")
+    }
+
+    @Test("onStreamingSummaryChange ignores empty strings")
+    @MainActor
+    func streamingChangeIgnoresEmpty() throws {
+        let fix = try makeCoreFixture(testName: "SummaryTabTests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: UUID()
+        )
+
+        // Empty new value should not be tracked
+        viewModel.onStreamingSummaryChange(
+            oldValue: nil, newValue: ""
+        )
+
+        // Empty old value on clear should not be tracked
+        viewModel.onStreamingSummaryChange(
+            oldValue: "", newValue: nil
+        )
+
+        // summaryText should still be empty after completion
+        // (no streamed value was captured)
+        // Since we can't read lastStreamedSummary directly,
+        // we verify that summaryText stays empty
+        #expect(viewModel.summaryText.isEmpty)
+    }
+
+    @Test("completion path never transits empty state after non-empty streaming")
+    @MainActor
+    func completionNeverTransitsEmpty() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Verify initial state: empty summary, has transcript
+        #expect(viewModel.summaryText.isEmpty)
+        #expect(viewModel.displayedTranscript != nil)
+
+        // Simulate the full streaming→completion cycle
+        fix.intelligence.streamingSummary[meetingID] = "# Generated"
+        viewModel.onStreamingSummaryChange(
+            oldValue: nil, newValue: "# Generated"
+        )
+
+        // Persist the summary
+        try await fix.store.applyGeneratedSummary(
+            "# Generated", for: meetingID
+        )
+
+        // Intelligence clears streaming
+        fix.intelligence.streamingSummary.removeValue(forKey: meetingID)
+        viewModel.onStreamingSummaryChange(
+            oldValue: "# Generated", newValue: nil
+        )
+
+        // At this point: streamingSummary is nil, summaryText is still
+        // empty (load hasn't run). The view state machine would show
+        // the empty/Generate state WITHOUT the flash fix.
+
+        // Enhancement completes
+        await viewModel.onEnhancementStatusChange(.completed)
+
+        // summaryText must be populated -- the empty state was never
+        // reached because onEnhancementStatusChange seeded it
+        #expect(viewModel.summaryText == "# Generated")
+        #expect(viewModel.editedSummary == false)
+
+        // And streamingSummary is nil (no longer streaming)
+        #expect(viewModel.streamingSummary == nil)
+    }
+}

@@ -129,7 +129,30 @@ public extension TestScript {
                 prompt: "Did tokens render incrementally, with thinking vs. "
                     + "response cleanly separated (no raw markers like <think>)?"
             ),
-            // 18. Reclamation check
+            // 18. KV-cache prefix reuse (two extending generates in one connection)
+            .instruction(
+                id: "llm_kv_reuse_info",
+                text: "The next step runs TWO sequential generates in a single connection. "
+                    + "The second call extends the first's message list so the KV-cache "
+                    + "prefix is reused. Look for:\n"
+                    + "• Turn 1: cachedPromptTokenCount ≈ 0 (cold start)\n"
+                    + "• Turn 2: cachedPromptTokenCount >> 0 (most of the transcript prefix reused)\n"
+                    + "• Turn 2 prompt eval time should be much faster than turn 1\n"
+                    + "• Turn 2 output should be coherent (not garbled — validates position continuation)"
+            ),
+            // 19. KV-cache reuse action
+            .action(
+                id: "llm_kv_reuse",
+                label: "Run KV-cache reuse test (two extending generates in one connection)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            // 20. KV-cache reuse observation
+            .humanQuestion(
+                id: "llm_kv_reuse_quality",
+                prompt: "Did the 2nd call reuse most of the prefix (high cached count, "
+                    + "much faster prompt eval) and was the 2nd response coherent?"
+            ),
+            // 21. Reclamation check
             .autoCheck(
                 id: "llm_reclamation",
                 label: "No BiscottiLLM service process running after connection close",

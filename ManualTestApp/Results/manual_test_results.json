@@ -90,6 +90,16 @@
     "stepID" : "llm_chat_system",
     "timestamp" : "2026-06-22T15:51:13Z"
   },
+  "llm_kv_reuse" : {
+    "status" : "not-run",
+    "stepID" : "llm_kv_reuse",
+    "timestamp" : "2026-06-22T22:00:00Z"
+  },
+  "llm_kv_reuse_quality" : {
+    "status" : "not-run",
+    "stepID" : "llm_kv_reuse_quality",
+    "timestamp" : "2026-06-22T22:00:00Z"
+  },
   "llm_chat_system_quality" : {
     "status" : "not-run",
     "stepID" : "llm_chat_system_quality",

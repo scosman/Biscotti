@@ -344,6 +344,71 @@ enum WiredScripts {
                         status(display)
                     }
 
+                case "llm_kv_reuse":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
+                        status("Connecting to BiscottiLLM.xpc...")
+                        try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            let options = GenerationOptions(maxTokens: 128, temperature: 0)
+
+                            // Turn 1: system + user with the sample transcript
+                            let systemMsg = LLMMessage.system(
+                                "You are a meeting analyst. Answer precisely."
+                            )
+                            let userMsg = LLMMessage.user(
+                                "Summarize this meeting transcript in one sentence:\n\n"
+                                    + TestScript.sampleMeetingTranscript
+                            )
+
+                            status("Turn 1: Generating with fresh cache...")
+                            let result1 = try await conn.generate(
+                                messages: [systemMsg, userMsg],
+                                options: options
+                            )
+                            let prefillMs1 = String(
+                                format: "%.0f", result1.promptEvalDuration * 1000
+                            )
+                            status(
+                                "Turn 1 done.\n"
+                                    + "  cached=\(result1.cachedPromptTokenCount) "
+                                    + "prompt=\(result1.promptTokenCount) tokens\n"
+                                    + "  prefill=\(prefillMs1)ms\n"
+                                    + "  response: \(result1.text.prefix(200))\n\n"
+                                    + "Turn 2: Extending conversation (should reuse prefix)..."
+                            )
+
+                            // Turn 2: extend with the model's response + follow-up
+                            let result2 = try await conn.generate(
+                                messages: [
+                                    systemMsg,
+                                    userMsg,
+                                    .assistant(result1.text),
+                                    .user("List the action items from the transcript.")
+                                ],
+                                options: options
+                            )
+                            let prefillMs2 = String(
+                                format: "%.0f", result2.promptEvalDuration * 1000
+                            )
+                            status(
+                                "Turn 1:\n"
+                                    + "  cached=\(result1.cachedPromptTokenCount) "
+                                    + "prompt=\(result1.promptTokenCount) "
+                                    + "prefill=\(prefillMs1)ms\n"
+                                    + "  \(result1.text.prefix(200))\n\n"
+                                    + "Turn 2:\n"
+                                    + "  cached=\(result2.cachedPromptTokenCount) "
+                                    + "prompt=\(result2.promptTokenCount) "
+                                    + "prefill=\(prefillMs2)ms\n"
+                                    + "  \(result2.text.prefix(200))"
+                            )
+                        }
+                    }
+
                 case "llm_streaming_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath

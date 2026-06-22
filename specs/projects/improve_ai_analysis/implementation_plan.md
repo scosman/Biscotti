@@ -20,7 +20,7 @@ this is the ordered checklist.
   shape — single/two-message parity with today. Tests: template parity + multi-turn, DTO
   Codable round-trip, MockEngine connection flow. (Arch §1, §6)
 
-- [ ] **Phase 2 — KV-cache prefix reuse.** Add `cachedTokens` state + the diff/`seq_rm`/
+- [x] **Phase 2 — KV-cache prefix reuse.** Add `cachedTokens` state + the diff/`seq_rm`/
   suffix-prefill algorithm in `LLMEngine.runGeneration`; `commonPrefixLength` helper;
   error/cancel + reconfigure/unload reset; add `GenerationResult.cachedPromptTokenCount`; add
   the `#if DEBUG` cached/fresh/generate timing log. Add the `llm_kv_reuse` manual-test step

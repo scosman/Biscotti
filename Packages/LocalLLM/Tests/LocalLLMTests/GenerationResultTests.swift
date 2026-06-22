@@ -10,6 +10,7 @@ struct GenerationResultTests {
             reasoning: nil,
             promptTokenCount: 10,
             generatedTokenCount: 100,
+            cachedPromptTokenCount: 0,
             finishReason: .endOfTurn,
             loadDuration: nil,
             promptEvalDuration: 0.5,
@@ -29,6 +30,7 @@ struct GenerationResultTests {
             reasoning: nil,
             promptTokenCount: 10,
             generatedTokenCount: 100,
+            cachedPromptTokenCount: 0,
             finishReason: .endOfTurn,
             loadDuration: nil,
             promptEvalDuration: 0.5,
@@ -48,6 +50,7 @@ struct GenerationResultTests {
             reasoning: nil,
             promptTokenCount: 0,
             generatedTokenCount: 187,
+            cachedPromptTokenCount: 0,
             finishReason: .eos,
             loadDuration: 1.0,
             promptEvalDuration: 0.83,
@@ -71,8 +74,8 @@ struct GenerationResultTests {
     func loadDurationOptional() {
         let withLoad = GenerationResult(
             text: "", reasoning: nil, promptTokenCount: 0, generatedTokenCount: 0,
-            finishReason: .eos, loadDuration: 2.5, promptEvalDuration: 0.1,
-            generationDuration: 0.1, totalDuration: 0.2,
+            cachedPromptTokenCount: 0, finishReason: .eos, loadDuration: 2.5,
+            promptEvalDuration: 0.1, generationDuration: 0.1, totalDuration: 0.2,
             renderedPrompt: "", rawText: "",
             embeddedChatTemplate: nil
         )
@@ -80,8 +83,8 @@ struct GenerationResultTests {
 
         let withoutLoad = GenerationResult(
             text: "", reasoning: nil, promptTokenCount: 0, generatedTokenCount: 0,
-            finishReason: .eos, loadDuration: nil, promptEvalDuration: 0.1,
-            generationDuration: 0.1, totalDuration: 0.2,
+            cachedPromptTokenCount: 0, finishReason: .eos, loadDuration: nil,
+            promptEvalDuration: 0.1, generationDuration: 0.1, totalDuration: 0.2,
             renderedPrompt: "", rawText: "",
             embeddedChatTemplate: nil
         )
@@ -95,6 +98,7 @@ struct GenerationResultTests {
             reasoning: "Let me think about this...",
             promptTokenCount: 10,
             generatedTokenCount: 20,
+            cachedPromptTokenCount: 0,
             finishReason: .endOfTurn,
             loadDuration: nil,
             promptEvalDuration: 0.1,

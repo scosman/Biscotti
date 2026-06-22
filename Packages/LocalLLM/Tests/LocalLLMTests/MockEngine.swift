@@ -205,6 +205,7 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
             reasoning: nil,
             promptTokenCount: 10,
             generatedTokenCount: 2,
+            cachedPromptTokenCount: 0,
             finishReason: .endOfTurn,
             loadDuration: nil,
             promptEvalDuration: 0.01,

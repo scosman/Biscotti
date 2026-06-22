@@ -116,6 +116,7 @@ private func makeGenerationResult(text: String) -> GenerationResult {
         "text": text,
         "promptTokenCount": 0,
         "generatedTokenCount": 1,
+        "cachedPromptTokenCount": 0,
         "finishReason": ["endOfTurn": [String: Any]()],
         "promptEvalDuration": 0.0,
         "generationDuration": 0.0,

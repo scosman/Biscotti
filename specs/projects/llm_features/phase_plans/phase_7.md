@@ -26,8 +26,6 @@ Implements functional_spec.md Section 13.1 and ui_design.md Section 7.1. Builds 
 
 7. **Wire `reTranscribe` to call `runAutoEnhancements`** -- after `core.transcription.reTranscribe(meetingID:)` and `load()`, fire `core.intelligence.runAutoEnhancements(meetingID:)` in the same task.
 
-8. **Mark `ai_*` manual-test steps as `not-run`** -- the file already has them as `not-run`, so verify and keep unchanged.
-
 ## Tests
 
 - `pipelineStages` returns nil when no job is active

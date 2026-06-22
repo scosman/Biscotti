@@ -699,8 +699,8 @@ public extension DataStore {
         // full Person table scan.
         let rawAssignments = record.speakerAssignments
         var resolvedAssignments: [Int: PersonData] = [:]
-        for (speakerID, personID) in rawAssignments {
-            if let person = try fetchPerson(id: personID) {
+        for (speakerID, entry) in rawAssignments {
+            if let person = try fetchPerson(id: entry.personID) {
                 resolvedAssignments[speakerID] = PersonData(
                     id: person.id, name: person.name, email: person.email
                 )

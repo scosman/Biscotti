@@ -124,7 +124,7 @@ struct SummaryTests {
 
 @Suite("DataStore -- speaker assignments")
 struct SpeakerAssignmentTests {
-    @Test("setSpeakerAssignments replaces entire map")
+    @Test("setSpeakerAssignments merges into empty map")
     func setSpeakerAssignments() async throws {
         let store = try makeStore()
         let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
@@ -174,7 +174,7 @@ struct SpeakerAssignmentTests {
         #expect(transcript?.speakerAssignments.isEmpty == true)
     }
 
-    @Test("[Int:UUID] round-trips correctly through JSON Data backing")
+    @Test("speaker assignments round-trip correctly through JSON Data backing")
     func speakerAssignmentsRoundTrip() async throws {
         let store = try makeStore()
         let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
@@ -187,16 +187,19 @@ struct SpeakerAssignmentTests {
         try await store.setSpeakerAssignments(assignments, for: transcriptID)
 
         // Read back via the raw model to verify Data encoding
-        let rawAssignments: [Int: UUID] = try await store.read { store in
+        let rawAssignments: [Int: SpeakerAssignmentEntry] = try await store.read { store in
             let records = try store.fetchAllTranscripts()
             let record = try #require(records.first(where: { $0.id == transcriptID }))
             return record.speakerAssignments
         }
 
         #expect(rawAssignments.count == 3)
-        #expect(rawAssignments[0] == person1)
-        #expect(rawAssignments[1] == person2)
-        #expect(rawAssignments[5] == person3)
+        #expect(rawAssignments[0]?.personID == person1)
+        #expect(rawAssignments[0]?.userSet == false)
+        #expect(rawAssignments[1]?.personID == person2)
+        #expect(rawAssignments[1]?.userSet == false)
+        #expect(rawAssignments[5]?.personID == person3)
+        #expect(rawAssignments[5]?.userSet == false)
     }
 
     @Test("dangling Person IDs are dropped in the read model")
@@ -352,6 +355,158 @@ struct AllPersonDataTests {
         let store = try makeStore()
         let people = try await store.allPersonData()
         #expect(people.isEmpty)
+    }
+}
+
+// MARK: - Speaker assignment provenance (Phase 10)
+
+@Suite("DataStore -- speaker assignment provenance (userSet)")
+struct SpeakerAssignmentProvenanceTests {
+    @Test("auto-run preserves userSet entry and fills only unset speakers")
+    func autoRunPreservesUserSetAndFillsUnset() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        let charlie = try await store.findOrCreatePerson(name: "Charlie", email: nil)
+
+        // Manually assign speaker 0 (userSet = true)
+        try await store.setSpeakerAssignment(
+            speakerID: 0, personID: alice, for: transcriptID
+        )
+
+        // Verify the manual assignment is userSet
+        let rawBefore: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(rawBefore[0]?.personID == alice)
+        #expect(rawBefore[0]?.userSet == true)
+
+        // LLM auto-run tries to assign both speakers 0 and 1
+        try await store.setSpeakerAssignments(
+            [0: bob, 1: charlie], for: transcriptID
+        )
+
+        // Speaker 0 should be preserved (still Alice, userSet)
+        // Speaker 1 should be filled with Charlie (AI, not userSet)
+        let rawAfter: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(rawAfter[0]?.personID == alice)
+        #expect(rawAfter[0]?.userSet == true)
+        #expect(rawAfter[1]?.personID == charlie)
+        #expect(rawAfter[1]?.userSet == false)
+
+        // Read model should resolve both
+        let transcript = try await store.transcript(id: transcriptID)
+        #expect(transcript?.speakerAssignments[0]?.name == "Alice")
+        #expect(transcript?.speakerAssignments[1]?.name == "Charlie")
+    }
+
+    @Test("manual set marks userSet true")
+    func manualSetMarksUserSetTrue() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        try await store.setSpeakerAssignment(
+            speakerID: 0, personID: alice, for: transcriptID
+        )
+
+        let raw: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(raw[0]?.personID == alice)
+        #expect(raw[0]?.userSet == true)
+    }
+
+    @Test("old [Int:UUID] shape decodes as empty")
+    func oldShapeDecodeReturnsEmpty() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        // Write raw [Int: UUID] JSON directly to the backing data
+        let oldShape: [Int: UUID] = [0: UUID(), 1: UUID()]
+        let oldData = try JSONEncoder().encode(oldShape)
+
+        try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            // Directly set the backing data to the old shape
+            record.setSpeakerAssignmentsData_testOnly(oldData)
+        }
+
+        // The computed property should return empty (lenient decode)
+        let raw: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(raw.isEmpty)
+
+        // Read model should also return empty assignments
+        let transcript = try await store.transcript(id: transcriptID)
+        #expect(transcript?.speakerAssignments.isEmpty == true)
+    }
+
+    @Test("unassign clears the entry entirely")
+    func unassignClearsEntry() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        try await store.setSpeakerAssignment(
+            speakerID: 0, personID: alice, for: transcriptID
+        )
+
+        // Verify assigned
+        var raw: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(raw[0] != nil)
+
+        // Unassign
+        try await store.setSpeakerAssignment(
+            speakerID: 0, personID: nil, for: transcriptID
+        )
+
+        raw = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(raw.isEmpty)
+    }
+
+    @Test("bulk write to empty map sets all entries as userSet=false")
+    func bulkWriteAllAIEntriesHaveUserSetFalse() async throws {
+        let store = try makeStore()
+        let (_, transcriptID) = try await makeMeetingWithTranscript(store: store)
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+
+        try await store.setSpeakerAssignments(
+            [0: alice, 1: bob], for: transcriptID
+        )
+
+        let raw: [Int: SpeakerAssignmentEntry] = try await store.read { store in
+            let records = try store.fetchAllTranscripts()
+            let record = try #require(records.first(where: { $0.id == transcriptID }))
+            return record.speakerAssignments
+        }
+        #expect(raw.count == 2)
+        #expect(raw[0]?.userSet == false)
+        #expect(raw[1]?.userSet == false)
     }
 }
 

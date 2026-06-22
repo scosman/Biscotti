@@ -30,19 +30,31 @@ public extension DataStore {
 // MARK: - Speaker Assignments
 
 public extension DataStore {
-    /// Replaces the entire speaker-to-person mapping for a transcript.
+    /// Merges AI-inferred speaker assignments into the transcript's map,
+    /// **preserving any entry whose `userSet` flag is `true`** (a human
+    /// manually assigned that speaker). New AI entries are written with
+    /// `userSet = false`.
     func setSpeakerAssignments(
         _ assignments: [Int: UUID], for transcriptID: UUID
     ) throws {
         guard let record = try transcriptRecord(id: transcriptID) else {
             throw DataStoreError.notFound(transcriptID)
         }
-        record.speakerAssignments = assignments
+        var current = record.speakerAssignments
+        for (speakerID, personID) in assignments {
+            // Skip speakers the user has manually assigned
+            if current[speakerID]?.userSet == true { continue }
+            current[speakerID] = SpeakerAssignmentEntry(
+                personID: personID, userSet: false
+            )
+        }
+        record.speakerAssignments = current
         try save()
     }
 
     /// Sets or clears a single speaker assignment. Pass `nil` for `personID`
-    /// to clear the assignment back to "Speaker N".
+    /// to clear the assignment back to "Speaker N". Manual assignments are
+    /// written with `userSet = true`.
     func setSpeakerAssignment(
         speakerID: Int, personID: UUID?, for transcriptID: UUID
     ) throws {
@@ -51,7 +63,9 @@ public extension DataStore {
         }
         var assignments = record.speakerAssignments
         if let personID {
-            assignments[speakerID] = personID
+            assignments[speakerID] = SpeakerAssignmentEntry(
+                personID: personID, userSet: true
+            )
         } else {
             assignments.removeValue(forKey: speakerID)
         }

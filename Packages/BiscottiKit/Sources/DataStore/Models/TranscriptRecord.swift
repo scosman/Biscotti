@@ -1,6 +1,22 @@
 import Foundation
 import SwiftData
 
+// MARK: - SpeakerAssignmentEntry
+
+/// Per-speaker assignment with provenance. `userSet` is `true` when a human
+/// manually assigned this speaker (sheet dropdown / add-person / re-assign);
+/// `false` when the LLM auto-run inferred it. Manual assignments are never
+/// overwritten by a subsequent LLM run.
+public struct SpeakerAssignmentEntry: Codable, Equatable, Sendable {
+    public let personID: UUID
+    public let userSet: Bool
+
+    public init(personID: UUID, userSet: Bool) {
+        self.personID = personID
+        self.userSet = userSet
+    }
+}
+
 // MARK: - TranscriptRecord
 
 /// A versioned transcript: many per Meeting. Records the inputs that produced it
@@ -28,14 +44,30 @@ import SwiftData
     public var mappedEventIdentifier: String?
 
     /// JSON-encoded backing store for `speakerAssignments`. Maps diarization
-    /// speaker IDs to `Person.id` UUIDs. Same Data-backed pattern as `vocabularyUsedData`.
+    /// speaker IDs to `SpeakerAssignmentEntry` (personID + provenance).
+    /// Same Data-backed pattern as `vocabularyUsedData`.
     private var speakerAssignmentsData = Data()
 
-    /// Diarization speaker ID -> `Person.id` mapping. Empty = no assignments
-    /// (all show "Speaker N"). Resets to empty on re-transcription.
-    @Transient public var speakerAssignments: [Int: UUID] {
-        get { (try? JSONDecoder().decode([Int: UUID].self, from: speakerAssignmentsData)) ?? [:] }
-        set { speakerAssignmentsData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    /// Test-only write access to the raw backing `Data` for
+    /// `speakerAssignments`. Used to inject old-shape JSON and verify
+    /// lenient decode. Not part of the public API.
+    package func setSpeakerAssignmentsData_testOnly(_ data: Data) {
+        speakerAssignmentsData = data
+    }
+
+    /// Diarization speaker ID -> assignment entry (personID + provenance).
+    /// Empty = no assignments (all show "Speaker N"). Resets to empty on
+    /// re-transcription. **Lenient decode:** the prior `[Int: UUID]` shape
+    /// is treated as empty (the feature has no shipped data to migrate).
+    @Transient public var speakerAssignments: [Int: SpeakerAssignmentEntry] {
+        get {
+            (try? JSONDecoder().decode(
+                [Int: SpeakerAssignmentEntry].self, from: speakerAssignmentsData
+            )) ?? [:]
+        }
+        set {
+            speakerAssignmentsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+        }
     }
 
     // MARK: Outputs

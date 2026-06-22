@@ -191,6 +191,34 @@ enum WiredScripts {
                         status("Download complete")
                     }
 
+                case "llm_chat_system":
+                    return .action(id: id, label: label) { status in
+                        let model = ModelDownloader(cacheDirectory: cache).modelPath
+                        try requireModelDownloaded(model)
+                        status("Connecting to BiscottiLLM.xpc...")
+                        let text = try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            status("Connected. Generating with system + user messages...")
+                            let result = try await conn.generate(
+                                messages: [
+                                    .system(
+                                        "You are a helpful pirate assistant. "
+                                            + "Always respond in pirate-speak."
+                                    ),
+                                    .user(
+                                        "What is the capital of France? "
+                                            + "Answer in one sentence."
+                                    )
+                                ],
+                                options: GenerationOptions(maxTokens: 128)
+                            )
+                            return result.text
+                        }
+                        status("Response: \(text)")
+                    }
+
                 case "llm_xpc_inference":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath
@@ -202,8 +230,10 @@ enum WiredScripts {
                         ) { conn in
                             status("Connected. Generating response...")
                             let result = try await conn.generate(
-                                prompt: "What is the capital of France? "
-                                    + "Answer in one sentence.",
+                                messages: [.user(
+                                    "What is the capital of France? "
+                                        + "Answer in one sentence."
+                                )],
                                 options: GenerationOptions(maxTokens: 128)
                             )
                             return result.text
@@ -222,9 +252,11 @@ enum WiredScripts {
                         ) { conn in
                             status("Connected. Summarizing transcript...")
                             let result = try await conn.generate(
-                                prompt: "Summarize the following meeting transcript "
-                                    + "in a few sentences:\n\n"
-                                    + TestScript.sampleMeetingTranscript,
+                                messages: [.user(
+                                    "Summarize the following meeting transcript "
+                                        + "in a few sentences:\n\n"
+                                        + TestScript.sampleMeetingTranscript
+                                )],
                                 options: GenerationOptions(maxTokens: 512)
                             )
                             return result.text
@@ -243,10 +275,12 @@ enum WiredScripts {
                         ) { conn in
                             status("Connected. Extracting action items...")
                             let result = try await conn.generate(
-                                prompt: "Extract all action items from the following "
-                                    + "meeting transcript. For each item list the owner "
-                                    + "and deadline:\n\n"
-                                    + TestScript.sampleMeetingTranscript,
+                                messages: [.user(
+                                    "Extract all action items from the following "
+                                        + "meeting transcript. For each item list the owner "
+                                        + "and deadline:\n\n"
+                                        + TestScript.sampleMeetingTranscript
+                                )],
                                 options: GenerationOptions(maxTokens: 512)
                             )
                             return result.text
@@ -265,10 +299,12 @@ enum WiredScripts {
                         ) { conn in
                             status("Connected. Identifying speakers...")
                             let result = try await conn.generate(
-                                prompt: "Identify all speakers in the following meeting "
-                                    + "transcript. For each speaker, describe their "
-                                    + "responsibilities and include a supporting quote:\n\n"
-                                    + TestScript.sampleMeetingTranscript,
+                                messages: [.user(
+                                    "Identify all speakers in the following meeting "
+                                        + "transcript. For each speaker, describe their "
+                                        + "responsibilities and include a supporting quote:\n\n"
+                                        + TestScript.sampleMeetingTranscript
+                                )],
                                 options: GenerationOptions(maxTokens: 512)
                             )
                             return result.text
@@ -287,11 +323,13 @@ enum WiredScripts {
                         ) { conn in
                             status("Connected. Running thinking-mode inference...")
                             return try await conn.generate(
-                                prompt: "Analyze the following meeting transcript. "
-                                    + "Think step by step about who has the most "
-                                    + "work and whether all deadlines are realistic, "
-                                    + "then give a final assessment:\n\n"
-                                    + TestScript.sampleMeetingTranscript,
+                                messages: [.user(
+                                    "Analyze the following meeting transcript. "
+                                        + "Think step by step about who has the most "
+                                        + "work and whether all deadlines are realistic, "
+                                        + "then give a final assessment:\n\n"
+                                        + TestScript.sampleMeetingTranscript
+                                )],
                                 options: GenerationOptions(
                                     maxTokens: 1024,
                                     thinking: .auto
@@ -331,8 +369,10 @@ enum WiredScripts {
                             }
 
                             let stream = await conn.generateStreaming(
-                                prompt: "Think about what makes a good meeting, "
-                                    + "then list three tips for effective meetings.",
+                                messages: [.user(
+                                    "Think about what makes a good meeting, "
+                                        + "then list three tips for effective meetings."
+                                )],
                                 options: GenerationOptions(
                                     maxTokens: 512,
                                     thinking: .auto

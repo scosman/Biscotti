@@ -71,78 +71,87 @@
     "timestamp" : "2026-06-19T16:18:54Z"
   },
   "llm_action_items_quality" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_action_items_quality",
     "timestamp" : "2026-06-22T15:53:04Z"
   },
   "llm_action_items_run" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_action_items_run",
     "timestamp" : "2026-06-22T15:52:58Z"
   },
   "llm_ai_tests_passed" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_ai_tests_passed",
     "timestamp" : "2026-06-22T15:51:13Z"
   },
+  "llm_chat_system" : {
+    "status" : "not-run",
+    "stepID" : "llm_chat_system",
+    "timestamp" : "2026-06-22T15:51:13Z"
+  },
+  "llm_chat_system_quality" : {
+    "status" : "not-run",
+    "stepID" : "llm_chat_system_quality",
+    "timestamp" : "2026-06-22T15:51:13Z"
+  },
   "llm_model_disk" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_model_disk",
     "timestamp" : "2026-06-22T15:43:25Z"
   },
   "llm_model_download" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_model_download",
     "timestamp" : "2026-06-22T15:43:22Z"
   },
   "llm_reclamation" : {
-    "note" : "No BiscottiLLM service process found (reclaimed)",
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_reclamation",
     "timestamp" : "2026-06-22T15:56:51Z"
   },
   "llm_speaker_names_quality" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_speaker_names_quality",
     "timestamp" : "2026-06-22T15:54:38Z"
   },
   "llm_speaker_names_run" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_speaker_names_run",
     "timestamp" : "2026-06-22T15:53:20Z"
   },
   "llm_streaming_channels" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_streaming_channels",
     "timestamp" : "2026-06-22T15:56:47Z"
   },
   "llm_streaming_run" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_streaming_run",
     "timestamp" : "2026-06-22T15:56:31Z"
   },
   "llm_summarize_quality" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_summarize_quality",
     "timestamp" : "2026-06-22T15:52:47Z"
   },
   "llm_summarize_run" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_summarize_run",
     "timestamp" : "2026-06-22T15:52:43Z"
   },
   "llm_thinking_mode" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_thinking_mode",
     "timestamp" : "2026-06-22T15:56:03Z"
   },
   "llm_thinking_run" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_thinking_run",
     "timestamp" : "2026-06-22T15:55:29Z"
   },
   "llm_xpc_inference" : {
-    "status" : "pass",
+    "status" : "not-run",
     "stepID" : "llm_xpc_inference",
     "timestamp" : "2026-06-22T15:51:28Z"
   },

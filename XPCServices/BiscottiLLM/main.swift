@@ -137,8 +137,7 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
                     return
                 }
                 let count = try await conn.countTokens(
-                    system: request.system,
-                    user: request.user,
+                    messages: request.messages,
                     applyChatTemplate: request.applyChatTemplate,
                     thinking: request.thinking
                 )
@@ -206,8 +205,7 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
                     return
                 }
                 let result = try await conn.generate(
-                    prompt: request.prompt,
-                    system: request.system,
+                    messages: request.messages,
                     options: request.options
                 )
                 let data = try JSONEncoder().encode(result)
@@ -255,8 +253,7 @@ final class LLMXPCService: NSObject, LLMServiceProtocol, @unchecked Sendable {
                     }
 
                     let stream = await conn.generateStreaming(
-                        prompt: request.prompt,
-                        system: request.system,
+                        messages: request.messages,
                         options: request.options
                     )
 

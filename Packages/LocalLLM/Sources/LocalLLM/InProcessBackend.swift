@@ -50,11 +50,11 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func countTokens(
-        system: String?, user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool, thinking: ThinkingMode
     ) async throws -> Int {
         try await engine.countTokens(
-            system: system, user: user,
+            messages: messages,
             applyChatTemplate: applyChatTemplate, thinking: thinking
         )
     }
@@ -74,21 +74,21 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func generate(
-        id _: UInt64, prompt: String, system: String?,
+        id _: UInt64, messages: [LLMMessage],
         options: GenerationOptions
     ) async throws -> GenerationResult {
-        try await engine.generate(prompt: prompt, system: system, options: options)
+        try await engine.generate(messages: messages, options: options)
     }
 
     func generateStreaming(
-        id _: UInt64, prompt: String, system: String?,
+        id _: UInt64, messages: [LLMMessage],
         options: GenerationOptions
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         // Wrap in a stream whose producer task we can cancel.
         AsyncThrowingStream { continuation in
             let task = Task { [engine] in
                 let innerStream = await engine.generateStreaming(
-                    prompt: prompt, system: system, options: options
+                    messages: messages, options: options
                 )
                 do {
                     for try await event in innerStream {
@@ -127,17 +127,17 @@ final class InProcessBackend: ServiceBackend, @unchecked Sendable {
 /// Only exists to satisfy the non-optional `engine` property at init time.
 private final class PlaceholderEngine: InferenceEngine, @unchecked Sendable {
     func countTokens(
-        system _: String?, user _: String,
+        messages _: [LLMMessage],
         applyChatTemplate _: Bool, thinking _: ThinkingMode
     ) async throws -> Int {
         throw LLMServiceError.serviceUnavailable("Engine not loaded (start() not called)")
     }
 
-    func generate(prompt _: String, system _: String?, options _: GenerationOptions) async throws -> GenerationResult {
+    func generate(messages _: [LLMMessage], options _: GenerationOptions) async throws -> GenerationResult {
         throw LLMServiceError.serviceUnavailable("Engine not loaded (start() not called)")
     }
 
-    func generateStreaming(prompt _: String, system _: String?, options _: GenerationOptions) async -> AsyncThrowingStream<StreamEvent, Error> {
+    func generateStreaming(messages _: [LLMMessage], options _: GenerationOptions) async -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { $0.finish(throwing: LLMServiceError.serviceUnavailable("Engine not loaded")) }
     }
 

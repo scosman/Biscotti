@@ -13,8 +13,7 @@ struct ChatTemplateTests {
     @Test("Thinking off: system + user with generation prompt (includes empty thought prefill)")
     func thinkingOffSystemAndUserWithGenPrompt() {
         let result = template.render(
-            system: "You are a helpful assistant.",
-            user: "Hello!",
+            messages: [.system("You are a helpful assistant."), .user("Hello!")],
             addGenerationPrompt: true
         )
         let expected =
@@ -30,8 +29,7 @@ struct ChatTemplateTests {
     @Test("Thinking off: user only with generation prompt (includes empty thought prefill)")
     func thinkingOffUserOnlyWithGenPrompt() {
         let result = template.render(
-            system: nil,
-            user: "What is 2+2?",
+            messages: [.user("What is 2+2?")],
             addGenerationPrompt: true
         )
         let expected =
@@ -45,8 +43,7 @@ struct ChatTemplateTests {
     @Test("Thinking off: user only without generation prompt (no prefill)")
     func thinkingOffUserOnlyNoGenPrompt() {
         let result = template.render(
-            system: nil,
-            user: "Hello",
+            messages: [.user("Hello")],
             addGenerationPrompt: false
         )
         let expected =
@@ -58,8 +55,7 @@ struct ChatTemplateTests {
     @Test("Thinking off: system + user without generation prompt (no prefill)")
     func thinkingOffSystemAndUserNoGenPrompt() {
         let result = template.render(
-            system: "System msg",
-            user: "User msg",
+            messages: [.system("System msg"), .user("User msg")],
             addGenerationPrompt: false
         )
         let expected =
@@ -75,8 +71,7 @@ struct ChatTemplateTests {
     @Test("Thinking on: system + user with generation prompt (think directive + newline)")
     func thinkingOnSystemAndUserWithGenPrompt() {
         let result = thinkingTemplate.render(
-            system: "Be concise.",
-            user: "Hi",
+            messages: [.system("Be concise."), .user("Hi")],
             addGenerationPrompt: true
         )
         let expected =
@@ -92,8 +87,7 @@ struct ChatTemplateTests {
     @Test("Thinking on: no system creates system turn with just think directive")
     func thinkingOnNoSystemWithGenPrompt() {
         let result = thinkingTemplate.render(
-            system: nil,
-            user: "Hi",
+            messages: [.user("Hi")],
             addGenerationPrompt: true
         )
         let expected =
@@ -108,8 +102,7 @@ struct ChatTemplateTests {
     @Test("Thinking on: no empty thought prefill in model turn")
     func thinkingOnNoEmptyThoughtPrefill() {
         let result = thinkingTemplate.render(
-            system: nil,
-            user: "Hi",
+            messages: [.user("Hi")],
             addGenerationPrompt: true
         )
         #expect(!result.contains("<|channel>thought"))
@@ -120,8 +113,7 @@ struct ChatTemplateTests {
     @Test("No literal <bos> in output")
     func noBosInOutput() {
         let result = template.render(
-            system: "Be helpful.",
-            user: "Hi",
+            messages: [.system("Be helpful."), .user("Hi")],
             addGenerationPrompt: true
         )
         #expect(!result.contains("<bos>"))
@@ -130,8 +122,7 @@ struct ChatTemplateTests {
     @Test("Content is trimmed (leading/trailing whitespace stripped)")
     func contentTrimmed() {
         let result = template.render(
-            system: "  padded system  \n",
-            user: "\n  padded user  ",
+            messages: [.system("  padded system  \n"), .user("\n  padded user  ")],
             addGenerationPrompt: true
         )
         #expect(result.contains("padded system<turn|>"))
@@ -143,8 +134,7 @@ struct ChatTemplateTests {
     @Test("Multiline prompt content preserved (internal newlines kept)")
     func multilineContent() {
         let result = template.render(
-            system: nil,
-            user: "Line one\nLine two\nLine three",
+            messages: [.user("Line one\nLine two\nLine three")],
             addGenerationPrompt: true
         )
         #expect(result.contains("Line one\nLine two\nLine three"))
@@ -153,8 +143,7 @@ struct ChatTemplateTests {
     @Test("Empty system string treated as no system (no system turn when thinking off)")
     func emptySystemStringThinkingOff() {
         let result = template.render(
-            system: "   ",
-            user: "Hi",
+            messages: [.system("   "), .user("Hi")],
             addGenerationPrompt: true
         )
         // Empty/whitespace-only system should produce no system turn
@@ -164,11 +153,102 @@ struct ChatTemplateTests {
     @Test("Empty system string with thinking on still emits system turn for directive")
     func emptySystemStringThinkingOn() {
         let result = thinkingTemplate.render(
-            system: "   ",
-            user: "Hi",
+            messages: [.system("   "), .user("Hi")],
             addGenerationPrompt: true
         )
         // Should produce a system turn with just the thinking directive
         #expect(result.contains("<|turn>system\n<|think|><turn|>"))
+    }
+
+    // MARK: - Multi-turn rendering
+
+    @Test("Multi-turn: system + user + assistant + user with generation prompt")
+    func multiTurnFullConversation() {
+        let result = template.render(
+            messages: [
+                .system("You are an analyst."),
+                .user("Identify the speakers."),
+                .assistant("Speaker 0 is Alice."),
+                .user("Now summarize the meeting.")
+            ],
+            addGenerationPrompt: true
+        )
+        let expected =
+            "<|turn>system\n"
+                + "You are an analyst.<turn|>\n"
+                + "<|turn>user\n"
+                + "Identify the speakers.<turn|>\n"
+                + "<|turn>model\n"
+                + "Speaker 0 is Alice.<turn|>\n"
+                + "<|turn>user\n"
+                + "Now summarize the meeting.<turn|>\n"
+                + "<|turn>model\n"
+                + "<|channel>thought\n<channel|>"
+        #expect(result == expected)
+    }
+
+    @Test("Multi-turn: assistant turn uses model marker, not assistant")
+    func assistantTurnUsesModelMarker() {
+        let result = template.render(
+            messages: [
+                .user("Hi"),
+                .assistant("Hello!"),
+                .user("Bye")
+            ],
+            addGenerationPrompt: true
+        )
+        // The assistant turn should be wrapped with <|turn>model, not <|turn>assistant
+        #expect(result.contains("<|turn>model\nHello!<turn|>"))
+        // Should not contain <|turn>assistant anywhere
+        #expect(!result.contains("<|turn>assistant"))
+    }
+
+    @Test("Multi-turn: assistant turn has no empty thought prefill")
+    func assistantTurnNoThoughtPrefill() {
+        let result = template.render(
+            messages: [
+                .user("Hi"),
+                .assistant("Response here"),
+                .user("Follow-up")
+            ],
+            addGenerationPrompt: true
+        )
+        // The completed assistant turn should NOT have the thought prefill
+        // Only the final generation prompt should have it
+        let parts = result.components(separatedBy: "<|channel>thought\n<channel|>")
+        // Exactly one occurrence: at the end (generation prompt)
+        #expect(parts.count == 2)
+    }
+
+    @Test("Multi-turn with thinking enabled: assistant turn clean, no directive")
+    func multiTurnThinkingAssistantClean() {
+        let result = thinkingTemplate.render(
+            messages: [
+                .system("Analyze this."),
+                .user("Input text"),
+                .assistant("Analysis result"),
+                .user("Follow-up question")
+            ],
+            addGenerationPrompt: true
+        )
+        // The assistant turn should be clean (no think directive)
+        #expect(result.contains("<|turn>model\nAnalysis result<turn|>"))
+        // Only one <|think|> in the system turn
+        let thinkCount = result.components(separatedBy: "<|think|>").count - 1
+        #expect(thinkCount == 1)
+    }
+
+    @Test("Multi-turn: assistant content is trimmed like other roles")
+    func assistantContentTrimmed() {
+        let result = template.render(
+            messages: [
+                .user("Q"),
+                .assistant("  padded answer  \n"),
+                .user("Follow-up")
+            ],
+            addGenerationPrompt: true
+        )
+        #expect(result.contains("padded answer<turn|>"))
+        #expect(!result.contains("  padded answer"))
     }
 }

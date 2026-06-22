@@ -87,12 +87,12 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func countTokens(
-        system: String?, user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool, thinking: ThinkingMode
     ) async throws -> Int {
         let proxy = try requireProxy()
         let request = LLMCountTokensRequest(
-            user: user, system: system,
+            messages: messages,
             applyChatTemplate: applyChatTemplate, thinking: thinking
         )
         let requestData = try XPCCodingHelpers.encode(
@@ -138,13 +138,12 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
 
     func generate(
         id _: UInt64,
-        prompt: String,
-        system: String?,
+        messages: [LLMMessage],
         options: GenerationOptions
     ) async throws -> GenerationResult {
         let proxy = try requireProxy()
         let request = LLMGenerateRequest(
-            prompt: prompt, system: system, options: options
+            messages: messages, options: options
         )
         let requestData = try XPCCodingHelpers.encode(
             request, label: "LLMGenerateRequest"
@@ -184,12 +183,11 @@ final class XPCBackend: ServiceBackend, @unchecked Sendable {
 
     func generateStreaming(
         id _: UInt64,
-        prompt: String,
-        system: String?,
+        messages: [LLMMessage],
         options: GenerationOptions
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         let request = LLMGenerateRequest(
-            prompt: prompt, system: system, options: options
+            messages: messages, options: options
         )
 
         let requestData: Data

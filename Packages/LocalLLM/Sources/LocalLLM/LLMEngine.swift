@@ -209,7 +209,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
 
     // MARK: - Token counting
 
-    /// Count the tokens that the model's tokenizer produces for a prompt.
+    /// Count the tokens that the model's tokenizer produces for a message list.
     ///
     /// Applies the same chat template and tokenization pipeline as `generate`,
     /// but returns only the token count -- no context, sampling, or KV-cache
@@ -217,16 +217,14 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     /// context.
     ///
     /// - Parameters:
-    ///   - system: Optional system instruction.
-    ///   - user: The user's message.
+    ///   - messages: The conversation messages.
     ///   - applyChatTemplate: Whether to render the chat template (default true).
     ///   - thinking: Thinking mode for template rendering (default .off).
     /// - Returns: The number of tokens in the rendered prompt.
     /// - Throws: `LocalLLMError.tokenizationFailed` or `.generationFailed` if
     ///   the model is not loaded.
     public func countTokens(
-        system: String?,
-        user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool = true,
         thinking: ThinkingMode = .off
     ) throws -> Int {
@@ -238,37 +236,36 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         if applyChatTemplate {
             let template = GemmaChatTemplate(thinkingEnabled: thinking == .auto)
             promptString = template.render(
-                system: system, user: user, addGenerationPrompt: true
+                messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = user
+            // Raw mode: concatenate all message content
+            promptString = messages.map(\.content).joined()
         }
 
         let tokens = try tokenize(text: promptString, vocab: vocab)
         return tokens.count
     }
 
-    /// Run a single-turn generation (non-streaming).
+    /// Run a generation (non-streaming).
     ///
     /// Internally buffers over the same decode loop as `generateStreaming`, so both paths
     /// produce identical `GenerationResult`s.
     ///
     /// - Parameters:
-    ///   - prompt: The user's message.
-    ///   - system: Optional system instruction.
+    ///   - messages: The conversation messages.
     ///   - options: Generation parameters (sampling, limits, thinking mode).
     /// - Returns: The model's response with timing stats.
     /// - Throws: `LocalLLMError` on failure.
     public func generate(
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) async throws -> GenerationResult {
         // Buffered: ignore per-token callbacks, just return the final result.
-        try await runGeneration(prompt: prompt, system: system, options: options, onToken: nil)
+        try await runGeneration(messages: messages, options: options, onToken: nil)
     }
 
-    /// Run a single-turn generation with streaming.
+    /// Run a generation with streaming.
     ///
     /// Returns an `AsyncThrowingStream` that yields `.token(String)` for final content,
     /// `.reasoningToken(String)` for thinking/reasoning content (ThinkingMode.auto only),
@@ -280,13 +277,11 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     /// (reasoning is a routing of the same token stream, not a separate count).
     ///
     /// - Parameters:
-    ///   - prompt: The user's message.
-    ///   - system: Optional system instruction.
+    ///   - messages: The conversation messages.
     ///   - options: Generation parameters (sampling, limits, thinking mode).
     /// - Returns: A stream of `StreamEvent`s.
     public func generateStreaming(
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -309,7 +304,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
                     )
 
                     let result = try await runGeneration(
-                        prompt: prompt, system: system, options: options
+                        messages: messages, options: options
                     ) { piece in
                         let classified = splitterBox.feed(piece)
                         for item in classified {
@@ -352,8 +347,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     ///
     /// - Parameter onToken: Called with each decoded token piece. `nil` for buffered mode.
     private func runGeneration( // swiftlint:disable:this cyclomatic_complexity function_body_length
-        prompt: String,
-        system: String?,
+        messages: [LLMMessage],
         options: GenerationOptions,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> GenerationResult {
@@ -380,10 +374,10 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         if options.applyChatTemplate {
             let template = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
             promptString = template.render(
-                system: system, user: prompt, addGenerationPrompt: true
+                messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = prompt
+            promptString = messages.map(\.content).joined()
         }
 
         // 2. Tokenize

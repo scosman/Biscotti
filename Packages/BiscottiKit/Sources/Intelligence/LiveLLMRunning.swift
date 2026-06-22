@@ -35,7 +35,9 @@ struct LiveLLMSession: LLMSession, @unchecked Sendable {
     func countTokens(
         system: String, user: String
     ) async throws -> Int {
-        try await connection.countTokens(system: system, user: user)
+        try await connection.countTokens(
+            messages: Self.buildMessages(system: system, user: user)
+        )
     }
 
     func reconfigure(contextSize: Int) async throws {
@@ -46,7 +48,8 @@ struct LiveLLMSession: LLMSession, @unchecked Sendable {
         system: String, user: String, options: GenerationOptions
     ) async throws -> String {
         let result = try await connection.generate(
-            prompt: user, system: system, options: options
+            messages: Self.buildMessages(system: system, user: user),
+            options: options
         )
         return result.text
     }
@@ -55,7 +58,18 @@ struct LiveLLMSession: LLMSession, @unchecked Sendable {
         system: String, user: String, options: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error> {
         await connection.generateStreaming(
-            prompt: user, system: system, options: options
+            messages: Self.buildMessages(system: system, user: user),
+            options: options
         )
+    }
+
+    /// Build an `[LLMMessage]` list from the Intelligence module's
+    /// system/user pair convention. The Intelligence layer keeps its own
+    /// `(system:, user:)` protocol for now; this bridge converts to the
+    /// LocalLLM messages API.
+    private static func buildMessages(
+        system: String, user: String
+    ) -> [LLMMessage] {
+        [.system(system), .user(user)]
     }
 }

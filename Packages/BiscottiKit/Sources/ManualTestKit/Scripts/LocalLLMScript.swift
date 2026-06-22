@@ -51,72 +51,85 @@ public extension TestScript {
                 label: "Run XPC inference (generates a response via BiscottiLLM.xpc)",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 5. Sample transcript display (non-recordable instruction)
+            // 5. System-framed chat (messages API with system + user)
+            .action(
+                id: "llm_chat_system",
+                label: "Run system-framed inference via BiscottiLLM.xpc "
+                    + "(system + user messages)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            // 6. System-framed chat observation
+            .humanQuestion(
+                id: "llm_chat_system_quality",
+                prompt: "Did the response follow the system instruction "
+                    + "(pirate-speak)? The answer should be in pirate style."
+            ),
+            // 7. Sample transcript display (non-recordable instruction)
             .instruction(
                 id: "llm_sample_transcript",
                 text: "The steps below run over this sample transcript:\n\n"
                     + sampleMeetingTranscript
             ),
-            // 6. Summarize via XPC
+            // 8. Summarize via XPC
             .action(
                 id: "llm_summarize_run",
                 label: "Summarize the sample transcript via BiscottiLLM.xpc",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 7. Summarize observation
+            // 9. Summarize observation
             .humanQuestion(
                 id: "llm_summarize_quality",
                 prompt: "Did a coherent summary of the transcript appear above "
                     + "(non-empty, on-topic)?"
             ),
-            // 8. Action items via XPC
+            // 10. Action items via XPC
             .action(
                 id: "llm_action_items_run",
                 label: "Extract action items from the sample transcript via BiscottiLLM.xpc",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 9. Action items observation
+            // 11. Action items observation
             .humanQuestion(
                 id: "llm_action_items_quality",
                 prompt: "Did action items with owners and deadlines appear above?"
             ),
-            // 10. Speaker names via XPC
+            // 12. Speaker names via XPC
             .action(
                 id: "llm_speaker_names_run",
                 label: "Identify speakers from the sample transcript via BiscottiLLM.xpc",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 11. Speaker names observation
+            // 13. Speaker names observation
             .humanQuestion(
                 id: "llm_speaker_names_quality",
                 prompt: "Did speaker names with their responsibilities and "
                     + "supporting quotes appear above?"
             ),
-            // 12. Thinking mode via XPC
+            // 14. Thinking mode via XPC
             .action(
                 id: "llm_thinking_run",
                 label: "Run thinking-mode inference via BiscottiLLM.xpc",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 13. Thinking mode observation
+            // 15. Thinking mode observation
             .humanQuestion(
                 id: "llm_thinking_mode",
                 prompt: "Did a reasoning section followed by a final answer "
                     + "appear above?"
             ),
-            // 14. Streaming via XPC
+            // 16. Streaming via XPC
             .action(
                 id: "llm_streaming_run",
                 label: "Run streaming inference via BiscottiLLM.xpc (tokens render incrementally)",
                 run: { _ in /* wired by the app target */ }
             ),
-            // 15. Streaming observation
+            // 17. Streaming observation
             .humanQuestion(
                 id: "llm_streaming_channels",
                 prompt: "Did tokens render incrementally, with thinking vs. "
                     + "response cleanly separated (no raw markers like <think>)?"
             ),
-            // 16. Reclamation check
+            // 18. Reclamation check
             .autoCheck(
                 id: "llm_reclamation",
                 label: "No BiscottiLLM service process running after connection close",

@@ -19,14 +19,11 @@ public struct LLMLoadRequest: Codable, Sendable, Equatable {
 
 /// Request payload for `LLMServiceProtocol.countTokens(requestData:reply:)`.
 ///
-/// Bundles the prompt, optional system message, and template settings into a
-/// single JSON-encoded `Data` blob for transport across the `@objc` XPC boundary.
+/// Bundles the message list and template settings into a single JSON-encoded
+/// `Data` blob for transport across the `@objc` XPC boundary.
 public struct LLMCountTokensRequest: Codable, Sendable, Equatable {
-    /// The user prompt.
-    public let user: String
-
-    /// Optional system message.
-    public let system: String?
+    /// The conversation messages to tokenize.
+    public let messages: [LLMMessage]
 
     /// Whether to apply the chat template before tokenizing.
     public let applyChatTemplate: Bool
@@ -35,13 +32,11 @@ public struct LLMCountTokensRequest: Codable, Sendable, Equatable {
     public let thinking: ThinkingMode
 
     public init(
-        user: String,
-        system: String?,
+        messages: [LLMMessage],
         applyChatTemplate: Bool = true,
         thinking: ThinkingMode = .off
     ) {
-        self.user = user
-        self.system = system
+        self.messages = messages
         self.applyChatTemplate = applyChatTemplate
         self.thinking = thinking
     }
@@ -49,21 +44,17 @@ public struct LLMCountTokensRequest: Codable, Sendable, Equatable {
 
 /// Request payload for `LLMServiceProtocol.generate` and `generateStreaming`.
 ///
-/// Bundles the prompt, optional system message, and generation options into a
-/// single JSON-encoded `Data` blob for transport across the `@objc` XPC boundary.
+/// Bundles the message list and generation options into a single JSON-encoded
+/// `Data` blob for transport across the `@objc` XPC boundary.
 public struct LLMGenerateRequest: Codable, Sendable, Equatable {
-    /// The user prompt.
-    public let prompt: String
-
-    /// Optional system message prepended to the conversation.
-    public let system: String?
+    /// The conversation messages.
+    public let messages: [LLMMessage]
 
     /// Per-call generation parameters (temperature, maxTokens, etc.).
     public let options: GenerationOptions
 
-    public init(prompt: String, system: String?, options: GenerationOptions) {
-        self.prompt = prompt
-        self.system = system
+    public init(messages: [LLMMessage], options: GenerationOptions) {
+        self.messages = messages
         self.options = options
     }
 }

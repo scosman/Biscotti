@@ -93,7 +93,7 @@ struct IntegrationTests {
         )
 
         let result = try await conn.generate(
-            prompt: "What is 2 + 2? Answer with just the number.",
+            messages: [.user("What is 2 + 2? Answer with just the number.")],
             options: options
         )
 
@@ -128,11 +128,11 @@ struct IntegrationTests {
         )
 
         let result1 = try await conn.generate(
-            prompt: "Name three primary colors.",
+            messages: [.user("Name three primary colors.")],
             options: options
         )
         let result2 = try await conn.generate(
-            prompt: "Name three primary colors.",
+            messages: [.user("Name three primary colors.")],
             options: options
         )
 
@@ -158,12 +158,12 @@ struct IntegrationTests {
 
         // Buffered generate
         let bufferedResult = try await conn.generate(
-            prompt: prompt, options: options
+            messages: [.user(prompt)], options: options
         )
 
         // Streaming generate -- collect all events
         let stream = await conn.generateStreaming(
-            prompt: prompt, options: options
+            messages: [.user(prompt)], options: options
         )
         var streamedContentTokens: [String] = []
         var streamedReasoningTokens: [String] = []
@@ -232,8 +232,10 @@ struct IntegrationTests {
         )
 
         let result = try await conn.generate(
-            prompt: "Say hello.",
-            system: "You are a friendly assistant.",
+            messages: [
+                .system("You are a friendly assistant."),
+                .user("Say hello.")
+            ],
             options: options
         )
 

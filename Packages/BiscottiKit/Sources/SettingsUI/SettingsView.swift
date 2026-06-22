@@ -19,22 +19,28 @@ public struct SettingsView: View {
         self.viewModel = viewModel
     }
 
+    /// Canonical section titles in display order. Each section's header
+    /// is driven from this array (`sectionTitles[N]`), so reordering here
+    /// reorders the rendered headers. Debug is appended in debug builds.
+    static let sectionTitles = [
+        "General",
+        "Permissions",
+        "AI Enhancements",
+        "Notifications",
+        "Calendars"
+    ]
+
+    /// Muted caption trailing the AI Enhancements header.
+    static let aiEnhancementsHeaderCaption = "AI runs locally on your Mac."
+
     public var body: some View {
         ScrollView {
+            // Sections in spec order (section 13.3)
             Form {
-                // General
                 generalSection
-
-                // AI Enhancements
-                aiEnhancementsSection
-
-                // Notifications
-                notificationsSection
-
-                // Permissions (above Calendars per user feedback)
                 permissionsSection
-
-                // Calendars (last)
+                aiEnhancementsSection
+                notificationsSection
                 calendarSection
 
                 #if DEBUG
@@ -57,7 +63,7 @@ public struct SettingsView: View {
     // MARK: - General section
 
     private var generalSection: some View {
-        Section("General") {
+        Section(Self.sectionTitles[0]) {
             Toggle(
                 "Launch at login",
                 isOn: launchAtLoginBinding
@@ -145,7 +151,7 @@ public struct SettingsView: View {
     // MARK: - Calendar section
 
     private var calendarSection: some View {
-        Section("Calendars") {
+        Section(Self.sectionTitles[4]) {
             if viewModel.calendarState == .authorized {
                 if viewModel.calendarGroups.isEmpty {
                     Text("No calendars found.")
@@ -193,7 +199,7 @@ public struct SettingsView: View {
     // MARK: - Permissions section
 
     private var permissionsSection: some View {
-        Section("Permissions") {
+        Section(Self.sectionTitles[1]) {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
@@ -317,9 +323,13 @@ private extension SettingsView {
                 modelDownloadRow
             }
         } header: {
-            Text("AI Enhancements")
-        } footer: {
-            Text("AI runs locally on your Mac.")
+            HStack {
+                Text(Self.sectionTitles[2])
+                Spacer()
+                Text(Self.aiEnhancementsHeaderCaption)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
         }
     }
 
@@ -402,7 +412,7 @@ private extension SettingsView {
 
 private extension SettingsView {
     var notificationsSection: some View {
-        Section("Notifications") {
+        Section(Self.sectionTitles[3]) {
             // Row 1: Monitor for Meetings
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

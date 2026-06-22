@@ -23,8 +23,7 @@ public enum ModelDownloadState: Sendable, Equatable {
 }
 
 /// Settings that gate the AI auto-run. Read from DataStore on each run.
-/// Phase 3 collapses the two old bools into a single `enabled` flag;
-/// Phase 4 will align the DataStore field (`aiAnalysisEnabled`).
+/// A single `enabled` flag maps to `AppSettings.aiAnalysisEnabled`.
 public struct AISettings: Sendable {
     public var enabled: Bool
 

@@ -81,15 +81,15 @@ struct SummaryTabStateTests {
         #expect(viewModel.editedSummary == true)
     }
 
-    @Test("load reads summarizeEnabled from settings")
+    @Test("load reads aiAnalysisEnabled from settings")
     @MainActor
-    func loadReadsSummarizeEnabled() async throws {
+    func loadReadsAIAnalysisEnabled() async throws {
         let fix = try makeCoreFixture(testName: "SummaryTabTests")
         defer { fix.cleanup() }
 
-        // Disable summarize in settings
+        // Disable AI analysis in settings
         try await fix.store.updateSettings { settings in
-            settings.summarizeTranscripts = false
+            settings.aiAnalysisEnabled = false
         }
 
         let meetingID = try await fix.store.createMeeting(
@@ -100,7 +100,7 @@ struct SummaryTabStateTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.summarizeEnabled == false)
+        #expect(viewModel.aiAnalysisEnabled == false)
     }
 }
 
@@ -153,7 +153,7 @@ struct SummaryTabEmptyStateTests {
         #expect(viewModel.summaryText.isEmpty)
         #expect(viewModel.displayedTranscript != nil)
         #expect(viewModel.modelAvailable == true)
-        #expect(viewModel.summarizeEnabled == true)
+        #expect(viewModel.aiAnalysisEnabled == true)
     }
 
     @Test("empty summary without model shows settings hint state")
@@ -195,7 +195,7 @@ struct SummaryTabEmptyStateTests {
         defer { fix.cleanup() }
 
         try await fix.store.updateSettings { settings in
-            settings.summarizeTranscripts = false
+            settings.aiAnalysisEnabled = false
         }
 
         let meetingID = try await fix.createMeetingWithAudio()
@@ -215,7 +215,7 @@ struct SummaryTabEmptyStateTests {
 
         #expect(viewModel.summaryText.isEmpty)
         #expect(viewModel.modelAvailable == true)
-        #expect(viewModel.summarizeEnabled == false)
+        #expect(viewModel.aiAnalysisEnabled == false)
     }
 }
 

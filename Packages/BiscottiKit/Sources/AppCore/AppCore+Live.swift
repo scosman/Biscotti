@@ -106,11 +106,8 @@ public extension AppCore {
             models: modelProvider,
             settings: { [store] in
                 let settings = try? await store.settings()
-                // Phase 3 interim: map the two old bools into the single
-                // `enabled` flag. Phase 4 replaces with `aiAnalysisEnabled`.
                 return AISettings(
-                    enabled: (settings?.summarizeTranscripts ?? true)
-                        || (settings?.guessSpeakerNames ?? true)
+                    enabled: settings?.aiAnalysisEnabled ?? true
                 )
             }
         )

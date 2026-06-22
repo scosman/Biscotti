@@ -185,11 +185,8 @@ public final class MeetingDetailViewModel {
     /// state (should not spuriously set editedSummary).
     private var summaryDirty: Bool = false
 
-    /// Whether the "Summarize Transcripts" toggle is on (loaded from settings).
-    public private(set) var summarizeEnabled: Bool = true
-
-    /// Whether the "Guess Speaker Names" toggle is on (loaded from settings).
-    public private(set) var guessSpeakersEnabled: Bool = true
+    /// Whether the "AI Analysis & Summary" toggle is on (loaded from settings).
+    public private(set) var aiAnalysisEnabled: Bool = true
 
     /// Whether auto-jump to Summary has fired for the current pipeline
     /// activation. Reset on `load()` so it fires once per lifecycle.
@@ -612,7 +609,7 @@ public extension MeetingDetailViewModel {
         ))
 
         // Stage 2: Inferring participant names (gated)
-        let showSpeakers = guessSpeakersEnabled && modelAvailable
+        let showSpeakers = aiAnalysisEnabled && modelAvailable
         if showSpeakers {
             let speakerState: StageState =
                 if enhStatus == .identifyingSpeakers {
@@ -631,7 +628,7 @@ public extension MeetingDetailViewModel {
         }
 
         // Stage 3: Summarizing (gated)
-        let showSummary = summarizeEnabled && modelAvailable
+        let showSummary = aiAnalysisEnabled && modelAvailable
             && !editedSummary
         if showSummary {
             let summaryState: StageState =
@@ -650,7 +647,7 @@ public extension MeetingDetailViewModel {
             ))
         }
 
-        // When .preparing and no gated stages are visible (both toggles off
+        // When .preparing and no gated stages are visible (toggle off
         // or no model), the pipeline would show only "Transcribing: done"
         // which is misleading. This state is transient: .preparing is set
         // synchronously before the model/toggle guards, but those guards
@@ -980,8 +977,7 @@ private extension MeetingDetailViewModel {
         editedSummary = detail?.editedSummary ?? false
         versions = detail?.versions ?? []
         let settings = try? await core.store.settings()
-        summarizeEnabled = settings?.summarizeTranscripts ?? true
-        guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
+        aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
     }
 
     func loadAudioPlayer() async {
@@ -1096,7 +1092,7 @@ public extension MeetingDetailViewModel {
     }
 }
 
-// MARK: - Summary generation (private)
+// MARK: - Analysis generation (private)
 
 private extension MeetingDetailViewModel {
     /// Runs the full analysis (speakers + summary) from the currently

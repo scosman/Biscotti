@@ -44,11 +44,9 @@ import SwiftData
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
-    /// Whether to automatically generate a summary after transcription.
-    public var summarizeTranscripts: Bool = true
-
-    /// Whether to automatically guess speaker names after transcription.
-    public var guessSpeakerNames: Bool = true
+    /// Whether AI analysis (summary + speaker inference) runs automatically
+    /// after transcription completes. Default: on.
+    public var aiAnalysisEnabled: Bool = true
 
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
@@ -85,8 +83,7 @@ import SwiftData
         calendarNotificationModeRaw: String = "allMeetings",
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
-        summarizeTranscripts: Bool = true,
-        guessSpeakerNames: Bool = true
+        aiAnalysisEnabled: Bool = true
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -100,7 +97,6 @@ import SwiftData
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()
         }
-        self.summarizeTranscripts = summarizeTranscripts
-        self.guessSpeakerNames = guessSpeakerNames
+        self.aiAnalysisEnabled = aiAnalysisEnabled
     }
 }

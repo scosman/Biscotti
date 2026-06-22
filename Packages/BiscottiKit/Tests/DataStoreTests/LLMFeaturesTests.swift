@@ -514,35 +514,30 @@ struct SpeakerAssignmentProvenanceTests {
 
 @Suite("DataStore -- settings AI fields")
 struct SettingsAIFieldsTests {
-    @Test("settings defaults include summarizeTranscripts=true, guessSpeakerNames=true")
+    @Test("settings defaults include aiAnalysisEnabled=true")
     func settingsDefaults() async throws {
         let store = try makeStore()
         let result = try await store.settings()
-        #expect(result.summarizeTranscripts == true)
-        #expect(result.guessSpeakerNames == true)
+        #expect(result.aiAnalysisEnabled == true)
     }
 
-    @Test("updateSettings round-trips summarizeTranscripts and guessSpeakerNames")
+    @Test("updateSettings round-trips aiAnalysisEnabled")
     func updateSettingsAIFields() async throws {
         let store = try makeStore()
 
         try await store.updateSettings { settings in
-            settings.summarizeTranscripts = false
-            settings.guessSpeakerNames = false
+            settings.aiAnalysisEnabled = false
         }
 
         let result = try await store.settings()
-        #expect(result.summarizeTranscripts == false)
-        #expect(result.guessSpeakerNames == false)
+        #expect(result.aiAnalysisEnabled == false)
 
         // Toggle back
         try await store.updateSettings { settings in
-            settings.summarizeTranscripts = true
-            settings.guessSpeakerNames = true
+            settings.aiAnalysisEnabled = true
         }
 
         let restored = try await store.settings()
-        #expect(restored.summarizeTranscripts == true)
-        #expect(restored.guessSpeakerNames == true)
+        #expect(restored.aiAnalysisEnabled == true)
     }
 }

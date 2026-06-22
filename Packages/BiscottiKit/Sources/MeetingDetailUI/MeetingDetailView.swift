@@ -720,7 +720,7 @@ private extension MeetingDetailView {
             // (ui_design.md §1c/1d, functional_spec §3.4: model present →
             // Generate button; feature off OR no model → settings hint.)
             // Only shown when truly idle + empty + no run in flight.
-        } else if viewModel.modelAvailable, viewModel.summarizeEnabled {
+        } else if viewModel.modelAvailable, viewModel.aiAnalysisEnabled {
             summaryGenerateContent
                 .frame(height: fill)
 

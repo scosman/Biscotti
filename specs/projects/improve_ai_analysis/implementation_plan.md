@@ -39,7 +39,7 @@ this is the ordered checklist.
   `MeetingAnalyzer` message sequencing with a `FakeLLMSession`, `humanSetSpeakerMappings`.
   (Arch §3.1, §4)
 
-- [ ] **Phase 4 — Settings & UI cleanup.** Swap the two `AppSettings`/`AppSettingsData`
+- [x] **Phase 4 — Settings & UI cleanup.** Swap the two `AppSettings`/`AppSettingsData`
   bools for `aiAnalysisEnabled` and update `settings()`/`updateSettings()` + the `AppCore`
   closure; SettingsUI single "AI Analysis & Summary" toggle (remove the two); MeetingDetailUI
   — `runSummary(force:)` → `runAnalysis`, keep the "Regenerate Summary" label + edited-summary

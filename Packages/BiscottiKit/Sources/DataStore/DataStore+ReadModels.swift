@@ -174,10 +174,9 @@ public struct AppSettingsData: Sendable, Equatable {
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
-    /// Whether to automatically generate a summary after transcription.
-    public var summarizeTranscripts: Bool
-    /// Whether to automatically guess speaker names after transcription.
-    public var guessSpeakerNames: Bool
+    /// Whether AI analysis (summary + speaker inference) runs automatically
+    /// after transcription completes. Default: on.
+    public var aiAnalysisEnabled: Bool
 
     public init(
         customVocabulary: [String] = [],
@@ -190,8 +189,7 @@ public struct AppSettingsData: Sendable, Equatable {
         calendarNotificationMode: CalendarNotificationMode = .allMeetings,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
-        summarizeTranscripts: Bool = true,
-        guessSpeakerNames: Bool = true
+        aiAnalysisEnabled: Bool = true
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -203,8 +201,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.calendarNotificationMode = calendarNotificationMode
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
-        self.summarizeTranscripts = summarizeTranscripts
-        self.guessSpeakerNames = guessSpeakerNames
+        self.aiAnalysisEnabled = aiAnalysisEnabled
     }
 }
 
@@ -456,8 +453,7 @@ public extension DataStore {
                 calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs,
-                summarizeTranscripts: existing.summarizeTranscripts,
-                guessSpeakerNames: existing.guessSpeakerNames
+                aiAnalysisEnabled: existing.aiAnalysisEnabled
             )
         }
         // Create the singleton with defaults
@@ -490,8 +486,7 @@ public extension DataStore {
             calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs,
-            summarizeTranscripts: model.summarizeTranscripts,
-            guessSpeakerNames: model.guessSpeakerNames
+            aiAnalysisEnabled: model.aiAnalysisEnabled
         )
         mutate(&dto)
 
@@ -505,8 +500,7 @@ public extension DataStore {
         model.calendarNotificationModeRaw = dto.calendarNotificationMode.rawValue
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
-        model.summarizeTranscripts = dto.summarizeTranscripts
-        model.guessSpeakerNames = dto.guessSpeakerNames
+        model.aiAnalysisEnabled = dto.aiAnalysisEnabled
         try save()
     }
 

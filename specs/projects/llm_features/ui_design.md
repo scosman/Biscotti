@@ -205,3 +205,48 @@ Render streaming and final summary through **one `MarkdownEditor`** (single `doc
 
 ### 7.4 Shared speaker color (supersedes §3.1)
 When multiple speaker IDs are assigned to the **same person**, they share that person's color (color keyed on `Person.id` when assigned; speaker-ID key only when unassigned). The mapping sheet's leading **● color dot** follows the same rule.
+
+---
+
+## 8. Speaker mapping sheet — filterable person picker (Round 3)
+
+Refines the per-row assignment control in `SpeakerMappingSheet`. **Supersedes §3.3's `Menu` dropdown.** See `functional_spec.md` §14 for behavior and `implementation_plan.md` Phase 13.
+
+### 8.1 Closed control (essentially unchanged)
+Each speaker row keeps its leading **● color dot**, the "Speaker N" label, and a pill showing the current assignment + chevron:
+```
+● Speaker 0   [ Daniel Lee            ▾ ]
+● Speaker 1   [ Unassigned            ▾ ]
+```
+
+### 8.2 Sheet title + Done
+The sheet title reads **"Assign Speaker Names"** (was "Rename speakers"). The footer **Done** button is rendered larger/more prominent (e.g. `.controlSize(.large)`), as the sheet's primary affordance.
+
+### 8.3 Open control — clicking the pill opens a filterable popover
+```
+● Speaker 0   [ Jeff Lebowski         ▾ ]
+            ┌──────────────────────────────────┐
+            │ 🔍 Jeff L▏                        │ ← auto-focused, blinking cursor
+            ├──────────────────────────────────┤
+            │ ⊘  Unassign                       │ ← only when assigned; hidden
+            │                                    │    when already unassigned
+            │ INVITEES                           │
+            │   Jeff Lebowski   jeff@acme.com    │
+            │ ALL PEOPLE                         │
+            │   Jeff Lin        jl@corp.com      │
+            │ ＋ Add "Jeff L"                    │ ← appears: query non-empty,
+            │                                    │    no exact name match
+            │ + 38 more — type to filter         │ ← status row (people > shown)
+            └──────────────────────────────────┘
+```
+- **Auto-focus:** the search field is focused on open (`@FocusState`), cursor blinking; typing filters **instantly** per keystroke.
+- **Sections:** **Invitees** then **All People** (renamed from "People"), standard muted section headers; rows show `name` + muted `email` (the existing `personLabel` style).
+- **Unassign** (verb) is a pinned action at the top of the list (not a person row), **shown only when the speaker currently has an assignment**; hidden when already unassigned.
+- **Add row** uses the `plus` glyph + `Add "<query>"`; it is the **only** add affordance (the separate "Add person…" text-field popover from §3.3 is removed).
+- **Status row** is muted `metadataFont`/`inkSecondary`, non-interactive.
+- **At most 15 person rows** render (the Unassign and Add actions don't count); the user narrows by typing rather than scrolling a long list (§14.4 windowing).
+- **No scrolling:** the popover **sizes to its content** and grows to its full natural height — it does not scroll internally (the 15-row cap bounds the height).
+- **Keyboard:** within the popover, ↑/↓ highlight, Return commits the highlight (or Adds when nothing is highlighted and the Add row is present), Esc closes (§14.5). Across the sheet, **Tab moves between the speaker rows' pickers** and the Done button.
+
+### 8.4 Styling
+Reuse existing `DesignSystem` tokens, the current row/`personLabel` styling, the small section-header treatment, and the popover idiom already used by the sheet — **no new visual language**. The popover is sized to a fixed comfortable width (≈ the current label width) and grows to fit up to 15 rows + the pinned/status rows (no internal scroll).

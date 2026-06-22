@@ -282,3 +282,49 @@ Diarization sometimes splits one real person across multiple speaker IDs. When a
 - Transcript speaker color is keyed on the **assigned `Person.id`** when a speaker is assigned (so all speaker IDs mapped to one person share that person's color), and falls back to the existing **speaker-ID** key only for unassigned speakers.
 - The same rule applies to the **Speaker mapping sheet** row color dots, for consistency.
 - Requires plumbing a per-speaker `Person.id` (or precomputed color key) from the resolved read model (`TranscriptData.speakerAssignments: [Int: PersonData]`) to `TranscriptContent`, and including it in the transcript render cache key.
+
+---
+
+## 14. Speaker mapping sheet — filterable person picker (Round 3)
+
+A focused UX refinement to the speaker mapping sheet (`SpeakerMappingSheet`), independent of the AI features. Implemented in Phase 13 (see `implementation_plan.md`).
+
+### 14.1 Problem (supersedes §4.6's dropdown and UI §3.3's `Menu`)
+Each speaker row's assignment control is a native `Menu` that lists **every** invitee and **every** known person. People accumulate across meetings indefinitely; at 500+ people a flat menu is unusable (no filtering, awkward scrolling, slow to build). Replace it with a **filterable person picker** — the common "type-to-filter dropdown"/combobox pattern.
+
+### 14.2 Control
+The sheet title reads **"Assign Speaker Names"**. The closed control is unchanged in spirit: a pill showing the current assignment (the person's `name`, or **"Unassigned"**) plus a chevron. **Clicking opens a popover anchored to the pill** containing, top-to-bottom:
+
+1. A **search/filter text field**, **auto-focused on open** (cursor blinking), with placeholder like "Filter people…". Typing filters the list **instantly, per keystroke** (no submit, no debounce needed at these sizes).
+2. An **"Unassign"** action (verb) that clears the speaker back to "Speaker N", **shown only when the speaker currently has an assignment** — hidden entirely when the speaker is already unassigned (there's nothing to clear).
+3. A **results list** of person rows split into two sections, in this order:
+   - **"Invitees"** — meeting invitees (organizer + attendees), as today.
+   - **"All People"** — all other known people (renamed from **"People"**), deduped against invitees, as today.
+   Selecting a row assigns that person and **closes the popover** (apply-on-change).
+4. An inline **"Add "&lt;query&gt;""** action, shown whenever the **trimmed query is non-empty** *and* no **matching** person's name equals the query case-insensitively (the exact-match check spans the full matching set, including matches hidden beyond the 15-row cap, so we never offer to create a duplicate of someone already known). Selecting it creates a **name-only** `Person` from the typed text and assigns it. This **replaces** the old separate "Add person…" → text-field popover; there is **no** separate add UI.
+5. A **status row** — "`+ N more — type to filter`" — shown when more matching people exist than are displayed (see §14.4).
+
+### 14.3 Filtering
+- Case-insensitive **substring** match against the person's **name** and **email** (either matches).
+- Invitees and All People are filtered **independently** and keep their section split and ordering.
+
+### 14.4 Windowing (cap = 15 person rows)
+The list renders **at most 15 person rows** at a time; the user narrows by typing rather than scrolling a long list. The pinned **Unassigned** action and the **"Add …"** action do **not** count toward the 15.
+
+- **No query (initial open):**
+  - invitees ≥ 15 → first **15 invitees** (no All People shown).
+  - 0 &lt; invitees &lt; 15 → **all invitees**, then enough **All People** to fill up to 15 total.
+  - 0 invitees → first **15 All People**.
+- **With a query:** filter both groups, then fill to 15 with **invitee matches first**, then All-People matches, preserving the section split.
+- **Status row:** when the number of people available in the current state (invitees + All People, after filtering) exceeds the number shown, display "`+ N more — type to filter`" where **N = (total available/matching) − (shown)**. Given large people lists this is almost always present on initial open and disappears as the query narrows results to ≤ 15.
+- **No internal scrolling:** because the list is capped at 15 rows, the popover **sizes to fit its content and never scrolls** — it grows to its full natural height (search field + optional Unassign + sections + optional Add + optional status row).
+
+### 14.5 Keyboard
+- **Within the open popover** (combobox behavior): **↑/↓** moves a highlight through the visible items (Unassign when present, person rows, Add), **Return** commits the highlighted item — or, when nothing is highlighted and the "Add …" action is present, performs **Add** — and **Esc** closes the popover. The text field keeps focus while typing.
+- **Across the sheet:** the per-speaker assignment controls participate in the **Tab** focus chain, so the user can **Tab between the speaker rows' pickers** (and to the Done button) without the mouse.
+
+### 14.6 Pure, testable selection logic
+The windowing + filtering + add-option computation is a **pure function** over `(invitees, allPeople, query, limit)` returning: the capped **Invitees** section, the capped **All People** section, the hidden-count **N**, and the optional **add-option** string. It is unit-tested independently of the view, so the 15-row math and section-fill rules are verified without UI.
+
+### 14.7 Unchanged
+Apply-on-change persistence via the existing `assignSpeaker` / `assignNewPerson` / `unassignSpeaker`; the `userSet = true` provenance on every manual write (§13.4); the leading **● color dot** rule (§13.5); one row per diarization speaker; the initial scroll-to-clicked-speaker; **Done** just dismisses; and **no model is required** (manual mapping is independent of AI).

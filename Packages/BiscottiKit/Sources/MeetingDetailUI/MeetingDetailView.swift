@@ -72,6 +72,9 @@ public struct MeetingDetailView: View {
                 await viewModel.onEnhancementStatusChange(newStatus)
             }
         }
+        .onChange(of: viewModel.isPipelineActive) { _, active in
+            viewModel.onPipelineActiveChange(active)
+        }
         .onChange(of: viewModel.selectedTab) { _, _ in
             // Clear stale "Copied" feedback when switching tabs.
             copyResetTask?.cancel()
@@ -476,10 +479,6 @@ private extension MeetingDetailView {
 
             Spacer()
 
-            if viewModel.isEnhancing {
-                enhancementPill
-            }
-
             if viewModel.selectedTab == .transcript, viewModel.versions.count > 1 {
                 versionPicker
             }
@@ -511,21 +510,6 @@ private extension MeetingDetailView {
             .controlSize(.small)
             .foregroundStyle(didCopy ? .sage : .inkSecondary)
             .disabled(!canCopy)
-        }
-    }
-
-    /// Subtle status pill showing which AI enhancement phase is active.
-    var enhancementPill: some View {
-        HStack(spacing: Tokens.spacingXS) {
-            ProgressView()
-                .controlSize(.small)
-            Text(
-                viewModel.enhancementStatus == .identifyingSpeakers
-                    ? "Identifying speakers\u{2026}"
-                    : "Summarizing\u{2026}"
-            )
-            .font(.monoMeta)
-            .foregroundStyle(.inkSecondary)
         }
     }
 
@@ -640,19 +624,25 @@ private extension MeetingDetailView {
         } else if !viewModel.summaryText.isEmpty {
             summaryEditorContent(fill: fill)
 
-            // 4. Empty + no transcript: muted placeholder
+            // 4. Pipeline active: show stage progress instead of
+            //    "No transcript available." (§13.1)
+        } else if let stages = viewModel.pipelineStages {
+            summaryPipelineContent(stages: stages)
+                .frame(height: fill)
+
+            // 5. Empty + no transcript: muted placeholder
         } else if viewModel.displayedTranscript == nil {
             summaryNoTranscriptContent
                 .frame(height: fill)
 
-            // 5. Empty + model available + feature on: Generate Summary button
+            // 6. Empty + model available + feature on: Generate Summary button
             // (ui_design.md §1c/1d, functional_spec §3.4: model present →
             // Generate button; feature off OR no model → settings hint.)
         } else if viewModel.modelAvailable, viewModel.summarizeEnabled {
             summaryGenerateContent
                 .frame(height: fill)
 
-            // 6. Empty + no model or feature off: hint + Open Settings
+            // 7. Empty + no model or feature off: hint + Open Settings
         } else {
             summarySettingsHintContent
                 .frame(height: fill)
@@ -722,6 +712,18 @@ private extension MeetingDetailView {
         )
         .frame(minHeight: max(100, fill), alignment: .top)
         .background(TextViewFocusForwarder())
+    }
+
+    /// Pipeline active: stacked stage list showing processing progress.
+    func summaryPipelineContent(
+        stages: [PipelineStage]
+    ) -> some View {
+        VStack {
+            Spacer()
+            EnhancementPipelineView(stages: stages)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// Empty + no transcript: muted placeholder.

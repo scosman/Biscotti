@@ -208,6 +208,13 @@ public final class MeetingDetailViewModel {
     /// Whether the "Summarize Transcripts" toggle is on (loaded from settings).
     public private(set) var summarizeEnabled: Bool = true
 
+    /// Whether the "Guess Speaker Names" toggle is on (loaded from settings).
+    public private(set) var guessSpeakersEnabled: Bool = true
+
+    /// Whether auto-jump to Summary has fired for the current pipeline
+    /// activation. Reset on `load()` so it fires once per lifecycle.
+    private var hasAutoJumpedForPipeline: Bool = false
+
     /// Debounce interval for summary autosave.
     private static let summaryDebounceInterval: Duration = .seconds(1)
 
@@ -255,6 +262,8 @@ public final class MeetingDetailViewModel {
             versions = detail?.versions ?? []
             let settings = try? await core.store.settings()
             summarizeEnabled = settings?.summarizeTranscripts ?? true
+            guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
+            hasAutoJumpedForPipeline = false
             await loadAudioPlayer()
             rebuildTranscriptCacheIfNeeded()
         } catch {
@@ -406,6 +415,30 @@ public final class MeetingDetailViewModel {
     }
 }
 
+// MARK: - Pipeline stage model
+
+/// The visual state of a single pipeline stage row.
+public enum StageState: Sendable, Equatable {
+    case done
+    case active
+    case pending
+}
+
+/// A single stage in the processing pipeline shown on the Summary tab.
+public struct PipelineStage: Sendable, Equatable, Identifiable {
+    public let label: String
+    public let state: StageState
+
+    public var id: String {
+        label
+    }
+
+    public init(label: String, state: StageState) {
+        self.label = label
+        self.state = state
+    }
+}
+
 // MARK: - Derived state
 
 public extension MeetingDetailViewModel {
@@ -548,6 +581,83 @@ public extension MeetingDetailViewModel {
     /// cache-key equality.
     var displayedSpeakerNames: [Int: String] {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
+    }
+
+    /// Ordered processing-pipeline stages for the Summary tab.
+    ///
+    /// Merges `TranscriptionService.jobs[id]` and `Intelligence.jobs[id]`
+    /// into an ordered stage list. Returns `nil` when no pipeline is active
+    /// (no transcription or enhancement in progress). Stage gating:
+    /// - "Inferring participant names" only when guessSpeakers on + model
+    /// - "Summarizing" only when summarize on + model + !editedSummary
+    var pipelineStages: [PipelineStage]? {
+        let jobStatus = core.transcription.jobs[meetingID]
+        let enhStatus = core.intelligence.jobs[meetingID]
+
+        // Pipeline is active when transcription is downloading/transcribing
+        // OR an enhancement is in progress.
+        let transcriptionActive = switch jobStatus {
+        case .downloadingModel, .transcribing: true
+        default: false
+        }
+        let enhancementActive = switch enhStatus {
+        case .identifyingSpeakers, .summarizing: true
+        default: false
+        }
+
+        guard transcriptionActive || enhancementActive else {
+            return nil
+        }
+
+        var stages: [PipelineStage] = []
+
+        // Stage 1: Transcribing
+        let transcriptionState: StageState = if transcriptionActive {
+            .active
+        } else {
+            .done
+        }
+        stages.append(PipelineStage(
+            label: "Transcribing", state: transcriptionState
+        ))
+
+        // Stage 2: Inferring participant names (gated)
+        let showSpeakers = guessSpeakersEnabled && modelAvailable
+        if showSpeakers {
+            let speakerState: StageState = if enhStatus == .identifyingSpeakers {
+                .active
+            } else if transcriptionActive {
+                .pending
+            } else {
+                // Transcription done. Enhancement active but not on speakers
+                // means speakers are done (summary is running).
+                .done
+            }
+            stages.append(PipelineStage(
+                label: "Inferring participant names",
+                state: speakerState
+            ))
+        }
+
+        // Stage 3: Summarizing (gated)
+        let showSummary = summarizeEnabled && modelAvailable
+            && !editedSummary
+        if showSummary {
+            let summaryState: StageState = if enhStatus == .summarizing {
+                .active
+            } else if transcriptionActive
+                || enhStatus == .identifyingSpeakers
+            {
+                .pending
+            } else {
+                .done
+            }
+            stages.append(PipelineStage(
+                label: "Summarizing", state: summaryState
+            ))
+        }
+
+        return stages
     }
 }
 
@@ -752,10 +862,12 @@ public extension MeetingDetailViewModel {
 // MARK: - Transcription & association actions
 
 public extension MeetingDetailViewModel {
-    /// Triggers a re-transcription of the meeting.
+    /// Triggers a re-transcription of the meeting, then runs
+    /// AI auto-enhancements (speaker-ID + summary) on the new transcript.
     func reTranscribe() async {
         await core.transcription.reTranscribe(meetingID: meetingID)
         await load()
+        await core.intelligence.runAutoEnhancements(meetingID: meetingID)
     }
 
     /// Retries a failed transcription.
@@ -1016,6 +1128,22 @@ public extension MeetingDetailViewModel {
         if newStatus == .completed {
             await load()
             await core.reloadSummaries()
+        }
+    }
+
+    /// Whether the processing pipeline is currently active.
+    /// Used by `.onChange` to detect pipeline activation for auto-jump.
+    var isPipelineActive: Bool {
+        pipelineStages != nil
+    }
+
+    /// Called when the pipeline activates or deactivates. Switches to
+    /// the Summary tab once per pipeline activation so the user sees
+    /// the stage progress and then the streaming summary.
+    func onPipelineActiveChange(_ active: Bool) {
+        if active, !hasAutoJumpedForPipeline {
+            hasAutoJumpedForPipeline = true
+            selectedTab = .summary
         }
     }
 

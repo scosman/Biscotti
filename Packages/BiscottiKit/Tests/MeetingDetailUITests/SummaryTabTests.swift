@@ -3,6 +3,7 @@ import BiscottiTestSupport
 import DataStore
 import Foundation
 import Intelligence
+import LocalLLM
 import Testing
 @testable import AppCore
 @testable import MeetingDetailUI
@@ -346,8 +347,11 @@ struct SummaryTabRegenerateTests {
         #expect(viewModel.canRegenerateSummary == false)
 
         // With model, still no transcript
-        fix.fakeModelProvider.downloaded = true
-        fix.intelligence.refreshModelState()
+        try await fix.fakeModelProvider.download(
+            #require(LLMModelCatalog.all.first?.id),
+            progress: { _, _ in }
+        )
+        await fix.modelManager.refresh()
 
         #expect(viewModel.modelAvailable == true)
         #expect(viewModel.canRegenerateSummary == false)

@@ -29,7 +29,7 @@ Ordered, dependency-first. Each phase compiles green and is reviewable on its ow
   `ModelSuitability` (`canRun`, `recommendedModelID`, `hasEnoughDisk`; 15 GB / 24 GB constants).
   Table-driven tests across RAM/disk boundaries. *No breakage.* (Arch §2.2, §3.)
 
-- [ ] **Phase 4 — ModelManager + integration (breaking core).** Rework `ModelProviding` to
+- [x] **Phase 4 — ModelManager + integration (breaking core).** Rework `ModelProviding` to
   multi-model + `LiveModelProvider`; add `ModelManager` (+ `ModelChoice`/`ModelBlockedReason`, move
   `LastFraction`); add `model: URL` to `LLMRunning.withSession` and drop `modelProvider` from
   `LiveLLMRunner`; rewire `Intelligence` (active-model guards + session call, remove its

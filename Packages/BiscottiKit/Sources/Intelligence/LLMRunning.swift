@@ -1,9 +1,11 @@
+import Foundation
 import LocalLLM
 
 /// A single loaded-model session that supports N sequential generation calls.
 /// Real impl wraps `LLMService.withConnection`; fakes in tests.
 public protocol LLMRunning: Sendable {
     func withSession<T: Sendable>(
+        model: URL,
         config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T

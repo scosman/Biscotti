@@ -5,8 +5,8 @@ import LocalLLM
 /// The in-process owner of all Biscotti LLM scenario logic.
 ///
 /// Parallels `TranscriptionService`: holds observable per-meeting status the UI
-/// watches, plus model-download state. Depends on injected abstractions
-/// (`LLMRunning`, `ModelProviding`) so it unit-tests without a model.
+/// watches. Model management (download, selection, suitability) is delegated to
+/// `ModelManager`; this class owns the analysis orchestration.
 @MainActor @Observable
 public final class Intelligence {
     // MARK: - Observable state
@@ -19,14 +19,11 @@ public final class Intelligence {
     /// meeting ID. Cleared when generation completes or fails.
     public package(set) var streamingSummary: [UUID: String] = [:]
 
-    /// Model download lifecycle state, observed by Settings.
-    public package(set) var download: ModelDownloadState = .unknown
-
     // MARK: - Dependencies
 
     private let store: DataStore
     private let llm: any LLMRunning
-    private let models: any ModelProviding
+    private let modelManager: ModelManager
     private let settingsProvider: @Sendable () async -> AISettings
 
     // MARK: - In-flight guard
@@ -42,19 +39,18 @@ public final class Intelligence {
     /// - Parameters:
     ///   - store: The DataStore for reading/writing meeting data.
     ///   - llm: The LLM session provider (real or fake).
-    ///   - models: The model presence/download provider (real or fake).
+    ///   - modelManager: The model state owner (selection, downloads, suitability).
     ///   - settings: Closure that reads the current AI settings from DataStore.
     public init(
         store: DataStore,
         llm: any LLMRunning,
-        models: any ModelProviding,
+        modelManager: ModelManager,
         settings: @Sendable @escaping () async -> AISettings
     ) {
         self.store = store
         self.llm = llm
-        self.models = models
+        self.modelManager = modelManager
         settingsProvider = settings
-        refreshModelState()
     }
 
     // MARK: - Auto-run orchestration
@@ -76,7 +72,7 @@ public final class Intelligence {
             jobs.removeValue(forKey: meetingID)
             return
         }
-        guard models.isDownloaded() else {
+        guard let modelURL = modelManager.activeModelURL() else {
             jobs.removeValue(forKey: meetingID)
             return
         }
@@ -92,7 +88,8 @@ public final class Intelligence {
             try await runAnalysisSession(
                 meetingID: meetingID,
                 detail: detail, transcript: transcript,
-                doSummary: !detail.editedSummary
+                doSummary: !detail.editedSummary,
+                modelURL: modelURL
             )
             jobs[meetingID] = .completed
         } catch is CancellationError {
@@ -118,7 +115,7 @@ public final class Intelligence {
             inFlightMeetingID = nil
         }
 
-        guard models.isDownloaded() else { return }
+        guard let modelURL = modelManager.activeModelURL() else { return }
 
         // Set preparing SYNCHRONOUSLY before any await.
         jobs[meetingID] = .preparing
@@ -137,7 +134,8 @@ public final class Intelligence {
             try await runAnalysisSession(
                 meetingID: meetingID,
                 detail: detail, transcript: transcript,
-                doSummary: doSummary
+                doSummary: doSummary,
+                modelURL: modelURL
             )
             jobs[meetingID] = .completed
         } catch is CancellationError {
@@ -156,7 +154,8 @@ public final class Intelligence {
         meetingID: UUID,
         detail: MeetingDetailData,
         transcript: TranscriptData,
-        doSummary: Bool
+        doSummary: Bool,
+        modelURL: URL
     ) async throws {
         let human = await (try? store.humanSetSpeakerMappings(
             for: transcript.id
@@ -183,7 +182,7 @@ public final class Intelligence {
             doTitle: doTitle
         )
 
-        try await llm.withSession(config: .modelOnly) { session in
+        try await llm.withSession(model: modelURL, config: .modelOnly) { session in
             let contextSize = try await ContextSizing.contextSizeForAnalysis(
                 firstUser: firstUser,
                 system: IntelligencePrompts.analysisSystem,
@@ -263,44 +262,6 @@ public final class Intelligence {
         }
     }
 
-    // MARK: - Model management
-
-    /// Whether the model file exists on disk.
-    public var isModelDownloaded: Bool {
-        models.isDownloaded()
-    }
-
-    /// Recompute `download` state from disk presence. Called at init and when
-    /// the Settings screen appears.
-    public func refreshModelState() {
-        download = models.isDownloaded() ? .downloaded : .notDownloaded
-    }
-
-    /// Download the default model, driving `download` through the state machine.
-    public func downloadModel() async {
-        download = .downloading(fraction: nil)
-
-        // Track the last reported fraction to throttle progress updates.
-        // URLSession can fire thousands of callbacks for a multi-GB download;
-        // we only dispatch a MainActor task when the fraction moves by >= 1%.
-        let lastFraction = LastFraction()
-
-        do {
-            try await models.download { [weak self] bytes, total in
-                let fraction = total.map { Double(bytes) / Double($0) }
-                guard lastFraction.shouldUpdate(to: fraction) else { return }
-                Task { @MainActor [weak self] in
-                    self?.download = .downloading(fraction: fraction)
-                }
-            }
-            download = .downloaded
-        } catch is CancellationError {
-            download = .notDownloaded
-        } catch {
-            download = .failed(message: shortDescription(error))
-        }
-    }
-
     // MARK: - Private helpers
 
     private func shortDescription(_ error: some Error) -> String {
@@ -308,36 +269,5 @@ public final class Intelligence {
             return llmError.localizedDescription
         }
         return error.localizedDescription
-    }
-}
-
-// MARK: - Download progress throttle
-
-/// Tracks the last reported download fraction to avoid dispatching thousands
-/// of MainActor tasks during a multi-GB download. Only reports when the
-/// fraction changes by >= 1% or transitions to/from nil.
-///
-/// Marked `@unchecked Sendable` because it is only mutated from the
-/// `ModelProviding.download` progress callback (single call site).
-private final class LastFraction: @unchecked Sendable {
-    private var value: Double?
-
-    /// Returns `true` if the caller should dispatch a UI update for this fraction.
-    func shouldUpdate(to newFraction: Double?) -> Bool {
-        guard let newFraction else {
-            // nil fraction (unknown total): report only the first time
-            if value == nil { return false }
-            value = nil
-            return true
-        }
-        guard let previous = value else {
-            value = newFraction
-            return true
-        }
-        if newFraction - previous >= 0.01 || newFraction >= 1.0 {
-            value = newFraction
-            return true
-        }
-        return false
     }
 }

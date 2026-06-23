@@ -21,12 +21,17 @@ final class FakeLLMRunner: LLMRunning, @unchecked Sendable {
     /// The most recently passed `EngineConfig`.
     var lastConfig: EngineConfig?
 
+    /// The most recently passed model URL.
+    var lastModelURL: URL?
+
     func withSession<T: Sendable>(
+        model: URL,
         config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1
         lastConfig = config
+        lastModelURL = model
         return try await body(session)
     }
 }
@@ -128,25 +133,36 @@ private func makeGenerationResult(text: String) -> GenerationResult {
     return try! JSONDecoder().decode(GenerationResult.self, from: data)
 }
 
-/// Fake model provider with toggleable download state.
+/// Fake model provider with configurable per-model download state.
 final class FakeModelProvider: ModelProviding, @unchecked Sendable {
-    var downloaded: Bool
-    let modelURL: URL
+    let catalog: [LLMModel]
+    var downloadedIDs: Set<String>
 
     var downloadCalled = false
     var downloadShouldFail = false
     var downloadProgress: [(Int64, Int64?)] = []
 
-    init(downloaded: Bool = true) {
-        self.downloaded = downloaded
-        modelURL = URL(fileURLWithPath: "/fake/model.gguf")
+    init(downloadedIDs: Set<String> = []) {
+        catalog = LLMModelCatalog.all
+        self.downloadedIDs = downloadedIDs
     }
 
-    func isDownloaded() -> Bool {
-        downloaded
+    func url(for id: String) -> URL? {
+        LLMModelCatalog.model(id: id).map {
+            URL(fileURLWithPath: "/fake/\($0.fileName)")
+        }
+    }
+
+    func isDownloaded(_ id: String) -> Bool {
+        downloadedIDs.contains(id)
+    }
+
+    func downloadedModelIDs() -> [String] {
+        catalog.filter { downloadedIDs.contains($0.id) }.map(\.id)
     }
 
     func download(
+        _ id: String,
         progress: @Sendable @escaping (Int64, Int64?) -> Void
     ) async throws {
         downloadCalled = true
@@ -159,7 +175,29 @@ final class FakeModelProvider: ModelProviding, @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Download failed"]
             )
         }
-        downloaded = true
+        downloadedIDs.insert(id)
+    }
+
+    func delete(_ id: String) throws {
+        downloadedIDs.remove(id)
+    }
+}
+
+/// Fake hardware probe for tests.
+struct FakeHardwareProbe: HardwareProbing {
+    var physicalMemoryBytes: UInt64
+    var diskBytes: Int64?
+
+    init(
+        physicalMemoryBytes: UInt64 = 32_000_000_000,
+        diskBytes: Int64? = 100_000_000_000
+    ) {
+        self.physicalMemoryBytes = physicalMemoryBytes
+        self.diskBytes = diskBytes
+    }
+
+    func availableDiskBytes(at _: URL) -> Int64? {
+        diskBytes
     }
 }
 
@@ -189,6 +227,7 @@ final class BlockingLLMRunner: LLMRunning, @unchecked Sendable {
     }
 
     func withSession<T: Sendable>(
+        model _: URL,
         config _: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
@@ -250,9 +289,13 @@ private func makeMeetingWithTranscript(
 struct IntelligenceFixture {
     let intel: Intelligence
     let runner: FakeLLMRunner
+    let modelManager: ModelManager
     let models: FakeModelProvider
 }
 
+/// Creates an Intelligence with a ModelManager backed by fakes.
+/// When `downloaded` is true, the first catalog model (12B) is marked as
+/// downloaded and pre-populated in the ModelManager's download state.
 @MainActor private func makeIntelligence(
     store: DataStore,
     session: FakeSession = FakeSession(),
@@ -260,13 +303,29 @@ struct IntelligenceFixture {
     enabled: Bool = true
 ) -> IntelligenceFixture {
     let runner = FakeLLMRunner(session: session)
-    let models = FakeModelProvider(downloaded: downloaded)
+    let firstModelID = LLMModelCatalog.all.first?.id ?? ""
+    let downloadedIDs: Set<String> = downloaded
+        ? [firstModelID]
+        : []
+    let models = FakeModelProvider(downloadedIDs: downloadedIDs)
+    let hardware = FakeHardwareProbe()
+    let modelManager = ModelManager(
+        store: store, models: models, hardware: hardware
+    )
+    // Pre-populate download states
+    for model in models.catalog {
+        modelManager.downloads[model.id] = models.isDownloaded(model.id)
+            ? .downloaded : .notDownloaded
+    }
     let settings = AISettings(enabled: enabled)
     let intel = Intelligence(
-        store: store, llm: runner, models: models,
+        store: store, llm: runner, modelManager: modelManager,
         settings: { settings }
     )
-    return IntelligenceFixture(intel: intel, runner: runner, models: models)
+    return IntelligenceFixture(
+        intel: intel, runner: runner,
+        modelManager: modelManager, models: models
+    )
 }
 
 // MARK: - SpeakerMappingParser Tests
@@ -829,9 +888,17 @@ struct IntelligenceOrchestrationTests {
         )
 
         let blocker = BlockingLLMRunner()
-        let models = FakeModelProvider(downloaded: true)
+        let models = try FakeModelProvider(downloadedIDs: [#require(LLMModelCatalog.all.first?.id)])
+        let hardware = FakeHardwareProbe()
+        let modelManager = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+        for model in models.catalog {
+            modelManager.downloads[model.id] = models.isDownloaded(model.id)
+                ? .downloaded : .notDownloaded
+        }
         let intel = Intelligence(
-            store: store, llm: blocker, models: models,
+            store: store, llm: blocker, modelManager: modelManager,
             settings: { AISettings(enabled: true) }
         )
 
@@ -895,6 +962,25 @@ struct IntelligenceOrchestrationTests {
         let expectedContextSize = base + expectedReserve
         #expect(session.reconfigureCalls.first == expectedContextSize)
         #expect(expectedContextSize == 4159)
+    }
+
+    @Test("active model URL is passed to withSession")
+    @MainActor func activeModelURLPassedToRunner() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 1)
+        // Verify the runner received the active model URL
+        let expectedURL = fixture.modelManager.activeModelURL()
+        #expect(fixture.runner.lastModelURL == expectedURL)
+        #expect(expectedURL != nil)
     }
 }
 
@@ -1019,9 +1105,17 @@ struct IntelligenceRunAnalysisTests {
         )
 
         let blocker = BlockingLLMRunner()
-        let models = FakeModelProvider(downloaded: true)
+        let models = try FakeModelProvider(downloadedIDs: [#require(LLMModelCatalog.all.first?.id)])
+        let hardware = FakeHardwareProbe()
+        let modelManager = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+        for model in models.catalog {
+            modelManager.downloads[model.id] = models.isDownloaded(model.id)
+                ? .downloaded : .notDownloaded
+        }
         let intel = Intelligence(
-            store: store, llm: blocker, models: models,
+            store: store, llm: blocker, modelManager: modelManager,
             settings: { AISettings(enabled: true) }
         )
 
@@ -1061,89 +1155,6 @@ struct IntelligenceRunAnalysisTests {
         #expect(config?.contextSize == 0)
 
         #expect(session.reconfigureCalls.count == 1)
-    }
-}
-
-// MARK: - Intelligence Download Tests
-
-@Suite("Intelligence download state machine")
-struct IntelligenceDownloadTests {
-    @Test("refreshModelState reflects disk presence")
-    @MainActor func refreshModelState() throws {
-        let store = try makeStore()
-        let models = FakeModelProvider(downloaded: false)
-        let intel = Intelligence(
-            store: store,
-            llm: FakeLLMRunner(),
-            models: models,
-            settings: { AISettings(enabled: true) }
-        )
-
-        #expect(intel.download == .notDownloaded)
-
-        models.downloaded = true
-        intel.refreshModelState()
-        #expect(intel.download == .downloaded)
-
-        models.downloaded = false
-        intel.refreshModelState()
-        #expect(intel.download == .notDownloaded)
-    }
-
-    @Test("successful download transitions to .downloaded")
-    @MainActor func successfulDownload() async throws {
-        let store = try makeStore()
-        let models = FakeModelProvider(downloaded: false)
-        let intel = Intelligence(
-            store: store,
-            llm: FakeLLMRunner(),
-            models: models,
-            settings: { AISettings(enabled: true) }
-        )
-
-        await intel.downloadModel()
-
-        #expect(intel.download == .downloaded)
-        #expect(models.downloadCalled)
-        #expect(intel.isModelDownloaded)
-    }
-
-    @Test("failed download transitions to .failed")
-    @MainActor func failedDownload() async throws {
-        let store = try makeStore()
-        let models = FakeModelProvider(downloaded: false)
-        models.downloadShouldFail = true
-
-        let intel = Intelligence(
-            store: store,
-            llm: FakeLLMRunner(),
-            models: models,
-            settings: { AISettings(enabled: true) }
-        )
-
-        await intel.downloadModel()
-
-        if case let .failed(message) = intel.download {
-            #expect(message.contains("Download failed"))
-        } else {
-            Issue.record("Expected .failed state")
-        }
-    }
-
-    @Test("isModelDownloaded reflects provider state")
-    @MainActor func isModelDownloaded() throws {
-        let store = try makeStore()
-        let models = FakeModelProvider(downloaded: true)
-        let intel = Intelligence(
-            store: store,
-            llm: FakeLLMRunner(),
-            models: models,
-            settings: { AISettings(enabled: true) }
-        )
-
-        #expect(intel.isModelDownloaded == true)
-        models.downloaded = false
-        #expect(intel.isModelDownloaded == false)
     }
 }
 
@@ -1547,13 +1558,13 @@ struct TitleOrchestrationTests {
             store: store, title: Meeting.defaultTitle
         )
 
-        // All speakers assigned → no speaker turn
+        // All speakers assigned -> no speaker turn
         let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
         let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
         try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
         try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
 
-        // Summary edited → no summary turn
+        // Summary edited -> no summary turn
         try await store.setSummary("User's notes", for: meetingID)
 
         let session = FakeSession()

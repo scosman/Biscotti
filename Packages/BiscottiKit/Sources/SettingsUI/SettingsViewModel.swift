@@ -81,14 +81,25 @@ public final class SettingsViewModel {
     /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
     public private(set) var aiAnalysisEnabled: Bool = true
 
-    /// Current model download lifecycle state (observed from Intelligence).
+    /// Current model download lifecycle state for the active model
+    /// (observed from ModelManager).
     public var modelDownload: ModelDownloadState {
-        core.intelligence.download
+        let mgr = core.modelManager
+        if let activeID = mgr.activeModelID {
+            return mgr.downloads[activeID] ?? .notDownloaded
+        }
+        // No active model: show the first in-flight download, or notDownloaded
+        for (_, state) in mgr.downloads {
+            if case .downloading = state {
+                return state
+            }
+        }
+        return .notDownloaded
     }
 
-    /// Whether the AI model is present on disk.
+    /// Whether any AI model is available (active model exists).
     public var modelAvailable: Bool {
-        core.intelligence.isModelDownloaded
+        core.modelManager.isModelAvailable
     }
 
     // MARK: - Calendar state
@@ -385,7 +396,7 @@ public final class SettingsViewModel {
             enabledCalendarIDs = nil
         }
 
-        core.intelligence.refreshModelState()
+        await core.modelManager.refresh()
 
         // SMAppService is the source of truth for launch-at-login
         launchAtLogin = readLaunchAtLoginStatus()
@@ -508,9 +519,11 @@ public extension SettingsViewModel {
         }
     }
 
-    /// Starts the AI model download. Runs asynchronously; the download
-    /// state is observed through `modelDownload` (from Intelligence).
+    /// Starts an AI model download. Runs asynchronously; the download
+    /// state is observed through `modelDownload` (from ModelManager).
+    /// Downloads the recommended model when no specific id is given.
     func startModelDownload() {
-        Task { await core.intelligence.downloadModel() }
+        guard let id = core.modelManager.recommendedModelID() else { return }
+        Task { await core.modelManager.downloadModel(id: id) }
     }
 }

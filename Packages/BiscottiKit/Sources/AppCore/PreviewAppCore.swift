@@ -55,10 +55,16 @@
                 provider: PreviewNotificationCenter()
             )
 
+            let modelManager = ModelManager(
+                store: store,
+                models: PreviewModelProvider(),
+                hardware: PreviewHardwareProbe()
+            )
+
             let intelligence = Intelligence(
                 store: store,
                 llm: PreviewLLMRunner(),
-                models: PreviewModelProvider(),
+                modelManager: modelManager,
                 settings: { AISettings(enabled: true) }
             )
 
@@ -70,7 +76,8 @@
                 calendar: calendar,
                 detector: detector,
                 notifications: notifications,
-                intelligence: intelligence
+                intelligence: intelligence,
+                modelManager: modelManager
             )
         }
     }
@@ -189,6 +196,7 @@
     /// No-op LLM runner for previews.
     private struct PreviewLLMRunner: LLMRunning {
         func withSession<T: Sendable>(
+            model _: URL,
             config _: LocalLLM.EngineConfig,
             _ body: @Sendable (any LLMSession) async throws -> T
         ) async throws -> T {
@@ -221,15 +229,40 @@
         }
     }
 
-    /// No-op model provider for previews (model not downloaded).
+    /// No-op model provider for previews (no models downloaded).
     private struct PreviewModelProvider: ModelProviding {
-        let modelURL = URL(fileURLWithPath: "/preview/model.gguf")
-        func isDownloaded() -> Bool {
+        let catalog: [LLMModel] = LLMModelCatalog.all
+
+        func url(for id: String) -> URL? {
+            LLMModelCatalog.model(id: id).map {
+                URL(fileURLWithPath: "/preview/\($0.fileName)")
+            }
+        }
+
+        func isDownloaded(_: String) -> Bool {
             false
         }
 
+        func downloadedModelIDs() -> [String] {
+            []
+        }
+
         func download(
+            _: String,
             progress _: @Sendable @escaping (Int64, Int64?) -> Void
         ) async throws {}
+
+        func delete(_: String) throws {}
+    }
+
+    /// Fake hardware probe for previews (32 GB RAM, plenty of disk).
+    private struct PreviewHardwareProbe: HardwareProbing {
+        var physicalMemoryBytes: UInt64 {
+            32_000_000_000
+        }
+
+        func availableDiskBytes(at _: URL) -> Int64? {
+            100_000_000_000
+        }
     }
 #endif

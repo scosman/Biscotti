@@ -105,9 +105,9 @@ struct ScriptShapeTests {
         #expect(script.id == "local_llm")
     }
 
-    @Test("Local LLM script has exactly 21 steps")
+    @Test("Local LLM script has exactly 24 steps")
     func localLLMStepCount() {
-        #expect(TestScript.localLLM.steps.count == 21)
+        #expect(TestScript.localLLM.steps.count == 24)
     }
 
     @Test("Local LLM step IDs match the canonical set")
@@ -134,6 +134,9 @@ struct ScriptShapeTests {
             "llm_kv_reuse_info",
             "llm_kv_reuse",
             "llm_kv_reuse_quality",
+            "llm_e2b_download",
+            "llm_e2b_kv_reuse",
+            "llm_e2b_kv_reuse_quality",
             "llm_reclamation"
         ]
         #expect(ids == expected)

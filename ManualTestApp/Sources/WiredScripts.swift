@@ -409,6 +409,96 @@ enum WiredScripts {
                         }
                     }
 
+                case "llm_e2b_download":
+                    return .action(id: id, label: label) { status in
+                        let e2b = LLMModelCatalog.model(id: "gemma-4-e2b")!
+                        let downloader = ModelDownloader(cacheDirectory: cache)
+                        _ = try await downloader.download(
+                            from: e2b.downloadURL
+                        ) { bytes, total in
+                            if let total {
+                                let mb = Double(bytes) / 1_000_000
+                                let totalMB = Double(total) / 1_000_000
+                                let pct = Double(bytes) / Double(total) * 100
+                                status(String(
+                                    format: "Downloading E2B: %.0f / %.0f MB (%.0f%%)",
+                                    mb, totalMB, pct
+                                ))
+                            } else {
+                                let mb = Double(bytes) / 1_000_000
+                                status(String(
+                                    format: "Downloading E2B: %.0f MB", mb
+                                ))
+                            }
+                        }
+                        status("E2B download complete")
+                    }
+
+                case "llm_e2b_kv_reuse":
+                    return .action(id: id, label: label) { status in
+                        let e2b = LLMModelCatalog.model(id: "gemma-4-e2b")!
+                        let inventory = ModelInventory(cacheDirectory: cache)
+                        let model = inventory.path(for: e2b)
+                        try requireModelDownloaded(model)
+                        status("Connecting to BiscottiLLM.xpc with E2B model...")
+                        try await LLMService.withConnection(
+                            model: model,
+                            backend: .hosted(serviceName: llmServiceName)
+                        ) { conn in
+                            let options = GenerationOptions(maxTokens: 128, temperature: 0)
+
+                            let systemMsg = LLMMessage.system(
+                                "You are a meeting analyst. Answer precisely."
+                            )
+                            let userMsg = LLMMessage.user(
+                                "Summarize this meeting transcript in one sentence:\n\n"
+                                    + TestScript.sampleMeetingTranscript
+                            )
+
+                            status("E2B Turn 1: Generating with fresh cache...")
+                            let result1 = try await conn.generate(
+                                messages: [systemMsg, userMsg],
+                                options: options
+                            )
+                            let prefillMs1 = String(
+                                format: "%.0f", result1.promptEvalDuration * 1000
+                            )
+                            status(
+                                "E2B Turn 1 done.\n"
+                                    + "  cached=\(result1.cachedPromptTokenCount) "
+                                    + "prompt=\(result1.promptTokenCount) tokens\n"
+                                    + "  prefill=\(prefillMs1)ms\n"
+                                    + "  response: \(result1.text.prefix(200))\n\n"
+                                    + "E2B Turn 2: Extending conversation (should reuse prefix)..."
+                            )
+
+                            let result2 = try await conn.generate(
+                                messages: [
+                                    systemMsg,
+                                    userMsg,
+                                    .assistant(result1.text),
+                                    .user("List the action items from the transcript.")
+                                ],
+                                options: options
+                            )
+                            let prefillMs2 = String(
+                                format: "%.0f", result2.promptEvalDuration * 1000
+                            )
+                            status(
+                                "E2B Turn 1:\n"
+                                    + "  cached=\(result1.cachedPromptTokenCount) "
+                                    + "prompt=\(result1.promptTokenCount) "
+                                    + "prefill=\(prefillMs1)ms\n"
+                                    + "  \(result1.text.prefix(200))\n\n"
+                                    + "E2B Turn 2:\n"
+                                    + "  cached=\(result2.cachedPromptTokenCount) "
+                                    + "prompt=\(result2.promptTokenCount) "
+                                    + "prefill=\(prefillMs2)ms\n"
+                                    + "  \(result2.text.prefix(200))"
+                            )
+                        }
+                    }
+
                 case "llm_streaming_run":
                     return .action(id: id, label: label) { status in
                         let model = ModelDownloader(cacheDirectory: cache).modelPath

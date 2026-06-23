@@ -152,7 +152,26 @@ public extension TestScript {
                 prompt: "Did the 2nd call reuse most of the prefix (high cached count, "
                     + "much faster prompt eval) and was the 2nd response coherent?"
             ),
-            // 21. Reclamation check
+            // 21. E2B model download
+            .action(
+                id: "llm_e2b_download",
+                label: "Download E2B model (shows progress)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            // 22. E2B multi-turn KV-cache reuse inference
+            .action(
+                id: "llm_e2b_kv_reuse",
+                label: "Run KV-cache reuse test on E2B model via BiscottiLLM.xpc",
+                run: { _ in /* wired by the app target */ }
+            ),
+            // 23. E2B KV-cache reuse observation
+            .humanQuestion(
+                id: "llm_e2b_kv_reuse_quality",
+                prompt: "Did the E2B model's 2nd call reuse most of the prefix "
+                    + "(high cached count, much faster prompt eval) and was "
+                    + "the 2nd response coherent?"
+            ),
+            // 24. Reclamation check
             .autoCheck(
                 id: "llm_reclamation",
                 label: "No BiscottiLLM service process running after connection close",

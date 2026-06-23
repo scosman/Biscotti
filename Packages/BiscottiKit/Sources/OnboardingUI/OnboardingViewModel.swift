@@ -91,6 +91,10 @@ public final class OnboardingViewModel {
     /// was entered (set by `prepareModelStep()`).
     public private(set) var transcriptionDownloaded: Bool = false
 
+    /// True while `prepareModelStep()` is probing readiness/disk in the
+    /// background. Model rows show a spinner while set.
+    public internal(set) var isPreparingModelStep: Bool = false
+
     /// Presentation state for the "See all options" Manage Models sheet.
     public var showVariantSheet: Bool = false
 
@@ -308,6 +312,7 @@ public final class OnboardingViewModel {
         downloadComplete = false
         downloadFailed = false
         transcriptionDownloaded = false
+        isPreparingModelStep = false
         showVariantSheet = false
         hasSufficientDisk = true
     }
@@ -327,12 +332,12 @@ public final class OnboardingViewModel {
                 calendarGroups = Self.groupCalendars(infos)
                 currentStep = .calendarSelection
             } else {
-                await prepareModelStep()
                 currentStep = .modelDownload
+                await prepareModelStep()
             }
         case .calendarSelection:
-            await prepareModelStep()
             currentStep = .modelDownload
+            await prepareModelStep()
         case .modelDownload:
             currentStep = .done
         case .done:
@@ -343,7 +348,13 @@ public final class OnboardingViewModel {
 
     /// Prepares state for the model download step: probes transcription
     /// readiness, refreshes the ModelManager, and checks disk space.
+    /// Sets `isPreparingModelStep` while running so the UI can show
+    /// spinners. The `Task.yield()` lets SwiftUI paint the model screen
+    /// (with spinner rows) before the slow probes execute.
     private func prepareModelStep() async {
+        isPreparingModelStep = true
+        defer { isPreparingModelStep = false }
+        await Task.yield()
         await core.modelManager.refresh()
         transcriptionDownloaded = await core.transcription.modelsReady()
         checkDiskSpace()

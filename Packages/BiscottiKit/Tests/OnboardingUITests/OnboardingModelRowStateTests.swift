@@ -99,6 +99,43 @@ struct TranscriptionRowStateTests {
     }
 }
 
+// MARK: - Transcription row-state checking
+
+@Suite("OnboardingViewModel -- Transcription row checking state")
+@MainActor
+struct TranscriptionRowCheckingTests {
+    @Test("checking when isPreparingModelStep and model not ready")
+    func checkingWhilePreparing() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep completes)
+
+        // Simulate the preparing flag being set (as if mid-preparation)
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.transcriptionRowState() == .checking)
+    }
+
+    @Test("ready trumps checking when model already downloaded")
+    func readyTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds on modelsReady by default
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Model is ready AND we simulate mid-preparation
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.transcriptionRowState() == .ready)
+    }
+}
+
 // MARK: - Language row-state mapping
 
 @Suite("OnboardingViewModel -- Language row state")
@@ -206,6 +243,64 @@ struct LanguageRowStateTests {
         await viewModel.skip()
 
         #expect(viewModel.languageRowState() == .insufficientDisk)
+    }
+}
+
+// MARK: - Language row-state checking
+
+@Suite("OnboardingViewModel -- Language row checking state")
+@MainActor
+struct LanguageRowCheckingTests {
+    @Test("checking when isPreparingModelStep and model not ready")
+    func checkingWhilePreparing() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate mid-preparation
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.languageRowState() == .checking)
+    }
+
+    @Test("ready trumps checking when language model downloaded")
+    func readyTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.languageReady == true)
+        #expect(viewModel.languageRowState() == .ready)
+    }
+
+    @Test("downloading trumps checking during in-flight download")
+    func downloadingTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+
+        // Simulate in-flight download AND mid-preparation
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+        viewModel.isPreparingModelStep = true
+
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.5)))
     }
 }
 
@@ -385,6 +480,36 @@ struct ModelStepPreparationTests {
 
         // After refresh, the language model should be ready
         #expect(viewModel.languageReady == true)
+    }
+
+    @Test("isPreparingModelStep is false after skip completes")
+    func preparingFalseAfterSkip() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep runs and finishes)
+
+        #expect(viewModel.isPreparingModelStep == false)
+    }
+
+    @Test("isPreparingModelStep is false after advance completes")
+    func preparingFalseAfterAdvance() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.requestCalendar()
+        await viewModel.advance() // -> calendarSelection
+        await viewModel.advance() // -> modelDownload (prepareModelStep runs)
+
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.currentStep == .modelDownload)
     }
 
     @Test("prepareModelStep runs from calendarSelection path too")

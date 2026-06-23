@@ -284,6 +284,7 @@ struct OnboardingViewModelTests {
         #expect(model.downloadComplete == false)
         #expect(model.downloadFailed == false)
         #expect(model.transcriptionDownloaded == false)
+        #expect(model.isPreparingModelStep == false)
         #expect(model.showVariantSheet == false)
         #expect(model.hasSufficientDisk == true)
     }

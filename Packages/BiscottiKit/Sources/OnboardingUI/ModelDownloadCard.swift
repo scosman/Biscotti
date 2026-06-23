@@ -168,6 +168,10 @@ struct DownloadControl: View {
                     systemImage: "arrow.clockwise",
                     action: onDownload
                 )
+
+            case .checking:
+                ProgressView()
+                    .controlSize(.small)
             }
         }
     }

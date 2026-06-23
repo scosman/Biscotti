@@ -23,6 +23,8 @@ enum ModelRowState: Equatable {
     case ready
     /// Download failed; message describes the error.
     case failed(message: String)
+    /// Probing readiness / disk space in the background.
+    case checking
 }
 
 // MARK: - Model download derivation + row-state mappers
@@ -75,13 +77,16 @@ public extension OnboardingViewModel {
         if transcriptionReady {
             return .ready
         }
-        if transcriptionInsufficientDisk {
-            return .insufficientDisk
-        }
         if isDownloading {
             return .downloading(
                 .indeterminate(status: downloadStatus)
             )
+        }
+        if isPreparingModelStep {
+            return .checking
+        }
+        if transcriptionInsufficientDisk {
+            return .insufficientDisk
         }
         if downloadFailed, let status = downloadStatus {
             return .failed(message: status)
@@ -96,7 +101,7 @@ public extension OnboardingViewModel {
         }
 
         guard let targetID = languageTargetModelID else {
-            return .idle(sizeCaption: "")
+            return isPreparingModelStep ? .checking : .idle(sizeCaption: "")
         }
 
         // Check in-flight download state
@@ -109,6 +114,10 @@ public extension OnboardingViewModel {
             case .downloaded, .notDownloaded, .unknown:
                 break
             }
+        }
+
+        if isPreparingModelStep {
+            return .checking
         }
 
         // Check disk block via model choices

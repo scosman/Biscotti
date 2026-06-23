@@ -14,8 +14,8 @@ struct TranscriptionRowStateTests {
     func transcriptionIdle() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        // Prevent FakeTranscriber from reporting models as ready
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        // Prevent FakeTranscriber from reporting models as present
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance() // welcome -> permissions
@@ -29,7 +29,7 @@ struct TranscriptionRowStateTests {
     func transcriptionReadyOnEntry() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        // FakeTranscriber succeeds on modelsReady by default
+        // FakeTranscriber succeeds on modelsArePresent by default
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance() // welcome -> permissions
@@ -43,7 +43,7 @@ struct TranscriptionRowStateTests {
     func transcriptionReadyAfterDownload() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -63,7 +63,7 @@ struct TranscriptionRowStateTests {
     func transcriptionInsufficientDisk() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(
             core: fixture.core,
@@ -85,6 +85,7 @@ struct TranscriptionRowStateTests {
     func transcriptionFailed() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
         fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
 
         let viewModel = OnboardingViewModel(core: fixture.core)
@@ -108,7 +109,7 @@ struct TranscriptionRowCheckingTests {
     func checkingWhilePreparing() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance() // welcome -> permissions
@@ -123,7 +124,7 @@ struct TranscriptionRowCheckingTests {
     func readyTrumpsChecking() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        // FakeTranscriber succeeds on modelsReady by default
+        // FakeTranscriber succeeds on modelsArePresent by default
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -368,7 +369,7 @@ struct FooterMatrixTests {
     func neitherReadyShowsSkip() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -404,7 +405,7 @@ struct FooterMatrixTests {
             modelDownloaded: true
         )
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -440,7 +441,7 @@ struct FooterMatrixTests {
     func bothDownloadingShowsContinue() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -493,7 +494,7 @@ struct FooterMatrixTests {
             modelDownloaded: true
         )
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -518,7 +519,7 @@ struct BothModelsStartedTests {
     func neitherStarted() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -533,7 +534,7 @@ struct BothModelsStartedTests {
     func onlyTranscriptionStarted() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -551,7 +552,7 @@ struct BothModelsStartedTests {
     func onlyLanguageStarted() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -573,7 +574,7 @@ struct BothModelsStartedTests {
     func bothDownloading() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -652,7 +653,7 @@ struct ModelStepPreparationTests {
     func prepareSetsTxNotDownloaded() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -725,6 +726,47 @@ struct ModelStepPreparationTests {
         #expect(viewModel.transcriptionDownloaded == true)
         #expect(viewModel.languageReady == true)
     }
+
+    @Test("beginModelPrep is idempotent -- second call on model-download is a no-op")
+    func beginModelPrepIdempotent() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires)
+        await viewModel.skip() // -> modelDownload (beginModelPrep called again, but guard returns)
+
+        // modelsPresent should be called exactly once (from the single task)
+        #expect(fixture.fakeEngine.backing.modelsPresentCallCount == 1)
+    }
+
+    @Test("resetForReplay clears modelPrepTask and isPreparingModelStep")
+    func resetForReplayClearsPrepTask() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires)
+        await viewModel.skip() // -> modelDownload
+
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.transcriptionDownloaded == true)
+
+        viewModel.resetForReplay()
+
+        // After reset, preparation state is cleared
+        #expect(viewModel.currentStep == .welcome)
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.transcriptionDownloaded == false)
+
+        // A new advance re-fires the pre-warm (task was nilled out)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires again)
+        await viewModel.skip() // -> modelDownload
+
+        // modelsPresent called twice total (once before reset, once after)
+        #expect(fixture.fakeEngine.backing.modelsPresentCallCount == 2)
+        #expect(viewModel.transcriptionDownloaded == true)
+    }
 }
 
 // MARK: - Skip/advance from model download
@@ -736,7 +778,7 @@ struct ModelDownloadNavigationTests {
     func skipAdvancesToDone() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+        fixture.fakeEngine.backing.modelsPresentResult = false
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance() // welcome -> permissions

@@ -120,6 +120,10 @@
 
     private struct PreviewTranscriber: Transcribing {
         func ensureModelsDownloaded(status _: (@Sendable (String) -> Void)?) async throws {}
+        func modelsPresent() async -> Bool {
+            false
+        }
+
         func processAudio(
             mic _: URL,
             system _: URL,

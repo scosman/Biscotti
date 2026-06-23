@@ -12,6 +12,7 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         public var ensureModelsCalled = false
         public var processAudioCalled = false
         public var shutdownCalled = false
+        public var modelsPresentCalled = false
         public var lastMicURL: URL?
         public var lastSystemURL: URL?
         public var lastVocabulary: [String]?
@@ -21,6 +22,9 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
 
         /// Number of times `shutdown` has been called.
         public var shutdownCallCount = 0
+
+        /// Number of times `modelsPresent` has been called.
+        public var modelsPresentCallCount = 0
 
         /// Error to throw from `ensureModelsDownloaded`, if any.
         public var ensureModelsError: (any Error)?
@@ -33,6 +37,10 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
 
         /// Status messages to emit during `ensureModelsDownloaded`.
         public var statusMessages: [String]
+
+        /// The value returned by `modelsPresent()`. Defaults to `true`
+        /// (models present on disk) to match the common test scenario.
+        public var modelsPresentResult: Bool = true
 
         public init(
             cannedResult: TranscriptResult,
@@ -89,6 +97,12 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
             throw error
         }
         return backing.cannedResult
+    }
+
+    public func modelsPresent() async -> Bool {
+        backing.modelsPresentCalled = true
+        backing.modelsPresentCallCount += 1
+        return backing.modelsPresentResult
     }
 
     public func shutdown() async {

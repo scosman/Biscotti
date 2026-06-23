@@ -76,15 +76,14 @@ public final class TranscriptionService {
         try await engine.ensureModelsDownloaded(status: status)
     }
 
-    /// Returns `true` when models are already downloaded and ready.
-    /// Attempts a dry-run download (no-op if cached) to determine readiness.
-    public func modelsReady() async -> Bool {
-        do {
-            try await engine.ensureModelsDownloaded(status: nil)
-            return true
-        } catch {
-            return false
-        }
+    /// Returns `true` when models are already present on disk and do NOT
+    /// need to be downloaded.
+    ///
+    /// This is a **read-only** probe -- it checks the filesystem only.
+    /// Unlike the removed `modelsReady()` (which called the download path),
+    /// this method never triggers a download or mutates engine state.
+    public func modelsArePresent() async -> Bool {
+        await engine.modelsPresent()
     }
 
     // MARK: - Private

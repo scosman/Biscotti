@@ -164,6 +164,11 @@ public final class OnboardingViewModel {
     /// Aligned with the ~1.5 GB WhisperKit model bundle.
     public static let requiredDiskSpaceMB: Int = 1500
 
+    /// Pre-warm task that runs model probes early (on the permissions
+    /// screen) so the model-download screen arrives spinner-free when
+    /// probes finish in time. Nil until `beginModelPrep()` is called.
+    private var modelPrepTask: Task<Void, Never>?
+
     /// Seam for reading available disk bytes. Defaults to the real
     /// filesystem check. Override in tests for determinism.
     private let availableDiskBytes: @MainActor () -> Int64
@@ -298,6 +303,8 @@ public final class OnboardingViewModel {
     /// from the beginning (e.g. via the debug "Replay Onboarding"
     /// button in Settings).
     public func resetForReplay() {
+        modelPrepTask?.cancel()
+        modelPrepTask = nil
         currentStep = .welcome
         microphoneResult = .notDetermined
         systemAudioResult = .notRequested
@@ -326,6 +333,7 @@ public final class OnboardingViewModel {
         switch currentStep {
         case .welcome:
             currentStep = .permissions
+            beginModelPrep()
         case .permissions:
             if calendarResult == .authorized {
                 let infos = await core.calendar.calendars()
@@ -333,11 +341,13 @@ public final class OnboardingViewModel {
                 currentStep = .calendarSelection
             } else {
                 currentStep = .modelDownload
-                await prepareModelStep()
+                beginModelPrep()
+                await modelPrepTask?.value
             }
         case .calendarSelection:
             currentStep = .modelDownload
-            await prepareModelStep()
+            beginModelPrep()
+            await modelPrepTask?.value
         case .modelDownload:
             currentStep = .done
         case .done:
@@ -346,17 +356,30 @@ public final class OnboardingViewModel {
         syncLivePermissionState()
     }
 
-    /// Prepares state for the model download step: probes transcription
-    /// readiness, refreshes the ModelManager, and checks disk space.
-    /// Sets `isPreparingModelStep` while running so the UI can show
-    /// spinners. The `Task.yield()` lets SwiftUI paint the model screen
-    /// (with spinner rows) before the slow probes execute.
-    private func prepareModelStep() async {
+    /// Idempotently starts background model probes. The pre-warm begins
+    /// on the permissions screen (`.welcome -> .permissions` transition)
+    /// so that by the time the user reaches the model-download screen the
+    /// probes are usually finished and rows show final state immediately.
+    ///
+    /// If the model-download screen is reached before the task completes,
+    /// the transition `await`s `modelPrepTask?.value` so the screen
+    /// paints with spinners (the `currentStep` is already set before
+    /// the await) and the caller does not return until probes finish.
+    private func beginModelPrep() {
+        guard modelPrepTask == nil else { return }
         isPreparingModelStep = true
-        defer { isPreparingModelStep = false }
-        await Task.yield()
+        modelPrepTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { isPreparingModelStep = false }
+            await runModelProbes()
+        }
+    }
+
+    /// Runs the actual model probes: ModelManager refresh, read-only
+    /// transcription presence check, and disk space check.
+    private func runModelProbes() async {
         await core.modelManager.refresh()
-        transcriptionDownloaded = await core.transcription.modelsReady()
+        transcriptionDownloaded = await core.transcription.modelsArePresent()
         checkDiskSpace()
     }
 

@@ -117,8 +117,67 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         Self.log.debug("unloadModels: complete")
     }
 
+    public func modelsPresent() async -> Bool {
+        Self.log.debug("modelsPresent: checking disk")
+        let sttPresent = Self.whisperKitModelsPresent(
+            repo: resolvedSettings.sttModelRepo,
+            model: resolvedSettings.sttModel
+        )
+        let speakerPresent = Self.speakerKitModelsPresent()
+        Self.log.debug("modelsPresent: stt=\(sttPresent), speaker=\(speakerPresent)")
+        return sttPresent && speakerPresent
+    }
+
     public func status() async -> ModelStatus {
         await statusMachine.current
+    }
+}
+
+// MARK: - Read-only disk checks
+
+extension InProcessTranscriptionEngine {
+    /// Check if WhisperKit model files are present on disk at the expected
+    /// download location. Does NOT load, compile, or download anything.
+    ///
+    /// The Hub client writes models to:
+    ///   `downloadBase/models/<repo>/<model>/`
+    /// We check for at least one `.mlmodelc` directory inside that folder.
+    static func whisperKitModelsPresent(
+        repo: String,
+        model: String
+    ) -> Bool {
+        let modelDir = ModelStorage.modelsDirectory
+            .appendingPathComponent(repo, isDirectory: true)
+            .appendingPathComponent(model, isDirectory: true)
+        return directoryContainsMLModel(modelDir)
+    }
+
+    /// Check if SpeakerKit (Pyannote) model files are present on disk.
+    ///
+    /// SpeakerKit downloads to:
+    ///   `downloadBase/models/argmaxinc/speakerkit-coreml/`
+    /// We check for at least one `.mlmodelc` directory inside that folder
+    /// (or its subdirectories, since SpeakerKit nests models).
+    static func speakerKitModelsPresent() -> Bool {
+        let speakerDir = ModelStorage.modelsDirectory
+            .appendingPathComponent("argmaxinc/speakerkit-coreml", isDirectory: true)
+        return directoryContainsMLModel(speakerDir)
+    }
+
+    /// Returns `true` if `directory` (or any immediate subdirectory) contains
+    /// at least one `.mlmodelc` bundle.
+    private static func directoryContainsMLModel(_ directory: URL) -> Bool {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: directory.path) else { return false }
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        for case let url as URL in enumerator where url.pathExtension == "mlmodelc" {
+            return true
+        }
+        return false
     }
 }
 

@@ -144,7 +144,7 @@ struct OnboardingFooterButtonTests {
         #expect(model.currentStep == .modelDownload)
         // Language is ready (pre-downloaded), but transcription is not yet
         // downloaded via startTranscriptionDownload -- however prepareModelStep
-        // probes modelsReady() which succeeds on the FakeTranscriber, so
+        // probes modelsArePresent() which succeeds on the FakeTranscriber, so
         // transcriptionDownloaded is true. Both models are ready.
         #expect(model.bothModelsReady == true)
         #expect(
@@ -168,7 +168,7 @@ struct OnboardingFooterButtonTests {
         await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
-        // Transcription is ready (FakeTranscriber succeeds on modelsReady),
+        // Transcription is ready (FakeTranscriber succeeds on modelsArePresent),
         // but language model is not downloaded
         #expect(model.transcriptionReady == true)
         #expect(model.languageReady == false)

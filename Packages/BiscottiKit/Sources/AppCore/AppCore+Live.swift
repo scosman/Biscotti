@@ -220,6 +220,10 @@ private struct LiveTranscriberAdapter: Transcribing {
         )
     }
 
+    func modelsPresent() async -> Bool {
+        await transcriber.modelsPresent()
+    }
+
     func shutdown() async {
         await transcriber.shutdown()
     }

@@ -14,12 +14,19 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     var processAudioCallCount = 0
     var ensureModelsCallCount = 0
     var unloadCallCount = 0
+    var modelsPresentCallCount = 0
+    var modelsPresentResult = true
 
     func ensureModelsDownloaded(status: @escaping @Sendable (String) -> Void) async throws {
         ensureModelsCallCount += 1
         if let error = ensureModelsError { throw error }
         status("Downloading test model")
         status("Models ready")
+    }
+
+    func modelsPresent() async -> Bool {
+        modelsPresentCallCount += 1
+        return modelsPresentResult
     }
 
     func processAudio(

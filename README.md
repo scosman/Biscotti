@@ -1,22 +1,22 @@
 <div align="center">
 
-<!-- Drag & drop your logo image here (it will center) -->
+<img width="64" height="64" alt="biscotti_white-2" src="https://github.com/user-attachments/assets/1da1bc1e-4e88-4e27-b312-4e5932f96b72" />
 
-# Biscotti
+### Biscotti
 
 **Meeting transcripts that never leave your Mac.**
 
 [![Download for macOS](https://img.shields.io/badge/Download_for_macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.zip)
 
-Requires macOS 15 (Sequoia) or later · Apple Silicon
-
 </div>
 
 ---
 
-Biscotti is a native macOS app that records your meetings and turns them into accurate, speaker‑labeled transcripts — entirely on your Mac. It captures audio from any app (or an in‑person conversation), transcribes it on‑device, and keeps everything private. No cloud. No bot joining your call. No subscription.
+**Biscotti** is a private and free meeting recorder for macOS. It records your meetings and turns them into accurate, speaker‑labeled transcripts and summaries. No cloud. No bot joining your call. No subscription.
 
-🔒 **Private** — runs entirely on your Mac  ·  🆓 **Free** — no account, no subscription  ·  🍎 **Native** — a real Mac app, not Electron
+<div align="center">
+🔒 <strong>Private</strong> — runs locally on your Mac  ·  🆓 <strong>Free</strong> no account, no subscription
+</div>
 
 <!-- Drag & drop a demo video or screenshot here -->
 
@@ -24,14 +24,14 @@ Biscotti is a native macOS app that records your meetings and turns them into ac
 
 - 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. Nothing is ever uploaded.
 - 🆓 **Totally free** — no account, no subscription, no upsell.
-- 🤖 **No bots, any source** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
+- 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
 - 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
 - ✨ **AI that runs locally** — automatic summaries, action items, meeting titles, and real speaker names.
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
 - 🛑 **Auto‑stop** — detects when your call ends and stops recording.
-- 🎚️ **Voice isolation** — captures your mic and everyone else as separate, clean channels.
-- 🪶 **Fast, small, native** — launches instantly, sips power, ~1 MB per minute. Built by an ex‑Apple engineer.
-- 📝 **Markdown notes with timestamps** — jot notes during the call, linked to the moment they happened.
+- 🪶 **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
+- 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No feedback or echo.
+- 📝 **Markdown notes with timestamps** — jot notes in markdown, linked to the moment they happened.
 
 ## Biscotti vs. other notetaking apps
 
@@ -43,8 +43,9 @@ Biscotti is a native macOS app that records your meetings and turns them into ac
 | Works with any app — even in person | ✅ | ❌ |
 | Keeps full audio, not just summaries | ✅ | ❌ |
 | Native Mac app, not Electron/web | ✅ | ❌ |
-| Free — no subscription | ✅ | ❌ |
+| Free, no subscription, no account | ✅ | ❌ |
 | Lose access to your data if you stop paying | **No** | **Yes** |
+| Where your data lives | **Your Mac** | **Their Cloud** |
 
 ## How it works
 
@@ -52,7 +53,7 @@ Biscotti is a native macOS app that records your meetings and turns them into ac
 2. **Transcribe** — on‑device speech recognition produces a speaker‑labeled transcript, powered by Apple Silicon.
 3. **Understand** — local AI writes a summary, pulls out action items, and figures out who's who.
 
-Every step happens on your Mac. Your audio and transcripts are never uploaded.
+Every step happens on your Mac. Your audio and transcripts never leave your Mac.
 
 ## Requirements
 
@@ -61,6 +62,8 @@ Every step happens on your Mac. Your audio and transcripts are never uploaded.
 - 16GB of RAM recommended
 
 ## Install
+
+Requires macOS 15 (Sequoia) or later · Apple Silicon
 
 1. [Download `Biscotti.zip`](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.zip).
 2. Unzip it and move **Biscotti** to your Applications folder.
@@ -85,9 +88,18 @@ Locally, on your Mac.
 
 **Which AI does it use?**
 All AI runs locally on your Mac.
- - Transcription powered by Whisper V3 Turbo, run by WhisperKit
- - Speaker identification by Pyannote, run by SpeakerKit
- - Language models by Google Gemma 4, run on llama.cpp
+ - Transcription powered by Whisper V3 Turbo, run by [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift)
+ - Speaker identification by Pyannote, run by [SpeakerKit](https://github.com/argmaxinc/argmax-oss-swift)
+ - Language models by Google Gemma 4, run on [llama.cpp](https://github.com/ggml-org/llama.cpp)
+
+**How does it know when to suggest starting/stopping recording?**
+Biscotti monitors active audio apps, without listening to their audio streams. Nothing is recorded unless you click record.
+
+**Can I connect my calendars?**
+Yes. Biscotti can sync any calendars you connect to the Apple Calendar app on your Mac. Event data enables meeting start notifications, speaker identity matching, and enhances meeting summaries.
+
+**How does speaker idenitification work?**
+Three steps: an AI model transcribes what you say, a second AI model separates speakers by voice, and a third model figures out who's who.
 
 ## Built with
 

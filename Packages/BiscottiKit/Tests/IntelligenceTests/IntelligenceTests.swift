@@ -882,11 +882,19 @@ struct IntelligenceOrchestrationTests {
         #expect(config?.contextSize == 0)
 
         #expect(session.reconfigureCalls.count == 1)
-        // Token count = 500 base + 512 assistant reserve = 1012
-        let expectedContextSize = ContextSizing.contextSize(
-            forInputTokens: session.tokenCount + MeetingAnalyzer.speakerOptions.maxTokens
-        )
+        // base = 500, doSpeakers = true, doSummary = true, doTitle = false
+        // reserve = 1024 + 512 + 0 + (2048 + round(0.15 * 500))
+        //         = 1024 + 512 + 2048 + 75 = 3659
+        // size = 500 + 3659 = 4159
+        let base = session.tokenCount
+        let summaryReserve = ContextSizing.summaryOutputBase
+            + Int((ContextSizing.outputReservationInputFraction * Double(base)).rounded())
+        let expectedReserve = ContextSizing.conversationBuffer
+            + ContextSizing.speakerOutputReserve
+            + summaryReserve
+        let expectedContextSize = base + expectedReserve
         #expect(session.reconfigureCalls.first == expectedContextSize)
+        #expect(expectedContextSize == 4159)
     }
 }
 

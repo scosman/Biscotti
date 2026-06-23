@@ -498,25 +498,23 @@ let doSpeakers = !allIDs.subtracting(Set(human.keys)).isEmpty
 
 ### 4.6 Context sizing (`ContextSizing.swift`)
 
-Add a conversation-aware sizer; the transcript is counted **once**:
+Per-task output reservation with an always-on conversation buffer. The transcript is counted
+**once**; each active task reserves its own output budget:
 
-```swift
-static func contextSizeForAnalysis(
-    firstUser: String, system: String, followUpUser: String?,
-    assistantReserveTokens: Int,            // = speakerOptions.maxTokens (512) when doSpeakers else 0
-    session: any LLMSession
-) async throws -> Int {
-    var msgs: [LLMMessage] = [.system(system), .user(firstUser)]
-    if let f = followUpUser { msgs.append(.user(f)) }       // user2 counted; assistant1 covered by reserve
-    let base = try await session.countTokens(messages: msgs)
-    return contextSize(forInputTokens: base + assistantReserveTokens)   // existing base 3072 + 15% reservation, capped 32768
-}
+```
+base    = countTokens([system, firstUser] + followUpUsers)
+reserve = 1024                                    // always-on conversation buffer
+        + (doSpeakers ? 512  : 0)                 // speaker output reserve (= speakerOptions.maxTokens)
+        + (doTitle    ? 128  : 0)                  // title output reserve (deliberately > titleOptions.maxTokens 32)
+        + (doSummary  ? 2048 + round(0.15 × base) : 0)   // summary: base 2048 + 15% of input
+size    = min(base + reserve, 49152)               // cap 48k (Gemma supports well beyond)
 ```
 
-The existing `outputReservation` (base 3072 + 15% of input) comfortably covers the 2048
-summary plus headroom; `assistantReserveTokens` reserves the assistant-1 turn that will sit
-in context during the summary turn. Capped at `maxContextSize` (32768), unchanged. The old
-`contextSize(forPairs:)` / `contextSize(forSystem:user:)` helpers are removed (no longer used).
+The 1024 buffer guarantees headroom even on speakers-only / title-only runs. When summary is
+present, `1024 + 2048 + 15% = 3072 + 15%` reconciles with the old single-output reservation;
+speakers/title add on top. The old positional `outputReservation(forInputTokens:)` /
+`contextSize(forInputTokens:)` / `outputReservationBase` helpers are removed (dead after this
+change).
 
 ---
 
@@ -726,16 +724,12 @@ exhaustiveness; find all sites.)
   `let doTitle = detail.title == Meeting.defaultTitle && !detail.editedTitle`.
 - Relax the early-out guard: `guard doSpeakers || doSummary || doTitle else { return }`.
 - Thread `doTitle` into `MeetingAnalyzer.Context`.
-- **Context sizing must budget the turns the title adds.** The title turn puts the summary reply
-  (up to `summaryOptions.maxTokens`) into context as input, which previously was the *final*
-  output (covered by the output reservation). Generalize `ContextSizing.contextSizeForAnalysis`:
-  - `followUpUser: String?` → `followUpUsers: [String]` (count all follow-up user turns:
-    summary and/or title instructions; both tiny but counted for correctness).
-  - `assistantReserveTokens` becomes the sum of assistant replies that **remain in context**
-    before the final generation:
-    `(doSpeakers && (doSummary || doTitle) ? speakerOptions.maxTokens : 0) + (doSummary && doTitle ? summaryOptions.maxTokens : 0)`.
-  - The final turn's own output is still covered by `outputReservation`. The title's ~32-token
-    output is negligible and absorbed by `outputReservationBase`.
+- **Context sizing uses per-task output reservation** (see §4.6). `contextSizeForAnalysis` now
+  takes `doSpeakers`/`doSummary`/`doTitle` booleans directly and computes the reserve internally.
+  `Intelligence.contextBudgetFollowUps` returns only the follow-up user turns (the output budget
+  is no longer the caller's responsibility). The always-on 1024 buffer + per-task reserves
+  (speaker 512, title 128, summary 2048 + 15%) replace the old positional scheme. Cap raised to
+  49152 (48k) so the multi-turn conversation isn't clipped.
 - Update `buildFirstUserContent` only if needed (the title-only first-user path is reachable when
   `!doSpeakers && !doSummary && doTitle` — size it with `titleOnlyFirstUser`).
 
@@ -757,4 +751,4 @@ unchanged).
   `applyGeneratedTitle` is invoked with the cleaned title.
 - Intelligence gating truth table: `doTitle` true only when default+not-edited; independent of
   `force`; title turn skipped otherwise; runs on both auto and manual paths.
-- ContextSizing: the new `followUpUsers`/`assistantReserveTokens` math.
+- ContextSizing: per-task `doSpeakers`/`doSummary`/`doTitle` reservation math, 49152 cap.

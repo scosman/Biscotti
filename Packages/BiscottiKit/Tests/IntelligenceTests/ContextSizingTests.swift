@@ -47,95 +47,50 @@ private final class MockCountingSession: LLMSession, @unchecked Sendable {
     }
 }
 
+/// Shorthand for building `AnalysisTasks` in tests.
+private func tasks(
+    speakers: Bool = false, summary: Bool = false, title: Bool = false
+) -> ContextSizing.AnalysisTasks {
+    .init(doSpeakers: speakers, doSummary: summary, doTitle: title)
+}
+
+/// Computes the expected reserve for given task flags and a base token count,
+/// mirroring the production formula in `ContextSizing.contextSizeForAnalysis`.
+private func expectedReserve(
+    base: Int, speakers: Bool, summary: Bool, title: Bool
+) -> Int {
+    let summaryReserve = summary
+        ? ContextSizing.summaryOutputBase
+        + Int((ContextSizing.outputReservationInputFraction * Double(base)).rounded())
+        : 0
+    return ContextSizing.conversationBuffer
+        + (speakers ? ContextSizing.speakerOutputReserve : 0)
+        + (title ? ContextSizing.titleOutputReserve : 0)
+        + summaryReserve
+}
+
 @Suite("ContextSizing")
 struct ContextSizingTests {
-    // MARK: - outputReservation(forInputTokens:)
-
-    @Test("outputReservation returns base + 15% of input")
-    func outputReservationFormula() {
-        // 3072 + round(0.15 * 500) = 3072 + 75 = 3147
-        #expect(ContextSizing.outputReservation(forInputTokens: 500) == 3147)
-        // 3072 + round(0.15 * 1200) = 3072 + 180 = 3252
-        #expect(ContextSizing.outputReservation(forInputTokens: 1200) == 3252)
-        // 3072 + round(0.15 * 10000) = 3072 + 1500 = 4572
-        #expect(ContextSizing.outputReservation(forInputTokens: 10000) == 4572)
-    }
-
-    @Test("outputReservation for zero/small input stays near base")
-    func outputReservationSmall() {
-        // 3072 + round(0.15 * 1) = 3072 + 0 = 3072
-        #expect(ContextSizing.outputReservation(forInputTokens: 1) == 3072)
-        // 3072 + round(0.15 * 0) = 3072 + 0 = 3072
-        #expect(ContextSizing.outputReservation(forInputTokens: 0) == 3072)
-    }
-
-    // MARK: - contextSize(forInputTokens:)
-
-    @Test("contextSize adds dynamic reservation for a small token count")
-    func contextSizeSmall() {
-        // 500 + (3072 + 75) = 3647
-        let size = ContextSizing.contextSize(forInputTokens: 500)
-        #expect(size == 500 + ContextSizing.outputReservation(forInputTokens: 500))
-        #expect(size == 3647)
-    }
-
-    @Test("contextSize caps at maxContextSize for large token counts")
-    func contextSizeCapped() {
-        let size = ContextSizing.contextSize(forInputTokens: 30000)
-        #expect(size == ContextSizing.maxContextSize)
-    }
-
-    @Test("contextSize floors input tokens to 1")
-    func contextSizeMinimum() {
-        // 1 + outputReservation(1) = 1 + 3072 = 3073
-        let sizeZero = ContextSizing.contextSize(forInputTokens: 0)
-        #expect(sizeZero == 1 + ContextSizing.outputReservation(forInputTokens: 1))
-
-        let sizeNegative = ContextSizing.contextSize(forInputTokens: -5)
-        #expect(sizeNegative == 1 + ContextSizing.outputReservation(forInputTokens: 1))
-    }
-
-    @Test("contextSize with typical summary prompt")
-    func contextSizeTypical() {
-        // 1500 + (3072 + 225) = 4797
-        let size = ContextSizing.contextSize(forInputTokens: 1500)
-        #expect(size == 1500 + ContextSizing.outputReservation(forInputTokens: 1500))
-        #expect(size == 4797)
-    }
-
-    @Test("contextSize exactly at boundary")
-    func contextSizeExactBoundary() {
-        // At input = 25823: 25823 + 3072 + round(0.15*25823) = 25823 + 3072 + 3873 = 32768
-        let boundary = 25823
-        let sizeAtBoundary = ContextSizing.contextSize(forInputTokens: boundary)
-        #expect(sizeAtBoundary == ContextSizing.maxContextSize)
-
-        let sizeJustOver = ContextSizing.contextSize(forInputTokens: boundary + 1)
-        #expect(sizeJustOver == ContextSizing.maxContextSize)
-
-        // At input = 25822: 25822 + 3072 + round(0.15*25822) = 25822 + 3072 + 3873 = 32767
-        let sizeJustUnder = ContextSizing.contextSize(forInputTokens: boundary - 1)
-        #expect(sizeJustUnder == ContextSizing.maxContextSize - 1)
-    }
-
-    @Test("large input grows reservation beyond base 3k")
-    func largeInputDynamicReservation() {
-        // 20000 tokens: reservation = 3072 + round(0.15 * 20000) = 3072 + 3000 = 6072
-        // contextSize = 20000 + 6072 = 26072 (well above 20000 + 3072 = 23072)
-        let reservation = ContextSizing.outputReservation(forInputTokens: 20000)
-        #expect(reservation == 6072)
-        #expect(reservation > ContextSizing.outputReservationBase)
-
-        let size = ContextSizing.contextSize(forInputTokens: 20000)
-        #expect(size == 26072)
-        #expect(size < ContextSizing.maxContextSize)
-    }
-
     // MARK: - Constants
 
-    @Test("outputReservationBase is 3072")
-    func outputReservationBaseValue() {
-        #expect(ContextSizing.outputReservationBase == 3072)
+    @Test("conversationBuffer is 1024")
+    func conversationBufferValue() {
+        #expect(ContextSizing.conversationBuffer == 1024)
+    }
+
+    @Test("speakerOutputReserve is 512")
+    func speakerOutputReserveValue() {
+        #expect(ContextSizing.speakerOutputReserve == 512)
+    }
+
+    @Test("titleOutputReserve is 128")
+    func titleOutputReserveValue() {
+        #expect(ContextSizing.titleOutputReserve == 128)
+    }
+
+    @Test("summaryOutputBase is 2048")
+    func summaryOutputBaseValue() {
+        #expect(ContextSizing.summaryOutputBase == 2048)
     }
 
     @Test("outputReservationInputFraction is 0.15")
@@ -143,73 +98,182 @@ struct ContextSizingTests {
         #expect(ContextSizing.outputReservationInputFraction == 0.15)
     }
 
-    @Test("maxContextSize is 32768")
+    @Test("maxContextSize is 49152 (48k)")
     func maxContext() {
-        #expect(ContextSizing.maxContextSize == 32768)
+        #expect(ContextSizing.maxContextSize == 49152)
     }
 
-    // MARK: - End-to-end scenarios
+    // MARK: - Per-task combinations
 
-    @Test("Short meeting transcript: context well under 32k")
-    func endToEndShortTranscript() {
-        // 1200 + (3072 + 180) = 4452 — saves ~28k vs static 32k
-        let size = ContextSizing.contextSize(forInputTokens: 1200)
-        #expect(size == 4452)
-        #expect(size < ContextSizing.maxContextSize)
-    }
-
-    @Test("Long meeting transcript: hits cap, no memory regression")
-    func endToEndLongTranscript() {
-        // A long transcript tokenizing to 30000+ tokens — capped at 32768
-        let size = ContextSizing.contextSize(forInputTokens: 30000)
-        #expect(size == ContextSizing.maxContextSize)
-    }
-
-    // MARK: - contextSizeForAnalysis (conversation-aware)
-
-    @Test("contextSizeForAnalysis with followUp adds reserve tokens")
-    func analysisWithFollowUp() async throws {
-        let session = MockCountingSession(tokenCounts: [500])
+    @Test("summary present includes 2048 + 15% of base")
+    func summaryReserveFormula() async throws {
+        let base = 1000
+        let session = MockCountingSession(tokenCounts: [base])
         let size = try await ContextSizing.contextSizeForAnalysis(
-            firstUser: "user content",
-            system: "system",
-            followUpUsers: ["follow up"],
-            assistantReserveTokens: 512,
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(summary: true),
             session: session
         )
-        // base = 500 (from countTokens), total = 500 + 512 = 1012
-        let expected = ContextSizing.contextSize(forInputTokens: 1012)
-        #expect(size == expected)
-        #expect(session.callCount == 1)
+        // reserve = 1024 + 0 + 0 + (2048 + round(0.15 * 1000))
+        //         = 1024 + 2048 + 150 = 3222
+        // size = 1000 + 3222 = 4222
+        let reserve = expectedReserve(
+            base: base, speakers: false, summary: true, title: false
+        )
+        #expect(size == base + reserve)
+        #expect(reserve == 3222)
+        #expect(size == 4222)
     }
 
-    @Test("contextSizeForAnalysis without followUp (single-turn)")
-    func analysisSingleTurn() async throws {
-        let session = MockCountingSession(tokenCounts: [800])
+    @Test("summary reserve scales with base (15% fraction)")
+    func summaryReserveScalesWithBase() async throws {
+        let base = 10000
+        let session = MockCountingSession(tokenCounts: [base])
         let size = try await ContextSizing.contextSizeForAnalysis(
-            firstUser: "user content",
-            system: "system",
-            followUpUsers: [],
-            assistantReserveTokens: 0,
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(summary: true),
             session: session
         )
-        // base = 800, total = 800 + 0 = 800
-        let expected = ContextSizing.contextSize(forInputTokens: 800)
-        #expect(size == expected)
+        // reserve = 1024 + (2048 + round(0.15 * 10000)) = 1024 + 2048 + 1500 = 4572
+        let reserve = expectedReserve(
+            base: base, speakers: false, summary: true, title: false
+        )
+        #expect(reserve == 4572)
+        #expect(size == base + reserve)
     }
 
-    @Test("contextSizeForAnalysis caps at max")
+    @Test("speakers add 512 to reserve")
+    func speakersAddReserve() async throws {
+        let base = 500
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(speakers: true),
+            session: session
+        )
+        // reserve = 1024 + 512 = 1536
+        let reserve = expectedReserve(
+            base: base, speakers: true, summary: false, title: false
+        )
+        #expect(reserve == 1536)
+        #expect(size == base + reserve)
+    }
+
+    @Test("title adds 128 to reserve")
+    func titleAddsReserve() async throws {
+        let base = 500
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(title: true),
+            session: session
+        )
+        // reserve = 1024 + 128 = 1152
+        let reserve = expectedReserve(
+            base: base, speakers: false, summary: false, title: true
+        )
+        #expect(reserve == 1152)
+        #expect(size == base + reserve)
+    }
+
+    @Test("1024 buffer always included even when only speakers active")
+    func bufferAlwaysPresent() async throws {
+        let base = 500
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(speakers: true),
+            session: session
+        )
+        // speakers-only: size == base + 1024 + 512
+        #expect(size == base + ContextSizing.conversationBuffer + ContextSizing.speakerOutputReserve)
+        #expect(size == 2036)
+    }
+
+    @Test("all tasks active: reserve stacks correctly")
+    func allTasksActive() async throws {
+        let base = 2000
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system",
+            followUpUsers: ["summary instr", "title instr"],
+            tasks: tasks(speakers: true, summary: true, title: true),
+            session: session
+        )
+        // reserve = 1024 + 512 + 128 + (2048 + round(0.15 * 2000))
+        //         = 1024 + 512 + 128 + 2048 + 300 = 4012
+        let reserve = expectedReserve(
+            base: base, speakers: true, summary: true, title: true
+        )
+        #expect(reserve == 4012)
+        #expect(size == base + reserve)
+        #expect(size == 6012)
+    }
+
+    @Test("summary + title (no speakers): both reserves present")
+    func summaryAndTitle() async throws {
+        let base = 800
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system",
+            followUpUsers: ["title instr"],
+            tasks: tasks(summary: true, title: true),
+            session: session
+        )
+        // reserve = 1024 + 0 + 128 + (2048 + round(0.15 * 800))
+        //         = 1024 + 128 + 2048 + 120 = 3320
+        let reserve = expectedReserve(
+            base: base, speakers: false, summary: true, title: true
+        )
+        #expect(reserve == 3320)
+        #expect(size == base + reserve)
+    }
+
+    @Test("speakers + summary (no title): summary reserve present")
+    func speakersAndSummary() async throws {
+        let base = 1000
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system",
+            followUpUsers: ["summary instr"],
+            tasks: tasks(speakers: true, summary: true),
+            session: session
+        )
+        // reserve = 1024 + 512 + 0 + (2048 + round(0.15 * 1000))
+        //         = 1024 + 512 + 2048 + 150 = 3734
+        let reserve = expectedReserve(
+            base: base, speakers: true, summary: true, title: false
+        )
+        #expect(reserve == 3734)
+        #expect(size == base + reserve)
+    }
+
+    // MARK: - Cap at maxContextSize (49152)
+
+    @Test("caps at maxContextSize for large inputs")
     func analysisCapped() async throws {
-        let session = MockCountingSession(tokenCounts: [30000])
+        let session = MockCountingSession(tokenCounts: [45000])
         let size = try await ContextSizing.contextSizeForAnalysis(
-            firstUser: "big transcript",
-            system: "system",
+            firstUser: "big transcript", system: "system",
             followUpUsers: ["follow up"],
-            assistantReserveTokens: 512,
+            tasks: tasks(speakers: true, summary: true, title: true),
             session: session
         )
         #expect(size == ContextSizing.maxContextSize)
     }
+
+    @Test("cap is exactly 49152")
+    func capValue() async throws {
+        let session = MockCountingSession(tokenCounts: [48000])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(speakers: true, summary: true, title: true),
+            session: session
+        )
+        #expect(size == 49152)
+    }
+
+    // MARK: - Error propagation
 
     @Test("contextSizeForAnalysis propagates errors")
     func analysisError() async throws {
@@ -217,44 +281,94 @@ struct ContextSizingTests {
         session.errorToThrow = LLMServiceError.serviceUnavailable("test")
         await #expect(throws: LLMServiceError.self) {
             _ = try await ContextSizing.contextSizeForAnalysis(
-                firstUser: "user",
-                system: "system",
-                followUpUsers: [],
-                assistantReserveTokens: 0,
+                firstUser: "user", system: "system", followUpUsers: [],
+                tasks: tasks(),
                 session: session
             )
         }
     }
 
-    @Test("large analysis input shows dynamic reservation")
-    func analysisLargeInput() async throws {
-        let session = MockCountingSession(tokenCounts: [20000])
+    // MARK: - Reconciliation with old reservation
+
+    @Test("summary-only reserve reconciles: 1024 + 2048 + 15% = old 3072 + 15%")
+    func reconciliationWithOldReservation() async throws {
+        let base = 2000
+        let session = MockCountingSession(tokenCounts: [base])
         let size = try await ContextSizing.contextSizeForAnalysis(
-            firstUser: "big transcript",
-            system: "system",
-            followUpUsers: ["follow up"],
-            assistantReserveTokens: 512,
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(summary: true),
             session: session
         )
-        // total = 20000 + 512 = 20512
-        let expected = ContextSizing.contextSize(forInputTokens: 20512)
-        #expect(size == expected)
-        #expect(size < ContextSizing.maxContextSize)
+        // Old formula: base + 3072 + round(0.15 * base)
+        //            = 2000 + 3072 + 300 = 5372
+        // New formula: base + 1024 + 2048 + round(0.15 * base)
+        //            = 2000 + 1024 + 2048 + 300 = 5372
+        let oldStyleReserve = 3072 + Int((0.15 * Double(base)).rounded())
+        let newStyleReserve = ContextSizing.conversationBuffer + ContextSizing.summaryOutputBase
+            + Int((ContextSizing.outputReservationInputFraction * Double(base)).rounded())
+        #expect(oldStyleReserve == newStyleReserve)
+        #expect(size == base + newStyleReserve)
     }
 
-    @Test("contextSizeForAnalysis with multiple followUpUsers")
-    func analysisMultipleFollowUps() async throws {
-        let session = MockCountingSession(tokenCounts: [500])
+    // MARK: - End-to-end scenarios
+
+    @Test("short meeting: well under cap")
+    func shortMeeting() async throws {
+        let session = MockCountingSession(tokenCounts: [1200])
         let size = try await ContextSizing.contextSizeForAnalysis(
-            firstUser: "user content",
-            system: "system",
-            followUpUsers: ["summary instructions", "title instructions"],
-            assistantReserveTokens: 512 + 2048,
+            firstUser: "user", system: "system",
+            followUpUsers: ["summary", "title"],
+            tasks: tasks(speakers: true, summary: true, title: true),
             session: session
         )
-        // base = 500 (from countTokens), total = 500 + 2560 = 3060
-        let expected = ContextSizing.contextSize(forInputTokens: 3060)
-        #expect(size == expected)
-        #expect(session.callCount == 1)
+        #expect(size < ContextSizing.maxContextSize)
+        // base=1200, reserve = 1024 + 512 + 128 + 2048 + round(0.15*1200)
+        //                     = 1024 + 512 + 128 + 2048 + 180 = 3892
+        // size = 1200 + 3892 = 5092
+        #expect(size == 5092)
+    }
+
+    @Test("long meeting: hits cap, no memory regression")
+    func longMeeting() async throws {
+        let session = MockCountingSession(tokenCounts: [45000])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(speakers: true, summary: true),
+            session: session
+        )
+        #expect(size == ContextSizing.maxContextSize)
+    }
+
+    @Test("no tasks active: only conversation buffer")
+    func noTasksActive() async throws {
+        let base = 500
+        let session = MockCountingSession(tokenCounts: [base])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(),
+            session: session
+        )
+        // Only the always-on 1024 buffer
+        #expect(size == base + ContextSizing.conversationBuffer)
+        #expect(size == 1524)
+    }
+
+    @Test("followUpUsers are counted but do not affect reserve formula")
+    func followUpsCounted() async throws {
+        let session = MockCountingSession(tokenCounts: [500])
+        let sizeNoFollowUp = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: [],
+            tasks: tasks(speakers: true),
+            session: session
+        )
+        // With follow-ups the mock returns a higher base (next call)
+        let session2 = MockCountingSession(tokenCounts: [550])
+        let sizeWithFollowUp = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user", system: "system", followUpUsers: ["instr"],
+            tasks: tasks(speakers: true),
+            session: session2
+        )
+        // Same task flags but higher base -> higher size
+        #expect(sizeWithFollowUp > sizeNoFollowUp)
     }
 }

@@ -178,7 +178,7 @@ public final class Intelligence {
             doSpeakers: doSpeakers, doSummary: doSummary,
             detail: detail, transcript: transcript, human: human
         )
-        let (followUpUsers, assistantReserve) = contextBudget(
+        let followUpUsers = contextBudgetFollowUps(
             doSpeakers: doSpeakers, doSummary: doSummary,
             doTitle: doTitle
         )
@@ -188,7 +188,11 @@ public final class Intelligence {
                 firstUser: firstUser,
                 system: IntelligencePrompts.analysisSystem,
                 followUpUsers: followUpUsers,
-                assistantReserveTokens: assistantReserve,
+                tasks: .init(
+                    doSpeakers: doSpeakers,
+                    doSummary: doSummary,
+                    doTitle: doTitle
+                ),
                 session: session
             )
             try await session.reconfigure(contextSize: contextSize)
@@ -206,16 +210,15 @@ public final class Intelligence {
         }
     }
 
-    /// Returns follow-up user turns and the assistant-reply token budget
-    /// for context sizing, based on which analysis tasks are active.
-    private func contextBudget(
+    /// Returns follow-up user turns for context sizing, based on which
+    /// analysis tasks are active. Output reservation is now handled by
+    /// `ContextSizing.contextSizeForAnalysis` via the per-task booleans.
+    private func contextBudgetFollowUps(
         doSpeakers: Bool, doSummary: Bool, doTitle: Bool
-    ) -> (followUpUsers: [String], assistantReserve: Int) {
+    ) -> [String] {
         var users: [String] = []
-        var reserve = 0
 
         if doSpeakers, doSummary || doTitle {
-            reserve += MeetingAnalyzer.speakerOptions.maxTokens
             if doSummary {
                 users.append(IntelligencePrompts.summaryFollowUpUser)
             }
@@ -226,11 +229,7 @@ public final class Intelligence {
             users.append(IntelligencePrompts.titleFollowUpUser)
         }
 
-        if doSummary, doTitle {
-            reserve += MeetingAnalyzer.summaryOptions.maxTokens
-        }
-
-        return (users, reserve)
+        return users
     }
 
     /// Builds the first user turn content for context sizing. Matches what

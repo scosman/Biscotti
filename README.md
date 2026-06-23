@@ -15,7 +15,7 @@
 **Biscotti** is a private and free meeting recorder for macOS. It records your meetings and turns them into accurate, speaker‑labeled transcripts and summaries. No cloud. No bot joining your call. No subscription.
 
 <div align="center">
-🔒 <strong>Private</strong> — runs locally on your Mac  ·  🆓 <strong>Free</strong> no account, no subscription
+🔒 <strong>Private</strong> runs locally on your Mac  •  🆓 <strong>Free</strong> no account, no subscription
 </div>
 
 <!-- Drag & drop a demo video or screenshot here -->

@@ -150,6 +150,18 @@ public extension OnboardingViewModel {
         transcriptionStarted && languageStarted
     }
 
+    // MARK: - Footer caption
+
+    /// Caption shown beneath the footer button. Non-empty only on the
+    /// model-download step when "Continue" is available (both models
+    /// started) but at least one download is still in progress.
+    var footerCaption: String {
+        guard currentStep == .modelDownload, bothModelsStarted, !bothModelsReady else {
+            return ""
+        }
+        return "Downloads will continue in the background"
+    }
+
     // MARK: - Row-state mappers
 
     /// Computes the view-state for the transcription model row.

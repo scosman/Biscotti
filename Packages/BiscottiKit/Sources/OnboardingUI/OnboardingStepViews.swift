@@ -312,24 +312,34 @@ extension OnboardingView {
     // MARK: - Shared footer button
 
     var footerButton: some View {
-        // Fixed min-height so toggling Skip <-> Continue doesn't
-        // shift the layout vertically (the primary button is taller
-        // than the plain Skip link).
-        Group {
-            if viewModel.isCurrentStepComplete {
-                Button("Continue") {
-                    Task { await viewModel.advance() }
+        VStack(spacing: 6) {
+            // Fixed min-height so toggling Skip <-> Continue doesn't
+            // shift the layout vertically (the primary button is taller
+            // than the plain Skip link).
+            Group {
+                if viewModel.isCurrentStepComplete {
+                    Button("Continue") {
+                        Task { await viewModel.advance() }
+                    }
+                    .buttonStyle(OnboardingPrimaryButtonStyle())
+                } else {
+                    Button("Skip") {
+                        Task { await viewModel.skip() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.inkTertiary)
                 }
-                .buttonStyle(OnboardingPrimaryButtonStyle())
-            } else {
-                Button("Skip") {
-                    Task { await viewModel.skip() }
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 13.5))
-                .foregroundStyle(.inkTertiary)
             }
+            .frame(minHeight: 40)
+
+            // Always present (blank => reserves one line, no layout shift).
+            Text(viewModel.footerCaption.isEmpty ? " " : viewModel.footerCaption)
+                .font(.biscottiMono(11))
+                .foregroundStyle(.inkSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .padding(.top, 2)
         }
-        .frame(minHeight: 40)
     }
 }

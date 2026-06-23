@@ -962,6 +962,116 @@ struct FormatBytesTests {
     }
 }
 
+// MARK: - Footer caption
+
+@Suite("OnboardingViewModel -- Footer caption")
+@MainActor
+struct FooterCaptionTests {
+    @Test("caption shows when both models downloading (Continue visible, downloads active)")
+    func captionShowsWhenBothDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
+
+        // Simulate both downloading
+        viewModel.isDownloading = true
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.3)
+
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.footerCaption == "Downloads will continue in the background")
+    }
+
+    @Test("caption shows when one ready and one downloading")
+    func captionShowsWhenOneReadyOneDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate language downloading (transcription already ready)
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.footerCaption == "Downloads will continue in the background")
+    }
+
+    @Test("caption blank when both models ready")
+    func captionBlankWhenBothReady() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsReady == true)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank when neither model started (Skip showing)")
+    func captionBlankWhenNeitherStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsStarted == false)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank on non-model steps")
+    func captionBlankOnNonModelSteps() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+
+        // Welcome step
+        #expect(viewModel.currentStep == .welcome)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank on permissions step")
+    func captionBlankOnPermissionsStep() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            calendarAuthStatus: .notDetermined
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+
+        #expect(viewModel.currentStep == .permissions)
+        #expect(viewModel.footerCaption == "")
+    }
+}
+
 // MARK: - Test helpers
 
 /// Error used to make FakeTranscriber's `ensureModelsDownloaded` fail,

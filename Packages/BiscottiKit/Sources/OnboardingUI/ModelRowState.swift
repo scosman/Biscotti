@@ -45,19 +45,69 @@ public extension OnboardingViewModel {
 
     // MARK: - Language row derivation
 
-    /// The language model id the "Download" pill targets: the active
-    /// model if one is already downloaded, else the recommended model.
+    /// The language model id the onboarding row targets, resolved in
+    /// priority order so the row tracks the user's effective choice:
+    ///
+    /// 1. An actively **downloading** model (`.downloading`) -- the user's
+    ///    current action, always wins.
+    /// 2. `activeModelID` -- a downloaded + selected/fallback model. Checked
+    ///    before `.failed` so a stale failure doesn't shadow a working model.
+    /// 3. A **failed** download (`.failed`) -- shows the error for retry when
+    ///    no active model exists yet.
+    /// 4. `selectedModelID` if non-empty and a valid catalog model id
+    ///    (explicit user selection, even if mid-state).
+    /// 5. `recommendedModelID()` -- hardware-based default.
     var languageTargetModelID: String? {
-        appCore.modelManager.activeModelID
-            ?? appCore.modelManager.recommendedModelID()
+        if let downloading = languageDownloadingModelID {
+            return downloading
+        }
+        if let active = appCore.modelManager.activeModelID {
+            return active
+        }
+        if let failed = languageFailedModelID {
+            return failed
+        }
+        let sel = appCore.modelManager.selectedModelID
+        if !sel.isEmpty, LLMModelCatalog.model(id: sel) != nil {
+            return sel
+        }
+        return appCore.modelManager.recommendedModelID()
     }
 
-    /// Display name of the hardware-recommended language model.
-    var recommendedLanguageDisplayName: String? {
-        guard let id = appCore.modelManager.recommendedModelID() else {
-            return nil
-        }
+    /// Display name of the target language model.
+    var languageTargetDisplayName: String? {
+        guard let id = languageTargetModelID else { return nil }
         return LLMModelCatalog.model(id: id)?.displayName
+    }
+
+    /// Whether the current target is the hardware-recommended model.
+    var languageTargetIsRecommended: Bool {
+        languageTargetModelID == appCore.modelManager.recommendedModelID()
+    }
+
+    // MARK: - Private helpers
+
+    /// The model id whose download is actively in progress (`.downloading`),
+    /// if any. Iterates the catalog in display order for deterministic results
+    /// (dictionary iteration order is not stable).
+    private var languageDownloadingModelID: String? {
+        for model in LLMModelCatalog.all {
+            if case .downloading = appCore.modelManager.downloads[model.id] {
+                return model.id
+            }
+        }
+        return nil
+    }
+
+    /// The first model id in catalog order whose download has failed
+    /// (`.failed`), if any. Deterministic via catalog-order iteration.
+    private var languageFailedModelID: String? {
+        for model in LLMModelCatalog.all {
+            if case .failed = appCore.modelManager.downloads[model.id] {
+                return model.id
+            }
+        }
+        return nil
     }
 
     /// Whether a language model is downloaded and available.
@@ -78,6 +128,12 @@ public extension OnboardingViewModel {
     }
 
     /// Whether the language model has started (ready or actively downloading).
+    ///
+    /// Intentionally checks only `.downloading`, not `.failed`. A failed
+    /// attempt should not flip the footer to "Continue" -- the user needs
+    /// to retry or skip. Note that `languageTargetModelID` *can* resolve
+    /// to a `.failed` model (priority 3), so the target and "started"
+    /// may diverge; that is the desired behavior.
     var languageStarted: Bool {
         if languageReady { return true }
         guard let targetID = languageTargetModelID else { return false }

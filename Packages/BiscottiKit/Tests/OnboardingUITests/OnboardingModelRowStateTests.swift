@@ -336,14 +336,24 @@ struct LanguageTargetModelTests {
         #expect(viewModel.languageTargetModelID == active)
     }
 
-    @Test("recommended display name is non-nil and non-empty")
-    func recommendedDisplayName() throws {
+    @Test("target display name is non-nil and non-empty")
+    func targetDisplayName() throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
 
         let viewModel = OnboardingViewModel(core: fixture.core)
-        let name = try #require(viewModel.recommendedLanguageDisplayName)
+        let name = try #require(viewModel.languageTargetDisplayName)
         #expect(!name.isEmpty)
+    }
+
+    @Test("target is recommended when no downloads or selection")
+    func targetIsRecommendedByDefault() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.languageTargetIsRecommended == true)
+        #expect(try viewModel.languageTargetDisplayName == LLMModelCatalog.model(id: #require(fixture.modelManager.recommendedModelID()))?.displayName)
     }
 
     @Test("low-RAM Mac targets E2B (not 12B)")
@@ -357,6 +367,133 @@ struct LanguageTargetModelTests {
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         #expect(viewModel.languageTargetModelID == "gemma-4-e2b")
+    }
+
+    @Test("in-flight non-recommended download becomes the target")
+    func inflightNonRecommendedBecomesTarget() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // The recommended model on 32GB is gemma-4-12b; inject a download
+        // for the non-recommended gemma-4-e2b.
+        let nonRecommendedID = "gemma-4-e2b"
+        #expect(nonRecommendedID != fixture.modelManager.recommendedModelID())
+
+        fixture.modelManager.downloads[nonRecommendedID] = .downloading(fraction: 0.35)
+
+        #expect(viewModel.languageTargetModelID == nonRecommendedID)
+        #expect(viewModel.languageTargetIsRecommended == false)
+        #expect(viewModel.languageTargetDisplayName == LLMModelCatalog.model(id: nonRecommendedID)?.displayName)
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.35)))
+        // Language started should be true (download in flight)
+        #expect(viewModel.languageStarted == true)
+    }
+
+    @Test("in-flight non-recommended download makes bothModelsStarted true")
+    func inflightNonRecommendedBothStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        let nonRecommendedID = "gemma-4-e2b"
+        fixture.modelManager.downloads[nonRecommendedID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.transcriptionStarted == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+    }
+
+    @Test("selected model (via DataStore) drives target when no download or active model")
+    func selectedModelDrivesTarget() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        // Persist a non-recommended selection via the DataStore, then refresh
+        // ModelManager so it picks up the persisted value.
+        let nonRecommendedID = "gemma-4-e2b"
+        try await fixture.store.updateSettings { $0.selectedModelID = nonRecommendedID }
+        await fixture.modelManager.refresh()
+
+        // No model is downloaded, so activeModelID is nil. The target should
+        // fall through to the persisted selectedModelID (priority 4).
+        #expect(fixture.modelManager.activeModelID == nil)
+        #expect(fixture.modelManager.selectedModelID == nonRecommendedID)
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.languageTargetModelID == nonRecommendedID)
+        #expect(viewModel.languageTargetIsRecommended == false)
+    }
+
+    @Test("downloading wins over a stale failed entry")
+    func downloadingWinsOverFailed() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate: one model failed (stale), another is downloading
+        fixture.modelManager.downloads["gemma-4-12b"] = .failed(message: "Stale error")
+        fixture.modelManager.downloads["gemma-4-e2b"] = .downloading(fraction: 0.6)
+
+        // The actively downloading model should win (priority 1 > priority 3)
+        #expect(viewModel.languageTargetModelID == "gemma-4-e2b")
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.6)))
+        #expect(viewModel.languageStarted == true)
+    }
+
+    @Test("failed does not shadow an active model")
+    func failedDoesNotShadowActive() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        await fixture.modelManager.refresh()
+
+        let activeID = fixture.modelManager.activeModelID
+        #expect(activeID != nil)
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Inject a failed download for a different model
+        let otherID = "gemma-4-e2b"
+        #expect(otherID != activeID)
+        fixture.modelManager.downloads[otherID] = .failed(message: "Network error")
+
+        // Active model (priority 2) should win over failed (priority 3)
+        #expect(viewModel.languageTargetModelID == activeID)
+        #expect(viewModel.languageRowState() == .ready)
+    }
+
+    @Test("failed target does not count as languageStarted")
+    func failedTargetNotStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Inject a failed download -- target resolves to it (no active model)
+        let failedID = "gemma-4-e2b"
+        fixture.modelManager.downloads[failedID] = .failed(message: "Oops")
+
+        #expect(viewModel.languageTargetModelID == failedID)
+        // languageStarted intentionally treats only .downloading as started
+        #expect(viewModel.languageStarted == false)
+        #expect(viewModel.bothModelsStarted == false)
     }
 }
 

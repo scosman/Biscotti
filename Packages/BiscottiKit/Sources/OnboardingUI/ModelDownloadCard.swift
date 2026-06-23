@@ -46,7 +46,8 @@ struct ModelCard: View {
             extraContent: {
                 if case .idle = state {
                     RecommendationLine(
-                        modelName: viewModel.recommendedLanguageDisplayName,
+                        modelName: viewModel.languageTargetDisplayName,
+                        isRecommended: viewModel.languageTargetIsRecommended,
                         onSeeAll: { viewModel.showVariantSheet = true }
                     )
                 }
@@ -290,16 +291,18 @@ struct DownloadControl: View {
 
 // MARK: - RecommendationLine
 
-/// Grey line showing the recommended model and a "See all options"
+/// Grey line showing the target model name and a "See all options"
 /// affordance. Shown only when the language row is idle.
+/// When `isRecommended` is true, prefixes the name with "Recommended ·".
 struct RecommendationLine: View {
     let modelName: String?
+    let isRecommended: Bool
     let onSeeAll: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
             if let modelName {
-                Text("Recommended \u{00B7} \(modelName)")
+                Text(isRecommended ? "Recommended \u{00B7} \(modelName)" : modelName)
                     .font(.system(size: 12.5))
                     .foregroundStyle(.inkSecondary)
             }

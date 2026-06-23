@@ -280,6 +280,20 @@ public final class ModelManager {
         }
     }
 
+    /// Clears the explicit language-model selection so the app reverts to
+    /// the hardware-recommended default.
+    ///
+    /// After clearing, `activeModelID` falls back to the first downloaded
+    /// catalog model (if any), and the next `refresh()` migration will
+    /// re-adopt that catalog-default. Does **not** call `refresh()` itself
+    /// — this is a pure clear.
+    public func clearSelectedModel() async {
+        selectedModelID = ""
+        try? await store.updateSettings { settings in
+            settings.selectedModelID = ""
+        }
+    }
+
     /// Select a model as the active default.
     ///
     /// Guard: the model must be downloaded and runnable.

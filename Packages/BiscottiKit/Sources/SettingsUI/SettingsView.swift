@@ -282,6 +282,13 @@ public struct SettingsView: View {
                     Label("Replay Onboarding", systemImage: "arrow.counterclockwise")
                 }
                 .foregroundStyle(.sage)
+
+                Button {
+                    viewModel.clearSelectedModel()
+                } label: {
+                    Label("Clear Selected LLM", systemImage: "arrow.uturn.backward")
+                }
+                .foregroundStyle(.sage)
             }
         }
     #endif

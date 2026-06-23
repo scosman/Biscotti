@@ -258,6 +258,12 @@ public final class SettingsViewModel {
         public func replayOnboarding() {
             core.showOnboardingReplay()
         }
+
+        /// Debug-only: clears the persisted language-model selection so the
+        /// app reverts to the hardware-recommended default.
+        public func clearSelectedModel() {
+            Task { await core.modelManager.clearSelectedModel() }
+        }
     #endif
 
     // MARK: - Calendar actions

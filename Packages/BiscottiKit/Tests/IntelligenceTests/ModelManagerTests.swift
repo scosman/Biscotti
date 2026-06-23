@@ -463,6 +463,45 @@ struct ModelManagerSelectGuardTests {
     }
 }
 
+// MARK: - Clear selected model
+
+@Suite("ModelManager clearSelectedModel")
+struct ModelManagerClearSelectedModelTests {
+    @Test("clearSelectedModel resets in-memory and persisted selection")
+    @MainActor func clearResetsSelection() async throws {
+        let fix = try makeManager(downloadedIDs: [model12B, modelE2B])
+
+        await fix.mgr.refresh()
+        // Start with an explicit selection
+        await fix.mgr.selectModel(id: modelE2B)
+        #expect(fix.mgr.selectedModelID == modelE2B)
+
+        await fix.mgr.clearSelectedModel()
+
+        // In-memory should be empty
+        #expect(fix.mgr.selectedModelID == "")
+        // Persisted should be empty
+        let settings = try await fix.store.settings()
+        #expect(settings.selectedModelID == "")
+        // activeModelID falls back to first downloaded in catalog order
+        #expect(fix.mgr.activeModelID == model12B)
+    }
+
+    @Test("clearSelectedModel when already empty is a no-op")
+    @MainActor func clearWhenAlreadyEmpty() async throws {
+        let fix = try makeManager(downloadedIDs: [])
+
+        await fix.mgr.refresh()
+        #expect(fix.mgr.selectedModelID == "")
+
+        await fix.mgr.clearSelectedModel()
+
+        #expect(fix.mgr.selectedModelID == "")
+        let settings = try await fix.store.settings()
+        #expect(settings.selectedModelID == "")
+    }
+}
+
 // MARK: - One-at-a-time download guard
 
 @Suite("ModelManager one-at-a-time download")

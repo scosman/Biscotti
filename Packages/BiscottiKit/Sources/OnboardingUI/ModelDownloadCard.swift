@@ -90,7 +90,7 @@ struct ModelDownloadRow<ExtraContent: View>: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(.inkSecondary)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 extraContent
             }
@@ -205,28 +205,28 @@ struct DownloadControl: View {
         }
     }
 
-    /// Indeterminate sage capsule bar (240x3, fill half-width, centered).
+    /// Indeterminate sage capsule bar (120x3, fill half-width, centered).
     private var indeterminateBar: some View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(Color.hairline)
-                .frame(width: 240, height: 3)
+                .frame(width: 120, height: 3)
             Capsule()
                 .fill(Color.sage)
-                .frame(width: 120, height: 3)
+                .frame(width: 60, height: 3)
         }
     }
 
-    /// Determinate sage capsule bar (240x3, fill proportional to fraction).
+    /// Determinate sage capsule bar (120x3, fill proportional to fraction).
     private func determinateBar(fraction: Double) -> some View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(Color.hairline)
-                .frame(width: 240, height: 3)
+                .frame(width: 120, height: 3)
             Capsule()
                 .fill(Color.sage)
                 .frame(
-                    width: max(3, 240 * min(fraction, 1.0)),
+                    width: max(3, 120 * min(fraction, 1.0)),
                     height: 3
                 )
                 .animation(

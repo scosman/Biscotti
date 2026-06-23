@@ -187,7 +187,7 @@ struct ModelRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     descriptionOrProgress
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 primaryAction
             }
         }
@@ -240,21 +240,27 @@ struct ModelRowView: View {
 
     // MARK: - Description / progress / warning (left column, lines 2-3)
 
+    /// The model description text, styled for left-aligned wrapping.
+    private var descriptionText: some View {
+        Text(choice.description)
+            .font(Tokens.metadataFont)
+            .foregroundStyle(Tokens.secondaryText)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
     private var descriptionOrProgress: some View {
         // Guard cannotRun first — non-runnable models show only the
         // description + warning, never download/failure progress.
         if choice.blockedReason == .cannotRun {
-            Text(choice.description)
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
+            descriptionText
             warningLabel(for: .cannotRun)
         } else {
             switch choice.downloadState {
             case let .downloading(fraction):
-                Text(choice.description)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                descriptionText
                 if let fraction {
                     ProgressView(value: fraction)
                     Text("Downloading\u{2026} \(Int(fraction * 100))%")
@@ -269,17 +275,13 @@ struct ModelRowView: View {
                 }
 
             case let .failed(message):
-                Text(choice.description)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                descriptionText
                 Text("Download failed: \(message)")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(.signalRed)
 
             default:
-                Text(choice.description)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                descriptionText
 
                 // Warnings (e.g. insufficientDisk)
                 if let reason = choice.blockedReason {

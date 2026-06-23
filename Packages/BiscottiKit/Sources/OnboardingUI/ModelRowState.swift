@@ -70,6 +70,30 @@ public extension OnboardingViewModel {
         transcriptionReady && languageReady
     }
 
+    // MARK: - "Started" derivation (ready OR actively downloading)
+
+    /// Whether the transcription model has started (ready or downloading).
+    var transcriptionStarted: Bool {
+        transcriptionReady || isDownloading
+    }
+
+    /// Whether the language model has started (ready or actively downloading).
+    var languageStarted: Bool {
+        if languageReady { return true }
+        guard let targetID = languageTargetModelID else { return false }
+        if case .downloading = appCore.modelManager.downloads[targetID] {
+            return true
+        }
+        return false
+    }
+
+    /// Whether both model downloads have at least started (each is
+    /// either ready or actively downloading). Used by the footer to
+    /// show "Continue" without waiting for completion.
+    var bothModelsStarted: Bool {
+        transcriptionStarted && languageStarted
+    }
+
     // MARK: - Row-state mappers
 
     /// Computes the view-state for the transcription model row.

@@ -83,7 +83,7 @@ public final class OnboardingViewModel {
 
     /// Model download state (transcription).
     public private(set) var downloadStatus: String?
-    public private(set) var isDownloading: Bool = false
+    public internal(set) var isDownloading: Bool = false
     public private(set) var downloadComplete: Bool = false
     public private(set) var downloadFailed: Bool = false
 
@@ -148,7 +148,7 @@ public final class OnboardingViewModel {
         case .permissions:
             allPermissionsGranted ? .continueButton : .skip
         case .modelDownload:
-            bothModelsReady ? .continueButton : .skip
+            bothModelsStarted ? .continueButton : .skip
         }
     }
 

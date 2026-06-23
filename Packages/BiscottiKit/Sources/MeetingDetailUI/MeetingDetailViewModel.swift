@@ -198,6 +198,14 @@ public final class MeetingDetailViewModel {
     /// Intelligence clears the streaming value (§13.2 flash fix).
     private var lastStreamedSummary: String?
 
+    /// Set synchronously in `runSummary(force:)` so the Summary view
+    /// can drop the stale summary and show the pipeline immediately,
+    /// before the async analysis reaches `.summarizing`. Reset on
+    /// terminal statuses (`.completed`, `.failed`, `nil`).
+    /// Internal (not private(set)) so tests can drive the flag directly
+    /// without spawning a real analysis Task via `runSummary`.
+    var summaryRegenRequested: Bool = false
+
     /// Debounce interval for summary autosave.
     private static let summaryDebounceInterval: Duration = .seconds(1)
 
@@ -537,6 +545,28 @@ public extension MeetingDetailViewModel {
             || enhancementStatus == .identifyingSpeakers
             || enhancementStatus == .summarizing
             || enhancementStatus == .generatingTitle
+    }
+
+    /// Whether the pipeline has a "Summarizing" stage that hasn't
+    /// finished yet. Covers the auto-run path (post-transcription)
+    /// where `summaryRegenRequested` was never set.
+    var hasPendingSummaryStage: Bool {
+        guard let stages = pipelineStages else { return false }
+        return stages.contains {
+            $0.label == "Summarizing" && $0.state != .done
+        }
+    }
+
+    /// True while an active enhancement run will produce a new summary
+    /// but streaming hasn't begun (the `.preparing` / `.identifyingSpeakers`
+    /// window). Drives the Summary view to drop the stale summary and
+    /// show the pipeline immediately, restoring the pre-multi-turn
+    /// "instant clear + spinner" behavior on Regenerate.
+    var isSummaryRegenerating: Bool {
+        guard isEnhancing, streamingSummary == nil,
+              enhancementStatus != .summarizing
+        else { return false }
+        return summaryRegenRequested || hasPendingSummaryStage
     }
 
     /// Whether the AI model is downloaded and available.
@@ -1109,6 +1139,7 @@ private extension MeetingDetailViewModel {
     /// selected transcript version. Auto-switches to the Summary tab.
     func runSummary(force: Bool) {
         guard let transcriptID = activeVersionID else { return }
+        summaryRegenRequested = true
         selectedTab = .summary
         Task {
             await core.intelligence.runAnalysis(
@@ -1136,6 +1167,15 @@ public extension MeetingDetailViewModel {
     func onEnhancementStatusChange(
         _ newStatus: EnhancementStatus?
     ) async {
+        // Reset the regenerate flag on terminal / cancelled states
+        // so `isSummaryRegenerating` stops clearing the stale summary.
+        switch newStatus {
+        case .completed, .failed, nil:
+            summaryRegenRequested = false
+        default:
+            break
+        }
+
         if newStatus == .completed {
             if let streamed = lastStreamedSummary, !streamed.isEmpty {
                 summaryText = streamed

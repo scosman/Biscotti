@@ -1093,3 +1093,353 @@ struct SummaryStreamingCompletionTests {
         #expect(viewModel.summaryText.isEmpty)
     }
 }
+
+// MARK: - Regenerate instant-clear (isSummaryRegenerating)
+
+@Suite("Summary tab -- regenerate instant-clear")
+struct SummaryTabRegenerateInstantClearTests {
+    @Test("isSummaryRegenerating true at .preparing during manual regenerate")
+    @MainActor
+    func trueAtPreparingDuringRegenerate() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        #expect(!viewModel.summaryText.isEmpty)
+        #expect(viewModel.isSummaryRegenerating == false)
+
+        // Simulate: user clicks Regenerate -> runSummary sets flag
+        viewModel.generateSummary()
+
+        // Intelligence sets .preparing synchronously
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        #expect(viewModel.summaryRegenRequested == true)
+        #expect(viewModel.isSummaryRegenerating == true)
+    }
+
+    @Test("isSummaryRegenerating true at .identifyingSpeakers during manual regenerate")
+    @MainActor
+    func trueAtIdentifyingSpeakers() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.generateSummary()
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+
+        #expect(viewModel.isSummaryRegenerating == true)
+    }
+
+    @Test("isSummaryRegenerating false once .summarizing begins")
+    @MainActor
+    func falseOnceSummarizingBegins() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.generateSummary()
+        fix.intelligence.jobs[meetingID] = .summarizing
+
+        // Once .summarizing, the editor branch handles display
+        #expect(viewModel.isSummaryRegenerating == false)
+    }
+
+    @Test("summaryRegenRequested reset on .completed")
+    @MainActor
+    func flagResetOnCompleted() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Complete"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate the flag being set (as runSummary does synchronously)
+        // without spawning the actual analysis Task.
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.summaryRegenRequested == true)
+
+        fix.intelligence.jobs[meetingID] = .completed
+        await viewModel.onEnhancementStatusChange(.completed)
+        #expect(viewModel.summaryRegenRequested == false)
+        #expect(viewModel.isSummaryRegenerating == false)
+    }
+
+    @Test("summaryRegenRequested reset on .failed")
+    @MainActor
+    func flagResetOnFailed() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Failed"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.summaryRegenRequested == true)
+
+        fix.intelligence.jobs[meetingID] = .failed(message: "err")
+        await viewModel.onEnhancementStatusChange(
+            .failed(message: "err")
+        )
+        #expect(viewModel.summaryRegenRequested == false)
+    }
+
+    @Test("summaryRegenRequested reset on nil (cancelled)")
+    @MainActor
+    func flagResetOnNil() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Cancelled"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.summaryRegenRequested == true)
+
+        fix.intelligence.jobs.removeValue(forKey: meetingID)
+        await viewModel.onEnhancementStatusChange(nil)
+        #expect(viewModel.summaryRegenRequested == false)
+    }
+}
+
+// MARK: - Regenerate instant-clear (view branch + auto-run)
+
+@Suite("Summary tab -- regenerate instant-clear view integration")
+struct SummaryTabRegenerateViewIntegrationTests {
+    @Test("auto-run path: hasPendingSummaryStage drives isSummaryRegenerating")
+    @MainActor
+    func autoRunPathUsesPendingStage() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Auto-run: no manual request, but pipeline is active with
+        // a pending Summarizing stage (identifyingSpeakers status)
+        #expect(viewModel.summaryRegenRequested == false)
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+
+        // hasPendingSummaryStage should be true (Summarizing is pending)
+        #expect(viewModel.hasPendingSummaryStage == true)
+        #expect(viewModel.isSummaryRegenerating == true)
+    }
+
+    @Test("view condition: stale summary yields to pipeline while regenerating")
+    @MainActor
+    func viewBranchYieldsToPipeline() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        #expect(!viewModel.summaryText.isEmpty)
+
+        // Simulate regenerate during .identifyingSpeakers
+        viewModel.generateSummary()
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+
+        // The view's editor branch condition should be FALSE (stale
+        // summary suppressed) so the pipeline branch is reached:
+        let editorBranch = viewModel.streamingSummary != nil
+            || viewModel.enhancementStatus == .summarizing
+            || (!viewModel.summaryText.isEmpty
+                && !viewModel.isSummaryRegenerating)
+        #expect(editorBranch == false)
+
+        // Pipeline stages should be available
+        #expect(viewModel.pipelineStages != nil)
+    }
+
+    @Test("isSummaryRegenerating false when not enhancing")
+    @MainActor
+    func falseWhenNotEnhancing() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // No enhancement active -- even with summaryText, should not
+        // be regenerating
+        #expect(viewModel.isSummaryRegenerating == false)
+    }
+
+    @Test("isSummaryRegenerating false when streaming is active")
+    @MainActor
+    func falseWhenStreamingActive() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "SummaryTabTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let result = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(
+            transcriptID, for: meetingID
+        )
+        try await fix.store.applyGeneratedSummary(
+            "Old summary", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.generateSummary()
+        fix.intelligence.jobs[meetingID] = .summarizing
+        fix.intelligence.streamingSummary[meetingID] = "# Partial"
+
+        // Streaming is active, so isSummaryRegenerating should be false
+        // (the editor branch handles the display)
+        #expect(viewModel.isSummaryRegenerating == false)
+    }
+}

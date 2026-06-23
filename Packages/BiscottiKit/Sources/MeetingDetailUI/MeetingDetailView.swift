@@ -691,7 +691,8 @@ private extension MeetingDetailView {
             //    in-flight .summarizing status as the generating state.
         } else if viewModel.streamingSummary != nil
             || viewModel.enhancementStatus == .summarizing
-            || !viewModel.summaryText.isEmpty
+            || (!viewModel.summaryText.isEmpty
+                && !viewModel.isSummaryRegenerating)
         {
             let generating = viewModel.streamingSummary != nil
                 || viewModel.enhancementStatus == .summarizing

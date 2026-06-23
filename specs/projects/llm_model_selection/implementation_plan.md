@@ -24,7 +24,7 @@ Ordered, dependency-first. Each phase compiles green and is reviewable on its ow
   `AppSettings`, `AppSettingsData`, and the `settings()`/`updateSettings()` mapping. Test: round-trip
   + default. *Additive, small.* (Arch §1.1.)
 
-- [ ] **Phase 3 — Hardware + suitability (pure, additive).** `HardwareProbing` + `LiveHardwareProbe`
+- [x] **Phase 3 — Hardware + suitability (pure, additive).** `HardwareProbing` + `LiveHardwareProbe`
   (RAM + free disk only), `ModelPolicy` (per-id RAM floor + UI copy + RAM-usage copy), and
   `ModelSuitability` (`canRun`, `recommendedModelID`, `hasEnoughDisk`; 15 GB / 24 GB constants).
   Table-driven tests across RAM/disk boundaries. *No breakage.* (Arch §2.2, §3.)

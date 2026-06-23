@@ -167,20 +167,26 @@ struct RunCommand: AsyncParsableCommand {
         // Otherwise, build the rendered prompt here via GemmaChatTemplate so the exact
         // string is visible in --show-raw, and set applyChatTemplate=false to prevent
         // the engine from double-templating.
-        let effectivePrompt: String
-        let effectiveSystem: String?
+        let effectiveMessages: [LLMMessage]
         var effectiveOptions = options
         if raw {
-            effectivePrompt = promptText
-            effectiveSystem = systemText
+            // Raw mode sends the prompt verbatim (no chat template). The old
+            // API silently discarded --system in raw mode; preserve that
+            // behavior to stay within Phase 1's "no behavior change" scope.
+            effectiveMessages = [.user(promptText)]
             effectiveOptions.applyChatTemplate = false
         } else {
             effectiveOptions.applyChatTemplate = false
             let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
-            effectivePrompt = gemmaTemplate.render(
-                system: systemText, user: promptText, addGenerationPrompt: true
+            var msgs: [LLMMessage] = []
+            if let systemText {
+                msgs.append(.system(systemText))
+            }
+            msgs.append(.user(promptText))
+            let rendered = gemmaTemplate.render(
+                messages: msgs, addGenerationPrompt: true
             )
-            effectiveSystem = nil
+            effectiveMessages = [.user(rendered)]
         }
 
         logStderr("Loading model...")
@@ -196,12 +202,12 @@ struct RunCommand: AsyncParsableCommand {
             let result: GenerationResult
             if stream {
                 result = try await runStreaming(
-                    connection: conn, prompt: effectivePrompt,
-                    system: effectiveSystem, options: effectiveOptions
+                    connection: conn, messages: effectiveMessages,
+                    options: effectiveOptions
                 )
             } else {
                 result = try await conn.generate(
-                    prompt: effectivePrompt, system: effectiveSystem,
+                    messages: effectiveMessages,
                     options: effectiveOptions
                 )
 
@@ -269,12 +275,11 @@ struct RunCommand: AsyncParsableCommand {
     ///    `=== response ===` so both headers always appear.
     private func runStreaming(
         connection: LLMConnection,
-        prompt: String,
-        system: String?,
+        messages: [LLMMessage],
         options: GenerationOptions
     ) async throws -> GenerationResult {
         let stream = await connection.generateStreaming(
-            prompt: prompt, system: system, options: options
+            messages: messages, options: options
         )
 
         var finalResult: GenerationResult?

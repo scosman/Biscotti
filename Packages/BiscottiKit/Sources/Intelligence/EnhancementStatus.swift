@@ -7,6 +7,7 @@ public enum EnhancementStatus: Sendable, Equatable {
     case preparing
     case identifyingSpeakers
     case summarizing
+    case generatingTitle
     case completed
     case failed(message: String)
 }
@@ -23,12 +24,11 @@ public enum ModelDownloadState: Sendable, Equatable {
 }
 
 /// Settings that gate the AI auto-run. Read from DataStore on each run.
+/// A single `enabled` flag maps to `AppSettings.aiAnalysisEnabled`.
 public struct AISettings: Sendable {
-    public var summarize: Bool
-    public var guessSpeakers: Bool
+    public var enabled: Bool
 
-    public init(summarize: Bool, guessSpeakers: Bool) {
-        self.summarize = summarize
-        self.guessSpeakers = guessSpeakers
+    public init(enabled: Bool) {
+        self.enabled = enabled
     }
 }

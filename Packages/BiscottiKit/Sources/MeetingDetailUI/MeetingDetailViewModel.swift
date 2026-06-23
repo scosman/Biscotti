@@ -185,11 +185,8 @@ public final class MeetingDetailViewModel {
     /// state (should not spuriously set editedSummary).
     private var summaryDirty: Bool = false
 
-    /// Whether the "Summarize Transcripts" toggle is on (loaded from settings).
-    public private(set) var summarizeEnabled: Bool = true
-
-    /// Whether the "Guess Speaker Names" toggle is on (loaded from settings).
-    public private(set) var guessSpeakersEnabled: Bool = true
+    /// Whether the "AI Analysis & Summary" toggle is on (loaded from settings).
+    public private(set) var aiAnalysisEnabled: Bool = true
 
     /// Whether auto-jump to Summary has fired for the current pipeline
     /// activation. Reset on `load()` so it fires once per lifecycle.
@@ -200,6 +197,14 @@ public final class MeetingDetailViewModel {
     /// `onEnhancementStatusChange` can seed `summaryText` after
     /// Intelligence clears the streaming value (§13.2 flash fix).
     private var lastStreamedSummary: String?
+
+    /// Set synchronously in `runSummary(force:)` so the Summary view
+    /// can drop the stale summary and show the pipeline immediately,
+    /// before the async analysis reaches `.summarizing`. Reset on
+    /// terminal statuses (`.completed`, `.failed`, `nil`).
+    /// Internal (not private(set)) so tests can drive the flag directly
+    /// without spawning a real analysis Task via `runSummary`.
+    var summaryRegenRequested: Bool = false
 
     /// Debounce interval for summary autosave.
     private static let summaryDebounceInterval: Duration = .seconds(1)
@@ -539,6 +544,29 @@ public extension MeetingDetailViewModel {
         enhancementStatus == .preparing
             || enhancementStatus == .identifyingSpeakers
             || enhancementStatus == .summarizing
+            || enhancementStatus == .generatingTitle
+    }
+
+    /// Whether the pipeline has a "Summarizing" stage that hasn't
+    /// finished yet. Covers the auto-run path (post-transcription)
+    /// where `summaryRegenRequested` was never set.
+    var hasPendingSummaryStage: Bool {
+        guard let stages = pipelineStages else { return false }
+        return stages.contains {
+            $0.label == "Summarizing" && $0.state != .done
+        }
+    }
+
+    /// True while an active enhancement run will produce a new summary
+    /// but streaming hasn't begun (the `.preparing` / `.identifyingSpeakers`
+    /// window). Drives the Summary view to drop the stale summary and
+    /// show the pipeline immediately, restoring the pre-multi-turn
+    /// "instant clear + spinner" behavior on Regenerate.
+    var isSummaryRegenerating: Bool {
+        guard isEnhancing, streamingSummary == nil,
+              enhancementStatus != .summarizing
+        else { return false }
+        return summaryRegenRequested || hasPendingSummaryStage
     }
 
     /// Whether the AI model is downloaded and available.
@@ -591,7 +619,8 @@ public extension MeetingDetailViewModel {
         default: false
         }
         let enhancementActive = switch enhStatus {
-        case .preparing, .identifyingSpeakers, .summarizing: true
+        case .preparing, .identifyingSpeakers, .summarizing,
+             .generatingTitle: true
         default: false
         }
 
@@ -612,7 +641,7 @@ public extension MeetingDetailViewModel {
         ))
 
         // Stage 2: Inferring participant names (gated)
-        let showSpeakers = guessSpeakersEnabled && modelAvailable
+        let showSpeakers = aiAnalysisEnabled && modelAvailable
         if showSpeakers {
             let speakerState: StageState =
                 if enhStatus == .identifyingSpeakers {
@@ -631,7 +660,7 @@ public extension MeetingDetailViewModel {
         }
 
         // Stage 3: Summarizing (gated)
-        let showSummary = summarizeEnabled && modelAvailable
+        let showSummary = aiAnalysisEnabled && modelAvailable
             && !editedSummary
         if showSummary {
             let summaryState: StageState =
@@ -650,7 +679,15 @@ public extension MeetingDetailViewModel {
             ))
         }
 
-        // When .preparing and no gated stages are visible (both toggles off
+        // Stage 4: Generating title (gated -- only during active title gen)
+        if enhStatus == .generatingTitle {
+            stages.append(PipelineStage(
+                label: "Generating title\u{2026}",
+                state: .active
+            ))
+        }
+
+        // When .preparing and no gated stages are visible (toggle off
         // or no model), the pipeline would show only "Transcribing: done"
         // which is misleading. This state is transient: .preparing is set
         // synchronously before the model/toggle guards, but those guards
@@ -980,8 +1017,7 @@ private extension MeetingDetailViewModel {
         editedSummary = detail?.editedSummary ?? false
         versions = detail?.versions ?? []
         let settings = try? await core.store.settings()
-        summarizeEnabled = settings?.summarizeTranscripts ?? true
-        guessSpeakersEnabled = settings?.guessSpeakerNames ?? true
+        aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
     }
 
     func loadAudioPlayer() async {
@@ -1096,16 +1132,17 @@ public extension MeetingDetailViewModel {
     }
 }
 
-// MARK: - Summary generation (private)
+// MARK: - Analysis generation (private)
 
 private extension MeetingDetailViewModel {
-    /// Runs summary generation from the currently selected transcript version.
-    /// Auto-switches to the Summary tab.
+    /// Runs the full analysis (speakers + summary) from the currently
+    /// selected transcript version. Auto-switches to the Summary tab.
     func runSummary(force: Bool) {
         guard let transcriptID = activeVersionID else { return }
+        summaryRegenRequested = true
         selectedTab = .summary
         Task {
-            await core.intelligence.generateSummary(
+            await core.intelligence.runAnalysis(
                 meetingID: meetingID,
                 transcriptID: transcriptID,
                 force: force
@@ -1130,6 +1167,15 @@ public extension MeetingDetailViewModel {
     func onEnhancementStatusChange(
         _ newStatus: EnhancementStatus?
     ) async {
+        // Reset the regenerate flag on terminal / cancelled states
+        // so `isSummaryRegenerating` stops clearing the stale summary.
+        switch newStatus {
+        case .completed, .failed, nil:
+            summaryRegenRequested = false
+        default:
+            break
+        }
+
         if newStatus == .completed {
             if let streamed = lastStreamedSummary, !streamed.isEmpty {
                 summaryText = streamed

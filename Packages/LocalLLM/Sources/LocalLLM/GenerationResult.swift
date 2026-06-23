@@ -40,6 +40,9 @@ public struct GenerationResult: Sendable, Equatable, Codable {
     /// Number of tokens the model generated.
     public let generatedTokenCount: Int
 
+    /// Prompt tokens served from the KV cache (reused prefix) this call. 0 when cold.
+    public let cachedPromptTokenCount: Int
+
     /// Why generation stopped.
     public let finishReason: FinishReason
 

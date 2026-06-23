@@ -101,6 +101,7 @@ struct GenerationResultCodableTests {
             reasoning: "Let me think about this...",
             promptTokenCount: 100,
             generatedTokenCount: 50,
+            cachedPromptTokenCount: 42,
             finishReason: .endOfTurn,
             loadDuration: 2.5,
             promptEvalDuration: 0.3,
@@ -120,6 +121,7 @@ struct GenerationResultCodableTests {
             reasoning: nil,
             promptTokenCount: 10,
             generatedTokenCount: 5,
+            cachedPromptTokenCount: 0,
             finishReason: .eos,
             loadDuration: nil,
             promptEvalDuration: 0.1,
@@ -141,8 +143,8 @@ struct GenerationResultCodableTests {
         for reason in [FinishReason.endOfTurn, .eos, .maxTokens, .stopSequence] {
             let result = GenerationResult(
                 text: "", reasoning: nil, promptTokenCount: 0, generatedTokenCount: 0,
-                finishReason: reason, loadDuration: nil, promptEvalDuration: 0,
-                generationDuration: 0, totalDuration: 0,
+                cachedPromptTokenCount: 0, finishReason: reason, loadDuration: nil,
+                promptEvalDuration: 0, generationDuration: 0, totalDuration: 0,
                 renderedPrompt: "", rawText: "", embeddedChatTemplate: nil
             )
             #expect(try roundTrip(result).finishReason == reason)

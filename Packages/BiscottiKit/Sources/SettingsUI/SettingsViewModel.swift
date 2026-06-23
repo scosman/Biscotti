@@ -78,11 +78,8 @@ public final class SettingsViewModel {
 
     // MARK: - AI Enhancements
 
-    /// Whether AI-generated summaries are enabled (persisted).
-    public private(set) var summarizeTranscripts: Bool = true
-
-    /// Whether AI-based speaker name guessing is enabled (persisted).
-    public private(set) var guessSpeakerNames: Bool = true
+    /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
+    public private(set) var aiAnalysisEnabled: Bool = true
 
     /// Current model download lifecycle state (observed from Intelligence).
     public var modelDownload: ModelDownloadState {
@@ -383,8 +380,7 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
-            summarizeTranscripts = settings.summarizeTranscripts
-            guessSpeakerNames = settings.guessSpeakerNames
+            aiAnalysisEnabled = settings.aiAnalysisEnabled
         } catch {
             enabledCalendarIDs = nil
         }
@@ -499,29 +495,16 @@ public extension SettingsViewModel {
 // MARK: - AI Enhancements actions
 
 public extension SettingsViewModel {
-    /// Toggles the "summarize transcripts" AI setting. Persists to the
+    /// Toggles the "AI Analysis & Summary" setting. Persists to the
     /// store with optimistic update; reverts on failure.
-    func setSummarizeTranscripts(_ enabled: Bool) async {
-        summarizeTranscripts = enabled
+    func setAIAnalysisEnabled(_ enabled: Bool) async {
+        aiAnalysisEnabled = enabled
         do {
             try await core.store.updateSettings { settings in
-                settings.summarizeTranscripts = enabled
+                settings.aiAnalysisEnabled = enabled
             }
         } catch {
-            summarizeTranscripts = !enabled
-        }
-    }
-
-    /// Toggles the "guess speaker names" AI setting. Persists to the
-    /// store with optimistic update; reverts on failure.
-    func setGuessSpeakerNames(_ enabled: Bool) async {
-        guessSpeakerNames = enabled
-        do {
-            try await core.store.updateSettings { settings in
-                settings.guessSpeakerNames = enabled
-            }
-        } catch {
-            guessSpeakerNames = !enabled
+            aiAnalysisEnabled = !enabled
         }
     }
 

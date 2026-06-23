@@ -290,29 +290,14 @@ public struct SettingsView: View {
 private extension SettingsView {
     var aiEnhancementsSection: some View {
         Section {
-            // Toggle 1: Summarize Transcripts
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(
-                    "Summarize Transcripts",
-                    isOn: summarizeTranscriptsBinding
+                    "AI Analysis & Summary",
+                    isOn: aiAnalysisEnabledBinding
                 )
                 .disabled(!viewModel.modelAvailable)
                 Text(
-                    "Automatically generate a summary of your meetings."
-                )
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
-            }
-
-            // Toggle 2: Guess Speaker Names
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Toggle(
-                    "Guess Speaker Names",
-                    isOn: guessSpeakerNamesBinding
-                )
-                .disabled(!viewModel.modelAvailable)
-                Text(
-                    "Use information from the transcript to assign speaker names."
+                    "Generate a title and summary from the transcript, and guess the names of speakers from context."
                 )
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
@@ -333,28 +318,15 @@ private extension SettingsView {
         }
     }
 
-    var summarizeTranscriptsBinding: Binding<Bool> {
+    var aiAnalysisEnabledBinding: Binding<Bool> {
         Binding(
             get: {
                 viewModel.modelAvailable
-                    ? viewModel.summarizeTranscripts
+                    ? viewModel.aiAnalysisEnabled
                     : false
             },
             set: { newValue in
-                Task { await viewModel.setSummarizeTranscripts(newValue) }
-            }
-        )
-    }
-
-    var guessSpeakerNamesBinding: Binding<Bool> {
-        Binding(
-            get: {
-                viewModel.modelAvailable
-                    ? viewModel.guessSpeakerNames
-                    : false
-            },
-            set: { newValue in
-                Task { await viewModel.setGuessSpeakerNames(newValue) }
+                Task { await viewModel.setAIAnalysisEnabled(newValue) }
             }
         )
     }

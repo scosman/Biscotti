@@ -88,9 +88,9 @@ struct PipelineStageModelTests {
         ))
     }
 
-    @Test("pipelineStages omits 'Inferring' when guessSpeakers is off")
+    @Test("pipelineStages omits AI stages when aiAnalysisEnabled is off")
     @MainActor
-    func omitsSpeakersWhenOff() async throws {
+    func omitsAIStagesWhenOff() async throws {
         let fix = try makeCoreFixture(
             modelDownloaded: true,
             testName: "PipelineStatusTests"
@@ -98,7 +98,7 @@ struct PipelineStageModelTests {
         defer { fix.cleanup() }
 
         try await fix.store.updateSettings { settings in
-            settings.guessSpeakerNames = false
+            settings.aiAnalysisEnabled = false
         }
 
         let meetingID = try await fix.store.createMeeting(
@@ -112,9 +112,8 @@ struct PipelineStageModelTests {
         fix.core.transcription.jobs[meetingID] = .transcribing
 
         let stages = try #require(viewModel.pipelineStages)
-        #expect(stages.count == 2)
+        #expect(stages.count == 1)
         #expect(stages[0].label == "Transcribing")
-        #expect(stages[1].label == "Summarizing")
     }
 
     @Test("pipelineStages omits 'Summarizing' when editedSummary is true")
@@ -148,26 +147,30 @@ struct PipelineStageModelTests {
         // "Summarizing" is omitted because editedSummary is true
     }
 
-    @Test("pipelineStages omits 'Summarizing' when summarize toggle is off")
+    @Test("pipelineStages shows speakers + hides summary when editedSummary + AI on")
     @MainActor
-    func omitsSummaryWhenToggleOff() async throws {
+    func showsSpeakersHidesSummaryWhenEdited() async throws {
         let fix = try makeCoreFixture(
             modelDownloaded: true,
             testName: "PipelineStatusTests"
         )
         defer { fix.cleanup() }
 
-        try await fix.store.updateSettings { settings in
-            settings.summarizeTranscripts = false
-        }
-
         let meetingID = try await fix.store.createMeeting(
             title: "Pipeline Test"
         )
+        // Mark summary as user-edited
+        try await fix.store.setSummary(
+            "User edited", for: meetingID
+        )
+
         let viewModel = MeetingDetailViewModel(
             core: fix.core, meetingID: meetingID
         )
         await viewModel.load()
+
+        // AI is on (default), model available, but summary is edited
+        #expect(viewModel.aiAnalysisEnabled == true)
 
         fix.core.transcription.jobs[meetingID] = .transcribing
 
@@ -175,6 +178,7 @@ struct PipelineStageModelTests {
         #expect(stages.count == 2)
         #expect(stages[0].label == "Transcribing")
         #expect(stages[1].label == "Inferring participant names")
+        // "Summarizing" is omitted because editedSummary is true
     }
 }
 
@@ -590,15 +594,15 @@ struct PipelineReTranscribeTests {
 
 @Suite("Pipeline status -- settings loading")
 struct PipelineSettingsTests {
-    @Test("load reads guessSpeakersEnabled from settings")
+    @Test("load reads aiAnalysisEnabled from settings")
     @MainActor
-    func loadReadsGuessSpeakers() async throws {
+    func loadReadsAIAnalysisEnabled() async throws {
         let fix = try makeCoreFixture(testName: "PipelineStatusTests")
         defer { fix.cleanup() }
 
-        // Disable guessSpeakerNames in settings
+        // Disable AI analysis in settings
         try await fix.store.updateSettings { settings in
-            settings.guessSpeakerNames = false
+            settings.aiAnalysisEnabled = false
         }
 
         let meetingID = try await fix.store.createMeeting(
@@ -609,12 +613,12 @@ struct PipelineSettingsTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.guessSpeakersEnabled == false)
+        #expect(viewModel.aiAnalysisEnabled == false)
     }
 
-    @Test("load defaults guessSpeakersEnabled to true")
+    @Test("load defaults aiAnalysisEnabled to true")
     @MainActor
-    func defaultGuessSpeakersTrue() async throws {
+    func defaultAIAnalysisEnabledTrue() async throws {
         let fix = try makeCoreFixture(testName: "PipelineStatusTests")
         defer { fix.cleanup() }
 
@@ -626,6 +630,6 @@ struct PipelineSettingsTests {
         )
         await viewModel.load()
 
-        #expect(viewModel.guessSpeakersEnabled == true)
+        #expect(viewModel.aiAnalysisEnabled == true)
     }
 }

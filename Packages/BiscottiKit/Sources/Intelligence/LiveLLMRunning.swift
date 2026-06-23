@@ -33,9 +33,9 @@ struct LiveLLMSession: LLMSession, @unchecked Sendable {
     let connection: LLMConnection
 
     func countTokens(
-        system: String, user: String
+        messages: [LLMMessage]
     ) async throws -> Int {
-        try await connection.countTokens(system: system, user: user)
+        try await connection.countTokens(messages: messages)
     }
 
     func reconfigure(contextSize: Int) async throws {
@@ -43,19 +43,19 @@ struct LiveLLMSession: LLMSession, @unchecked Sendable {
     }
 
     func generate(
-        system: String, user: String, options: GenerationOptions
+        messages: [LLMMessage], options: GenerationOptions
     ) async throws -> String {
         let result = try await connection.generate(
-            prompt: user, system: system, options: options
+            messages: messages, options: options
         )
         return result.text
     }
 
     func generateStreaming(
-        system: String, user: String, options: GenerationOptions
+        messages: [LLMMessage], options: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error> {
         await connection.generateStreaming(
-            prompt: user, system: system, options: options
+            messages: messages, options: options
         )
     }
 }

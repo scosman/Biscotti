@@ -99,8 +99,7 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
     private var _tokenCount: Int = 100
 
     func countTokens(
-        system _: String?,
-        user _: String,
+        messages _: [LLMMessage],
         applyChatTemplate _: Bool,
         thinking _: ThinkingMode
     ) async throws -> Int {
@@ -111,8 +110,7 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
     }
 
     func generate(
-        prompt _: String,
-        system _: String?,
+        messages _: [LLMMessage],
         options _: GenerationOptions
     ) async throws -> GenerationResult {
         let continuation = lock.withLock {
@@ -132,8 +130,7 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
     }
 
     func generateStreaming(
-        prompt _: String,
-        system _: String?,
+        messages _: [LLMMessage],
         options _: GenerationOptions
     ) async -> AsyncThrowingStream<StreamEvent, Error> {
         let continuation = lock.withLock {
@@ -208,6 +205,7 @@ final class MockEngine: InferenceEngine, @unchecked Sendable {
             reasoning: nil,
             promptTokenCount: 10,
             generatedTokenCount: 2,
+            cachedPromptTokenCount: 0,
             finishReason: .endOfTurn,
             loadDuration: nil,
             promptEvalDuration: 0.01,

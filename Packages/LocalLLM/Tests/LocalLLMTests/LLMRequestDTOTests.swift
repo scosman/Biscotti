@@ -59,35 +59,33 @@ struct LLMCountTokensRequestTests {
     @Test("Default request round-trips")
     func defaultRoundTrip() throws {
         let request = LLMCountTokensRequest(
-            user: "Hello world",
-            system: "You are helpful.",
+            messages: [.system("You are helpful."), .user("Hello world")],
             applyChatTemplate: true,
             thinking: .off
         )
         let decoded = try roundTrip(request)
         #expect(decoded == request)
-        #expect(decoded.user == "Hello world")
-        #expect(decoded.system == "You are helpful.")
+        #expect(decoded.messages.count == 2)
+        #expect(decoded.messages[0] == .system("You are helpful."))
+        #expect(decoded.messages[1] == .user("Hello world"))
         #expect(decoded.applyChatTemplate == true)
         #expect(decoded.thinking == .off)
     }
 
-    @Test("Request with nil system round-trips")
-    func nilSystemRoundTrip() throws {
+    @Test("Request with user-only message round-trips")
+    func userOnlyRoundTrip() throws {
         let request = LLMCountTokensRequest(
-            user: "Test prompt",
-            system: nil
+            messages: [.user("Test prompt")]
         )
         let decoded = try roundTrip(request)
         #expect(decoded == request)
-        #expect(decoded.system == nil)
+        #expect(decoded.messages.count == 1)
     }
 
     @Test("Request with thinking auto round-trips")
     func thinkingAutoRoundTrip() throws {
         let request = LLMCountTokensRequest(
-            user: "Analyze this.",
-            system: "Think carefully.",
+            messages: [.system("Think carefully."), .user("Analyze this.")],
             applyChatTemplate: true,
             thinking: .auto
         )
@@ -99,8 +97,7 @@ struct LLMCountTokensRequestTests {
     @Test("Request with raw mode (no template) round-trips")
     func rawModeRoundTrip() throws {
         let request = LLMCountTokensRequest(
-            user: "Raw prompt text",
-            system: nil,
+            messages: [.user("Raw prompt text")],
             applyChatTemplate: false,
             thinking: .off
         )
@@ -117,27 +114,45 @@ struct LLMGenerateRequestTests {
     @Test("Basic request round-trips")
     func basicRoundTrip() throws {
         let request = LLMGenerateRequest(
-            prompt: "Summarize this meeting.",
-            system: nil,
+            messages: [.user("Summarize this meeting.")],
             options: .default
         )
         let decoded = try roundTrip(request)
         #expect(decoded == request)
-        #expect(decoded.prompt == "Summarize this meeting.")
-        #expect(decoded.system == nil)
+        #expect(decoded.messages.count == 1)
+        #expect(decoded.messages[0] == .user("Summarize this meeting."))
         #expect(decoded.options == .default)
     }
 
     @Test("Request with system message round-trips")
     func withSystemRoundTrip() throws {
         let request = LLMGenerateRequest(
-            prompt: "What are the action items?",
-            system: "You are a meeting assistant.",
+            messages: [
+                .system("You are a meeting assistant."),
+                .user("What are the action items?")
+            ],
             options: .default
         )
         let decoded = try roundTrip(request)
         #expect(decoded == request)
-        #expect(decoded.system == "You are a meeting assistant.")
+        #expect(decoded.messages[0] == .system("You are a meeting assistant."))
+    }
+
+    @Test("Multi-turn request round-trips")
+    func multiTurnRoundTrip() throws {
+        let request = LLMGenerateRequest(
+            messages: [
+                .system("Analyst"),
+                .user("Identify speakers"),
+                .assistant("Speaker 0 is Alice"),
+                .user("Now summarize")
+            ],
+            options: .default
+        )
+        let decoded = try roundTrip(request)
+        #expect(decoded == request)
+        #expect(decoded.messages.count == 4)
+        #expect(decoded.messages[2] == .assistant("Speaker 0 is Alice"))
     }
 
     @Test("Request with custom options round-trips")
@@ -156,8 +171,7 @@ struct LLMGenerateRequestTests {
             thinking: .auto
         )
         let request = LLMGenerateRequest(
-            prompt: "Test prompt",
-            system: "Test system",
+            messages: [.user("Test prompt")],
             options: options
         )
         let decoded = try roundTrip(request)
@@ -167,22 +181,23 @@ struct LLMGenerateRequestTests {
         #expect(decoded.options.stopSequences == ["###", "END"])
     }
 
-    @Test("Request with empty prompt round-trips")
-    func emptyPromptRoundTrip() throws {
+    @Test("Request with empty messages round-trips")
+    func emptyMessagesRoundTrip() throws {
         let request = LLMGenerateRequest(
-            prompt: "",
-            system: nil,
+            messages: [],
             options: .default
         )
         let decoded = try roundTrip(request)
-        #expect(decoded.prompt == "")
+        #expect(decoded.messages.isEmpty)
     }
 
     @Test("Request with Unicode content round-trips")
     func unicodeRoundTrip() throws {
         let request = LLMGenerateRequest(
-            prompt: "Zusammenfassung bitte. \u{1F4DD}",
-            system: "Du bist ein Assistent.",
+            messages: [
+                .system("Du bist ein Assistent."),
+                .user("Zusammenfassung bitte. \u{1F4DD}")
+            ],
             options: .default
         )
         let decoded = try roundTrip(request)
@@ -190,15 +205,57 @@ struct LLMGenerateRequestTests {
     }
 }
 
+// MARK: - LLMMessage Codable
+
+@Suite("LLMMessage Codable")
+struct LLMMessageCodableTests {
+    @Test("System message round-trips")
+    func systemRoundTrip() throws {
+        let msg = LLMMessage.system("You are helpful.")
+        let decoded = try roundTrip(msg)
+        #expect(decoded == msg)
+        #expect(decoded.role == .system)
+        #expect(decoded.content == "You are helpful.")
+    }
+
+    @Test("User message round-trips")
+    func userRoundTrip() throws {
+        let msg = LLMMessage.user("Hello world")
+        let decoded = try roundTrip(msg)
+        #expect(decoded == msg)
+        #expect(decoded.role == .user)
+    }
+
+    @Test("Assistant message round-trips")
+    func assistantRoundTrip() throws {
+        let msg = LLMMessage.assistant("The answer is 42.")
+        let decoded = try roundTrip(msg)
+        #expect(decoded == msg)
+        #expect(decoded.role == .assistant)
+    }
+
+    @Test("Message list round-trips")
+    func messageListRoundTrip() throws {
+        let messages: [LLMMessage] = [
+            .system("System"),
+            .user("User turn 1"),
+            .assistant("Response 1"),
+            .user("User turn 2")
+        ]
+        let data = try JSONEncoder().encode(messages)
+        let decoded = try JSONDecoder().decode([LLMMessage].self, from: data)
+        #expect(decoded == messages)
+    }
+}
+
 // MARK: - Negative / Boundary Decode Tests
 
 @Suite("DTO decode failures")
 struct DTODecodeFailureTests {
-    @Test("LLMGenerateRequest missing required 'prompt' field")
-    func missingPromptField() throws {
-        // JSON has options but no prompt — decoder should throw.
+    @Test("LLMGenerateRequest missing required 'messages' field")
+    func missingMessagesField() throws {
         let json = Data("""
-        {"system": "hello", "options": {}}
+        {"options": {}}
         """.utf8)
         #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(LLMGenerateRequest.self, from: json)
@@ -227,7 +284,7 @@ struct DTODecodeFailureTests {
     func wrongFieldType() throws {
         // maxTokens should be Int, not String.
         let json = Data("""
-        {"prompt": "test", "options": {"maxTokens": "not-a-number"}}
+        {"messages": [], "options": {"maxTokens": "not-a-number"}}
         """.utf8)
         #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(LLMGenerateRequest.self, from: json)

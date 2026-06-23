@@ -63,14 +63,13 @@ public actor LLMConnection {
 
     // MARK: - Token counting
 
-    /// Count the tokens for a prompt using the model's tokenizer.
+    /// Count the tokens for a message list using the model's tokenizer.
     ///
     /// Uses the same chat template and tokenization as `generate`, but returns
     /// only the token count. Lightweight: no context/KV-cache work, no
     /// sampling. Serialized behind the same queue as generation requests.
     public func countTokens(
-        system: String?,
-        user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool = true,
         thinking: ThinkingMode = .off
     ) async throws -> Int {
@@ -83,7 +82,7 @@ public actor LLMConnection {
 
         let start = ContinuousClock.now
         let count = try await backend.countTokens(
-            system: system, user: user,
+            messages: messages,
             applyChatTemplate: applyChatTemplate, thinking: thinking
         )
         let elapsed = ContinuousClock.now - start
@@ -115,14 +114,13 @@ public actor LLMConnection {
 
     // MARK: - Generation (buffered)
 
-    /// Run a single-turn generation and return the full result.
+    /// Run a generation and return the full result.
     ///
     /// Requests are serialized: concurrent calls queue in submission order behind
     /// the internal semaphore. Throws `LLMServiceError.connectionClosed` if the
     /// connection is closed or failed.
     public func generate(
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) async throws -> GenerationResult {
         try guardReady()
@@ -139,7 +137,7 @@ public actor LLMConnection {
 
         do {
             let result = try await backend.generate(
-                id: id, prompt: prompt, system: system, options: options
+                id: id, messages: messages, options: options
             )
             restoreReadyIfOpen()
             return result
@@ -173,8 +171,7 @@ public actor LLMConnection {
     /// Throws `LLMServiceError.connectionClosed` (via the stream) if the connection
     /// is closed or failed.
     public func generateStreaming( // swiftlint:disable:this cyclomatic_complexity function_body_length
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         // Capture state check before returning the stream. If already closed/failed,
@@ -214,7 +211,7 @@ public actor LLMConnection {
                 await self.setState(.generating)
 
                 let backendStream = backend.generateStreaming(
-                    id: id, prompt: prompt, system: system, options: options
+                    id: id, messages: messages, options: options
                 )
                 holder.iterator = backendStream.makeAsyncIterator()
             }

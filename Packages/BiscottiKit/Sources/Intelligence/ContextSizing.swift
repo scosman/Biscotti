@@ -3,10 +3,10 @@ import os
 
 /// Caller-side policy for right-sizing the LLM context window.
 ///
-/// Instead of allocating the full 32k KV cache for every request, the caller
-/// obtains the real input token count (via the XPC tokenizer) and adds an
-/// output reservation to produce a tighter context size. This keeps memory
-/// proportional to actual prompt length.
+/// Instead of allocating the full model KV cache for every request, the caller
+/// obtains the real input token count (via the XPC tokenizer) and adds a
+/// per-task output reservation to produce a tighter context size. This keeps
+/// memory proportional to actual prompt length.
 ///
 /// The sizing math is pure and testable; the async act of counting tokens
 /// lives in the session/runner layer.
@@ -16,78 +16,84 @@ enum ContextSizing {
         category: "ContextSizing"
     )
 
-    /// Base tokens reserved for model output. Chosen to accommodate a full
-    /// summary (~2k tokens) or speaker-ID output (~512 tokens) with headroom.
-    static let outputReservationBase = 3072
+    // MARK: - Per-task output reserves
 
-    /// Fraction of input tokens added to the base reservation so that longer
-    /// meetings get proportionally more output headroom.
+    /// Always-on conversation buffer: guarantees headroom even on
+    /// speakers-only or title-only runs (no zero-slack windows).
+    static let conversationBuffer = 1024
+
+    /// Speaker output reserve — equals `speakerOptions.maxTokens` (512).
+    static let speakerOutputReserve = 512
+
+    /// Title output reserve — intentionally LARGER than
+    /// `titleOptions.maxTokens` (32) for safety; defined as an explicit
+    /// constant rather than derived from titleOptions.
+    static let titleOutputReserve = 128
+
+    /// Summary output base — equals `summaryOptions.maxTokens` (2048).
+    static let summaryOutputBase = 2048
+
+    /// Fraction of input tokens added to the summary reserve so that longer
+    /// meetings get proportionally more summary headroom.
     static let outputReservationInputFraction = 0.15
 
-    /// Maximum context size — matches the prior static default so this change
-    /// never allocates MORE than before.
-    static let maxContextSize = 32768
+    /// Maximum context size — intentionally raised so the multi-turn
+    /// analysis conversation (inherently longer than a single call) isn't
+    /// clipped. The Gemma model supports well beyond 48k context.
+    static let maxContextSize = 48 * 1024
 
-    /// Dynamic output reservation: base + a fraction of input token count,
-    /// so longer meetings get proportionally more output headroom.
-    static func outputReservation(forInputTokens inputTokens: Int) -> Int {
-        outputReservationBase + Int((outputReservationInputFraction * Double(inputTokens)).rounded())
+    /// Which analysis tasks are active in the current run.
+    struct AnalysisTasks {
+        let doSpeakers: Bool
+        let doSummary: Bool
+        let doTitle: Bool
     }
 
-    /// Compute the context size for a generation, given the real input token
-    /// count from the model's tokenizer.
+    /// Conversation-aware context sizing with per-task output reservation.
     ///
-    /// Returns `inputTokens + outputReservation(forInputTokens:)`, capped at
-    /// `maxContextSize`.
-    static func contextSize(forInputTokens inputTokens: Int) -> Int {
-        let clamped = max(inputTokens, 1)
-        let reservation = outputReservation(forInputTokens: clamped)
-        return min(clamped + reservation, maxContextSize)
-    }
-
-    /// Count tokens for each prompt pair using the session's tokenizer and
-    /// return the context size needed for the largest pair.
+    /// Each active task reserves its own output budget, summed with the
+    /// always-on `conversationBuffer`. This avoids the positional
+    /// mis-assignment where a generous trailing reservation was consumed by
+    /// a tiny final turn (e.g. title) while the summary was starved.
     ///
-    /// Used when a session serves multiple sequential tasks (e.g., speaker-ID
-    /// then summary) that share a single context allocation.
-    static func contextSize(
-        forPairs pairs: [(system: String, user: String)],
+    /// The reserve formula reconciles with the old single-output reservation:
+    /// when summary is present, `1024 + 2048 + 15% = 3072 + 15%` equals the
+    /// old `outputReservation`. Speakers/title add on top; the 1k floor is
+    /// now guaranteed regardless.
+    ///
+    /// - Parameters:
+    ///   - firstUser: The first user turn content (contains the transcript).
+    ///   - system: The system prompt.
+    ///   - followUpUsers: Follow-up user turns (summary and/or title
+    ///     instructions); both tiny but counted for correctness.
+    ///   - tasks: Which analysis tasks are active in this run.
+    ///   - session: The LLM session for token counting.
+    static func contextSizeForAnalysis(
+        firstUser: String,
+        system: String,
+        followUpUsers: [String],
+        tasks: AnalysisTasks,
         session: any LLMSession
     ) async throws -> Int {
-        precondition(!pairs.isEmpty, "pairs must not be empty")
-        var maxTokens = 1
-        for pair in pairs {
-            let count = try await session.countTokens(
-                system: pair.system, user: pair.user
-            )
-            maxTokens = max(maxTokens, count)
+        var msgs: [LLMMessage] = [.system(system), .user(firstUser)]
+        for followUp in followUpUsers {
+            msgs.append(.user(followUp))
         }
+        let base = try await session.countTokens(messages: msgs)
 
-        let reservation = outputReservation(forInputTokens: maxTokens)
-        let size = min(maxTokens + reservation, maxContextSize)
-
-        log.info(
-            "Context sized (multi-task): maxInputTokens=\(maxTokens), reservation=\(reservation), contextSize=\(size)"
-        )
-
-        return size
-    }
-
-    /// Count tokens for a single prompt pair and return the context size.
-    static func contextSize(
-        forSystem system: String,
-        user: String,
-        session: any LLMSession
-    ) async throws -> Int {
-        let count = try await session.countTokens(
-            system: system, user: user
-        )
-        let clamped = max(count, 1)
-        let reservation = outputReservation(forInputTokens: clamped)
-        let size = min(clamped + reservation, maxContextSize)
+        // Per-task output reservation: always-on buffer + each active task's
+        // own reserve. The summary term depends on `base` for its 15% boost.
+        let summaryReserve = tasks.doSummary
+            ? summaryOutputBase + Int((outputReservationInputFraction * Double(base)).rounded())
+            : 0
+        let reserve = conversationBuffer
+            + (tasks.doSpeakers ? speakerOutputReserve : 0)
+            + (tasks.doTitle ? titleOutputReserve : 0)
+            + summaryReserve
+        let size = min(base + reserve, maxContextSize)
 
         log.info(
-            "Context sized: inputTokens=\(count), reservation=\(reservation), contextSize=\(size)"
+            "Context sized (analysis): baseTokens=\(base), reserve=\(reserve), contextSize=\(size)"
         )
 
         return size

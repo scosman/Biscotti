@@ -60,8 +60,8 @@ public final class Intelligence {
     // MARK: - Auto-run orchestration
 
     /// Post-transcription auto-run. Reads settings + model presence; runs
-    /// speaker-ID then summary in ONE LLM session; honors the edited-summary
-    /// guard. No-op if no model, both toggles off, or no transcript.
+    /// the analysis conversation in ONE LLM session; honors the edited-summary
+    /// guard. No-op if no model, toggle off, or no transcript.
     public func runAutoEnhancements(meetingID: UUID) async {
         guard inFlightMeetingID == nil else { return }
         inFlightMeetingID = meetingID
@@ -72,11 +72,11 @@ public final class Intelligence {
         jobs[meetingID] = .preparing
 
         let settings = await settingsProvider()
-        guard models.isDownloaded() else {
+        guard settings.enabled else {
             jobs.removeValue(forKey: meetingID)
             return
         }
-        guard settings.summarize || settings.guessSpeakers else {
+        guard models.isDownloaded() else {
             jobs.removeValue(forKey: meetingID)
             return
         }
@@ -89,9 +89,10 @@ public final class Intelligence {
         }
 
         do {
-            try await runEnhancementSession(
-                meetingID: meetingID, settings: settings,
-                detail: detail, transcript: transcript
+            try await runAnalysisSession(
+                meetingID: meetingID,
+                detail: detail, transcript: transcript,
+                doSummary: !detail.editedSummary
             )
             jobs[meetingID] = .completed
         } catch is CancellationError {
@@ -102,103 +103,13 @@ public final class Intelligence {
         streamingSummary.removeValue(forKey: meetingID)
     }
 
-    /// Executes the LLM session for auto-enhancements. Extracted to keep the
-    /// public entry point under the function_body_length lint threshold.
-    private func runEnhancementSession(
-        meetingID: UUID, settings: AISettings,
-        detail: MeetingDetailData, transcript: TranscriptData
-    ) async throws {
-        let invitees = extractInvitees(from: detail)
-        let doSpeakers = settings.guessSpeakers
-        let doSummary = settings.summarize && !detail.editedSummary
-        let existingNames: [Int: String] = transcript.speakerAssignments
-            .mapValues(\.name)
+    // MARK: - Manual analysis (renamed from generateSummary)
 
-        let promptPairs = buildPromptPairs(
-            doSpeakers: doSpeakers, doSummary: doSummary,
-            transcript: transcript, names: existingNames,
-            invitees: invitees
-        )
-
-        // Nothing to do: both tasks were skipped (e.g. guessSpeakers off +
-        // summary skipped by edited-summary guard). Return early without
-        // loading the model at all.
-        guard !promptPairs.isEmpty else { return }
-
-        // Open session in model-only mode (no context/KV-cache allocated).
-        // Count tokens, then reconfigure to the right-sized context before
-        // generating. This avoids a transient 32k allocation.
-        try await llm.withSession(config: .modelOnly) { session in
-            let contextSize = try await ContextSizing.contextSize(
-                forPairs: promptPairs, session: session
-            )
-            try await session.reconfigure(contextSize: contextSize)
-
-            var nameMap = existingNames
-
-            if doSpeakers {
-                await MainActor.run { self.jobs[meetingID] = .identifyingSpeakers }
-                let resolved = try await SpeakerIdentifier.run(
-                    session, transcript, invitees, store
-                )
-                nameMap = resolved
-            }
-
-            if doSummary {
-                await MainActor.run { self.jobs[meetingID] = .summarizing }
-                let context = Summarizer.Context(
-                    meetingID: meetingID, transcript: transcript,
-                    names: nameMap, store: store
-                ) { partial in
-                    self.streamingSummary[meetingID] = partial
-                }
-                try await Summarizer.run(session, context)
-            }
-        }
-    }
-
-    /// Build prompt pairs for context sizing. Extracted to keep
-    /// `runEnhancementSession` under the function body length lint limit.
-    private func buildPromptPairs(
-        doSpeakers: Bool, doSummary: Bool,
-        transcript: TranscriptData, names: [Int: String],
-        invitees: [(name: String, email: String?)]
-    ) -> [(system: String, user: String)] {
-        // Pre-compute prompt pairs for token counting. We format with
-        // existing names here, but actual generation formats speaker-ID
-        // with `[:]` and summary with the resolved nameMap. The
-        // token-count difference is negligible (names are a tiny
-        // fraction of the transcript).
-        let formattedTranscript = TranscriptFormatter.plain(
-            transcript, names: names
-        )
-
-        var pairs: [(system: String, user: String)] = []
-        if doSpeakers {
-            pairs.append((
-                system: IntelligencePrompts.speakerSystem,
-                user: IntelligencePrompts.speakerUser(
-                    transcript: formattedTranscript, invitees: invitees
-                )
-            ))
-        }
-        if doSummary {
-            pairs.append((
-                system: IntelligencePrompts.summarySystem,
-                user: IntelligencePrompts.summaryUser(
-                    transcript: formattedTranscript
-                )
-            ))
-        }
-        return pairs
-    }
-
-    // MARK: - Manual summary generation
-
-    /// Manual "Generate"/"Regenerate Summary" from the Summary tab -- summary
-    /// only, for the given transcript version. `force` bypasses the edited
-    /// check (caller already confirmed).
-    public func generateSummary(
+    /// Manual "Generate"/"Regenerate Summary" -- runs the full analysis
+    /// (speakers + summary) for the given transcript version. `force`
+    /// bypasses the edited-summary check (caller already confirmed).
+    /// Not gated by `settings.enabled` (manual intent always works).
+    public func runAnalysis(
         meetingID: UUID, transcriptID: UUID, force: Bool
     ) async {
         guard inFlightMeetingID == nil else { return }
@@ -209,9 +120,8 @@ public final class Intelligence {
 
         guard models.isDownloaded() else { return }
 
-        // Set summarizing SYNCHRONOUSLY before any await, so the UI
-        // shows the spinner immediately (not after the DataStore reads).
-        jobs[meetingID] = .summarizing
+        // Set preparing SYNCHRONOUSLY before any await.
+        jobs[meetingID] = .preparing
 
         guard let detail = try? await store.meetingDetail(id: meetingID),
               let transcript = try? await store.transcript(id: transcriptID)
@@ -221,42 +131,14 @@ public final class Intelligence {
         }
 
         // Guard against overwriting user edits unless forced
-        if detail.editedSummary, !force {
-            jobs.removeValue(forKey: meetingID)
-            return
-        }
-
-        // Use existing name map from the transcript
-        let nameMap: [Int: String] = transcript.speakerAssignments
-            .mapValues(\.name)
+        let doSummary = !detail.editedSummary || force
 
         do {
-            let formattedTranscript = TranscriptFormatter.plain(
-                transcript, names: nameMap
+            try await runAnalysisSession(
+                meetingID: meetingID,
+                detail: detail, transcript: transcript,
+                doSummary: doSummary
             )
-
-            // Open in model-only mode (no context/KV-cache), count tokens,
-            // then reconfigure to the right-sized context before generating.
-            try await llm.withSession(config: .modelOnly) { session in
-                let contextSize = try await ContextSizing.contextSize(
-                    forSystem: IntelligencePrompts.summarySystem,
-                    user: IntelligencePrompts.summaryUser(
-                        transcript: formattedTranscript
-                    ),
-                    session: session
-                )
-                try await session.reconfigure(contextSize: contextSize)
-
-                let context = Summarizer.Context(
-                    meetingID: meetingID,
-                    transcript: transcript,
-                    names: nameMap,
-                    store: store
-                ) { partial in
-                    self.streamingSummary[meetingID] = partial
-                }
-                try await Summarizer.run(session, context)
-            }
             jobs[meetingID] = .completed
         } catch is CancellationError {
             jobs.removeValue(forKey: meetingID)
@@ -264,6 +146,121 @@ public final class Intelligence {
             jobs[meetingID] = .failed(message: shortDescription(error))
         }
         streamingSummary.removeValue(forKey: meetingID)
+    }
+
+    // MARK: - Shared Analysis Session
+
+    /// Executes the LLM analysis session. Shared by both auto-run and
+    /// manual paths.
+    private func runAnalysisSession(
+        meetingID: UUID,
+        detail: MeetingDetailData,
+        transcript: TranscriptData,
+        doSummary: Bool
+    ) async throws {
+        let human = await (try? store.humanSetSpeakerMappings(
+            for: transcript.id
+        )) ?? [:]
+        let allIDs = Set(
+            transcript.segments.compactMap(\.speakerID)
+        )
+        let doSpeakers = !allIDs.subtracting(Set(human.keys)).isEmpty
+
+        // Title generation: only when the meeting still has the default
+        // title and the user has not renamed it. Independent of `force`.
+        let doTitle = detail.title == Meeting.defaultTitle
+            && !detail.editedTitle
+
+        // Nothing to do: all tasks skipped
+        guard doSpeakers || doSummary || doTitle else { return }
+
+        let firstUser = buildFirstUserContent(
+            doSpeakers: doSpeakers, doSummary: doSummary,
+            detail: detail, transcript: transcript, human: human
+        )
+        let followUpUsers = contextBudgetFollowUps(
+            doSpeakers: doSpeakers, doSummary: doSummary,
+            doTitle: doTitle
+        )
+
+        try await llm.withSession(config: .modelOnly) { session in
+            let contextSize = try await ContextSizing.contextSizeForAnalysis(
+                firstUser: firstUser,
+                system: IntelligencePrompts.analysisSystem,
+                followUpUsers: followUpUsers,
+                tasks: .init(
+                    doSpeakers: doSpeakers,
+                    doSummary: doSummary,
+                    doTitle: doTitle
+                ),
+                session: session
+            )
+            try await session.reconfigure(contextSize: contextSize)
+
+            let ctx = MeetingAnalyzer.Context(
+                meetingID: meetingID, detail: detail,
+                transcript: transcript, human: human,
+                doSpeakers: doSpeakers, doSummary: doSummary,
+                doTitle: doTitle,
+                store: self.store,
+                onStage: { self.jobs[meetingID] = $0 },
+                onPartialSummary: { self.streamingSummary[meetingID] = $0 }
+            )
+            try await MeetingAnalyzer.run(session, ctx)
+        }
+    }
+
+    /// Returns follow-up user turns for context sizing, based on which
+    /// analysis tasks are active. Output reservation is now handled by
+    /// `ContextSizing.contextSizeForAnalysis` via the per-task booleans.
+    private func contextBudgetFollowUps(
+        doSpeakers: Bool, doSummary: Bool, doTitle: Bool
+    ) -> [String] {
+        var users: [String] = []
+
+        if doSpeakers, doSummary || doTitle {
+            if doSummary {
+                users.append(IntelligencePrompts.summaryFollowUpUser)
+            }
+            if doTitle {
+                users.append(IntelligencePrompts.titleFollowUpUser)
+            }
+        } else if doSummary, doTitle {
+            users.append(IntelligencePrompts.titleFollowUpUser)
+        }
+
+        return users
+    }
+
+    /// Builds the first user turn content for context sizing. Matches what
+    /// `MeetingAnalyzer.run` will build for the actual generation.
+    private func buildFirstUserContent(
+        doSpeakers: Bool,
+        doSummary: Bool,
+        detail: MeetingDetailData,
+        transcript: TranscriptData,
+        human: [Int: PersonData]
+    ) -> String {
+        if doSpeakers {
+            let plain = TranscriptFormatter.plain(transcript, names: [:])
+            return IntelligencePrompts.analysisFirstUser(
+                detail: detail, human: human,
+                transcriptSpeakerLabeled: plain
+            )
+        } else if doSummary {
+            let names = human.mapValues(\.name)
+            let plain = TranscriptFormatter.plain(transcript, names: names)
+            return IntelligencePrompts.summaryOnlyFirstUser(
+                detail: detail, transcriptNamed: plain
+            )
+        } else {
+            // Title-only: no speakers, no summary
+            let names = human.mapValues(\.name)
+            let plain = TranscriptFormatter.plain(transcript, names: names)
+            return IntelligencePrompts.titleOnlyFirstUser(
+                detail: detail, transcriptNamed: plain
+            )
+        }
     }
 
     // MARK: - Model management
@@ -305,26 +302,6 @@ public final class Intelligence {
     }
 
     // MARK: - Private helpers
-
-    private func extractInvitees(
-        from detail: MeetingDetailData
-    ) -> [(name: String, email: String?)] {
-        guard let calendar = detail.calendar else { return [] }
-        var invitees: [(name: String, email: String?)] = []
-
-        // Organizer first
-        if let organizer = calendar.organizer {
-            invitees.append((name: organizer.name, email: organizer.email))
-        }
-
-        // Then attendees, deduped against organizer
-        let organizerID = calendar.organizer?.id
-        for attendee in calendar.attendees where attendee.id != organizerID {
-            invitees.append((name: attendee.name, email: attendee.email))
-        }
-
-        return invitees
-    }
 
     private func shortDescription(_ error: some Error) -> String {
         if let llmError = error as? LLMServiceError {

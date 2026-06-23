@@ -360,7 +360,7 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
 /// A minimal fake LLM session that returns empty responses.
 public struct FakeCoreLLMSession: LLMSession {
     public func countTokens(
-        system _: String, user _: String
+        messages _: [LocalLLM.LLMMessage]
     ) async throws -> Int {
         100
     }
@@ -368,14 +368,14 @@ public struct FakeCoreLLMSession: LLMSession {
     public func reconfigure(contextSize _: Int) async throws {}
 
     public func generate(
-        system _: String, user _: String,
+        messages _: [LocalLLM.LLMMessage],
         options _: LocalLLM.GenerationOptions
     ) async throws -> String {
         ""
     }
 
     public func generateStreaming(
-        system _: String, user _: String,
+        messages _: [LocalLLM.LLMMessage],
         options _: LocalLLM.GenerationOptions
     ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
         AsyncThrowingStream { $0.finish() }
@@ -508,7 +508,7 @@ public func makeCoreFixture(
         store: store,
         llm: fakeLLMRunner,
         models: fakeModelProvider,
-        settings: { AISettings(summarize: true, guessSpeakers: true) }
+        settings: { AISettings(enabled: true) }
     )
 
     let core = AppCore(

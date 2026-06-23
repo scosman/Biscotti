@@ -73,78 +73,98 @@
   "llm_action_items_quality" : {
     "status" : "pass",
     "stepID" : "llm_action_items_quality",
-    "timestamp" : "2026-06-22T15:53:04Z"
+    "timestamp" : "2026-06-22T23:45:01Z"
   },
   "llm_action_items_run" : {
     "status" : "pass",
     "stepID" : "llm_action_items_run",
-    "timestamp" : "2026-06-22T15:52:58Z"
+    "timestamp" : "2026-06-22T23:44:58Z"
   },
   "llm_ai_tests_passed" : {
     "status" : "pass",
     "stepID" : "llm_ai_tests_passed",
-    "timestamp" : "2026-06-22T15:51:13Z"
+    "timestamp" : "2026-06-22T23:43:48Z"
+  },
+  "llm_chat_system" : {
+    "status" : "pass",
+    "stepID" : "llm_chat_system",
+    "timestamp" : "2026-06-22T23:44:20Z"
+  },
+  "llm_chat_system_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_chat_system_quality",
+    "timestamp" : "2026-06-22T23:44:26Z"
+  },
+  "llm_kv_reuse" : {
+    "status" : "pass",
+    "stepID" : "llm_kv_reuse",
+    "timestamp" : "2026-06-22T23:46:52Z"
+  },
+  "llm_kv_reuse_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_kv_reuse_quality",
+    "timestamp" : "2026-06-22T23:47:12Z"
   },
   "llm_model_disk" : {
     "status" : "pass",
     "stepID" : "llm_model_disk",
-    "timestamp" : "2026-06-22T15:43:25Z"
+    "timestamp" : "2026-06-22T23:43:37Z"
   },
   "llm_model_download" : {
     "status" : "pass",
     "stepID" : "llm_model_download",
-    "timestamp" : "2026-06-22T15:43:22Z"
+    "timestamp" : "2026-06-22T23:43:35Z"
   },
   "llm_reclamation" : {
     "note" : "No BiscottiLLM service process found (reclaimed)",
     "status" : "pass",
     "stepID" : "llm_reclamation",
-    "timestamp" : "2026-06-22T15:56:51Z"
+    "timestamp" : "2026-06-22T23:47:16Z"
   },
   "llm_speaker_names_quality" : {
     "status" : "pass",
     "stepID" : "llm_speaker_names_quality",
-    "timestamp" : "2026-06-22T15:54:38Z"
+    "timestamp" : "2026-06-22T23:45:19Z"
   },
   "llm_speaker_names_run" : {
     "status" : "pass",
     "stepID" : "llm_speaker_names_run",
-    "timestamp" : "2026-06-22T15:53:20Z"
+    "timestamp" : "2026-06-22T23:45:14Z"
   },
   "llm_streaming_channels" : {
     "status" : "pass",
     "stepID" : "llm_streaming_channels",
-    "timestamp" : "2026-06-22T15:56:47Z"
+    "timestamp" : "2026-06-22T23:46:33Z"
   },
   "llm_streaming_run" : {
     "status" : "pass",
     "stepID" : "llm_streaming_run",
-    "timestamp" : "2026-06-22T15:56:31Z"
+    "timestamp" : "2026-06-22T23:46:35Z"
   },
   "llm_summarize_quality" : {
     "status" : "pass",
     "stepID" : "llm_summarize_quality",
-    "timestamp" : "2026-06-22T15:52:47Z"
+    "timestamp" : "2026-06-22T23:44:46Z"
   },
   "llm_summarize_run" : {
     "status" : "pass",
     "stepID" : "llm_summarize_run",
-    "timestamp" : "2026-06-22T15:52:43Z"
+    "timestamp" : "2026-06-22T23:44:40Z"
   },
   "llm_thinking_mode" : {
     "status" : "pass",
     "stepID" : "llm_thinking_mode",
-    "timestamp" : "2026-06-22T15:56:03Z"
+    "timestamp" : "2026-06-22T23:46:09Z"
   },
   "llm_thinking_run" : {
     "status" : "pass",
     "stepID" : "llm_thinking_run",
-    "timestamp" : "2026-06-22T15:55:29Z"
+    "timestamp" : "2026-06-22T23:46:06Z"
   },
   "llm_xpc_inference" : {
     "status" : "pass",
     "stepID" : "llm_xpc_inference",
-    "timestamp" : "2026-06-22T15:51:28Z"
+    "timestamp" : "2026-06-22T23:43:58Z"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

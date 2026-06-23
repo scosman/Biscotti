@@ -11,9 +11,9 @@ protocol ServiceBackend: Sendable {
     /// Load the model / connect to the service and await readiness.
     func start() async throws
 
-    /// Count tokens for a prompt using the model's tokenizer.
+    /// Count tokens for a message list using the model's tokenizer.
     func countTokens(
-        system: String?, user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool, thinking: ThinkingMode
     ) async throws -> Int
 
@@ -22,13 +22,13 @@ protocol ServiceBackend: Sendable {
 
     /// Run a buffered generation.
     func generate(
-        id: UInt64, prompt: String, system: String?,
+        id: UInt64, messages: [LLMMessage],
         options: GenerationOptions
     ) async throws -> GenerationResult
 
     /// Run a streaming generation.
     func generateStreaming(
-        id: UInt64, prompt: String, system: String?,
+        id: UInt64, messages: [LLMMessage],
         options: GenerationOptions
     ) -> AsyncThrowingStream<StreamEvent, Error>
 

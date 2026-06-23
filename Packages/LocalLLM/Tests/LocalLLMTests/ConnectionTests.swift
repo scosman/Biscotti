@@ -42,7 +42,7 @@ struct ConnectionLifecycleTests {
         await conn.close()
 
         do {
-            _ = try await conn.generate(prompt: "test")
+            _ = try await conn.generate(messages: [.user("test")])
             Issue.record("Expected connectionClosed error")
         } catch let error as LLMServiceError {
             #expect(error == .connectionClosed)
@@ -55,7 +55,7 @@ struct ConnectionLifecycleTests {
         let conn = try await LLMService.openConnection(engine: engine)
         await conn.close()
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         do {
             for try await _ in stream {
                 Issue.record("Should not yield any events")
@@ -77,7 +77,7 @@ struct BufferedGenerationTests {
         let engine = MockEngine(tokens: ["test", " output"], result: expectedResult)
         let conn = try await LLMService.openConnection(engine: engine)
 
-        let result = try await conn.generate(prompt: "test prompt")
+        let result = try await conn.generate(messages: [.user("test prompt")])
         #expect(result == expectedResult)
         #expect(engine.generateCallCount == 1)
 
@@ -89,8 +89,8 @@ struct BufferedGenerationTests {
         let engine = MockEngine()
         let conn = try await LLMService.openConnection(engine: engine)
 
-        let result1 = try await conn.generate(prompt: "first")
-        let result2 = try await conn.generate(prompt: "second")
+        let result1 = try await conn.generate(messages: [.user("first")])
+        let result2 = try await conn.generate(messages: [.user("second")])
         #expect(result1 == result2) // Same mock result
         #expect(engine.generateCallCount == 2)
 
@@ -111,7 +111,7 @@ struct BufferedGenerationTests {
         let startedStream = engine.makeGenerationStartedStream()
 
         let task = Task {
-            try await conn.generate(prompt: "test")
+            try await conn.generate(messages: [.user("test")])
         }
 
         // Wait for the engine to enter generation
@@ -144,7 +144,7 @@ struct StreamingGenerationTests {
         var tokens: [String] = []
         var doneResult: GenerationResult?
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         for try await event in stream {
             switch event {
             case let .token(piece):
@@ -173,7 +173,7 @@ struct StreamingGenerationTests {
         var contentTokens: [String] = []
         var reasoningTokens: [String] = []
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         for try await event in stream {
             switch event {
             case let .token(piece):
@@ -196,7 +196,7 @@ struct StreamingGenerationTests {
         let engine = MockEngine()
         let conn = try await LLMService.openConnection(engine: engine)
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         for try await _ in stream {}
 
         let state = await conn.state
@@ -226,7 +226,7 @@ struct SerialOrderingTests {
         let tracker = OrderTracker()
 
         async let first: Void = {
-            _ = try await conn.generate(prompt: "first")
+            _ = try await conn.generate(messages: [.user("first")])
             await tracker.record(1)
         }()
 
@@ -234,7 +234,7 @@ struct SerialOrderingTests {
         await startedIter.next()
 
         async let second: Void = {
-            _ = try await conn.generate(prompt: "second")
+            _ = try await conn.generate(messages: [.user("second")])
             await tracker.record(2)
         }()
 
@@ -265,7 +265,7 @@ struct FailedStateTests {
         #expect(stateBefore == .ready)
 
         do {
-            _ = try await conn.generate(prompt: "test")
+            _ = try await conn.generate(messages: [.user("test")])
             Issue.record("Expected serviceInterrupted error")
         } catch let error as LLMServiceError {
             #expect(error == .serviceInterrupted)
@@ -277,7 +277,7 @@ struct FailedStateTests {
         // Subsequent generate should throw the failed error without re-entering the backend
         let callsBefore = backend.generateCallCount
         do {
-            _ = try await conn.generate(prompt: "another")
+            _ = try await conn.generate(messages: [.user("another")])
             Issue.record("Expected failed error on subsequent call")
         } catch let error as LLMServiceError {
             #expect(error == .serviceInterrupted)
@@ -296,7 +296,7 @@ struct FailedStateTests {
         try await conn.start()
 
         do {
-            _ = try await conn.generate(prompt: "test")
+            _ = try await conn.generate(messages: [.user("test")])
             Issue.record("Expected protocolError")
         } catch let error as LLMServiceError {
             #expect(error == .protocolError("bad frame"))
@@ -317,7 +317,7 @@ struct FailedStateTests {
         try await conn.start()
 
         do {
-            _ = try await conn.generate(prompt: "test")
+            _ = try await conn.generate(messages: [.user("test")])
             Issue.record("Expected contextOverflow error")
         } catch is LocalLLMError {
             // Expected
@@ -337,7 +337,7 @@ struct FailedStateTests {
         let conn = LLMConnection(backend: backend)
         try await conn.start()
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         do {
             for try await _ in stream {
                 Issue.record("Should not yield events")
@@ -378,7 +378,7 @@ private final class FailingBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func countTokens(
-        system _: String?, user _: String,
+        messages _: [LLMMessage],
         applyChatTemplate _: Bool, thinking _: ThinkingMode
     ) async throws -> Int {
         throw error
@@ -389,7 +389,7 @@ private final class FailingBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func generate(
-        id _: UInt64, prompt _: String, system _: String?,
+        id _: UInt64, messages _: [LLMMessage],
         options _: GenerationOptions
     ) async throws -> GenerationResult {
         lock.withLock { _generateCallCount += 1 }
@@ -397,7 +397,7 @@ private final class FailingBackend: ServiceBackend, @unchecked Sendable {
     }
 
     func generateStreaming(
-        id _: UInt64, prompt _: String, system _: String?,
+        id _: UInt64, messages _: [LLMMessage],
         options _: GenerationOptions
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         lock.withLock { _generateCallCount += 1 }
@@ -431,7 +431,7 @@ struct WithConnectionTests {
 
         let result = try await LLMService.withConnection(engine: engine) { conn in
             await capturedConnection.set(conn)
-            return try await conn.generate(prompt: "test")
+            return try await conn.generate(messages: [.user("test")])
         }
 
         #expect(result.text == "Hello world")
@@ -490,7 +490,7 @@ struct WithConnectionTests {
             try await LLMService.withConnection(engine: engine) { conn in
                 await capturedConnection.set(conn)
                 // Start a long generation that will be interrupted by cancellation
-                _ = try await conn.generate(prompt: "long")
+                _ = try await conn.generate(messages: [.user("long")])
             }
         }
 
@@ -545,7 +545,7 @@ struct CancellationTests {
 
         // Start a long generation and cancel it
         let task = Task {
-            _ = try await conn.generate(prompt: "long")
+            _ = try await conn.generate(messages: [.user("long")])
         }
 
         // Wait for the engine to actually begin generation, then cancel.
@@ -566,7 +566,7 @@ struct CancellationTests {
         engine.result = MockEngine.defaultResult(text: "ok")
         engine.tokenDelay = nil
 
-        let result = try await conn.generate(prompt: "next")
+        let result = try await conn.generate(messages: [.user("next")])
         #expect(result.text == "ok")
 
         await conn.close()
@@ -585,7 +585,7 @@ struct ErrorHandlingTests {
         let conn = try await LLMService.openConnection(engine: engine)
 
         do {
-            _ = try await conn.generate(prompt: "test")
+            _ = try await conn.generate(messages: [.user("test")])
             Issue.record("Expected error")
         } catch let error as LocalLLMError {
             #expect(error == .contextOverflow(promptTokens: 5000, contextSize: 4096))
@@ -593,7 +593,7 @@ struct ErrorHandlingTests {
 
         // Connection should still be usable after a per-request error
         engine.errorToThrow = nil
-        let result = try await conn.generate(prompt: "recovery")
+        let result = try await conn.generate(messages: [.user("recovery")])
         #expect(result.text == "Hello world")
 
         await conn.close()
@@ -606,7 +606,7 @@ struct ErrorHandlingTests {
         )
         let conn = try await LLMService.openConnection(engine: engine)
 
-        let stream = await conn.generateStreaming(prompt: "test")
+        let stream = await conn.generateStreaming(messages: [.user("test")])
         do {
             for try await _ in stream {
                 Issue.record("Should not yield events on error")
@@ -618,7 +618,7 @@ struct ErrorHandlingTests {
 
         // Connection should still be usable
         engine.errorToThrow = nil
-        let result = try await conn.generate(prompt: "recovery")
+        let result = try await conn.generate(messages: [.user("recovery")])
         #expect(result.text == "Hello world")
 
         await conn.close()

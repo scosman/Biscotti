@@ -107,8 +107,7 @@ public extension AppCore {
             settings: { [store] in
                 let settings = try? await store.settings()
                 return AISettings(
-                    summarize: settings?.summarizeTranscripts ?? true,
-                    guessSpeakers: settings?.guessSpeakerNames ?? true
+                    enabled: settings?.aiAnalysisEnabled ?? true
                 )
             }
         )

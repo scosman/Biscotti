@@ -55,9 +55,11 @@ private let experimentalKVCacheQ8 = false
 
 /// A single-model LLM engine backed by llama.cpp.
 ///
-/// Loads a GGUF model once and serves many independent single-turn generations.
-/// Each `generate` call uses a fresh KV cache (no state carry-over between calls).
-/// Thread-safe via Swift actor isolation.
+/// Loads a GGUF model once and serves many sequential generations. Consecutive
+/// calls that extend the previous prompt (multi-turn conversations) automatically
+/// reuse the KV-cache prefix -- only the divergent suffix is decoded. Errors and
+/// cancellations clear the cache so the next call starts cold (correctness over
+/// efficiency). Thread-safe via Swift actor isolation.
 ///
 /// Two initialization modes:
 /// - **Full** (`init(modelPath:config:)`): loads model + creates context. Ready
@@ -75,6 +77,11 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     private var config: EngineConfig
     private var loadDuration: TimeInterval?
     private var isFirstGenerate = true
+    /// The exact tokens currently resident in the KV cache (seq 0).
+    /// Used for prefix-reuse: the next generation diffs its freshly-tokenized
+    /// prompt against this array and only decodes the divergent suffix.
+    /// Reset to `[]` on context (re)creation, unload, or any generation error/cancel.
+    private var cachedTokens: [llama_token] = []
     private static let log = Logger(
         subsystem: "net.scosman.biscotti", category: "LLMEngine"
     )
@@ -154,6 +161,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             context = nil
         }
         context = try Self.makeContext(model: mdl, config: newConfig)
+        cachedTokens = [] // New context = fresh KV cache
         // Preserve nGpuLayers from the original config (model loading
         // parameter, not context parameter). All other fields come from
         // newConfig, which the caller is expected to have populated from
@@ -209,7 +217,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
 
     // MARK: - Token counting
 
-    /// Count the tokens that the model's tokenizer produces for a prompt.
+    /// Count the tokens that the model's tokenizer produces for a message list.
     ///
     /// Applies the same chat template and tokenization pipeline as `generate`,
     /// but returns only the token count -- no context, sampling, or KV-cache
@@ -217,16 +225,14 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     /// context.
     ///
     /// - Parameters:
-    ///   - system: Optional system instruction.
-    ///   - user: The user's message.
+    ///   - messages: The conversation messages.
     ///   - applyChatTemplate: Whether to render the chat template (default true).
     ///   - thinking: Thinking mode for template rendering (default .off).
     /// - Returns: The number of tokens in the rendered prompt.
     /// - Throws: `LocalLLMError.tokenizationFailed` or `.generationFailed` if
     ///   the model is not loaded.
     public func countTokens(
-        system: String?,
-        user: String,
+        messages: [LLMMessage],
         applyChatTemplate: Bool = true,
         thinking: ThinkingMode = .off
     ) throws -> Int {
@@ -238,37 +244,36 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         if applyChatTemplate {
             let template = GemmaChatTemplate(thinkingEnabled: thinking == .auto)
             promptString = template.render(
-                system: system, user: user, addGenerationPrompt: true
+                messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = user
+            // Raw mode: concatenate all message content
+            promptString = messages.map(\.content).joined()
         }
 
         let tokens = try tokenize(text: promptString, vocab: vocab)
         return tokens.count
     }
 
-    /// Run a single-turn generation (non-streaming).
+    /// Run a generation (non-streaming).
     ///
     /// Internally buffers over the same decode loop as `generateStreaming`, so both paths
     /// produce identical `GenerationResult`s.
     ///
     /// - Parameters:
-    ///   - prompt: The user's message.
-    ///   - system: Optional system instruction.
+    ///   - messages: The conversation messages.
     ///   - options: Generation parameters (sampling, limits, thinking mode).
     /// - Returns: The model's response with timing stats.
     /// - Throws: `LocalLLMError` on failure.
     public func generate(
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) async throws -> GenerationResult {
         // Buffered: ignore per-token callbacks, just return the final result.
-        try await runGeneration(prompt: prompt, system: system, options: options, onToken: nil)
+        try await runGeneration(messages: messages, options: options, onToken: nil)
     }
 
-    /// Run a single-turn generation with streaming.
+    /// Run a generation with streaming.
     ///
     /// Returns an `AsyncThrowingStream` that yields `.token(String)` for final content,
     /// `.reasoningToken(String)` for thinking/reasoning content (ThinkingMode.auto only),
@@ -280,13 +285,11 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     /// (reasoning is a routing of the same token stream, not a separate count).
     ///
     /// - Parameters:
-    ///   - prompt: The user's message.
-    ///   - system: Optional system instruction.
+    ///   - messages: The conversation messages.
     ///   - options: Generation parameters (sampling, limits, thinking mode).
     /// - Returns: A stream of `StreamEvent`s.
     public func generateStreaming(
-        prompt: String,
-        system: String? = nil,
+        messages: [LLMMessage],
         options: GenerationOptions = .default
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -309,7 +312,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
                     )
 
                     let result = try await runGeneration(
-                        prompt: prompt, system: system, options: options
+                        messages: messages, options: options
                     ) { piece in
                         let classified = splitterBox.feed(piece)
                         for item in classified {
@@ -352,8 +355,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     ///
     /// - Parameter onToken: Called with each decoded token piece. `nil` for buffered mode.
     private func runGeneration( // swiftlint:disable:this cyclomatic_complexity function_body_length
-        prompt: String,
-        system: String?,
+        messages: [LLMMessage],
         options: GenerationOptions,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> GenerationResult {
@@ -369,29 +371,45 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
 
         let totalStart = ContinuousClock.now
 
-        // Clear KV cache for a fresh generation
         let memory = llama_get_memory(ctx)
-        if let memory {
-            llama_memory_clear(memory, true)
-        }
 
         // 1. Build prompt string
         let promptString: String
         if options.applyChatTemplate {
             let template = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
             promptString = template.render(
-                system: system, user: prompt, addGenerationPrompt: true
+                messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = prompt
+            promptString = messages.map(\.content).joined()
         }
 
         // 2. Tokenize
-        let tokens = try tokenize(text: promptString, vocab: vocab)
-        let promptTokenCount = tokens.count
+        let newTokens = try tokenize(text: promptString, vocab: vocab)
+        let promptTokenCount = newTokens.count
 
-        // Check context overflow (need at least 1 token for generation)
+        // 3. KV-cache prefix reuse: find how many leading tokens match what's already in KV
+        var prefixLen = Self.commonPrefixLength(cachedTokens, newTokens)
+
+        // Must leave at least 1 token to evaluate (need fresh logits to sample)
+        if prefixLen == newTokens.count { prefixLen = max(newTokens.count - 1, 0) }
+
+        // Drop the divergent KV tail (no-op when cache is empty or prefixLen == cachedTokens.count)
+        if prefixLen < cachedTokens.count, let memory {
+            llama_memory_seq_rm(memory, 0, Int32(prefixLen), -1)
+        } else if cachedTokens.isEmpty, let memory {
+            // Cold start: defensive clear in case KV has stale data from a path that
+            // failed to reset (should not happen, but costs nothing and prevents drift).
+            llama_memory_clear(memory, true)
+        }
+
+        let cachedCount = prefixLen
+
+        // Context-overflow guard uses the FULL prompt (whole conversation must fit in KV)
         if promptTokenCount + 1 > config.contextSize {
+            // Clear KV and reset reuse state on overflow
+            if let memory { llama_memory_clear(memory, true) }
+            cachedTokens = []
             throw LocalLLMError.contextOverflow(
                 promptTokens: promptTokenCount, contextSize: config.contextSize
             )
@@ -401,24 +419,34 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             promptTokenCount: promptTokenCount, contextSize: config.contextSize
         )
 
-        // 3. Prompt eval (prefill)
+        // 4. Prefill ONLY the suffix; positions continue from prefixLen
+        let suffix = Array(newTokens[prefixLen...])
         let evalStart = ContinuousClock.now
-        try promptEval(tokens: tokens, ctx: ctx)
+        do {
+            try promptEval(tokens: suffix, ctx: ctx)
+        } catch {
+            // KV cache is in an indeterminate state after a partial prefill failure
+            if let memory { llama_memory_clear(memory, true) }
+            cachedTokens = []
+            throw error
+        }
         let evalEnd = ContinuousClock.now
         let prefillSeconds = Self.durationSeconds(from: evalStart, to: evalEnd)
+        let freshCount = suffix.count
         let prefillTPS = prefillSeconds > 0
-            ? Double(promptTokenCount) / prefillSeconds : 0
+            ? Double(freshCount) / prefillSeconds : 0
         Self.log.info(
-            "Prefill complete: \(Self.formatMs(prefillSeconds)) ms, \(promptTokenCount) tokens (\(String(format: "%.1f", prefillTPS)) t/s)"
+            "Prefill complete: \(Self.formatMs(prefillSeconds)) ms, \(freshCount) fresh tokens (\(String(format: "%.1f", prefillTPS)) t/s), \(cachedCount) cached"
         )
 
-        // 4. Build sampler
+        // 5. Build sampler
         let sampler = SamplerBuilder.buildChain(options: options, engineSeed: config.seed)
         defer { llama_sampler_free(sampler) }
 
-        // 5. Decode loop
+        // 6. Decode loop — track generated token IDs for KV-cache reuse state
         let genStart = ContinuousClock.now
         var generatedCount = 0
+        var generatedContentTokens: [llama_token] = []
         var decodedText = ""
         var finishReason: FinishReason = .maxTokens
 
@@ -429,64 +457,84 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         let turnCloseID = tokenIDForPiece("<turn|>", vocab: vocab)
         let endOfTurnID = tokenIDForPiece("<end_of_turn>", vocab: vocab)
 
-        for _ in 0 ..< maxTokens {
-            // Check cancellation
-            if Task.isCancelled {
-                throw LocalLLMError.cancelled
-            }
+        do {
+            for _ in 0 ..< maxTokens {
+                // Check cancellation
+                if Task.isCancelled {
+                    throw LocalLLMError.cancelled
+                }
 
-            // Sample
-            let token = llama_sampler_sample(sampler, ctx, -1)
-            llama_sampler_accept(sampler, token)
+                // Sample
+                let token = llama_sampler_sample(sampler, ctx, -1)
+                llama_sampler_accept(sampler, token)
 
-            // Check stop conditions
-            if token == eosToken {
-                finishReason = .eos
-                break
-            }
-            if let tcID = turnCloseID, token == tcID {
-                finishReason = .endOfTurn
-                break
-            }
-            if let eotID = endOfTurnID, token == eotID {
-                finishReason = .endOfTurn
-                break
-            }
+                // Check stop conditions
+                if token == eosToken {
+                    finishReason = .eos
+                    break
+                }
+                if let tcID = turnCloseID, token == tcID {
+                    finishReason = .endOfTurn
+                    break
+                }
+                if let eotID = endOfTurnID, token == eotID {
+                    finishReason = .endOfTurn
+                    break
+                }
 
-            // Decode token to text
-            let piece = tokenToPiece(token: token, vocab: vocab)
-            decodedText += piece
-            generatedCount += 1
+                // Decode token to text
+                let piece = tokenToPiece(token: token, vocab: vocab)
+                decodedText += piece
+                generatedCount += 1
+                generatedContentTokens.append(token)
 
-            // Check custom stop sequences BEFORE emitting the token to the stream.
-            // This prevents stop-sequence tokens from leaking to the streaming consumer
-            // (the buffered GenerationResult.text already strips them via OutputParser).
-            if let matched = OutputParser.matchesStopSequence(
-                decodedText, stopSequences: options.stopSequences
-            ) {
-                decodedText = String(decodedText.dropLast(matched.count))
-                finishReason = .stopSequence
-                break
-            }
+                // Check custom stop sequences BEFORE emitting the token to the stream.
+                // This prevents stop-sequence tokens from leaking to the streaming consumer
+                // (the buffered GenerationResult.text already strips them via OutputParser).
+                if let matched = OutputParser.matchesStopSequence(
+                    decodedText, stopSequences: options.stopSequences
+                ) {
+                    decodedText = String(decodedText.dropLast(matched.count))
+                    finishReason = .stopSequence
+                    break
+                }
 
-            // Emit token to stream (if streaming). Called synchronously inside the
-            // actor-isolated loop -- consumer back-pressure has no effect (tokens buffer
-            // in the continuation). Bounded by maxTokens; consider a back-pressured
-            // channel if this becomes a bottleneck.
-            onToken?(piece)
+                // Emit token to stream (if streaming). Called synchronously inside the
+                // actor-isolated loop -- consumer back-pressure has no effect (tokens buffer
+                // in the continuation). Bounded by maxTokens; consider a back-pressured
+                // channel if this becomes a bottleneck.
+                onToken?(piece)
 
-            // Feed back for next iteration: decode the single new token.
-            // Uses a single-element array + withUnsafeMutableBufferPointer, matching the
-            // promptEval pattern, for safe pointer lifetime.
-            var tokens1 = [token]
-            let decodeResult = tokens1.withUnsafeMutableBufferPointer { buf in
-                let batch = llama_batch_get_one(buf.baseAddress, 1)
-                return llama_decode(ctx, batch)
+                // Feed back for next iteration: decode the single new token.
+                // Uses a single-element array + withUnsafeMutableBufferPointer, matching the
+                // promptEval pattern, for safe pointer lifetime.
+                var tokens1 = [token]
+                let decodeResult = tokens1.withUnsafeMutableBufferPointer { buf in
+                    let batch = llama_batch_get_one(buf.baseAddress, 1)
+                    return llama_decode(ctx, batch)
+                }
+                if decodeResult != 0 {
+                    throw LocalLLMError.decodeFailed(code: decodeResult)
+                }
             }
-            if decodeResult != 0 {
-                throw LocalLLMError.decodeFailed(code: decodeResult)
-            }
+        } catch {
+            // KV cache is in an indeterminate state after error/cancel during decode
+            if let memory { llama_memory_clear(memory, true) }
+            cachedTokens = []
+            throw error
         }
+
+        // 7. Update KV-cache reuse state: KV now holds the full prompt + generated tokens
+        // that were actually decoded. Stop tokens (EOS/turn-close) break before being
+        // appended to generatedContentTokens, so they are excluded automatically.
+        // Custom stop sequences are different: the token that completes the match IS
+        // appended to generatedContentTokens but its llama_decode (feed-back) is skipped,
+        // so it is NOT in KV -- drop it to keep cachedTokens faithful to what is resident.
+        var tokensInKV = generatedContentTokens
+        if finishReason == .stopSequence, !tokensInKV.isEmpty {
+            tokensInKV.removeLast()
+        }
+        cachedTokens = newTokens + tokensInKV
 
         let genEnd = ContinuousClock.now
         let genSeconds = Self.durationSeconds(from: genStart, to: genEnd)
@@ -496,7 +544,15 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             "Generation complete: \(Self.formatMs(genSeconds)) ms, \(generatedCount) tokens (\(String(format: "%.1f", genTPS)) t/s)"
         )
 
-        // 6. Post-process
+        #if DEBUG
+            Self.log.debug("""
+            KV reuse: cached=\(cachedCount) fresh=\(freshCount) / prompt=\(promptTokenCount) tokens \
+            | prefill(fresh)=\(Self.formatMs(prefillSeconds))ms (\(String(format: "%.1f", prefillTPS)) t/s) \
+            | generate=\(Self.formatMs(genSeconds))ms \(generatedCount) tokens (\(String(format: "%.1f", genTPS)) t/s)
+            """)
+        #endif
+
+        // 8. Post-process
         let parsed = OutputParser.parse(
             rawText: decodedText,
             stopSequences: options.stopSequences,
@@ -508,7 +564,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             finishReason = .stopSequence
         }
 
-        // 7. Assemble result
+        // 9. Assemble result
         let totalEnd = ContinuousClock.now
 
         let capturedLoadDuration: TimeInterval?
@@ -524,6 +580,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             reasoning: parsed.reasoning,
             promptTokenCount: promptTokenCount,
             generatedTokenCount: generatedCount,
+            cachedPromptTokenCount: cachedCount,
             finishReason: finishReason,
             loadDuration: capturedLoadDuration,
             promptEvalDuration: Self.durationSeconds(from: evalStart, to: evalEnd),
@@ -546,6 +603,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             model = nil
         }
         vocab = nil
+        cachedTokens = []
     }
 
     deinit {
@@ -671,6 +729,19 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             return token
         }
         return nil
+    }
+
+    /// Returns the number of leading elements shared by `a` and `b`.
+    ///
+    /// Pure helper used by the KV-cache prefix-reuse algorithm. Returns the first
+    /// index where `a[i] != b[i]`, or `min(a.count, b.count)` when one is a prefix
+    /// of the other.
+    static func commonPrefixLength(_ cached: [llama_token], _ incoming: [llama_token]) -> Int {
+        let limit = min(cached.count, incoming.count)
+        for idx in 0 ..< limit where cached[idx] != incoming[idx] {
+            return idx
+        }
+        return limit
     }
 
     /// Convert a ContinuousClock duration to seconds. Single source of truth for timing math.

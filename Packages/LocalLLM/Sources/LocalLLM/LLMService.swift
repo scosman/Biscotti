@@ -29,7 +29,7 @@ public enum LLMService {
     /// let summary = try await LLMService.withConnection(
     ///     model: modelURL, backend: .inProcess, config: .default
     /// ) { conn in
-    ///     try await conn.generate(prompt: "Summarize this.").text
+    ///     try await conn.generate(messages: [.user("Summarize this.")]).text
     /// }
     /// ```
     public static func withConnection<T: Sendable>(

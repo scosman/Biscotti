@@ -296,13 +296,13 @@ public final class RecordingController {
 
     /// Generates an auto-title for a new recording.
     ///
-    /// The title is just "Untitled Meeting" -- the date is already stored as
-    /// `Meeting.startDate` / `Meeting.createdAt` and displayed separately
-    /// in the UI, so embedding it in the title would cause duplication.
-    /// Calendar association will replace this with the event title unless
-    /// the user has manually edited the title.
+    /// Returns `Meeting.defaultTitle` ("Untitled Meeting") -- the date is
+    /// already stored as `Meeting.startDate` / `Meeting.createdAt` and
+    /// displayed separately in the UI, so embedding it in the title would
+    /// cause duplication. Calendar association or AI title generation will
+    /// replace this unless the user has manually edited the title.
     public static func autoTitle() -> String {
-        "Untitled Meeting"
+        Meeting.defaultTitle
     }
 
     /// Creates the meeting, recording directory, marker file, and audio refs.

@@ -18,126 +18,67 @@ import TranscriptionService
 struct SettingsAIEnhancementsTests {
     // MARK: - Toggle persistence
 
-    @Test("summarizeTranscripts defaults to true and persists toggle")
-    func summarizeTranscriptsDefaultAndPersist() async throws {
+    @Test("aiAnalysisEnabled defaults to true and persists toggle")
+    func aiAnalysisEnabledDefaultAndPersist() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
 
-        #expect(viewModel.summarizeTranscripts == true)
+        #expect(viewModel.aiAnalysisEnabled == true)
 
         // Toggle off
-        await viewModel.setSummarizeTranscripts(false)
-        #expect(viewModel.summarizeTranscripts == false)
+        await viewModel.setAIAnalysisEnabled(false)
+        #expect(viewModel.aiAnalysisEnabled == false)
 
         // Verify persisted
         let settings = try await fixture.store.settings()
-        #expect(settings.summarizeTranscripts == false)
+        #expect(settings.aiAnalysisEnabled == false)
 
         // Toggle back on
-        await viewModel.setSummarizeTranscripts(true)
-        #expect(viewModel.summarizeTranscripts == true)
+        await viewModel.setAIAnalysisEnabled(true)
+        #expect(viewModel.aiAnalysisEnabled == true)
 
         let settings2 = try await fixture.store.settings()
-        #expect(settings2.summarizeTranscripts == true)
-    }
-
-    @Test("guessSpeakerNames defaults to true and persists toggle")
-    func guessSpeakerNamesDefaultAndPersist() async throws {
-        let fixture = try makeCoreFixture()
-        defer { fixture.cleanup() }
-
-        let viewModel = SettingsViewModel(core: fixture.core)
-        await viewModel.load()
-
-        #expect(viewModel.guessSpeakerNames == true)
-
-        // Toggle off
-        await viewModel.setGuessSpeakerNames(false)
-        #expect(viewModel.guessSpeakerNames == false)
-
-        // Verify persisted
-        let settings = try await fixture.store.settings()
-        #expect(settings.guessSpeakerNames == false)
-
-        // Toggle back on
-        await viewModel.setGuessSpeakerNames(true)
-        #expect(viewModel.guessSpeakerNames == true)
-
-        let settings2 = try await fixture.store.settings()
-        #expect(settings2.guessSpeakerNames == true)
+        #expect(settings2.aiAnalysisEnabled == true)
     }
 
     // MARK: - Revert on failure
 
-    @Test("setSummarizeTranscripts reverts on store failure")
-    func summarizeTranscriptsRevertsOnFailure() async throws {
+    @Test("setAIAnalysisEnabled reverts on store failure")
+    func aiAnalysisEnabledRevertsOnFailure() async throws {
         let (core, storeDir) = try makeFailableCore()
         defer { restoreAndCleanup(storeDir) }
 
         let viewModel = SettingsViewModel(core: core)
         await viewModel.load()
-        #expect(viewModel.summarizeTranscripts == true)
+        #expect(viewModel.aiAnalysisEnabled == true)
 
         // Remove the store directory to corrupt it so save() throws
         corruptStore(storeDir)
 
         // Attempt to toggle off -- should revert to true
-        await viewModel.setSummarizeTranscripts(false)
-        #expect(viewModel.summarizeTranscripts == true)
-    }
-
-    @Test("setGuessSpeakerNames reverts on store failure")
-    func guessSpeakerNamesRevertsOnFailure() async throws {
-        let (core, storeDir) = try makeFailableCore()
-        defer { restoreAndCleanup(storeDir) }
-
-        let viewModel = SettingsViewModel(core: core)
-        await viewModel.load()
-        #expect(viewModel.guessSpeakerNames == true)
-
-        // Remove the store directory to corrupt it so save() throws
-        corruptStore(storeDir)
-
-        // Attempt to toggle off -- should revert to true
-        await viewModel.setGuessSpeakerNames(false)
-        #expect(viewModel.guessSpeakerNames == true)
+        await viewModel.setAIAnalysisEnabled(false)
+        #expect(viewModel.aiAnalysisEnabled == true)
     }
 
     // MARK: - Load reads from store
 
-    @Test("load reads summarizeTranscripts from store")
-    func loadReadsSummarizeFromStore() async throws {
+    @Test("load reads aiAnalysisEnabled from store")
+    func loadReadsAIAnalysisFromStore() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         // Pre-set the value to false
         try await fixture.store.updateSettings { settings in
-            settings.summarizeTranscripts = false
+            settings.aiAnalysisEnabled = false
         }
 
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
 
-        #expect(viewModel.summarizeTranscripts == false)
-    }
-
-    @Test("load reads guessSpeakerNames from store")
-    func loadReadsGuessSpeakersFromStore() async throws {
-        let fixture = try makeCoreFixture()
-        defer { fixture.cleanup() }
-
-        // Pre-set the value to false
-        try await fixture.store.updateSettings { settings in
-            settings.guessSpeakerNames = false
-        }
-
-        let viewModel = SettingsViewModel(core: fixture.core)
-        await viewModel.load()
-
-        #expect(viewModel.guessSpeakerNames == false)
+        #expect(viewModel.aiAnalysisEnabled == false)
     }
 
     // MARK: - Model availability
@@ -162,15 +103,14 @@ struct SettingsAIEnhancementsTests {
 
     // MARK: - No-model binding behavior
 
-    @Test("toggle bindings show false when model unavailable without corrupting stored value")
-    func toggleBindingsShowFalseWithoutCorruption() async throws {
+    @Test("toggle binding shows false when model unavailable without corrupting stored value")
+    func toggleBindingShowsFalseWithoutCorruption() async throws {
         let fixture = try makeCoreFixture(modelDownloaded: false)
         defer { fixture.cleanup() }
 
-        // Pre-set both toggles to true (the default)
+        // Pre-set toggle to true (the default)
         try await fixture.store.updateSettings { settings in
-            settings.summarizeTranscripts = true
-            settings.guessSpeakerNames = true
+            settings.aiAnalysisEnabled = true
         }
 
         let viewModel = SettingsViewModel(core: fixture.core)
@@ -179,19 +119,17 @@ struct SettingsAIEnhancementsTests {
         // Model is not available
         #expect(viewModel.modelAvailable == false)
 
-        // The stored VM values are true (loaded from store)
-        #expect(viewModel.summarizeTranscripts == true)
-        #expect(viewModel.guessSpeakerNames == true)
+        // The stored VM value is true (loaded from store)
+        #expect(viewModel.aiAnalysisEnabled == true)
 
-        // But the view bindings should show false (disabled state)
+        // The view binding should show false (disabled state)
         // -- this is the behavior the SettingsView binding enforces:
-        //    get: { viewModel.modelAvailable ? viewModel.X : false }
+        //    get: { viewModel.modelAvailable ? viewModel.aiAnalysisEnabled : false }
         // We verify the condition that drives the binding:
         // modelAvailable is false, so the binding evaluates to false,
         // while the underlying stored value remains true (no corruption).
         let storedSettings = try await fixture.store.settings()
-        #expect(storedSettings.summarizeTranscripts == true)
-        #expect(storedSettings.guessSpeakerNames == true)
+        #expect(storedSettings.aiAnalysisEnabled == true)
     }
 
     // MARK: - Download state
@@ -259,24 +197,22 @@ struct SettingsAIEnhancementsTests {
 
     // MARK: - Toggle interaction with model state
 
-    @Test("toggles reflect stored values when model is available")
-    func togglesReflectStoredValuesWithModel() async throws {
+    @Test("toggle reflects stored value when model is available")
+    func toggleReflectsStoredValueWithModel() async throws {
         let fixture = try makeCoreFixture(modelDownloaded: true)
         defer { fixture.cleanup() }
 
-        // Pre-set one toggle off
+        // Pre-set toggle off
         try await fixture.store.updateSettings { settings in
-            settings.summarizeTranscripts = false
-            settings.guessSpeakerNames = true
+            settings.aiAnalysisEnabled = false
         }
 
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
 
-        // With model present, toggles show their real stored values
+        // With model present, toggle shows its real stored value
         #expect(viewModel.modelAvailable == true)
-        #expect(viewModel.summarizeTranscripts == false)
-        #expect(viewModel.guessSpeakerNames == true)
+        #expect(viewModel.aiAnalysisEnabled == false)
     }
 }
 
@@ -322,7 +258,7 @@ private func buildAppCore(
     let intelligence = Intelligence(
         store: store, llm: FakeCoreLLMRunner(),
         models: FakeCoreModelProvider(downloaded: false),
-        settings: { AISettings(summarize: true, guessSpeakers: true) }
+        settings: { AISettings(enabled: true) }
     )
     return AppCore(
         store: store, permissions: permissions,

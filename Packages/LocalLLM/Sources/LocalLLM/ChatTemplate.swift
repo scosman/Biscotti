@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - Protocol
 
-/// Renders a (system?, user) pair into a chat-templated string ready for tokenization.
+/// Renders a message list into a chat-templated string ready for tokenization.
 public protocol ChatTemplating: Sendable {
     /// Render the prompt. When `addGenerationPrompt` is true, append the model's
     /// generation prefix so the next tokens the model produces are the assistant reply.
-    func render(system: String?, user: String, addGenerationPrompt: Bool) -> String
+    func render(messages: [LLMMessage], addGenerationPrompt: Bool) -> String
 }
 
 // MARK: - Gemma 4 template
@@ -62,28 +62,47 @@ public struct GemmaChatTemplate: ChatTemplating {
     }
 
     public func render(
-        system: String?,
-        user: String,
+        messages: [LLMMessage],
         addGenerationPrompt: Bool
     ) -> String {
         var result = ""
-        let trimmedUser = user.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedSystem = system?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // System turn: always present when thinking is enabled (for the directive),
-        // or when a system message is provided.
-        if let trimmedSystem, !trimmedSystem.isEmpty {
-            let systemContent = thinkingEnabled
-                ? "\(Self.thinkingDirective)\n\(trimmedSystem)"
-                : trimmedSystem
-            result += "\(Self.turnOpen)system\n\(systemContent)\(Self.turnClose)\n"
-        } else if thinkingEnabled {
+        // Thinking-with-no-system edge: if thinking is enabled and no .system message
+        // exists, emit a bare directive turn before the first message.
+        let hasSystem = messages.contains { $0.role == .system }
+        if thinkingEnabled, !hasSystem {
             result += "\(Self.turnOpen)system\n"
             result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
         }
 
-        // User turn
-        result += "\(Self.turnOpen)user\n\(trimmedUser)\(Self.turnClose)\n"
+        for message in messages {
+            let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            switch message.role {
+            case .system:
+                // Empty/whitespace-only system: with thinking, emit directive-only turn;
+                // without thinking, skip entirely.
+                if trimmed.isEmpty {
+                    if thinkingEnabled {
+                        result += "\(Self.turnOpen)system\n"
+                        result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
+                    }
+                } else {
+                    let systemContent = thinkingEnabled
+                        ? "\(Self.thinkingDirective)\n\(trimmed)"
+                        : trimmed
+                    result += "\(Self.turnOpen)system\n\(systemContent)\(Self.turnClose)\n"
+                }
+
+            case .user:
+                result += "\(Self.turnOpen)user\n\(trimmed)\(Self.turnClose)\n"
+
+            case .assistant:
+                // Completed assistant turn: model turn with content, closed.
+                // No empty-thought prefill (that's only for the generation prompt).
+                result += "\(Self.turnOpen)model\n\(trimmed)\(Self.turnClose)\n"
+            }
+        }
 
         // Model generation prefix
         if addGenerationPrompt {

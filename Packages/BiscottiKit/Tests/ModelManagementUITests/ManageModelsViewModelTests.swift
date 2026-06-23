@@ -4,7 +4,7 @@ import Foundation
 import Intelligence
 import LocalLLM
 import Testing
-@testable import SettingsUI
+@testable import ModelManagementUI
 
 @Suite("ManageModelsViewModel")
 @MainActor

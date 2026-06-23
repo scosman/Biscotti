@@ -68,13 +68,17 @@ public final class ManageModelsViewModel {
 
 /// Sheet listing every catalog model with per-state actions (download,
 /// delete, choose) and the Recommended badge. Presented from the
-/// "AI Language Model" settings row.
-struct ManageModelsSheet: View {
+/// "AI Language Model" settings row and the onboarding model-download step.
+public struct ManageModelsSheet: View {
     @Bindable var viewModel: ManageModelsViewModel
 
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
+    public init(viewModel: ManageModelsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             // Header
             Text("AI Language Model")

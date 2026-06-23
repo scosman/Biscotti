@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import DesignSystem
 import Intelligence
+import ModelManagementUI
 import Permissions
 import SwiftUI
 

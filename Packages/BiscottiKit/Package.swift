@@ -26,7 +26,8 @@ let package = Package(
         .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
         .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
-        .library(name: "Intelligence", targets: ["Intelligence"])
+        .library(name: "Intelligence", targets: ["Intelligence"]),
+        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
@@ -351,6 +352,7 @@ let package = Package(
                 "DesignSystem",
                 "Intelligence",
                 "LocalLLM",
+                "ModelManagementUI",
                 "Permissions"
             ],
             swiftSettings: warningsAsErrors
@@ -505,6 +507,27 @@ let package = Package(
                 "DataStore",
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ModelManagementUI",
+            dependencies: [
+                "AppCore",
+                "DesignSystem",
+                "Intelligence",
+                .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ModelManagementUITests",
+            dependencies: [
+                "ModelManagementUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Intelligence",
+                .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors
         ),

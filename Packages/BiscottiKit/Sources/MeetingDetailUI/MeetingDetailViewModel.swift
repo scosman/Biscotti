@@ -571,7 +571,7 @@ public extension MeetingDetailViewModel {
 
     /// Whether the AI model is downloaded and available.
     var modelAvailable: Bool {
-        core.intelligence.isModelDownloaded
+        core.modelManager.isModelAvailable
     }
 
     /// Whether the Regenerate Summary overflow menu item should appear.

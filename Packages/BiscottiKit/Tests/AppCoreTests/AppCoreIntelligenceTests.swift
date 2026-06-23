@@ -130,12 +130,8 @@ struct AppCoreIntelligenceTests {
         // Verify the intelligence service is the same instance
         #expect(fix.core.intelligence === fix.intelligence)
 
-        // Verify model state reflects the fake provider
-        #expect(fix.core.intelligence.isModelDownloaded == false)
-
-        // Flip the fake and verify
-        fix.fakeModelProvider.downloaded = true
-        #expect(fix.core.intelligence.isModelDownloaded == true)
+        // Verify model state reflects via the modelManager
+        #expect(fix.core.modelManager.isModelAvailable == false)
     }
 
     // MARK: - runAutoEnhancements via AppCore

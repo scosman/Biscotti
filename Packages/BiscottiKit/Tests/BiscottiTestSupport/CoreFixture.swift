@@ -33,6 +33,7 @@ public struct CoreFixture {
     public let fakeActivitySource: FakeActivitySource
     public let fakeScheduler: FakeScheduler?
     public let intelligence: Intelligence
+    public let modelManager: ModelManager
     public let fakeLLMRunner: FakeCoreLLMRunner
     public let fakeModelProvider: FakeCoreModelProvider
 
@@ -349,6 +350,7 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
     public init() {}
 
     public func withSession<T: Sendable>(
+        model _: URL,
         config _: LocalLLM.EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
@@ -383,25 +385,69 @@ public struct FakeCoreLLMSession: LLMSession {
 }
 
 /// A fake model provider for AppCore integration tests.
+/// Supports multi-model protocol with configurable per-model download state.
 public final class FakeCoreModelProvider: ModelProviding,
     @unchecked Sendable
 {
     public var downloaded: Bool
-    public let modelURL: URL
+    public let catalog: [LLMModel]
+    private var downloadedIDs: Set<String>
 
     public init(downloaded: Bool = false) {
         self.downloaded = downloaded
-        modelURL = URL(fileURLWithPath: "/fake/model.gguf")
+        catalog = LLMModelCatalog.all
+        // When downloaded=true, mark the first catalog model as downloaded
+        // (simulates existing 12B-downloaded users)
+        if downloaded {
+            downloadedIDs = [LLMModelCatalog.all.first?.id ?? ""]
+        } else {
+            downloadedIDs = []
+        }
     }
 
-    public func isDownloaded() -> Bool {
-        downloaded
+    public func url(for id: String) -> URL? {
+        LLMModelCatalog.model(id: id).map {
+            URL(fileURLWithPath: "/fake/\($0.fileName)")
+        }
+    }
+
+    public func isDownloaded(_ id: String) -> Bool {
+        downloadedIDs.contains(id)
+    }
+
+    public func downloadedModelIDs() -> [String] {
+        catalog.filter { downloadedIDs.contains($0.id) }.map(\.id)
     }
 
     public func download(
+        _ id: String,
         progress _: @Sendable @escaping (Int64, Int64?) -> Void
     ) async throws {
+        downloadedIDs.insert(id)
         downloaded = true
+    }
+
+    public func delete(_ id: String) throws {
+        downloadedIDs.remove(id)
+        downloaded = !downloadedIDs.isEmpty
+    }
+}
+
+/// A fake hardware probe for CoreFixture tests.
+public struct FakeCoreHardwareProbe: HardwareProbing {
+    public var physicalMemoryBytes: UInt64
+    public var diskBytes: Int64?
+
+    public init(
+        physicalMemoryBytes: UInt64 = 32_000_000_000,
+        diskBytes: Int64? = 100_000_000_000
+    ) {
+        self.physicalMemoryBytes = physicalMemoryBytes
+        self.diskBytes = diskBytes
+    }
+
+    public func availableDiskBytes(at _: URL) -> Int64? {
+        diskBytes
     }
 }
 
@@ -424,6 +470,8 @@ public func makeCoreFixture(
     useFakeScheduler: Bool = false,
     useImmediateDetectorClock: Bool = false,
     modelDownloaded: Bool = false,
+    hardwareRAMBytes: UInt64 = 32_000_000_000,
+    hardwareDiskBytes: Int64? = 100_000_000_000,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -504,10 +552,26 @@ public func makeCoreFixture(
     let fakeModelProvider = FakeCoreModelProvider(
         downloaded: modelDownloaded
     )
+    let fakeHardwareProbe = FakeCoreHardwareProbe(
+        physicalMemoryBytes: hardwareRAMBytes,
+        diskBytes: hardwareDiskBytes
+    )
+    let modelManager = ModelManager(
+        store: store,
+        models: fakeModelProvider,
+        hardware: fakeHardwareProbe
+    )
+    // Pre-populate download states so modelManager reflects the fake provider
+    if modelDownloaded {
+        for id in fakeModelProvider.downloadedModelIDs() {
+            modelManager.downloads[id] = .downloaded
+        }
+    }
+
     let intelligence = Intelligence(
         store: store,
         llm: fakeLLMRunner,
-        models: fakeModelProvider,
+        modelManager: modelManager,
         settings: { AISettings(enabled: true) }
     )
 
@@ -520,6 +584,7 @@ public func makeCoreFixture(
         detector: detector,
         notifications: notificationService,
         intelligence: intelligence,
+        modelManager: modelManager,
         scheduler: scheduler
     )
 
@@ -538,6 +603,7 @@ public func makeCoreFixture(
         fakeActivitySource: fakeActivitySource,
         fakeScheduler: fakeScheduler,
         intelligence: intelligence,
+        modelManager: modelManager,
         fakeLLMRunner: fakeLLMRunner,
         fakeModelProvider: fakeModelProvider
     )

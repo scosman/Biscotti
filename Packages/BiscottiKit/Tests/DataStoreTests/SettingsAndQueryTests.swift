@@ -47,6 +47,21 @@ struct SettingsTests {
         #expect(result.enabledCalendarIDs == nil)
     }
 
+    @Test("selectedModelID defaults to empty string")
+    func selectedModelIDDefaultsToEmpty() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.selectedModelID == "")
+    }
+
+    @Test("selectedModelID round-trips through updateSettings")
+    func selectedModelIDRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.selectedModelID = "gemma-4-e2b" }
+        let result = try await store.settings()
+        #expect(result.selectedModelID == "gemma-4-e2b")
+    }
+
     @Test("settings() returns the same singleton on subsequent calls")
     func settingsSingleton() async throws {
         let store = try makeStore()

@@ -556,6 +556,10 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
         FakeTranscriber.defaultResult
     }
 
+    func modelsPresent() async -> Bool {
+        true
+    }
+
     func shutdown() async {
         backing.shutdownCallCount += 1
         // Simulate the MainActor yield during actor hop by yielding, then
@@ -615,6 +619,10 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         return FakeTranscriber.defaultResult
     }
 
+    func modelsPresent() async -> Bool {
+        true
+    }
+
     func shutdown() async {}
 }
 
@@ -632,22 +640,32 @@ struct TranscriptionModelReadinessTests {
         #expect(fix.fakeEngine.backing.ensureModelsCalled == true)
     }
 
-    @Test("modelsReady returns true when engine succeeds")
+    @Test("modelsArePresent returns true when engine reports present")
     @MainActor
-    func modelsReadyReturnsTrueAfterDownload() async throws {
+    func modelsArePresentReturnsTrue() async throws {
         let fix = try makeFixture()
-        let ready = await fix.service.modelsReady()
-        #expect(ready == true)
+        // FakeTranscriber defaults to modelsPresentResult = true
+        let present = await fix.service.modelsArePresent()
+        #expect(present == true)
+        #expect(fix.fakeEngine.backing.modelsPresentCalled == true)
     }
 
-    @Test("modelsReady returns false when engine throws")
+    @Test("modelsArePresent returns false when engine reports absent")
     @MainActor
-    func modelsReadyReturnsFalseOnError() async throws {
-        let fix = try makeFixture(
-            ensureModelsError: TranscriptionError.needsDownload
-        )
-        let ready = await fix.service.modelsReady()
-        #expect(ready == false)
+    func modelsArePresentReturnsFalse() async throws {
+        let fix = try makeFixture()
+        fix.fakeEngine.backing.modelsPresentResult = false
+        let present = await fix.service.modelsArePresent()
+        #expect(present == false)
+    }
+
+    @Test("modelsArePresent does NOT call ensureModelsDownloaded")
+    @MainActor
+    func modelsArePresentDoesNotDownload() async throws {
+        let fix = try makeFixture()
+        _ = await fix.service.modelsArePresent()
+        #expect(fix.fakeEngine.backing.ensureModelsCalled == false)
+        #expect(fix.fakeEngine.backing.ensureModelsCallCount == 0)
     }
 
     @Test("ensureModelsReady forwards status messages")
@@ -768,6 +786,10 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
+    }
+
+    func modelsPresent() async -> Bool {
+        true
     }
 
     func shutdown() async {}

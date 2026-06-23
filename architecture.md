@@ -61,6 +61,7 @@ L4  App glue        Biscotti.app  ·  BiscottiTranscriber.xpc
 L3b Window shell    AppShellUI  (window + sidebar + navigation; hosts the screens)
 L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI
                     MenuBarUI · OnboardingUI · SettingsUI            (+ DesignSystem)
+    Shared UI       ModelManagementUI  (used by SettingsUI + OnboardingUI)
 L2  Coordination    AppCore  (the headless "background app" engine)
 L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary
 L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem · Intelligence

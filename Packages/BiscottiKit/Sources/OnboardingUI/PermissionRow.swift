@@ -92,12 +92,24 @@ extension PermissionRow where Denial == EmptyView {
 // MARK: - Grant pill button
 
 /// A small sage pill button used for the "Grant" action in permission rows.
+/// Generalized to accept a custom title and optional leading SF Symbol;
+/// defaults preserve the existing call-site signature.
 struct GrantPill: View {
+    var title: String = "Grant"
+    var systemImage: String?
     let action: () -> Void
 
     var body: some View {
-        Button("Grant", action: action)
-            .buttonStyle(JoinRecordButtonStyle())
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                Text(title)
+            }
+        }
+        .buttonStyle(JoinRecordButtonStyle())
     }
 }
 

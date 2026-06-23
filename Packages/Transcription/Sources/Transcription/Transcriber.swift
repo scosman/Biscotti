@@ -247,6 +247,26 @@ public actor Transcriber {
         }
     }
 
+    /// Returns `true` when the transcription models are already present on
+    /// disk and do NOT need downloading.
+    ///
+    /// This is a **read-only** probe: it checks the filesystem without
+    /// downloading, loading, or mutating any engine state.
+    public func modelsPresent() async -> Bool {
+        // For the .inProcess backend, use the existing engine directly.
+        // For .hosted, delegate to the static disk check (no XPC round-trip
+        // needed since model files are at a shared filesystem path).
+        if let existing = engine {
+            return await existing.modelsPresent()
+        }
+        // No engine yet (hosted, pre-connection). Use the static check.
+        let settings = MethodResolver.resolve(method)
+        return InProcessTranscriptionEngine.whisperKitModelsPresent(
+            repo: settings.sttModelRepo,
+            model: settings.sttModel
+        ) && InProcessTranscriptionEngine.speakerKitModelsPresent()
+    }
+
     /// Check if the backend is available and responsive.
     ///
     /// For `.inProcess`, returns true if the engine status is `.ready`.

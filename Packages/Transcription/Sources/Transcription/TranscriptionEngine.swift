@@ -36,6 +36,15 @@ public protocol TranscriptionEngine: Sendable {
     /// models will be re-loaded on the next call.
     func unloadModels() async
 
+    /// Returns `true` when the transcription models are already present on
+    /// disk and do NOT need to be downloaded.
+    ///
+    /// This is a **read-only** probe -- it must not download, load, or
+    /// otherwise mutate model state. It exists so callers (e.g. the
+    /// onboarding screen) can check readiness without triggering a
+    /// multi-GB download.
+    func modelsPresent() async -> Bool
+
     /// The current model lifecycle status.
     func status() async -> ModelStatus
 }

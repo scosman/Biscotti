@@ -3,6 +3,7 @@ import BiscottiTestSupport
 import Calendar
 import Foundation
 import Intelligence
+import LocalLLM
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -132,33 +133,32 @@ struct SettingsAIEnhancementsTests {
         #expect(storedSettings.aiAnalysisEnabled == true)
     }
 
-    // MARK: - Download state
+    // MARK: - Active model display name
 
-    @Test("modelDownload reflects Intelligence download state")
-    func downloadStateFromIntelligence() throws {
-        let fixture = try makeCoreFixture(modelDownloaded: false)
-        defer { fixture.cleanup() }
-
-        let viewModel = SettingsViewModel(core: fixture.core)
-
-        // Initial state after init (Intelligence.refreshModelState runs in init)
-        #expect(viewModel.modelDownload == .notDownloaded)
-    }
-
-    @Test("modelDownload shows downloaded when model present")
-    func downloadStateDownloaded() throws {
+    @Test("activeModelDisplayName returns display name when model active")
+    func activeModelDisplayNamePresent() throws {
         let fixture = try makeCoreFixture(modelDownloaded: true)
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.activeModelDisplayName != nil)
+        // The first catalog model is downloaded by the fixture
+        #expect(viewModel.activeModelDisplayName == LLMModelCatalog.all.first?.displayName)
+    }
 
-        #expect(viewModel.modelDownload == .downloaded)
+    @Test("activeModelDisplayName returns nil when no model active")
+    func activeModelDisplayNameNil() throws {
+        let fixture = try makeCoreFixture(modelDownloaded: false)
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        #expect(viewModel.activeModelDisplayName == nil)
     }
 
     // MARK: - Load refreshes model state
 
-    @Test("load calls refreshModelState on Intelligence")
-    func loadCallsRefreshModelState() async throws {
+    @Test("load calls modelManager.refresh")
+    func loadCallsRefresh() async throws {
         let fixture = try makeCoreFixture(modelDownloaded: false)
         defer { fixture.cleanup() }
 
@@ -167,32 +167,17 @@ struct SettingsAIEnhancementsTests {
         // Initially not downloaded
         #expect(viewModel.modelAvailable == false)
 
-        // Simulate model appearing on disk
-        fixture.fakeModelProvider.downloaded = true
+        // Simulate model appearing on disk by marking it downloaded
+        // in the fake provider, then refresh via load()
+        try await fixture.fakeModelProvider.download(
+            #require(LLMModelCatalog.all.first?.id),
+            progress: { _, _ in }
+        )
 
-        // load() should call refreshModelState and pick up the change
+        // load() should call modelManager.refresh() and pick up the change
         await viewModel.load()
 
         #expect(viewModel.modelAvailable == true)
-        #expect(viewModel.modelDownload == .downloaded)
-    }
-
-    // MARK: - Download initiation
-
-    @Test("startModelDownload triggers download on Intelligence")
-    func startModelDownloadTriggersDownload() async throws {
-        let fixture = try makeCoreFixture(modelDownloaded: false)
-        defer { fixture.cleanup() }
-
-        let viewModel = SettingsViewModel(core: fixture.core)
-
-        #expect(viewModel.modelAvailable == false)
-
-        // Call downloadModel directly on Intelligence (synchronous test)
-        // FakeCoreModelProvider.download sets downloaded=true immediately
-        await fixture.intelligence.downloadModel()
-
-        #expect(fixture.fakeModelProvider.downloaded == true)
     }
 
     // MARK: - Toggle interaction with model state
@@ -255,9 +240,16 @@ private func buildAppCore(
         storageRoot: storageRoot, makeRecorder: { FakeRecorder() }
     )
     let catalog = BundledMeetingCatalog()
+    let fakeModelProvider = FakeCoreModelProvider(downloaded: false)
+    let fakeHardwareProbe = FakeCoreHardwareProbe()
+    let modelManager = ModelManager(
+        store: store,
+        models: fakeModelProvider,
+        hardware: fakeHardwareProbe
+    )
     let intelligence = Intelligence(
         store: store, llm: FakeCoreLLMRunner(),
-        models: FakeCoreModelProvider(downloaded: false),
+        modelManager: modelManager,
         settings: { AISettings(enabled: true) }
     )
     return AppCore(
@@ -267,7 +259,8 @@ private func buildAppCore(
         calendar: CalendarService(store: store, catalog: catalog, provider: FakeEventStore()),
         detector: MeetingDetector(catalog: catalog, source: FakeActivitySource()),
         notifications: NotificationService(provider: FakeTestNotificationCenter()),
-        intelligence: intelligence
+        intelligence: intelligence,
+        modelManager: modelManager
     )
 }
 

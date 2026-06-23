@@ -5,21 +5,18 @@ import LocalLLM
 /// hosted (XPC) backend. Each `withSession` call opens a connection, loads the
 /// model, runs the closure, and closes the connection.
 public struct LiveLLMRunner: LLMRunning {
-    private let modelProvider: any ModelProviding
-
     /// The XPC service bundle identifier for BiscottiLLM.
     static let serviceName = "net.scosman.biscotti.BiscottiLLM"
 
-    public init(modelProvider: any ModelProviding) {
-        self.modelProvider = modelProvider
-    }
+    public init() {}
 
     public func withSession<T: Sendable>(
+        model: URL,
         config: EngineConfig,
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         try await LLMService.withConnection(
-            model: modelProvider.modelURL,
+            model: model,
             backend: .hosted(serviceName: Self.serviceName),
             config: config
         ) { connection in

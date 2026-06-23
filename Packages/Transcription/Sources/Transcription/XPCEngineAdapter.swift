@@ -101,6 +101,24 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         }
     }
 
+    func modelsPresent() async -> Bool {
+        // The XPC adapter delegates to the static disk check on
+        // InProcessTranscriptionEngine. Model files live at a shared
+        // filesystem path (ModelStorage), so the client process can
+        // check without involving the XPC worker.
+        //
+        // Note: this resolves the *current* method's model repo/name
+        // via MethodResolver. If a future transcription method ships
+        // with a different model name, the method would need to be
+        // plumbed in (the Transcriber actor already stores its method
+        // and could pass it through).
+        let settings = MethodResolver.resolve(.current)
+        return InProcessTranscriptionEngine.whisperKitModelsPresent(
+            repo: settings.sttModelRepo,
+            model: settings.sttModel
+        ) && InProcessTranscriptionEngine.speakerKitModelsPresent()
+    }
+
     func status() async -> ModelStatus {
         // The XPC adapter cannot directly query the worker's status machine.
         // Status is managed by the Transcriber actor that wraps this adapter.

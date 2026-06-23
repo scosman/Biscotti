@@ -1,5 +1,6 @@
 import Calendar
 import DesignSystem
+import ModelManagementUI
 import Permissions
 import SwiftUI
 
@@ -266,71 +267,24 @@ extension OnboardingView {
                 .font(.biscottiSerif(34))
                 .foregroundStyle(.ink)
 
-            (
-                Text("A one-time download (")
-                    .font(.system(size: 16))
-                    +
-                    Text("~1.5 GB")
-                    .font(.biscottiMono(15))
-                    +
-                    Text(
-                        ").\nEverything runs entirely on your Mac \u{2014} no cloud, ever."
-                    )
-                    .font(.system(size: 16))
+            Text(
+                "One-time download. AI runs locally \u{2014} nothing leaves your Mac."
             )
+            .font(.system(size: 16))
             .foregroundStyle(.inkSecondary)
             .frame(maxWidth: 430)
             .padding(.top, 12)
 
-            downloadContent
-                .padding(.top, 24)
+            ModelCard(viewModel: viewModel)
+                .padding(.top, 20)
 
             footerButton
                 .padding(.top, 24)
         }
-    }
-
-    @ViewBuilder
-    private var downloadContent: some View {
-        if !viewModel.hasSufficientDisk {
-            Banner(
-                "Not enough disk space. Need ~"
-                    + "\(OnboardingViewModel.requiredDiskSpaceMB) MB.",
-                style: .warning
+        .sheet(isPresented: $viewModel.showVariantSheet) {
+            ManageModelsSheet(
+                viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
-            .frame(maxWidth: 520)
-        } else if viewModel.downloadComplete {
-            GrantedTag("COMPLETE")
-        } else if viewModel.isDownloading {
-            VStack(spacing: 8) {
-                // Static indeterminate bar -- the download stream
-                // provides status text but no numeric fraction.
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.hairline)
-                        .frame(width: 240, height: 3)
-                    Capsule()
-                        .fill(Color.sage)
-                        .frame(width: 120, height: 3)
-                }
-
-                if let status = viewModel.downloadStatus {
-                    Text(status)
-                        .font(.biscottiMono(11))
-                        .foregroundStyle(.inkSecondary)
-                }
-            }
-        } else {
-            Button {
-                Task { await viewModel.startTranscriptionDownload() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 15, weight: .medium))
-                    Text("Download Now")
-                }
-            }
-            .buttonStyle(OnboardingPrimaryButtonStyle())
         }
     }
 

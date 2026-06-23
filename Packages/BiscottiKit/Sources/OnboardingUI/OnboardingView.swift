@@ -15,7 +15,10 @@ public struct OnboardingView: View {
     }
 
     public var body: some View {
-        OnboardingScaffold(step: viewModel.currentStep) {
+        OnboardingScaffold(
+            step: viewModel.currentStep,
+            contentMaxWidth: viewModel.currentStep == .modelDownload ? 560 : 520
+        ) {
             stepContent
         }
     }

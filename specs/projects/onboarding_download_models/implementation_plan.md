@@ -47,7 +47,7 @@ module).
     phase; the new footer rule may transiently sit on "Skip" until Phase 3 wires the language row —
     acceptable at a phase boundary.)
 
-- [ ] **Phase 3 — Screen rewrite + sheet wiring.** Replace the step body with the two-row card and
+- [x] **Phase 3 — Screen rewrite + sheet wiring.** Replace the step body with the two-row card and
   present the extracted sheet.
   - Add `OnboardingUI/ModelDownloadCard.swift`: `ModelCard` (560-wide, `.homeCard()`, inset divider),
     `ModelDownloadRow` (icon tile + name + why + optional recommendation line, top-aligned),

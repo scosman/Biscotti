@@ -44,6 +44,14 @@ import SwiftData
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
+    /// Whether AI analysis (summary + speaker inference) runs automatically
+    /// after transcription completes. Default: on.
+    public var aiAnalysisEnabled: Bool = true
+
+    /// The stable ID of the user's chosen LLM model (e.g. "gemma-4-12b").
+    /// Empty string means no explicit choice yet (drives migration/fallback).
+    public var selectedModelID: String = ""
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -78,7 +86,9 @@ import SwiftData
         stopRecordingAutomatically: Bool = true,
         calendarNotificationModeRaw: String = "allMeetings",
         onboardingComplete: Bool = false,
-        enabledCalendarIDs: Set<String>? = nil
+        enabledCalendarIDs: Set<String>? = nil,
+        aiAnalysisEnabled: Bool = true,
+        selectedModelID: String = ""
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -92,5 +102,7 @@ import SwiftData
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()
         }
+        self.aiAnalysisEnabled = aiAnalysisEnabled
+        self.selectedModelID = selectedModelID
     }
 }

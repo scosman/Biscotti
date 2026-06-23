@@ -1,7 +1,8 @@
 import Foundation
 
-/// Pure-function auto-check helpers used by the test scripts' `.autoCheck` steps.
-/// These are the automatable assertions the harness runs — no Core Audio or XPC needed.
+/// Auto-check helpers used by the test scripts' `.autoCheck` steps.
+/// Most checks are pure functions (no I/O beyond `FileManager`); the exception
+/// is `checkNoLLMServiceRunning`, which enumerates processes via `pgrep`.
 public enum AutoChecks {
     /// Default minimum file size in bytes (10 KB) — a file below this is suspiciously small
     /// for any real audio recording, even a very short one at 64 kbps.
@@ -36,6 +37,49 @@ public enum AutoChecks {
     /// Tolerance (in seconds) for the segment-past-duration check. Accounts for minor
     /// floating-point rounding in timestamp arithmetic.
     public static let segmentTimeTolerance: Double = 0.5
+
+    /// Checks that no `BiscottiLLM` service process is running.
+    ///
+    /// After XPC inference + connection close, the service should have exited
+    /// (`_exit(0)` on last-connection invalidation). This check uses `pgrep -x`
+    /// to verify no orphaned service remains; it returns a pass when no matching
+    /// process is found (exit code 1 from pgrep) and a fail when one is still
+    /// alive.
+    public static func checkNoLLMServiceRunning() -> CheckOutcome {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-x", "BiscottiLLM"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return CheckOutcome(
+                passed: false,
+                detail: "Failed to run pgrep: \(error.localizedDescription)"
+            )
+        }
+
+        if process.terminationStatus == 0 {
+            // pgrep found a matching process — service is still alive
+            let output = String(
+                data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown"
+            return CheckOutcome(
+                passed: false,
+                detail: "BiscottiLLM service still running (pid: \(output))"
+            )
+        }
+
+        return CheckOutcome(
+            passed: true,
+            detail: "No BiscottiLLM service process found (reclaimed)"
+        )
+    }
 
     /// Checks that no transcript segment's end time exceeds the audio duration.
     ///

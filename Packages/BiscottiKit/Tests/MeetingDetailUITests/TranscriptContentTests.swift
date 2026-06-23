@@ -1,5 +1,6 @@
 import DataStore
 import Foundation
+import SwiftUI
 import Testing
 @testable import MeetingDetailUI
 
@@ -92,5 +93,89 @@ struct TranscriptContentSpeakerColorTests {
             TranscriptContent.speakerColor(for: $0).description
         })
         #expect(colors.count >= 2, "Expected at least 2 distinct colors among 4 speakers")
+    }
+}
+
+// MARK: - Merged speaker color (Phase 11)
+
+@Suite("TranscriptContent.speakerColor — merged speakers (§13.5)")
+struct TranscriptContentMergedSpeakerColorTests {
+    @Test("two speaker IDs assigned to same person produce identical color")
+    func mergedSpeakersShareColor() {
+        let personID = UUID()
+        let colorKeys: [Int: String] = [
+            0: "person-\(personID.uuidString)",
+            2: "person-\(personID.uuidString)"
+        ]
+
+        let seg0 = SegmentData(
+            id: UUID(), speakerID: 0,
+            speakerLabel: "Speaker 0",
+            startTime: 0, endTime: 5, text: "Hello"
+        )
+        let seg2 = SegmentData(
+            id: UUID(), speakerID: 2,
+            speakerLabel: "Speaker 2",
+            startTime: 5, endTime: 10, text: "Hi"
+        )
+
+        let color0 = TranscriptContent.speakerColor(
+            for: seg0, colorKeys: colorKeys
+        )
+        let color2 = TranscriptContent.speakerColor(
+            for: seg2, colorKeys: colorKeys
+        )
+
+        #expect(color0 == color2)
+    }
+
+    @Test("unassigned speakers keep stable per-ID color")
+    func unassignedSpeakersKeepStableColor() {
+        // No color key overrides -- should use "speaker-<id>"
+        let seg = SegmentData(
+            id: UUID(), speakerID: 1,
+            speakerLabel: "Speaker 1",
+            startTime: 0, endTime: 5, text: "Hello"
+        )
+
+        let colorWithEmptyKeys = TranscriptContent.speakerColor(
+            for: seg, colorKeys: [:]
+        )
+        let colorWithNoKeys = TranscriptContent.speakerColor(for: seg)
+
+        #expect(colorWithEmptyKeys == colorWithNoKeys)
+        // Also matches the label-based legacy method
+        #expect(colorWithNoKeys == TranscriptContent.speakerColor(for: "speaker-1"))
+    }
+
+    @Test("speakerColor(forSpeakerID:colorKeys:) matches segment-based method")
+    func forSpeakerIDMatchesSegmentMethod() {
+        let personID = UUID()
+        let colorKeys = [
+            0: "person-\(personID.uuidString)"
+        ]
+
+        let seg = SegmentData(
+            id: UUID(), speakerID: 0,
+            speakerLabel: "Speaker 0",
+            startTime: 0, endTime: 5, text: "Hello"
+        )
+
+        let segColor = TranscriptContent.speakerColor(
+            for: seg, colorKeys: colorKeys
+        )
+        let idColor = TranscriptContent.speakerColor(
+            forSpeakerID: 0, colorKeys: colorKeys
+        )
+
+        #expect(segColor == idColor)
+    }
+
+    @Test("forSpeakerID without override falls back to speaker-ID key")
+    func forSpeakerIDFallback() {
+        let color = TranscriptContent.speakerColor(
+            forSpeakerID: 3, colorKeys: [:]
+        )
+        #expect(color == TranscriptContent.speakerColor(for: "speaker-3"))
     }
 }

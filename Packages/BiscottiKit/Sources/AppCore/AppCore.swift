@@ -1,6 +1,7 @@
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -227,6 +228,12 @@ public final class AppCore {
     /// System notification presenter and action stream.
     public let notifications: NotificationService
 
+    /// In-process LLM orchestration (speaker-ID, summarization).
+    public let intelligence: Intelligence
+
+    /// Model state owner (selection, downloads, suitability).
+    public let modelManager: ModelManager
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -260,9 +267,7 @@ public final class AppCore {
     /// Task that mirrors calendar.upcoming into self.upcoming.
     private var upcomingMirrorTask: Task<Void, Never>?
 
-    /// Task that fires at each clock-minute boundary to refresh
-    /// `minuteTick`, driving displayed-upcoming filtering and
-    /// relative-time label recomputation.
+    /// Fires at each clock-minute boundary to refresh `minuteTick`.
     private var minuteTickTask: Task<Void, Never>?
 
     /// The fire-and-forget transcription task spawned by `stopRecording()`.
@@ -285,15 +290,8 @@ public final class AppCore {
     /// `.task` modifier) while the same AppCore instance persists.
     private var hasLaunched = false
 
-    private let logger = Logger(
-        subsystem: "net.scosman.biscotti",
-        category: "AppCore"
-    )
-
-    private let detectionLogger = Logger(
-        subsystem: "net.scosman.biscotti",
-        category: "Detection"
-    )
+    private let logger = Logger(subsystem: "net.scosman.biscotti", category: "AppCore")
+    private let detectionLogger = Logger(subsystem: "net.scosman.biscotti", category: "Detection")
 
     // MARK: - Init
 
@@ -307,6 +305,8 @@ public final class AppCore {
         calendar: CalendarService,
         detector: MeetingDetector,
         notifications: NotificationService,
+        intelligence: Intelligence,
+        modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler()
     ) {
         self.store = store
@@ -316,6 +316,8 @@ public final class AppCore {
         self.calendar = calendar
         self.detector = detector
         self.notifications = notifications
+        self.intelligence = intelligence
+        self.modelManager = modelManager
         self.scheduler = scheduler
     }
 
@@ -337,6 +339,11 @@ public final class AppCore {
         logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
         logger.info("onLaunch: recoverOrphans done")
+
+        // Resolve model selection (migration write-back for existing users)
+        logger.info("onLaunch: modelManager.refresh starting")
+        await modelManager.refresh()
+        logger.info("onLaunch: modelManager.refresh done")
 
         // Check onboarding gate and load cached settings
         logger.info("onLaunch: reading settings")
@@ -464,8 +471,9 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription] in
+        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
             await transcription.transcribe(meetingID: meetingID)
+            await intelligence.runAutoEnhancements(meetingID: meetingID)
         }
 
         return meetingID

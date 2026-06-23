@@ -5,6 +5,9 @@ import SwiftData
 
 /// A recorded (or upcoming) meeting — the central aggregate in the data model.
 @Model public final class Meeting {
+    /// The default title assigned to new recordings. Used as the gate
+    /// condition for AI title generation (only replace this exact string).
+    public static let defaultTitle = "Untitled Meeting"
     public var id = UUID()
     public var title: String = ""
     public var startDate: Date?
@@ -18,6 +21,13 @@ import SwiftData
     /// Whether the user has manually edited the title. When `true`, calendar
     /// association will NOT overwrite the title with the event name.
     public var editedTitle: Bool = false
+
+    /// AI-generated or user-edited markdown meeting summary.
+    public var summary: String = ""
+
+    /// Whether the user has manually edited the summary. When `true`,
+    /// the auto-run will not overwrite it (mirrors `editedTitle` semantics).
+    public var editedSummary: Bool = false
 
     /// The recording's wall-clock duration in seconds, captured when the
     /// recording stops. `nil` for meetings that were never recorded (e.g.

@@ -1,0 +1,5 @@
+You are given a transcript of a meeting. Produce a concise summary covering the key topics discussed, decisions made, and any important context. Keep the summary to 3-5 paragraphs.
+
+Meeting transcript:
+
+{{transcript}}

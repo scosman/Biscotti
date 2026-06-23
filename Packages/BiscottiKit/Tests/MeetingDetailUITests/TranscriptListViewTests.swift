@@ -6,14 +6,17 @@ import Testing
 
 /// Tests for `TranscriptListView.Equatable` conformance.
 ///
-/// The view conforms to `Equatable` comparing `transcriptID` and `canSeek`
-/// so that SwiftUI (via `.equatable()`) can skip body re-evaluation when
-/// the parent re-evaluates on playback ticks (~4 Hz).
+/// The view conforms to `Equatable` comparing `transcriptID`, `canSeek`,
+/// `speakerNames`, and `speakerColorKeys` so that SwiftUI (via
+/// `.equatable()`) can skip body re-evaluation when the parent
+/// re-evaluates on playback ticks (~4 Hz), while still re-rendering when a
+/// speaker is renamed or merged.
 @Suite("TranscriptListView -- Equatable guard")
 struct TranscriptListViewTests {
     private static let sampleSegments = [
         SegmentData(
             id: UUID(),
+            speakerID: 0,
             speakerLabel: "Speaker 0",
             startTime: 14,
             endTime: 25,
@@ -27,12 +30,16 @@ struct TranscriptListViewTests {
     private static func makeView(
         transcriptID: UUID = UUID(),
         canSeek: Bool = true,
-        segments: [SegmentData] = sampleSegments
+        segments: [SegmentData] = sampleSegments,
+        speakerNames: [Int: String] = [:],
+        speakerColorKeys: [Int: String] = [:]
     ) -> TranscriptListView<EmptyView> {
         TranscriptListView(
             transcriptID: transcriptID,
             canSeek: canSeek,
             segments: segments,
+            speakerNames: speakerNames,
+            speakerColorKeys: speakerColorKeys,
             onSeek: { _ in },
             header: EmptyView()
         )
@@ -90,6 +97,57 @@ struct TranscriptListViewTests {
         #expect(view1 != view2, """
         A canSeek flip changes whether timestamps are tappable, \
         so it must trigger a body re-evaluation.
+        """)
+    }
+
+    @Test("different speakerNames compares not equal")
+    @MainActor
+    func differentSpeakerNamesAreNotEqual() {
+        let id = UUID()
+        let view1 = Self.makeView(transcriptID: id, speakerNames: [:])
+        let view2 = Self.makeView(
+            transcriptID: id, speakerNames: [0: "Daniel"]
+        )
+
+        #expect(view1 != view2, """
+        Assigning a speaker name changes the rendered label, so the view \
+        must compare not-equal to trigger a re-render.
+        """)
+    }
+
+    @Test("different speakerColorKeys compares not equal")
+    @MainActor
+    func differentSpeakerColorKeysAreNotEqual() {
+        let id = UUID()
+        let view1 = Self.makeView(transcriptID: id, speakerColorKeys: [:])
+        let view2 = Self.makeView(
+            transcriptID: id, speakerColorKeys: [0: "person-A"]
+        )
+
+        #expect(view1 != view2, """
+        Merging speakers onto one person changes the shared color, so the \
+        view must compare not-equal to trigger a re-render.
+        """)
+    }
+
+    @Test("same speakerNames and colorKeys compares equal")
+    @MainActor
+    func sameSpeakerStateIsEqual() {
+        let id = UUID()
+        let view1 = Self.makeView(
+            transcriptID: id,
+            speakerNames: [0: "Daniel"],
+            speakerColorKeys: [0: "person-A"]
+        )
+        let view2 = Self.makeView(
+            transcriptID: id,
+            speakerNames: [0: "Daniel"],
+            speakerColorKeys: [0: "person-A"]
+        )
+
+        #expect(view1 == view2, """
+        Identical speaker state with different closures must compare equal \
+        so playback ticks don't force a re-render.
         """)
     }
 }

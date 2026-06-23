@@ -1,0 +1,1081 @@
+import BiscottiTestSupport
+import DataStore
+import Intelligence
+import LocalLLM
+import Testing
+@testable import OnboardingUI
+
+// MARK: - Transcription row-state mapping
+
+@Suite("OnboardingViewModel -- Transcription row state")
+@MainActor
+struct TranscriptionRowStateTests {
+    @Test("idle when not downloaded, sufficient disk")
+    func transcriptionIdle() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // Prevent FakeTranscriber from reporting models as present
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep runs)
+
+        let state = viewModel.transcriptionRowState()
+        #expect(state == .idle(sizeCaption: "~1.5 GB"))
+    }
+
+    @Test("ready when transcription already downloaded on entry")
+    func transcriptionReadyOnEntry() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds on modelsArePresent by default
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
+
+        #expect(viewModel.transcriptionDownloaded == true)
+        #expect(viewModel.transcriptionRowState() == .ready)
+    }
+
+    @Test("ready after explicit transcription download completes")
+    func transcriptionReadyAfterDownload() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionRowState() == .idle(sizeCaption: "~1.5 GB"))
+
+        // Clear the error so download succeeds
+        fixture.fakeEngine.backing.ensureModelsError = nil
+        await viewModel.startTranscriptionDownload()
+
+        #expect(viewModel.downloadComplete == true)
+        #expect(viewModel.transcriptionRowState() == .ready)
+    }
+
+    @Test("insufficientDisk when disk is low")
+    func transcriptionInsufficientDisk() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(
+            core: fixture.core,
+            availableDiskBytes: { 1_048_576 } // 1 MB -- well below threshold
+        )
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionRowState() == .insufficientDisk)
+    }
+
+    // Note: transcription downloading state (.indeterminate) can't be
+    // captured in a unit test because FakeTranscriber completes immediately.
+    // The mapper code path is covered by reading the switch in
+    // transcriptionRowState(); the language row's downloading path exercises
+    // the equivalent pattern with direct ModelManager state injection.
+
+    @Test("failed when download fails")
+    func transcriptionFailed() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+        fixture.fakeEngine.backing.ensureModelsError = FakeTranscriberError.notReady
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Attempt download with the error set
+        await viewModel.startTranscriptionDownload()
+
+        // The error message contains "failed"
+        #expect(viewModel.transcriptionRowState() == .failed(message: "Download failed. You can retry or skip."))
+    }
+}
+
+// MARK: - Transcription row-state checking
+
+@Suite("OnboardingViewModel -- Transcription row checking state")
+@MainActor
+struct TranscriptionRowCheckingTests {
+    @Test("checking when isPreparingModelStep and model not ready")
+    func checkingWhilePreparing() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep completes)
+
+        // Simulate the preparing flag being set (as if mid-preparation)
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.transcriptionRowState() == .checking)
+    }
+
+    @Test("ready trumps checking when model already downloaded")
+    func readyTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds on modelsArePresent by default
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Model is ready AND we simulate mid-preparation
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.transcriptionRowState() == .ready)
+    }
+}
+
+// MARK: - Language row-state mapping
+
+@Suite("OnboardingViewModel -- Language row state")
+@MainActor
+struct LanguageRowStateTests {
+    @Test("idle with size caption when no model downloaded")
+    func languageIdle() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        let state = viewModel.languageRowState()
+        // Target should be the recommended model; size depends on catalog
+        if case let .idle(sizeCaption) = state {
+            #expect(!sizeCaption.isEmpty)
+        } else {
+            Issue.record("Expected .idle state, got \(state)")
+        }
+    }
+
+    @Test("ready when language model is downloaded")
+    func languageReady() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.languageRowState() == .ready)
+    }
+
+    @Test("downloading shows determinate progress")
+    func languageDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate an in-flight download for the target model
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.42)
+
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.42)))
+    }
+
+    @Test("downloading with nil fraction shows determinate nil")
+    func languageDownloadingNilFraction() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: nil)
+
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: nil)))
+    }
+
+    @Test("failed when download fails")
+    func languageFailed() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .failed(message: "Network error")
+
+        #expect(viewModel.languageRowState() == .failed(message: "Network error"))
+    }
+
+    @Test("insufficientDisk when target model blocked by disk")
+    func languageInsufficientDisk() async throws {
+        // Report only 1 byte of free disk so ModelSuitability blocks all models
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            hardwareDiskBytes: 1
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.languageRowState() == .insufficientDisk)
+    }
+}
+
+// MARK: - Language row-state checking
+
+@Suite("OnboardingViewModel -- Language row checking state")
+@MainActor
+struct LanguageRowCheckingTests {
+    @Test("checking when isPreparingModelStep and model not ready")
+    func checkingWhilePreparing() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate mid-preparation
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.languageRowState() == .checking)
+    }
+
+    @Test("ready trumps checking when language model downloaded")
+    func readyTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        viewModel.isPreparingModelStep = true
+        #expect(viewModel.languageReady == true)
+        #expect(viewModel.languageRowState() == .ready)
+    }
+
+    @Test("downloading trumps checking during in-flight download")
+    func downloadingTrumpsChecking() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+
+        // Simulate in-flight download AND mid-preparation
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+        viewModel.isPreparingModelStep = true
+
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.5)))
+    }
+}
+
+// MARK: - Target model
+
+@Suite("OnboardingViewModel -- Language target model")
+@MainActor
+struct LanguageTargetModelTests {
+    @Test("target is recommended model when nothing downloaded")
+    func targetIsRecommended() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        let recommended = fixture.modelManager.recommendedModelID()
+        #expect(viewModel.languageTargetModelID == recommended)
+        #expect(recommended != nil)
+    }
+
+    @Test("target is active model when one is downloaded")
+    func targetIsActive() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        await fixture.modelManager.refresh()
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        let active = fixture.modelManager.activeModelID
+        #expect(active != nil)
+        #expect(viewModel.languageTargetModelID == active)
+    }
+
+    @Test("target display name is non-nil and non-empty")
+    func targetDisplayName() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        let name = try #require(viewModel.languageTargetDisplayName)
+        #expect(!name.isEmpty)
+    }
+
+    @Test("target is recommended when no downloads or selection")
+    func targetIsRecommendedByDefault() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.languageTargetIsRecommended == true)
+        #expect(try viewModel.languageTargetDisplayName == LLMModelCatalog.model(id: #require(fixture.modelManager.recommendedModelID()))?.displayName)
+    }
+
+    @Test("low-RAM Mac targets E2B (not 12B)")
+    func lowRAMTargetsE2B() throws {
+        // 12GB RAM: below the 15GB floor for 12B
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            hardwareRAMBytes: 12_000_000_000
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.languageTargetModelID == "gemma-4-e2b")
+    }
+
+    @Test("in-flight non-recommended download becomes the target")
+    func inflightNonRecommendedBecomesTarget() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // The recommended model on 32GB is gemma-4-12b; inject a download
+        // for the non-recommended gemma-4-e2b.
+        let nonRecommendedID = "gemma-4-e2b"
+        #expect(nonRecommendedID != fixture.modelManager.recommendedModelID())
+
+        fixture.modelManager.downloads[nonRecommendedID] = .downloading(fraction: 0.35)
+
+        #expect(viewModel.languageTargetModelID == nonRecommendedID)
+        #expect(viewModel.languageTargetIsRecommended == false)
+        #expect(viewModel.languageTargetDisplayName == LLMModelCatalog.model(id: nonRecommendedID)?.displayName)
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.35)))
+        // Language started should be true (download in flight)
+        #expect(viewModel.languageStarted == true)
+    }
+
+    @Test("in-flight non-recommended download makes bothModelsStarted true")
+    func inflightNonRecommendedBothStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        let nonRecommendedID = "gemma-4-e2b"
+        fixture.modelManager.downloads[nonRecommendedID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.transcriptionStarted == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+    }
+
+    @Test("selected model (via DataStore) drives target when no download or active model")
+    func selectedModelDrivesTarget() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        // Persist a non-recommended selection via the DataStore, then refresh
+        // ModelManager so it picks up the persisted value.
+        let nonRecommendedID = "gemma-4-e2b"
+        try await fixture.store.updateSettings { $0.selectedModelID = nonRecommendedID }
+        await fixture.modelManager.refresh()
+
+        // No model is downloaded, so activeModelID is nil. The target should
+        // fall through to the persisted selectedModelID (priority 4).
+        #expect(fixture.modelManager.activeModelID == nil)
+        #expect(fixture.modelManager.selectedModelID == nonRecommendedID)
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.languageTargetModelID == nonRecommendedID)
+        #expect(viewModel.languageTargetIsRecommended == false)
+    }
+
+    @Test("downloading wins over a stale failed entry")
+    func downloadingWinsOverFailed() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate: one model failed (stale), another is downloading
+        fixture.modelManager.downloads["gemma-4-12b"] = .failed(message: "Stale error")
+        fixture.modelManager.downloads["gemma-4-e2b"] = .downloading(fraction: 0.6)
+
+        // The actively downloading model should win (priority 1 > priority 3)
+        #expect(viewModel.languageTargetModelID == "gemma-4-e2b")
+        #expect(viewModel.languageRowState() == .downloading(.determinate(fraction: 0.6)))
+        #expect(viewModel.languageStarted == true)
+    }
+
+    @Test("failed does not shadow an active model")
+    func failedDoesNotShadowActive() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        await fixture.modelManager.refresh()
+
+        let activeID = fixture.modelManager.activeModelID
+        #expect(activeID != nil)
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Inject a failed download for a different model
+        let otherID = "gemma-4-e2b"
+        #expect(otherID != activeID)
+        fixture.modelManager.downloads[otherID] = .failed(message: "Network error")
+
+        // Active model (priority 2) should win over failed (priority 3)
+        #expect(viewModel.languageTargetModelID == activeID)
+        #expect(viewModel.languageRowState() == .ready)
+    }
+
+    @Test("failed target does not count as languageStarted")
+    func failedTargetNotStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Inject a failed download -- target resolves to it (no active model)
+        let failedID = "gemma-4-e2b"
+        fixture.modelManager.downloads[failedID] = .failed(message: "Oops")
+
+        #expect(viewModel.languageTargetModelID == failedID)
+        // languageStarted intentionally treats only .downloading as started
+        #expect(viewModel.languageStarted == false)
+        #expect(viewModel.bothModelsStarted == false)
+    }
+}
+
+// MARK: - Footer matrix (both models)
+
+@Suite("OnboardingViewModel -- Footer matrix (both models)")
+@MainActor
+struct FooterMatrixTests {
+    @Test("neither ready nor downloading shows skip")
+    func neitherReadyShowsSkip() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionReady == false)
+        #expect(viewModel.languageReady == false)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.bothModelsStarted == false)
+        #expect(viewModel.footerButton(for: .modelDownload) == .skip)
+    }
+
+    @Test("only transcription ready (language not started) shows skip")
+    func onlyTranscriptionReadyShowsSkip() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready; no language model
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageReady == false)
+        #expect(viewModel.bothModelsStarted == false)
+        #expect(viewModel.footerButton(for: .modelDownload) == .skip)
+    }
+
+    @Test("only language ready (transcription not started) shows skip")
+    func onlyLanguageReadyShowsSkip() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionReady == false)
+        #expect(viewModel.languageReady == true)
+        #expect(viewModel.bothModelsStarted == false)
+        #expect(viewModel.footerButton(for: .modelDownload) == .skip)
+    }
+
+    @Test("both ready shows continue")
+    func bothReadyShowsContinue() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready; model pre-downloaded
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageReady == true)
+        #expect(viewModel.bothModelsReady == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.footerButton(for: .modelDownload) == .continueButton)
+    }
+
+    @Test("both downloading shows continue")
+    func bothDownloadingShowsContinue() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate transcription downloading
+        viewModel.isDownloading = true
+
+        // Simulate language model downloading
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.3)
+
+        #expect(viewModel.transcriptionStarted == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.footerButton(for: .modelDownload) == .continueButton)
+    }
+
+    @Test("transcription ready + language downloading shows continue")
+    func transcriptionReadyLanguageDownloadingShowsContinue() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate language model downloading
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.footerButton(for: .modelDownload) == .continueButton)
+    }
+
+    @Test("transcription downloading + language ready shows continue")
+    func transcriptionDownloadingLanguageReadyShowsContinue() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate transcription downloading
+        viewModel.isDownloading = true
+
+        #expect(viewModel.transcriptionStarted == true)
+        #expect(viewModel.languageReady == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.footerButton(for: .modelDownload) == .continueButton)
+    }
+}
+
+// MARK: - bothModelsStarted derivation
+
+@Suite("OnboardingViewModel -- bothModelsStarted")
+@MainActor
+struct BothModelsStartedTests {
+    @Test("neither started is false")
+    func neitherStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionStarted == false)
+        #expect(viewModel.languageStarted == false)
+        #expect(viewModel.bothModelsStarted == false)
+    }
+
+    @Test("only transcription started is false")
+    func onlyTranscriptionStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate transcription downloading
+        viewModel.isDownloading = true
+
+        #expect(viewModel.transcriptionStarted == true)
+        #expect(viewModel.languageStarted == false)
+        #expect(viewModel.bothModelsStarted == false)
+    }
+
+    @Test("only language started is false")
+    func onlyLanguageStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate language model downloading
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.1)
+
+        #expect(viewModel.transcriptionStarted == false)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == false)
+    }
+
+    @Test("both downloading is true")
+    func bothDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        viewModel.isDownloading = true
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.bothModelsStarted == true)
+    }
+
+    @Test("both ready is true")
+    func bothReady() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready; model pre-downloaded
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsReady == true)
+        #expect(viewModel.bothModelsStarted == true)
+    }
+
+    @Test("one ready + one downloading is true")
+    func oneReadyOneDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.7)
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+    }
+}
+
+// MARK: - On-entry preparation
+
+@Suite("OnboardingViewModel -- Model step preparation")
+@MainActor
+struct ModelStepPreparationTests {
+    @Test("prepareModelStep sets transcriptionDownloaded from probe")
+    func prepareSetsTxDownloaded() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        #expect(viewModel.transcriptionDownloaded == false)
+
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep runs)
+
+        // FakeTranscriber reports ready by default
+        #expect(viewModel.transcriptionDownloaded == true)
+    }
+
+    @Test("prepareModelStep sets transcriptionDownloaded false when not ready")
+    func prepareSetsTxNotDownloaded() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.transcriptionDownloaded == false)
+    }
+
+    @Test("prepareModelStep refreshes ModelManager so downloaded model shows ready")
+    func prepareRefreshesModelManager() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // After refresh, the language model should be ready
+        #expect(viewModel.languageReady == true)
+    }
+
+    @Test("isPreparingModelStep is false after skip completes")
+    func preparingFalseAfterSkip() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload (prepareModelStep runs and finishes)
+
+        #expect(viewModel.isPreparingModelStep == false)
+    }
+
+    @Test("isPreparingModelStep is false after advance completes")
+    func preparingFalseAfterAdvance() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.requestCalendar()
+        await viewModel.advance() // -> calendarSelection
+        await viewModel.advance() // -> modelDownload (prepareModelStep runs)
+
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.currentStep == .modelDownload)
+    }
+
+    @Test("prepareModelStep runs from calendarSelection path too")
+    func prepareRunsFromCalendarPath() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.requestCalendar()
+        await viewModel.advance() // -> calendarSelection
+        await viewModel.advance() // -> modelDownload (prepareModelStep runs)
+
+        #expect(viewModel.currentStep == .modelDownload)
+        #expect(viewModel.transcriptionDownloaded == true)
+        #expect(viewModel.languageReady == true)
+    }
+
+    @Test("beginModelPrep is idempotent -- second call on model-download is a no-op")
+    func beginModelPrepIdempotent() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires)
+        await viewModel.skip() // -> modelDownload (beginModelPrep called again, but guard returns)
+
+        // modelsPresent should be called exactly once (from the single task)
+        #expect(fixture.fakeEngine.backing.modelsPresentCallCount == 1)
+    }
+
+    @Test("resetForReplay clears modelPrepTask and isPreparingModelStep")
+    func resetForReplayClearsPrepTask() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires)
+        await viewModel.skip() // -> modelDownload
+
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.transcriptionDownloaded == true)
+
+        viewModel.resetForReplay()
+
+        // After reset, preparation state is cleared
+        #expect(viewModel.currentStep == .welcome)
+        #expect(viewModel.isPreparingModelStep == false)
+        #expect(viewModel.transcriptionDownloaded == false)
+
+        // A new advance re-fires the pre-warm (task was nilled out)
+        await viewModel.advance() // welcome -> permissions (pre-warm fires again)
+        await viewModel.skip() // -> modelDownload
+
+        // modelsPresent called twice total (once before reset, once after)
+        #expect(fixture.fakeEngine.backing.modelsPresentCallCount == 2)
+        #expect(viewModel.transcriptionDownloaded == true)
+    }
+}
+
+// MARK: - Skip/advance from model download
+
+@Suite("OnboardingViewModel -- Skip/advance from model download")
+@MainActor
+struct ModelDownloadNavigationTests {
+    @Test("skip advances to done regardless of readiness")
+    func skipAdvancesToDone() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
+
+        #expect(viewModel.bothModelsReady == false)
+        await viewModel.skip() // -> done
+        #expect(viewModel.currentStep == .done)
+    }
+
+    @Test("advance advances to done when both ready")
+    func advanceAdvancesToDone() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsReady == true)
+        await viewModel.advance()
+        #expect(viewModel.currentStep == .done)
+    }
+}
+
+// MARK: - Format bytes helper
+
+@Suite("OnboardingViewModel -- formatBytes")
+@MainActor
+struct FormatBytesTests {
+    @Test("formats whole gigabytes without decimal")
+    func wholeGB() {
+        #expect(OnboardingViewModel.formatBytes(3_000_000_000) == "~3 GB")
+        #expect(OnboardingViewModel.formatBytes(7_000_000_000) == "~7 GB")
+    }
+
+    @Test("formats fractional gigabytes with one decimal")
+    func fractionalGB() {
+        #expect(OnboardingViewModel.formatBytes(3_200_000_000) == "~3.2 GB")
+        #expect(OnboardingViewModel.formatBytes(1_500_000_000) == "~1.5 GB")
+    }
+}
+
+// MARK: - Footer caption
+
+@Suite("OnboardingViewModel -- Footer caption")
+@MainActor
+struct FooterCaptionTests {
+    @Test("caption shows when both models downloading (Continue visible, downloads active)")
+    func captionShowsWhenBothDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
+
+        // Simulate both downloading
+        viewModel.isDownloading = true
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.3)
+
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.footerCaption == "Downloads will continue in the background")
+    }
+
+    @Test("caption shows when one ready and one downloading")
+    func captionShowsWhenOneReadyOneDownloading() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        // FakeTranscriber succeeds -> transcription ready
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // Simulate language downloading (transcription already ready)
+        guard let targetID = viewModel.languageTargetModelID else {
+            Issue.record("No language target model ID")
+            return
+        }
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.5)
+
+        #expect(viewModel.transcriptionReady == true)
+        #expect(viewModel.languageStarted == true)
+        #expect(viewModel.bothModelsStarted == true)
+        #expect(viewModel.bothModelsReady == false)
+        #expect(viewModel.footerCaption == "Downloads will continue in the background")
+    }
+
+    @Test("caption blank when both models ready")
+    func captionBlankWhenBothReady() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsReady == true)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank when neither model started (Skip showing)")
+    func captionBlankWhenNeitherStarted() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+        fixture.fakeEngine.backing.modelsPresentResult = false
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        #expect(viewModel.bothModelsStarted == false)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank on non-model steps")
+    func captionBlankOnNonModelSteps() throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+
+        // Welcome step
+        #expect(viewModel.currentStep == .welcome)
+        #expect(viewModel.footerCaption == "")
+    }
+
+    @Test("caption blank on permissions step")
+    func captionBlankOnPermissionsStep() async throws {
+        let fixture = try makeCoreFixture(
+            micStatus: .notDetermined,
+            calendarAuthStatus: .notDetermined
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+
+        #expect(viewModel.currentStep == .permissions)
+        #expect(viewModel.footerCaption == "")
+    }
+}
+
+// MARK: - Test helpers
+
+/// Error used to make FakeTranscriber's `ensureModelsDownloaded` fail,
+/// simulating models not being cached on disk.
+private enum FakeTranscriberError: Error {
+    case notReady
+}

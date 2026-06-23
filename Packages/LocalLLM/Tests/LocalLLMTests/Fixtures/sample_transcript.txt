@@ -1,0 +1,63 @@
+Speaker A: Good morning everyone. Thanks for joining the weekly product sync. Mike, are you on the call?
+
+Speaker B: Hey, yeah I'm here. Morning, Sarah.
+
+Speaker A: Great. And Priya, I see you just joined.
+
+Speaker C: Hi everyone, sorry I'm a minute late. Had a calendar conflict.
+
+Speaker A: No worries. Okay, let's get started. First item is the Q3 roadmap review. Mike, can you walk us through the engineering timeline?
+
+Speaker B: Sure. So we've been making good progress on the new notification system. The backend work is about 80% done. We expect to have the API endpoints ready by end of next week. The main risk is the real-time delivery piece -- we're still evaluating whether to go with WebSockets or server-sent events.
+
+Speaker A: What's your recommendation on that?
+
+Speaker B: I'm leaning toward server-sent events for the initial launch. It's simpler to deploy and handles our current scale fine. We can always upgrade to WebSockets later if we need bidirectional communication.
+
+Speaker A: That makes sense. Priya, from the design side, where are we on the notification preferences UI?
+
+Speaker C: The mockups are done. I shared them in Figma yesterday -- I'll drop the link in Slack after this call. The main design decision we need to resolve is whether to group notification settings by type or by channel. I've mocked up both versions.
+
+Speaker A: Let's review both options in Thursday's design review. Can you prepare a quick comparison deck?
+
+Speaker C: Absolutely, I'll have that ready by Wednesday evening.
+
+Speaker B: One thing I wanted to flag -- we need to make a decision on the push notification provider by Friday. The current contract with PushCorp expires at the end of the month, and we've been evaluating NotifyPro as an alternative. I put together a cost comparison doc.
+
+Speaker A: Right, I saw that. The cost savings look significant. Mike, can you set up a quick call with the NotifyPro team so we can ask about their SLA guarantees?
+
+Speaker B: Will do. I'll try to get that scheduled for Thursday morning.
+
+Speaker A: Perfect. Next topic -- the user research findings. Priya, you ran those interviews last week, right?
+
+Speaker C: Yes, I conducted five user interviews. The key finding is that users want more granular control over notifications. Three out of five participants mentioned that they get too many non-critical alerts. They want the ability to set quiet hours and priority levels per notification type.
+
+Speaker A: That aligns with what we've been hearing in support tickets too. Mike, is the quiet hours feature feasible for the Q3 release?
+
+Speaker B: It's doable but it would need to be scoped carefully. The backend can support it, but we'd need about two extra weeks. I'd suggest we include basic quiet hours -- a single global window -- in Q3, and push per-type quiet hours to Q4.
+
+Speaker A: I like that approach. Let's go with global quiet hours for Q3. Priya, can you update the designs to include that?
+
+Speaker C: Sure. I'll add a quiet hours section to the preferences screen. Should be straightforward since we already have the time picker component.
+
+Speaker A: Great. Last item -- Mike mentioned offline that there might be a performance issue with the current notification delivery pipeline. Mike, can you elaborate?
+
+Speaker B: Yeah, so we noticed that delivery latency spikes during peak hours, around 9 AM and 2 PM. Average delivery time goes from 200 milliseconds to about 1.5 seconds. I've been looking into it and I think the bottleneck is in the message queue. I want to do some load testing this week to confirm.
+
+Speaker A: Is this blocking the Q3 launch?
+
+Speaker B: Not blocking, but it's something we should fix before we scale up the user base. I'll have the load testing results by next Monday and we can decide then whether to prioritize a fix.
+
+Speaker A: Sounds good. Okay, let me quickly recap the action items. Mike, you're scheduling the NotifyPro call for Thursday and running load tests on the delivery pipeline. Priya, you're preparing the comparison deck for Thursday's design review and updating the preferences designs with quiet hours. And I'll review the PushCorp contract terms so we're ready to make a decision by Friday.
+
+Speaker C: Quick question -- should I also start working on the onboarding flow for the new notification settings? We'll need that before launch.
+
+Speaker A: Good point. Yes, please start on that. Let's make sure we have the onboarding screens in the design review too.
+
+Speaker B: One more thing -- over to you, Sarah -- should I loop in DevOps on the WebSocket versus SSE decision? They might have infrastructure preferences.
+
+Speaker A: Yes, good call. Include them in the evaluation. Alright, I think we're good. Thanks everyone. Talk to you Thursday.
+
+Speaker B: Thanks, Sarah. Bye.
+
+Speaker C: Bye everyone!

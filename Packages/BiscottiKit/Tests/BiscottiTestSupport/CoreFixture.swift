@@ -3,6 +3,8 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
+import LocalLLM
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -30,6 +32,10 @@ public struct CoreFixture {
     public let fakeNotificationCenter: FakeTestNotificationCenter
     public let fakeActivitySource: FakeActivitySource
     public let fakeScheduler: FakeScheduler?
+    public let intelligence: Intelligence
+    public let modelManager: ModelManager
+    public let fakeLLMRunner: FakeCoreLLMRunner
+    public let fakeModelProvider: FakeCoreModelProvider
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -333,6 +339,118 @@ public final class FakeActivitySource: ActivitySource,
     }
 }
 
+// MARK: - Fake LLM fakes for CoreFixture
+
+/// A simple fake LLM runner for AppCore integration tests.
+/// Records session usage; does not return meaningful LLM output.
+public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
+    /// Number of times `withSession` was called.
+    public var sessionCount = 0
+
+    public init() {}
+
+    public func withSession<T: Sendable>(
+        model _: URL,
+        config _: LocalLLM.EngineConfig,
+        _ body: @Sendable (any LLMSession) async throws -> T
+    ) async throws -> T {
+        sessionCount += 1
+        return try await body(FakeCoreLLMSession())
+    }
+}
+
+/// A minimal fake LLM session that returns empty responses.
+public struct FakeCoreLLMSession: LLMSession {
+    public func countTokens(
+        messages _: [LocalLLM.LLMMessage]
+    ) async throws -> Int {
+        100
+    }
+
+    public func reconfigure(contextSize _: Int) async throws {}
+
+    public func generate(
+        messages _: [LocalLLM.LLMMessage],
+        options _: LocalLLM.GenerationOptions
+    ) async throws -> String {
+        ""
+    }
+
+    public func generateStreaming(
+        messages _: [LocalLLM.LLMMessage],
+        options _: LocalLLM.GenerationOptions
+    ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+}
+
+/// A fake model provider for AppCore integration tests.
+/// Supports multi-model protocol with configurable per-model download state.
+public final class FakeCoreModelProvider: ModelProviding,
+    @unchecked Sendable
+{
+    public var downloaded: Bool
+    public let catalog: [LLMModel]
+    private var downloadedIDs: Set<String>
+
+    public init(downloaded: Bool = false) {
+        self.downloaded = downloaded
+        catalog = LLMModelCatalog.all
+        // When downloaded=true, mark the first catalog model as downloaded
+        // (simulates existing 12B-downloaded users)
+        if downloaded {
+            downloadedIDs = [LLMModelCatalog.all.first?.id ?? ""]
+        } else {
+            downloadedIDs = []
+        }
+    }
+
+    public func url(for id: String) -> URL? {
+        LLMModelCatalog.model(id: id).map {
+            URL(fileURLWithPath: "/fake/\($0.fileName)")
+        }
+    }
+
+    public func isDownloaded(_ id: String) -> Bool {
+        downloadedIDs.contains(id)
+    }
+
+    public func downloadedModelIDs() -> [String] {
+        catalog.filter { downloadedIDs.contains($0.id) }.map(\.id)
+    }
+
+    public func download(
+        _ id: String,
+        progress _: @Sendable @escaping (Int64, Int64?) -> Void
+    ) async throws {
+        downloadedIDs.insert(id)
+        downloaded = true
+    }
+
+    public func delete(_ id: String) throws {
+        downloadedIDs.remove(id)
+        downloaded = !downloadedIDs.isEmpty
+    }
+}
+
+/// A fake hardware probe for CoreFixture tests.
+public struct FakeCoreHardwareProbe: HardwareProbing {
+    public var physicalMemoryBytes: UInt64
+    public var diskBytes: Int64?
+
+    public init(
+        physicalMemoryBytes: UInt64 = 32_000_000_000,
+        diskBytes: Int64? = 100_000_000_000
+    ) {
+        self.physicalMemoryBytes = physicalMemoryBytes
+        self.diskBytes = diskBytes
+    }
+
+    public func availableDiskBytes(at _: URL) -> Int64? {
+        diskBytes
+    }
+}
+
 /// Creates a `CoreFixture` with configurable fakes.
 @MainActor
 // swiftlint:disable:next function_body_length
@@ -351,6 +469,9 @@ public func makeCoreFixture(
     notificationAuthorizer: (any NotificationAuthorizing)? = nil,
     useFakeScheduler: Bool = false,
     useImmediateDetectorClock: Bool = false,
+    modelDownloaded: Bool = false,
+    hardwareRAMBytes: UInt64 = 32_000_000_000,
+    hardwareDiskBytes: Int64? = 100_000_000_000,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -427,6 +548,33 @@ public func makeCoreFixture(
     let scheduler: any AppScheduler = fakeScheduler
         ?? LiveAppScheduler()
 
+    let fakeLLMRunner = FakeCoreLLMRunner()
+    let fakeModelProvider = FakeCoreModelProvider(
+        downloaded: modelDownloaded
+    )
+    let fakeHardwareProbe = FakeCoreHardwareProbe(
+        physicalMemoryBytes: hardwareRAMBytes,
+        diskBytes: hardwareDiskBytes
+    )
+    let modelManager = ModelManager(
+        store: store,
+        models: fakeModelProvider,
+        hardware: fakeHardwareProbe
+    )
+    // Pre-populate download states so modelManager reflects the fake provider
+    if modelDownloaded {
+        for id in fakeModelProvider.downloadedModelIDs() {
+            modelManager.downloads[id] = .downloaded
+        }
+    }
+
+    let intelligence = Intelligence(
+        store: store,
+        llm: fakeLLMRunner,
+        modelManager: modelManager,
+        settings: { AISettings(enabled: true) }
+    )
+
     let core = AppCore(
         store: store,
         permissions: permissions,
@@ -435,6 +583,8 @@ public func makeCoreFixture(
         calendar: calendarService,
         detector: detector,
         notifications: notificationService,
+        intelligence: intelligence,
+        modelManager: modelManager,
         scheduler: scheduler
     )
 
@@ -451,6 +601,10 @@ public func makeCoreFixture(
         notificationService: notificationService,
         fakeNotificationCenter: fakeNotifCenter,
         fakeActivitySource: fakeActivitySource,
-        fakeScheduler: fakeScheduler
+        fakeScheduler: fakeScheduler,
+        intelligence: intelligence,
+        modelManager: modelManager,
+        fakeLLMRunner: fakeLLMRunner,
+        fakeModelProvider: fakeModelProvider
     )
 }

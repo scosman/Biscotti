@@ -1,0 +1,6 @@
+.build*/
+# Stray Swift build intermediates (sandbox-aborted builds can leave these outside .build/)
+*.dia
+*.o
+*.d
+*.swiftdeps

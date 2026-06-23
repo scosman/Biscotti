@@ -3,6 +3,8 @@ import AppKit
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
+import LocalLLM
 import Permissions
 import ServiceManagement
 
@@ -29,7 +31,14 @@ public struct CalendarGroup: Identifiable, Sendable, Equatable {
 /// overview with inline request actions, and general preferences.
 @MainActor @Observable
 public final class SettingsViewModel {
-    private let core: AppCore
+    /// Exposed (read-only) so `ManageModelsSheet` can be constructed from the
+    /// same `AppCore` instance. Not used for direct mutations outside this VM.
+    let appCore: AppCore
+
+    /// Legacy alias -- internal code still references `core` throughout.
+    private var core: AppCore {
+        appCore
+    }
 
     /// Seam for reading the system launch-at-login status. Defaults to
     /// `SMAppService.mainApp.status == .enabled`. Injected in tests.
@@ -73,6 +82,22 @@ public final class SettingsViewModel {
     /// (calendar access not authorized).
     public var calendarNotificationsDisabled: Bool {
         calendarState != .authorized
+    }
+
+    // MARK: - AI Enhancements
+
+    /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
+    public private(set) var aiAnalysisEnabled: Bool = true
+
+    /// Whether any AI model is available (active model exists).
+    public var modelAvailable: Bool {
+        core.modelManager.isModelAvailable
+    }
+
+    /// Display name of the currently active model, or `nil` if none.
+    public var activeModelDisplayName: String? {
+        guard let id = core.modelManager.activeModelID else { return nil }
+        return LLMModelCatalog.model(id: id)?.displayName
     }
 
     // MARK: - Calendar state
@@ -119,7 +144,7 @@ public final class SettingsViewModel {
         core: AppCore,
         readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil
     ) {
-        self.core = core
+        appCore = core
         self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
             #if canImport(ServiceManagement)
                 ServiceManagement.SMAppService.mainApp.status == .enabled
@@ -232,6 +257,12 @@ public final class SettingsViewModel {
         /// without resetting the app's data.
         public func replayOnboarding() {
             core.showOnboardingReplay()
+        }
+
+        /// Debug-only: clears the persisted language-model selection so the
+        /// app reverts to the hardware-recommended default.
+        public func clearSelectedModel() {
+            Task { await core.modelManager.clearSelectedModel() }
         }
     #endif
 
@@ -364,9 +395,12 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            aiAnalysisEnabled = settings.aiAnalysisEnabled
         } catch {
             enabledCalendarIDs = nil
         }
+
+        await core.modelManager.refresh()
 
         // SMAppService is the source of truth for launch-at-login
         launchAtLogin = readLaunchAtLoginStatus()
@@ -469,6 +503,23 @@ public extension SettingsViewModel {
             )
         } catch {
             stopRecordingAutomatically = !enabled
+        }
+    }
+}
+
+// MARK: - AI Enhancements actions
+
+public extension SettingsViewModel {
+    /// Toggles the "AI Analysis & Summary" setting. Persists to the
+    /// store with optimistic update; reverts on failure.
+    func setAIAnalysisEnabled(_ enabled: Bool) async {
+        aiAnalysisEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.aiAnalysisEnabled = enabled
+            }
+        } catch {
+            aiAnalysisEnabled = !enabled
         }
     }
 }

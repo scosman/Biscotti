@@ -9,7 +9,7 @@ A new MacOS app for recording meetings. Private, local, awesome.
 - It stores data in SwiftData. Custom data model. Core one is “Meeting” with attached audio files, transcript data, title, participants, etc
 - Uses eventKit access to access your calendar. Knows about upcoming meetings. Copies in relevant information about he meeting into it’s Meeting data model, etc.
 - Nice tray icon/app: shows your next upcoming meting, shows when recording, suggests stoping recording when meeting ends
-- P2: LLM intelligence: features like “write summary”, “Map ‘Speaker A’ -> name” using transcript (speaker B says “Hi Tom” and tom was participant), “write follow up”. Could be API based of llama.cpp based
+- LLM intelligence (built): on-device summarization (streamed, editable) and speaker-name inference (LLM-based auto-guess + manual mapping sheet), powered by the `Intelligence` module via `LocalLLM`/`BiscottiLLM.xpc`. Auto-runs after transcription. Settings section for AI toggles + model download. Remaining P2: external provider support, vocab extraction, “write follow up”
 
 ## Audio Recording
 

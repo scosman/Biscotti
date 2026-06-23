@@ -97,20 +97,75 @@ struct ScriptShapeTests {
         }
     }
 
-    @Test("All step IDs across both scripts are unique")
+    @Test("Local LLM script has a non-empty id and title")
+    func localLLMIdentity() {
+        let script = TestScript.localLLM
+        #expect(!script.id.isEmpty)
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "local_llm")
+    }
+
+    @Test("Local LLM script has exactly 24 steps")
+    func localLLMStepCount() {
+        #expect(TestScript.localLLM.steps.count == 24)
+    }
+
+    @Test("Local LLM step IDs match the canonical set")
+    func localLLMStepIDs() {
+        let ids = Set(TestScript.localLLM.steps.map(\.id))
+        let expected: Set = [
+            "llm_model_download",
+            "llm_model_disk",
+            "llm_ai_tests_passed",
+            "llm_xpc_inference",
+            "llm_chat_system",
+            "llm_chat_system_quality",
+            "llm_sample_transcript",
+            "llm_summarize_run",
+            "llm_summarize_quality",
+            "llm_action_items_run",
+            "llm_action_items_quality",
+            "llm_speaker_names_run",
+            "llm_speaker_names_quality",
+            "llm_thinking_run",
+            "llm_thinking_mode",
+            "llm_streaming_run",
+            "llm_streaming_channels",
+            "llm_kv_reuse_info",
+            "llm_kv_reuse",
+            "llm_kv_reuse_quality",
+            "llm_e2b_download",
+            "llm_e2b_kv_reuse",
+            "llm_e2b_kv_reuse_quality",
+            "llm_reclamation"
+        ]
+        #expect(ids == expected)
+    }
+
+    @Test("Every step ID in Local LLM is non-empty")
+    func localLLMStepIDsNonEmpty() {
+        for step in TestScript.localLLM.steps {
+            #expect(!step.id.isEmpty, "Empty step ID in Local LLM script")
+        }
+    }
+
+    @Test("All step IDs across all scripts are unique")
     func allStepIDsUnique() {
-        let allSteps = TestScript.audioCapture.steps + TestScript.transcription.steps
+        let allSteps = TestScript.audioCapture.steps
+            + TestScript.transcription.steps
+            + TestScript.localLLM.steps
         let ids = allSteps.map(\.id)
         let uniqueIDs = Set(ids)
         #expect(ids.count == uniqueIDs.count, "Duplicate step IDs found")
     }
 
-    @Test("allScripts contains both scripts")
-    func allScriptsContainsBoth() {
+    @Test("allScripts contains all scripts")
+    func allScriptsContainsAll() {
         let ids = allScripts.map(\.id)
         #expect(ids.contains("audio_capture"))
         #expect(ids.contains("transcription"))
-        #expect(allScripts.count == 2)
+        #expect(ids.contains("local_llm"))
+        #expect(allScripts.count == 3)
     }
 
     @Test("Step IDs within Audio Capture are unique")
@@ -122,6 +177,12 @@ struct ScriptShapeTests {
     @Test("Step IDs within Transcription are unique")
     func transcriptionInternalUniqueness() {
         let ids = TestScript.transcription.steps.map(\.id)
+        #expect(ids.count == Set(ids).count)
+    }
+
+    @Test("Step IDs within Local LLM are unique")
+    func localLLMInternalUniqueness() {
+        let ids = TestScript.localLLM.steps.map(\.id)
         #expect(ids.count == Set(ids).count)
     }
 }

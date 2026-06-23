@@ -3,6 +3,8 @@ import AppKit
 import Calendar
 import DataStore
 import DesignSystem
+import Intelligence
+import ModelManagementUI
 import Permissions
 import SwiftUI
 
@@ -13,24 +15,34 @@ public struct SettingsView: View {
     /// SettingsSystemAudioRow.swift can bind to it.
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
+    @State private var showManageModels = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
     }
 
+    /// Canonical section titles in display order. Each section's header
+    /// is driven from this array (`sectionTitles[N]`), so reordering here
+    /// reorders the rendered headers. Debug is appended in debug builds.
+    static let sectionTitles = [
+        "General",
+        "Permissions",
+        "Notifications",
+        "AI Enhancements",
+        "Calendars"
+    ]
+
+    /// Muted caption trailing the AI Enhancements header.
+    static let aiEnhancementsHeaderCaption = "AI runs locally on your Mac."
+
     public var body: some View {
         ScrollView {
+            // Sections in spec order (section 13.3)
             Form {
-                // General
                 generalSection
-
-                // Notifications
-                notificationsSection
-
-                // Permissions (above Calendars per user feedback)
                 permissionsSection
-
-                // Calendars (last)
+                notificationsSection
+                aiEnhancementsSection
                 calendarSection
 
                 #if DEBUG
@@ -53,7 +65,7 @@ public struct SettingsView: View {
     // MARK: - General section
 
     private var generalSection: some View {
-        Section("General") {
+        Section(Self.sectionTitles[0]) {
             Toggle(
                 "Launch at login",
                 isOn: launchAtLoginBinding
@@ -141,7 +153,7 @@ public struct SettingsView: View {
     // MARK: - Calendar section
 
     private var calendarSection: some View {
-        Section("Calendars") {
+        Section(Self.sectionTitles[4]) {
             if viewModel.calendarState == .authorized {
                 if viewModel.calendarGroups.isEmpty {
                     Text("No calendars found.")
@@ -189,7 +201,7 @@ public struct SettingsView: View {
     // MARK: - Permissions section
 
     private var permissionsSection: some View {
-        Section("Permissions") {
+        Section(Self.sectionTitles[1]) {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
@@ -270,16 +282,102 @@ public struct SettingsView: View {
                     Label("Replay Onboarding", systemImage: "arrow.counterclockwise")
                 }
                 .foregroundStyle(.sage)
+
+                Button {
+                    viewModel.clearSelectedModel()
+                } label: {
+                    Label("Clear Selected LLM", systemImage: "arrow.uturn.backward")
+                }
+                .foregroundStyle(.sage)
             }
         }
     #endif
+}
+
+// MARK: - AI Enhancements section
+
+private extension SettingsView {
+    var aiEnhancementsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "AI Analysis & Summary",
+                    isOn: aiAnalysisEnabledBinding
+                )
+                .disabled(!viewModel.modelAvailable)
+                Text(
+                    "Generate a title and summary from the transcript, and guess the names of speakers from context."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+
+            aiLanguageModelRow
+        } header: {
+            HStack {
+                Text(Self.sectionTitles[3])
+                Spacer()
+                Text(Self.aiEnhancementsHeaderCaption)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+        }
+        .sheet(isPresented: $showManageModels) {
+            ManageModelsSheet(
+                viewModel: ManageModelsViewModel(core: viewModel.appCore)
+            )
+        }
+    }
+
+    var aiLanguageModelRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("AI Language Model")
+                Text("The AI model used to summarize meetings")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            if let displayName = viewModel.activeModelDisplayName {
+                Text(displayName)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                Button("Manage") {
+                    showManageModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Button("Download\u{2026}") {
+                    showManageModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    var aiAnalysisEnabledBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.modelAvailable
+                    ? viewModel.aiAnalysisEnabled
+                    : false
+            },
+            set: { newValue in
+                Task { await viewModel.setAIAnalysisEnabled(newValue) }
+            }
+        )
+    }
 }
 
 // MARK: - Notifications section
 
 private extension SettingsView {
     var notificationsSection: some View {
-        Section("Notifications") {
+        Section(Self.sectionTitles[2]) {
             // Row 1: Monitor for Meetings
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

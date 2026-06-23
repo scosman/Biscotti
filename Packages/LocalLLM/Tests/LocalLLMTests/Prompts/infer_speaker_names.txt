@@ -1,0 +1,11 @@
+You are given a transcript of a meeting where speakers are labeled as Speaker A, Speaker B, Speaker C, etc. Your task is to infer the real names of the speakers based on cues within the conversation (e.g., greetings like "Hi Mike", references like "Over to you, Sarah", or self-introductions).
+
+For each speaker label, provide:
+- The inferred real name (or "Unknown" if there is insufficient evidence)
+- The evidence from the transcript that supports the inference (quote the relevant passage)
+
+Format your response as a list, one entry per speaker.
+
+Meeting transcript:
+
+{{transcript}}

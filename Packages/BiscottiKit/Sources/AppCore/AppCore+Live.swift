@@ -2,6 +2,7 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -52,8 +53,7 @@ public extension AppCore {
 
         logger.info("AppCore.live: TranscriptionService init")
         let transcriber = Transcriber(backend: .hosted(serviceName: transcriberServiceName))
-        let engine = LiveTranscriberAdapter(transcriber: transcriber)
-        let transcription = TranscriptionService(store: store, engine: engine)
+        let transcription = TranscriptionService(store: store, engine: LiveTranscriberAdapter(transcriber: transcriber))
 
         logger.info("AppCore.live: CalendarService init")
         let catalog = BundledMeetingCatalog()
@@ -65,13 +65,16 @@ public extension AppCore {
         logger.info("AppCore.live: NotificationService init")
         let notifications = NotificationService()
 
-        // Wire the live notification authorizer into Permissions so
-        // that requestNotifications() actually calls
-        // UNUserNotificationCenter.requestAuthorization(options:).
+        // Wire live notification authorizer so requestNotifications() works.
         let notifAuth = LiveNotificationAuthorizerAdapter(
             service: notifications
         )
         permissions.setNotificationAuthorizer(notifAuth)
+
+        logger.info("AppCore.live: ModelManager + Intelligence init")
+        let (modelManager, intelligence) = buildModelAndIntelligence(
+            store: store
+        )
 
         logger.info("AppCore.live: constructing AppCore")
         let core = AppCore(
@@ -81,10 +84,41 @@ public extension AppCore {
             transcription: transcription,
             calendar: calendar,
             detector: detector,
-            notifications: notifications
+            notifications: notifications,
+            intelligence: intelligence,
+            modelManager: modelManager
         )
         logger.info("AppCore.live: done")
         return core
+    }
+
+    /// Builds the live `ModelManager` + `Intelligence` with real LocalLLM-backed
+    /// implementations. Extracted to keep `live(storageRoot:…)` under
+    /// the function body length lint limit.
+    @MainActor
+    private static func buildModelAndIntelligence(
+        store: DataStore
+    ) -> (ModelManager, Intelligence) {
+        let modelProvider = LiveModelProvider()
+        let hardwareProbe = LiveHardwareProbe()
+        let modelManager = ModelManager(
+            store: store,
+            models: modelProvider,
+            hardware: hardwareProbe
+        )
+        let llmRunner = LiveLLMRunner()
+        let intelligence = Intelligence(
+            store: store,
+            llm: llmRunner,
+            modelManager: modelManager,
+            settings: { [store] in
+                let settings = try? await store.settings()
+                return AISettings(
+                    enabled: settings?.aiAnalysisEnabled ?? true
+                )
+            }
+        )
+        return (modelManager, intelligence)
     }
 }
 
@@ -184,6 +218,10 @@ private struct LiveTranscriberAdapter: Transcribing {
             system: system,
             customVocabulary: customVocabulary
         )
+    }
+
+    func modelsPresent() async -> Bool {
+        await transcriber.modelsPresent()
     }
 
     func shutdown() async {

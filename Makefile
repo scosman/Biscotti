@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture
+PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture Packages/LocalLLM
 LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
 
 # SwiftLint is pinned to an exact version. Homebrew cannot pin a formula version
@@ -59,6 +59,7 @@ test: ## GATING: run package tests
 
 test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
+	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
 
 lint: $(SWIFTLINT) ## Check formatting + lint (non-mutating)
 	swiftformat $(LINT_PATHS) --lint --quiet --cache ignore

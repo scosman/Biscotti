@@ -26,10 +26,20 @@ import SwiftUI
 /// only visible rows are materialized -- fixing the ~450MB memory
 /// spike on long transcripts.
 ///
+/// Each row's speaker label shows the assigned person name (when the
+/// segment's `speakerID` is mapped in `speakerNames`) in the speaker's
+/// color, and is tappable to open the speaker-mapping sheet via
+/// `onSpeaker`. Speakers assigned to the same person share a color via
+/// `speakerColorKeys`.
+///
 /// **Equatable guard:** the parent re-evaluates its body on every
 /// playback tick (~4 Hz) because it reads `playbackCurrentTime` for
-/// the transport bar. Equality keys on `transcriptID` + `canSeek` so
-/// SwiftUI skips body re-evaluation when the transcript hasn't changed.
+/// the transport bar. Equality keys on `transcriptID` + `canSeek` +
+/// `speakerNames` + `speakerColorKeys` so SwiftUI skips body
+/// re-evaluation when the transcript hasn't changed, but re-renders when
+/// a speaker is renamed or merged (the segments and closures are
+/// excluded — segments are keyed to the version via `transcriptID`, and
+/// closures are never equal).
 struct TranscriptListView<Header: View>: View, Equatable {
     /// Stable identity for the displayed transcript version.
     let transcriptID: UUID
@@ -40,8 +50,20 @@ struct TranscriptListView<Header: View>: View, Equatable {
     /// The transcript segments to display.
     let segments: [SegmentData]
 
+    /// Speaker ID -> assigned display name. A segment whose `speakerID`
+    /// is present shows the assigned name instead of `speakerLabel`.
+    var speakerNames: [Int: String] = [:]
+
+    /// Speaker ID -> color-key override (e.g. `"person-<UUID>"`) so
+    /// speakers merged onto the same person share a color.
+    var speakerColorKeys: [Int: String] = [:]
+
     /// Callback when the user taps a timestamp to seek playback.
     let onSeek: (TimeInterval) -> Void
+
+    /// Callback when the user taps a speaker label, with the speaker ID,
+    /// to open the speaker-mapping sheet.
+    var onSpeaker: (Int) -> Void = { _ in }
 
     /// Non-recycled header view (page chrome) placed before the
     /// recycled transcript rows. Pass `EmptyView()` when no header
@@ -49,7 +71,10 @@ struct TranscriptListView<Header: View>: View, Equatable {
     let header: Header
 
     nonisolated static func == (lhs: TranscriptListView, rhs: TranscriptListView) -> Bool {
-        lhs.transcriptID == rhs.transcriptID && lhs.canSeek == rhs.canSeek
+        lhs.transcriptID == rhs.transcriptID
+            && lhs.canSeek == rhs.canSeek
+            && lhs.speakerNames == rhs.speakerNames
+            && lhs.speakerColorKeys == rhs.speakerColorKeys
     }
 
     var body: some View {
@@ -65,11 +90,15 @@ struct TranscriptListView<Header: View>: View, Equatable {
             ForEach(segments) { segment in
                 TranscriptSegmentRow(
                     segment: segment,
+                    speakerName: TranscriptContent.displayName(
+                        for: segment, names: speakerNames
+                    ),
                     speakerColor: TranscriptContent.speakerColor(
-                        for: segment.speakerLabel
+                        for: segment, colorKeys: speakerColorKeys
                     ),
                     canSeek: canSeek,
-                    onSeek: onSeek
+                    onSeek: onSeek,
+                    onSpeaker: onSpeaker
                 )
                 .readableRowWidth()
                 .listRowSeparator(.hidden)
@@ -91,9 +120,13 @@ struct TranscriptListView<Header: View>: View, Equatable {
 /// and utterance text.
 private struct TranscriptSegmentRow: View {
     let segment: SegmentData
+    /// The resolved speaker display name (assigned person or label).
+    let speakerName: String
     let speakerColor: Color
     let canSeek: Bool
     let onSeek: (TimeInterval) -> Void
+    /// Tapped with the segment's speaker ID to open the mapping sheet.
+    let onSpeaker: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -103,6 +136,27 @@ private struct TranscriptSegmentRow: View {
         .textSelection(.enabled)
     }
 
+    @ViewBuilder
+    private var speakerLabel: some View {
+        // Tappable to open the mapping sheet when the segment carries a
+        // diarization speaker ID; plain colored text otherwise.
+        if let speakerID = segment.speakerID {
+            Button {
+                onSpeaker(speakerID)
+            } label: {
+                Text(speakerName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(speakerColor)
+            }
+            .buttonStyle(.plain)
+            .cursor(.pointingHand)
+        } else {
+            Text(speakerName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(speakerColor)
+        }
+    }
+
     private var headerLine: some View {
         HStack(alignment: .center, spacing: Tokens.spacingXS) {
             // Speaker color chip
@@ -110,10 +164,8 @@ private struct TranscriptSegmentRow: View {
                 .fill(speakerColor)
                 .frame(width: 8, height: 8)
 
-            // Speaker label
-            Text(segment.speakerLabel)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(speakerColor)
+            // Speaker label (tappable to open the mapping sheet)
+            speakerLabel
 
             // Timestamp (with optional seek action)
             if canSeek {

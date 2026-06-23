@@ -3,6 +3,8 @@
     import Calendar
     import DataStore
     import Foundation
+    import Intelligence
+    import LocalLLM
     import MeetingCatalog
     import MeetingDetection
     import Notifications
@@ -53,6 +55,19 @@
                 provider: PreviewNotificationCenter()
             )
 
+            let modelManager = ModelManager(
+                store: store,
+                models: PreviewModelProvider(),
+                hardware: PreviewHardwareProbe()
+            )
+
+            let intelligence = Intelligence(
+                store: store,
+                llm: PreviewLLMRunner(),
+                modelManager: modelManager,
+                settings: { AISettings(enabled: true) }
+            )
+
             return AppCore(
                 store: store,
                 permissions: permissions,
@@ -60,7 +75,9 @@
                 transcription: transcription,
                 calendar: calendar,
                 detector: detector,
-                notifications: notifications
+                notifications: notifications,
+                intelligence: intelligence,
+                modelManager: modelManager
             )
         }
     }
@@ -103,6 +120,10 @@
 
     private struct PreviewTranscriber: Transcribing {
         func ensureModelsDownloaded(status _: (@Sendable (String) -> Void)?) async throws {}
+        func modelsPresent() async -> Bool {
+            false
+        }
+
         func processAudio(
             mic _: URL,
             system _: URL,
@@ -173,6 +194,79 @@
 
         func alertStyle() async -> UNAlertStyle {
             .banner
+        }
+    }
+
+    /// No-op LLM runner for previews.
+    private struct PreviewLLMRunner: LLMRunning {
+        func withSession<T: Sendable>(
+            model _: URL,
+            config _: LocalLLM.EngineConfig,
+            _ body: @Sendable (any LLMSession) async throws -> T
+        ) async throws -> T {
+            try await body(PreviewLLMSession())
+        }
+    }
+
+    /// No-op LLM session for previews.
+    private struct PreviewLLMSession: LLMSession {
+        func countTokens(
+            messages _: [LocalLLM.LLMMessage]
+        ) async throws -> Int {
+            100
+        }
+
+        func reconfigure(contextSize _: Int) async throws {}
+
+        func generate(
+            messages _: [LocalLLM.LLMMessage],
+            options _: LocalLLM.GenerationOptions
+        ) async throws -> String {
+            ""
+        }
+
+        func generateStreaming(
+            messages _: [LocalLLM.LLMMessage],
+            options _: LocalLLM.GenerationOptions
+        ) async -> AsyncThrowingStream<LocalLLM.StreamEvent, Error> {
+            AsyncThrowingStream { $0.finish() }
+        }
+    }
+
+    /// No-op model provider for previews (no models downloaded).
+    private struct PreviewModelProvider: ModelProviding {
+        let catalog: [LLMModel] = LLMModelCatalog.all
+
+        func url(for id: String) -> URL? {
+            LLMModelCatalog.model(id: id).map {
+                URL(fileURLWithPath: "/preview/\($0.fileName)")
+            }
+        }
+
+        func isDownloaded(_: String) -> Bool {
+            false
+        }
+
+        func downloadedModelIDs() -> [String] {
+            []
+        }
+
+        func download(
+            _: String,
+            progress _: @Sendable @escaping (Int64, Int64?) -> Void
+        ) async throws {}
+
+        func delete(_: String) throws {}
+    }
+
+    /// Fake hardware probe for previews (32 GB RAM, plenty of disk).
+    private struct PreviewHardwareProbe: HardwareProbing {
+        var physicalMemoryBytes: UInt64 {
+            32_000_000_000
+        }
+
+        func availableDiskBytes(at _: URL) -> Int64? {
+            100_000_000_000
         }
     }
 #endif

@@ -25,11 +25,14 @@ let package = Package(
         .library(name: "HomeUI", targets: ["HomeUI"]),
         .library(name: "OnboardingUI", targets: ["OnboardingUI"]),
         .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
-        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"])
+        .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
+        .library(name: "Intelligence", targets: ["Intelligence"]),
+        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
+        .package(name: "LocalLLM", path: "../LocalLLM"),
         .package(url: "https://github.com/scosman/swift-markdown-engine", revision: "6edaa33637bcfc39272415f635c5f2ed6ff2853b")
     ],
     targets: [
@@ -115,6 +118,7 @@ let package = Package(
             name: "AppCore",
             dependencies: [
                 "DataStore",
+                "Intelligence",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -123,6 +127,7 @@ let package = Package(
                 "MeetingDetection",
                 "Notifications",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -137,6 +142,7 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",
@@ -144,6 +150,7 @@ let package = Package(
                 "Recording",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             path: "Tests/BiscottiTestSupport",
@@ -157,6 +164,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
                 "MeetingCatalog",
                 "MeetingDetailUI",
                 "MeetingDetection",
@@ -232,6 +240,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
                 "MarkdownEditorUI",
                 "TranscriptionService"
             ],
@@ -245,11 +254,13 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -339,6 +350,9 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
+                "LocalLLM",
+                "ModelManagementUI",
                 "Permissions"
             ],
             swiftSettings: warningsAsErrors
@@ -351,7 +365,10 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
+                "MeetingDetection",
+                "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
@@ -396,8 +413,11 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
+                "ModelManagementUI",
                 "Permissions",
-                "TranscriptionService"
+                "TranscriptionService",
+                .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -409,11 +429,13 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -473,6 +495,45 @@ let package = Package(
         .testTarget(
             name: "MarkdownEditorUITests",
             dependencies: ["MarkdownEditorUI"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Intelligence",
+            dependencies: [
+                "DataStore",
+                .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "IntelligenceTests",
+            dependencies: [
+                "Intelligence",
+                "DataStore",
+                .product(name: "LocalLLM", package: "LocalLLM"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ModelManagementUI",
+            dependencies: [
+                "AppCore",
+                "DesignSystem",
+                "Intelligence",
+                .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ModelManagementUITests",
+            dependencies: [
+                "ModelManagementUI",
+                "AppCore",
+                "BiscottiTestSupport",
+                "Intelligence",
+                .product(name: "LocalLLM", package: "LocalLLM")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

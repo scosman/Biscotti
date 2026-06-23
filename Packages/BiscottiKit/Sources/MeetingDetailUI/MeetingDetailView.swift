@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import DataStore
 import DesignSystem
+import Intelligence
 import MarkdownEditorUI
 import SwiftUI
 import TranscriptionService
@@ -78,6 +79,22 @@ public struct MeetingDetailView: View {
         .onChange(of: viewModel.pendingJumpToken) { _, _ in
             Task { await viewModel.applyPendingJumpIfNeeded() }
         }
+        .onChange(of: viewModel.enhancementStatus) { _, newStatus in
+            Task {
+                await viewModel.onEnhancementStatusChange(newStatus)
+            }
+        }
+        .onChange(of: viewModel.streamingSummary) { oldValue, newValue in
+            // Track both old and new: during streaming, each new value
+            // is captured; when streaming clears (nil), the old value
+            // is the final streamed text that seeds summaryText.
+            viewModel.onStreamingSummaryChange(
+                oldValue: oldValue, newValue: newValue
+            )
+        }
+        .onChange(of: viewModel.isPipelineActive) { _, active in
+            viewModel.onPipelineActiveChange(active)
+        }
         .onChange(of: viewModel.selectedTab) { _, _ in
             // Clear stale "Copied" feedback when switching tabs.
             copyResetTask?.cancel()
@@ -87,7 +104,7 @@ public struct MeetingDetailView: View {
         .onDisappear {
             copyResetTask?.cancel()
             copyResetTask = nil
-            Task { await viewModel.flushNotes() }
+            Task { await viewModel.flushPendingEdits() }
         }
         .sheet(isPresented: $viewModel.showEventPicker) {
             EventPickerSheet(
@@ -124,6 +141,56 @@ public struct MeetingDetailView: View {
             Text(
                 "This permanently deletes the recording and transcript."
             )
+        }
+        .confirmationDialog(
+            "Replace your edited summary?",
+            isPresented: $viewModel.showRegenerateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                viewModel.confirmRegenerate()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This overwrites the summary you edited with a new AI-generated one."
+            )
+        }
+        .sheet(
+            item: Binding(
+                get: {
+                    viewModel.speakerSheetTranscriptID
+                        .map { SpeakerSheetBinding(id: $0) }
+                },
+                set: { newValue in
+                    viewModel.speakerSheetTranscriptID = newValue?.id
+                }
+            )
+        ) { _ in
+            if let sheetData = viewModel.speakerSheetData {
+                SpeakerMappingSheet(
+                    data: sheetData,
+                    onAssign: { speakerID, personID in
+                        await viewModel.assignSpeaker(
+                            speakerID: speakerID,
+                            personID: personID
+                        )
+                    },
+                    onAddPerson: { speakerID, name in
+                        await viewModel.assignNewPerson(
+                            speakerID: speakerID, name: name
+                        )
+                    },
+                    onUnassign: { speakerID in
+                        await viewModel.unassignSpeaker(
+                            speakerID: speakerID
+                        )
+                    },
+                    onDismiss: {
+                        viewModel.speakerSheetTranscriptID = nil
+                    }
+                )
+            }
         }
     }
 
@@ -269,6 +336,8 @@ public struct MeetingDetailView: View {
     /// method, so it is safe during `body` evaluation.
     private var canCopy: Bool {
         switch viewModel.selectedTab {
+        case .summary:
+            !viewModel.summaryText.isEmpty
         case .transcript:
             viewModel.hasDisplayableTranscript
         case .notes:
@@ -373,6 +442,18 @@ private extension MeetingDetailView {
                 }
             }
 
+            if viewModel.canRegenerateSummary {
+                Button {
+                    viewModel.generateSummary()
+                } label: {
+                    Label(
+                        "Regenerate Summary",
+                        systemImage: "sparkles"
+                    )
+                }
+                .disabled(viewModel.isEnhancing)
+            }
+
             Divider()
 
             if viewModel.hasCalendarContext {
@@ -470,9 +551,12 @@ private extension MeetingDetailView {
             }
 
             Button {
-                if viewModel.selectedTab == .transcript {
+                switch viewModel.selectedTab {
+                case .summary:
+                    viewModel.copySummary()
+                case .transcript:
                     viewModel.copyTranscript()
-                } else {
+                case .notes:
                     viewModel.copyNotes()
                 }
                 didCopy = true
@@ -558,6 +642,9 @@ private extension MeetingDetailView {
     @ViewBuilder
     func tabContent(fill: CGFloat) -> some View {
         switch viewModel.selectedTab {
+        case .summary:
+            summaryTabContent(fill: fill)
+
         case .notes:
             notesTabContent(fill: fill)
 
@@ -582,6 +669,210 @@ private extension MeetingDetailView {
         )
         .frame(minHeight: max(100, fill), alignment: .top)
         .background(TextViewFocusForwarder())
+    }
+}
+
+// MARK: - Summary tab states
+
+private extension MeetingDetailView {
+    @ViewBuilder
+    func summaryTabContent(fill: CGFloat) -> some View {
+        // 1. Error: banner + existing summary below. Checked FIRST so
+        //    a failed Regenerate on a meeting with existing content still
+        //    shows the error banner + Retry button (not just the old summary).
+        if case .failed = viewModel.enhancementStatus {
+            summaryErrorContent(fill: fill)
+
+            // 2. Streaming, in-flight generating, OR has content: render
+            //    through ONE editor instance (single documentId, isEditable
+            //    flipped) so SwiftUI reuses the same NSView across the
+            //    streaming→final transition, preserving scroll position.
+            //    Also covers Bug 2 (Regenerate spinner) by treating an
+            //    in-flight .summarizing status as the generating state.
+        } else if viewModel.streamingSummary != nil
+            || viewModel.enhancementStatus == .summarizing
+            || (!viewModel.summaryText.isEmpty
+                && !viewModel.isSummaryRegenerating)
+        {
+            let generating = viewModel.streamingSummary != nil
+                || viewModel.enhancementStatus == .summarizing
+            // When generating but no tokens have arrived yet, show empty
+            // text so the old summary is hidden immediately on Regenerate.
+            let editorText = viewModel.streamingSummary
+                ?? (generating ? "" : viewModel.summaryText)
+            summaryEditorContent(
+                text: editorText,
+                isStreaming: generating, fill: fill
+            )
+
+            // 3. Pipeline active (transcribing / identifying speakers /
+            //    preparing): show stage progress instead of "No transcript
+            //    available." (§13.1)
+        } else if let stages = viewModel.pipelineStages {
+            summaryPipelineContent(stages: stages)
+                .frame(height: fill)
+
+            // 4. Empty + no transcript: muted placeholder
+        } else if viewModel.displayedTranscript == nil {
+            summaryNoTranscriptContent
+                .frame(height: fill)
+
+            // 5. Empty + model available + feature on: Generate Summary button
+            // (ui_design.md §1c/1d, functional_spec §3.4: model present →
+            // Generate button; feature off OR no model → settings hint.)
+            // Only shown when truly idle + empty + no run in flight.
+        } else if viewModel.modelAvailable, viewModel.aiAnalysisEnabled {
+            summaryGenerateContent
+                .frame(height: fill)
+
+            // 6. Empty + no model or feature off: hint + Open Settings
+        } else {
+            summarySettingsHintContent
+                .frame(height: fill)
+        }
+    }
+
+    /// Unified summary editor for both streaming and final states.
+    ///
+    /// Uses a single `documentId` (`"<id>-summary"`) and flips `isEditable`
+    /// so the MarkdownEditor is not recreated across the streaming→final
+    /// transition, preserving scroll position (§13.2).
+    func summaryEditorContent(
+        text: String, isStreaming: Bool, fill: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            if isStreaming {
+                HStack(spacing: Tokens.spacingXS) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Generating summary\u{2026}")
+                        .font(.monoMeta)
+                        .foregroundStyle(.inkSecondary)
+                }
+            }
+
+            MarkdownEditor(
+                text: isStreaming
+                    ? .constant(text)
+                    : Binding(
+                        get: { viewModel.summaryText },
+                        set: { viewModel.updateSummary($0) }
+                    ),
+                documentId: "\(viewModel.meetingID.uuidString)-summary",
+                placeholder: "",
+                isEditable: !isStreaming
+            )
+            .frame(
+                minHeight: max(
+                    100,
+                    fill - (isStreaming ? 30 : 0)
+                ),
+                alignment: .top
+            )
+            .background {
+                if !isStreaming {
+                    TextViewFocusForwarder()
+                }
+            }
+        }
+    }
+
+    /// Error state: banner at top, existing summary below if any.
+    func summaryErrorContent(fill: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+            Banner(
+                "Couldn\u{2019}t generate the summary.",
+                style: .error,
+                actionLabel: "Retry"
+            ) {
+                viewModel.retrySummary()
+            }
+
+            if !viewModel.summaryText.isEmpty {
+                MarkdownEditor(
+                    text: Binding(
+                        get: { viewModel.summaryText },
+                        set: { viewModel.updateSummary($0) }
+                    ),
+                    documentId: "\(viewModel.meetingID.uuidString)-summary",
+                    placeholder: ""
+                )
+                .frame(
+                    minHeight: max(100, fill - 60),
+                    alignment: .top
+                )
+                .background(TextViewFocusForwarder())
+            }
+        }
+    }
+
+    /// Pipeline active: stacked stage list showing processing progress.
+    func summaryPipelineContent(
+        stages: [PipelineStage]
+    ) -> some View {
+        VStack {
+            Spacer()
+            EnhancementPipelineView(stages: stages)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Empty + no transcript: muted placeholder.
+    var summaryNoTranscriptContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            Text("No transcript available.")
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Empty + model available + feature on: centered Generate button.
+    var summaryGenerateContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            Text("No summary yet")
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+            Button("Generate Summary") {
+                viewModel.generateSummary()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(viewModel.isEnhancing)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Empty + no model or feature off: hint + Open Settings.
+    var summarySettingsHintContent: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Spacer()
+            if !viewModel.modelAvailable {
+                Text("An AI model is needed to summarize.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text(
+                    "Turn on AI summaries in Settings to generate one automatically."
+                )
+                .font(.system(size: 15))
+                .foregroundStyle(.inkSecondary)
+                .multilineTextAlignment(.center)
+            }
+            Button("Open Settings") {
+                viewModel.openSettings()
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -650,7 +941,16 @@ private extension MeetingDetailView {
                 transcriptID: transcriptID,
                 canSeek: viewModel.canPlay,
                 segments: transcript.segments,
+                speakerNames: viewModel.displayedSpeakerNames,
+                speakerColorKeys: viewModel.displayedSpeakerColorKeys,
                 onSeek: { viewModel.seekAndPlay(to: $0) },
+                onSpeaker: { speakerID in
+                    Task {
+                        await viewModel.openSpeakerSheet(
+                            speakerID: speakerID
+                        )
+                    }
+                },
                 header: transcriptListHeader
             )
             .equatable()
@@ -832,6 +1132,14 @@ private final class FocusForwarderView: NSView {
         }
         return nil
     }
+}
+
+// MARK: - Speaker sheet binding helper
+
+/// Lightweight `Identifiable` wrapper so `.sheet(item:)` can drive
+/// the speaker mapping sheet from a `UUID?`.
+private struct SpeakerSheetBinding: Identifiable {
+    let id: UUID
 }
 
 // MARK: - Event Picker Sheet (uses shared DesignSystem.EventPickerSheet)

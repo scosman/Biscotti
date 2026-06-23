@@ -20,6 +20,11 @@ public protocol Transcribing: Sendable {
         customVocabulary: [String]
     ) async throws -> TranscriptResult
 
+    /// Returns `true` when models are already present on disk (no download
+    /// needed). This is a read-only probe -- it must not download, load,
+    /// or mutate any engine state.
+    func modelsPresent() async -> Bool
+
     /// Release the transcription worker and its resources. For XPC-backed
     /// implementations this tears down the connection so the heavyweight
     /// worker process can exit. The engine remains usable; subsequent calls

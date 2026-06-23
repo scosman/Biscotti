@@ -52,3 +52,18 @@ actions:
   - name: "manual_tests_check"
     description: "Check that all manual test step IDs have been run (expected RED until Phase 4.5)"
     command: "bash -c 'set -o pipefail; make manual-tests-check 2>&1 | tail -n 50'"
+
+  # LocalLLM is now part of PACKAGES and included in `make build`/`make test`,
+  # but these standalone actions are kept for quick iteration on just the LLM
+  # package. Output is tailed to stay within the agent context window (the first
+  # build downloads the verbose LlamaSwift XCFramework); `pipefail` preserves the
+  # exit code so failures still surface as errors.
+  - name: "build_llm"
+    description: "Build the LocalLLM SPM package (Packages/LocalLLM)"
+    command: "bash -c 'set -o pipefail; swift build --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
+    timeout: 300
+
+  - name: "test_llm"
+    description: "Run the LocalLLM unit tests (Packages/LocalLLM). Always-on tests only; the env-gated AI/integration tests (BISCOTTI_RUN_AI_TESTS=1) need the model and are human-run."
+    command: "bash -c 'set -o pipefail; swift test --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
+    timeout: 300

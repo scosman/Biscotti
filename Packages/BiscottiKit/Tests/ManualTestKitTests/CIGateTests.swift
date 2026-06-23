@@ -152,9 +152,15 @@ struct CIGateTests {
         // store (populated on real hardware), not a pristine seed, so saved
         // pass/fail results must coexist with a green `make test`. The non-gating
         // `manual-tests-check` is what tracks whether every step has actually run.
+        //
+        // Derive the expected count from allScripts so this assertion
+        // automatically tracks script changes instead of hardcoding a magic
+        // number. The guard still catches an unexpected drop to zero.
+        let expectedCount = allScripts.flatMap(\.steps).filter(\.isRecordable).count
+        #expect(expectedCount > 0, "Expected at least one recordable step across allScripts")
         #expect(
-            recordableIDs.count == 18,
-            "Expected 18 recordable step IDs (14 audio + 4 transcription)"
+            recordableIDs.count == expectedCount,
+            "recordableStepIDs returned \(recordableIDs.count) but allScripts defines \(expectedCount) recordable steps"
         )
         for id in recordableIDs {
             #expect(results[id] != nil, "Results file is missing an entry for step '\(id)'")

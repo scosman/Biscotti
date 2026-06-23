@@ -1188,6 +1188,505 @@ struct GatingTruthTableTests {
     }
 }
 
+// MARK: - MeetingAnalyzer.cleanTitle Tests
+
+@Suite("MeetingAnalyzer.cleanTitle")
+struct CleanTitleTests {
+    @Test("bare title passes through")
+    func bareTitle() {
+        #expect(MeetingAnalyzer.cleanTitle("Weekly Standup") == "Weekly Standup")
+    }
+
+    @Test("trims whitespace and newlines")
+    func trimWhitespace() {
+        #expect(MeetingAnalyzer.cleanTitle("  Sprint Planning  \n") == "Sprint Planning")
+    }
+
+    @Test("takes first non-empty line")
+    func firstLine() {
+        #expect(MeetingAnalyzer.cleanTitle("Design Review\nSome extra text") == "Design Review")
+    }
+
+    @Test("strips Title: prefix (case-insensitive)")
+    func stripsTitleColonPrefix() {
+        #expect(MeetingAnalyzer.cleanTitle("Title: Budget Meeting") == "Budget Meeting")
+        #expect(MeetingAnalyzer.cleanTitle("title: budget meeting") == "budget meeting")
+        #expect(MeetingAnalyzer.cleanTitle("TITLE: Budget Meeting") == "Budget Meeting")
+    }
+
+    @Test("strips Title - prefix")
+    func stripsTitleDashPrefix() {
+        #expect(MeetingAnalyzer.cleanTitle("Title - Sprint Review") == "Sprint Review")
+    }
+
+    @Test("strips surrounding double quotes")
+    func stripsDoubleQuotes() {
+        #expect(MeetingAnalyzer.cleanTitle("\"Team Sync\"") == "Team Sync")
+    }
+
+    @Test("strips surrounding smart quotes")
+    func stripsSmartQuotes() {
+        #expect(MeetingAnalyzer.cleanTitle("\u{201C}Team Sync\u{201D}") == "Team Sync")
+    }
+
+    @Test("strips surrounding single quotes")
+    func stripsSingleQuotes() {
+        #expect(MeetingAnalyzer.cleanTitle("'Team Sync'") == "Team Sync")
+    }
+
+    @Test("strips surrounding smart single quotes")
+    func stripsSmartSingleQuotes() {
+        #expect(MeetingAnalyzer.cleanTitle("\u{2018}Team Sync\u{2019}") == "Team Sync")
+    }
+
+    @Test("strips prefix and quotes together")
+    func stripsPrefixAndQuotes() {
+        #expect(MeetingAnalyzer.cleanTitle("Title: \"Team Sync\"") == "Team Sync")
+    }
+
+    @Test("caps at 120 characters")
+    func capsLength() {
+        let long = String(repeating: "A", count: 200)
+        let result = MeetingAnalyzer.cleanTitle(long)
+        #expect(result?.count == 120)
+    }
+
+    @Test("empty input returns nil")
+    func emptyReturnsNil() {
+        #expect(MeetingAnalyzer.cleanTitle("") == nil)
+    }
+
+    @Test("whitespace-only input returns nil")
+    func whitespaceOnlyReturnsNil() {
+        #expect(MeetingAnalyzer.cleanTitle("   \n  ") == nil)
+    }
+
+    @Test("quotes-only input returns nil")
+    func quotesOnlyReturnsNil() {
+        #expect(MeetingAnalyzer.cleanTitle("\"\"") == nil)
+    }
+
+    @Test("skips empty lines before first real line")
+    func skipsLeadingEmptyLines() {
+        #expect(MeetingAnalyzer.cleanTitle("\n\n  Team Sync\n") == "Team Sync")
+    }
+
+    @Test("mismatched quotes are not stripped")
+    func mismatchedQuotes() {
+        // Opening double, closing single -- should NOT strip
+        #expect(MeetingAnalyzer.cleanTitle("\"Team Sync'") == "\"Team Sync'")
+    }
+}
+
+// MARK: - Title Prompt Tests
+
+@Suite("IntelligencePrompts title")
+struct IntelligencePromptsTitleTests {
+    @Test("titleTaskInstructions is non-empty and asks for a title")
+    func titleInstructionsContent() {
+        #expect(!IntelligencePrompts.titleTaskInstructions.isEmpty)
+        #expect(IntelligencePrompts.titleTaskInstructions.lowercased().contains("title"))
+    }
+
+    @Test("titleFollowUpUser equals titleTaskInstructions")
+    func titleFollowUpContent() {
+        #expect(IntelligencePrompts.titleFollowUpUser == IntelligencePrompts.titleTaskInstructions)
+    }
+
+    @Test("titleOnlyFirstUser includes transcript and title instructions")
+    func titleOnlyFirstUserContent() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.titleOnlyFirstUser(
+            detail: detail,
+            transcriptNamed: "Alice: Hello\nBob: Hi"
+        )
+        #expect(result.contains("<transcript>"))
+        #expect(result.contains("Alice: Hello"))
+        #expect(result.contains("</transcript>"))
+        #expect(result.lowercased().contains("title"))
+        // Should NOT contain speaker-ID or summary instructions
+        #expect(!result.contains("Match diarization"))
+        #expect(!result.contains("## Action Items"))
+    }
+}
+
+// MARK: - Title Gating Tests
+
+@Suite("Title gating truth table")
+struct TitleGatingTests {
+    @Test("doTitle = true when title is default and not edited")
+    @MainActor func doTitleWhenDefault() async throws {
+        let store = try makeStore()
+        // createMeeting uses Meeting.defaultTitle by default helper
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        let session = FakeSession()
+        // Speakers + summary + title: generate for speakers, stream for summary,
+        // generate for title
+        session.generateResponses = ["0 | Alice |", "Sprint Planning"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Title turn ran (2 generate calls: speakers + title)
+        #expect(session.generateCalls.count == 2)
+        // Summary ran
+        #expect(session.streamingCalls.count == 1)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+    }
+
+    @Test("doTitle = false when title is user-set (not default)")
+    @MainActor func noTitleWhenCustomTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: "My Custom Meeting"
+        )
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Only 1 generate call (speakers); no title
+        #expect(session.generateCalls.count == 1)
+        #expect(session.streamingCalls.count == 1)
+    }
+
+    @Test("doTitle = false when title is default but editedTitle is true")
+    @MainActor func noTitleWhenEditedTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+        // Mark as user-edited (then set back to the default text)
+        try await store.setTitle(Meeting.defaultTitle, for: meetingID)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Only 1 generate call (speakers); title was skipped
+        #expect(session.generateCalls.count == 1)
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == Meeting.defaultTitle)
+    }
+
+    @Test("title generation is independent of force flag")
+    @MainActor func titleIndependentOfForce() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |", "Sprint Planning"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        // force=true should not affect title gating
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true
+        )
+
+        // Title should still run (default title, not edited)
+        #expect(session.generateCalls.count == 2)
+    }
+
+    @Test("applyGeneratedTitle leaves editedTitle false")
+    func applyGeneratedTitleLeavesEditedTitleFalse() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: Meeting.defaultTitle)
+
+        try await store.applyGeneratedTitle("Sprint Planning", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+        #expect(detail?.editedTitle == false)
+    }
+
+    @Test("applyGeneratedTitle is no-op when title is not default")
+    func applyGeneratedTitleNoop() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: "Custom Title")
+
+        try await store.applyGeneratedTitle("Sprint Planning", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Custom Title")
+    }
+
+    @Test("applyGeneratedTitle is no-op when editedTitle is true")
+    func applyGeneratedTitleNoopEdited() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: Meeting.defaultTitle)
+        // User renames then renames back to default — editedTitle = true
+        try await store.setTitle(Meeting.defaultTitle, for: meetingID)
+
+        try await store.applyGeneratedTitle("Sprint Planning", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        // applyGeneratedTitle should be a no-op because editedTitle is true
+        #expect(detail?.title == Meeting.defaultTitle)
+    }
+
+    @Test("applyGeneratedTitle throws notFound for missing meeting")
+    func applyGeneratedTitleThrowsNotFound() async throws {
+        let store = try DataStore(storage: .inMemory)
+        await #expect(throws: DataStoreError.self) {
+            try await store.applyGeneratedTitle("Test", for: UUID())
+        }
+    }
+}
+
+// MARK: - Title Orchestration Tests
+
+@Suite("Title orchestration")
+struct TitleOrchestrationTests {
+    @Test("multi-turn: speakers + summary + title all run")
+    @MainActor func allThreeTurns() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        let session = FakeSession()
+        // generate call 1: speakers, generate call 2: title
+        session.generateResponses = ["0 | Alice |", "Sprint Planning"]
+        session.streamingTokens = [["Summary text"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Verify session usage: 1 session, 2 generate calls, 1 streaming call
+        #expect(fixture.runner.sessionCount == 1)
+        #expect(session.generateCalls.count == 2)
+        #expect(session.streamingCalls.count == 1)
+
+        // Verify the title turn's messages are threaded properly
+        let titleMsgs = session.generateCalls[1]
+        // system + user (speakers) + assistant (speaker result) + user (summary) +
+        // assistant (summary result) + user (title)
+        #expect(titleMsgs.count == 6)
+        #expect(titleMsgs[0].role == .system)
+        #expect(titleMsgs[1].role == .user)
+        #expect(titleMsgs[2].role == .assistant)
+        #expect(titleMsgs[3].role == .user)
+        #expect(titleMsgs[4].role == .assistant) // summary output
+        #expect(titleMsgs[5].role == .user)
+        // Title follow-up should be the title instructions (no transcript)
+        #expect(!titleMsgs[5].content.contains("<transcript>"))
+        #expect(titleMsgs[5].content.lowercased().contains("title"))
+
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "Summary text")
+        #expect(detail?.title == "Sprint Planning")
+    }
+
+    @Test("summary + title (no speakers): two-turn conversation")
+    @MainActor func summaryAndTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        // Assign all speakers so speaker turn is skipped
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+
+        let session = FakeSession()
+        // Only title generate; summary is streaming
+        session.generateResponses = ["Sprint Retro"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(session.generateCalls.count == 1) // title only
+        #expect(session.streamingCalls.count == 1) // summary
+
+        // Title turn messages: system + user (summary-only first) +
+        // assistant (summary) + user (title follow-up)
+        let titleMsgs = session.generateCalls[0]
+        #expect(titleMsgs.count == 4)
+        #expect(titleMsgs[3].role == .user)
+        #expect(titleMsgs[3].content.lowercased().contains("title"))
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Retro")
+    }
+
+    @Test("title-only: no speakers, no summary, just title")
+    @MainActor func titleOnly() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        // All speakers assigned → no speaker turn
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+
+        // Summary edited → no summary turn
+        try await store.setSummary("User's notes", for: meetingID)
+
+        let session = FakeSession()
+        session.generateResponses = ["Sprint Planning"]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Only 1 generate call (title), no streaming
+        #expect(session.generateCalls.count == 1)
+        #expect(session.streamingCalls.isEmpty)
+
+        // Title-only messages: system + user (title-only first user)
+        let msgs = session.generateCalls[0]
+        #expect(msgs.count == 2)
+        // Should use named transcript (Alice/Bob), not Speaker-N
+        #expect(msgs[1].content.contains("Alice:"))
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+        // Summary should not have been overwritten
+        #expect(detail?.summary == "User's notes")
+    }
+
+    @Test("no-session when all tasks skipped (speakers done + summary edited + title not default)")
+    @MainActor func allTasksSkippedIncludingTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: "Custom Title"
+        )
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+        try await store.setSummary("User's notes", for: meetingID)
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+    }
+
+    @Test("cleanTitle applied to raw model output")
+    @MainActor func cleanTitleApplied() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+        try await store.setSummary("Notes", for: meetingID)
+
+        let session = FakeSession()
+        // Model wraps the title in quotes with a Title: prefix
+        session.generateResponses = ["Title: \"Sprint Planning\""]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+    }
+
+    @Test("empty cleaned title is not applied")
+    @MainActor func emptyCleanedTitleNotApplied() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store, title: Meeting.defaultTitle
+        )
+
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+        try await store.setSummary("Notes", for: meetingID)
+
+        let session = FakeSession()
+        // Model returns only whitespace — cleanTitle returns nil
+        session.generateResponses = ["  \n  "]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        // Title should remain unchanged
+        #expect(detail?.title == Meeting.defaultTitle)
+    }
+}
+
+// MARK: - EnhancementStatus generatingTitle Tests
+
+@Suite("EnhancementStatus generatingTitle")
+struct EnhancementStatusTitleTests {
+    @Test("generatingTitle is a distinct case")
+    func generatingTitleDistinct() {
+        let status = EnhancementStatus.generatingTitle
+        #expect(status != .preparing)
+        #expect(status != .identifyingSpeakers)
+        #expect(status != .summarizing)
+        #expect(status != .completed)
+    }
+}
+
+// MARK: - Meeting.defaultTitle Tests
+
+@Suite("Meeting.defaultTitle")
+struct MeetingDefaultTitleTests {
+    @Test("defaultTitle is 'Untitled Meeting'")
+    func defaultTitleValue() {
+        #expect(Meeting.defaultTitle == "Untitled Meeting")
+    }
+}
+
+// MARK: - MeetingDetailData editedTitle Tests
+
+@Suite("MeetingDetailData editedTitle")
+struct MeetingDetailDataEditedTitleTests {
+    @Test("editedTitle defaults to false")
+    func editedTitleDefaultFalse() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        #expect(detail.editedTitle == false)
+    }
+
+    @Test("editedTitle passes through from store")
+    func editedTitleFromStore() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: "Test")
+        try await store.setTitle("Custom", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.editedTitle == true)
+    }
+}
+
 // MARK: - humanSetSpeakerMappings DataStore Tests
 
 @Suite("DataStore humanSetSpeakerMappings")

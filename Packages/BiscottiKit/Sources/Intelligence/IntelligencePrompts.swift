@@ -148,6 +148,35 @@ public enum IntelligencePrompts {
     /// Follow-up user turn for the summary task (transcript already in context).
     public static let summaryFollowUpUser = summaryTaskInstructions
 
+    // MARK: - Title Task
+
+    /// Instructions for the title generation task.
+    public static let titleTaskInstructions = """
+    Give this meeting a concise, specific title (a few words or a short phrase) \
+    that captures the main topic discussed. Output a single bare line with no \
+    quotes, no "Title:" label, and no trailing punctuation.
+    """
+
+    /// Follow-up user turn for the title task (transcript already in context).
+    public static let titleFollowUpUser = titleTaskInstructions
+
+    /// First user turn when ONLY the title runs (no prior turns).
+    /// Transcript uses resolved human names where available.
+    public static func titleOnlyFirstUser(
+        detail: MeetingDetailData,
+        transcriptNamed: String
+    ) -> String {
+        var parts: [String] = []
+
+        let details = meetingDetailsBlock(detail)
+        if !details.isEmpty { parts.append(details) }
+
+        parts.append("<transcript>\n\(transcriptNamed)\n</transcript>")
+        parts.append(titleTaskInstructions)
+
+        return parts.joined(separator: "\n\n")
+    }
+
     // MARK: - Private helpers
 
     private static func dateLines(

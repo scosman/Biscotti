@@ -7,6 +7,7 @@ public enum EnhancementStatus: Sendable, Equatable {
     case preparing
     case identifyingSpeakers
     case summarizing
+    case generatingTitle
     case completed
     case failed(message: String)
 }

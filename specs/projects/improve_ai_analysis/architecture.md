@@ -645,3 +645,116 @@ the combined regenerate path.
   count-tokens + reconfigure + `contextOverflow` behavior is preserved, now counting the
   transcript once.
 ```
+
+## 10. BiscottiKit — Title Generation (Phase 5)
+
+Adds a third turn (title) to the analysis conversation. **No LocalLLM changes** — this is
+entirely BiscottiKit (DataStore + Intelligence), so `llm_*` manual tests are unaffected.
+
+### 10.1 Shared default-title constant (DataStore)
+
+Promote the hard-coded `"Untitled Meeting"` to a single source of truth so the gate and the
+write reference the same value:
+
+- Add `public static let defaultTitle = "Untitled Meeting"` to the `Meeting` model (DataStore).
+- Refactor `RecordingController.autoTitle()` to return `Meeting.defaultTitle` (behavior
+  identical; removes the duplicated literal).
+
+### 10.2 `MeetingDetailData.editedTitle` (DataStore read model)
+
+`MeetingDetailData` currently exposes `title` and `editedSummary` but not `editedTitle`. Add
+`public let editedTitle: Bool` (default `false` in the memberwise init) and map it in
+`meetingDetail` (`editedTitle: meeting.editedTitle`, alongside the existing `editedSummary`
+mapping). The Intelligence gate reads it.
+
+### 10.3 `applyGeneratedTitle` (DataStore + LLMFeatures)
+
+New write method mirroring `applyGeneratedSummary`, but with an **internal gate** (authoritative
+enforcement, mirroring `applyEventTitle`'s `!editedTitle` guard):
+
+```swift
+/// Stores an AI-generated title IFF the meeting still has the default title
+/// and the user has not renamed it. Leaves `editedTitle == false` so a later
+/// calendar association can still apply a real event title. No-op otherwise.
+func applyGeneratedTitle(_ title: String, for meetingID: UUID) throws {
+    guard let meeting = try meeting(id: meetingID) else { throw DataStoreError.notFound(meetingID) }
+    guard meeting.title == Meeting.defaultTitle, !meeting.editedTitle else { return }
+    meeting.title = title
+    try save()
+}
+```
+
+### 10.4 Prompt catalog additions (`IntelligencePrompts.swift`)
+
+- `titleTaskInstructions` — asks for a concise, specific title (a few words / short phrase) that
+  captures the meeting's main topic; output a single bare line, no quotes, no `Title:` label, no
+  trailing punctuation.
+- `titleFollowUpUser = titleTaskInstructions` — used when the transcript is already in context.
+- `titleOnlyFirstUser(detail:transcriptNamed:)` — used when no prior turn ran: meeting-details
+  block + `<transcript>` (resolved names) + `titleTaskInstructions` (parallels
+  `summaryOnlyFirstUser`).
+
+### 10.5 `MeetingAnalyzer` — the title turn
+
+- Add `titleOptions = GenerationOptions(maxTokens: 32, temperature: 0.3, thinking: .off)`.
+- Add `doTitle: Bool` to `Context`.
+- **Uniform turn threading.** Refactor `run` so each turn appends its own user message and its
+  assistant reply to a single `inout messages` array, then the next turn follows. This is
+  behavior-preserving for the wire (the LLM sees the identical sequence as today for the
+  speakers/summary turns); it just lets the title turn build on the summary reply:
+  - speaker turn: append `analysisFirstUser`, generate, persist, append `.assistant(reply)`.
+  - summary turn: append (`summaryFollowUpUser` if a prior turn ran, else `summaryOnlyFirstUser`),
+    stream, persist, append `.assistant(summary)`.
+  - title turn: append (`titleFollowUpUser` if `doSpeakers || doSummary`, else
+    `titleOnlyFirstUser`), buffered `generate` with `titleOptions`, clean, persist via
+    `applyGeneratedTitle`.
+- Emit `ctx.onStage(.generatingTitle)` at the start of the title turn.
+- **Title cleaning** (pure helper, unit-tested): trim whitespace/newlines; take the first
+  non-empty line; strip a leading `Title:`/`Title -` prefix; strip surrounding matching quotes;
+  trim again; defensively cap length; return `nil` if empty (caller skips the write). Reuses the
+  `SpeakerMappingParser`/`TranscriptFormatter` style of small pure parsers.
+
+### 10.6 `EnhancementStatus.generatingTitle`
+
+Add a `case generatingTitle` to `EnhancementStatus`. Update the exhaustive switches over it
+(MeetingDetailUI status → label/pill) with a "Generating title…" label. (The compiler enforces
+exhaustiveness; find all sites.)
+
+### 10.7 `Intelligence` orchestration + context sizing
+
+- In `runAnalysisSession`, compute `doTitle` from the snapshot:
+  `let doTitle = detail.title == Meeting.defaultTitle && !detail.editedTitle`.
+- Relax the early-out guard: `guard doSpeakers || doSummary || doTitle else { return }`.
+- Thread `doTitle` into `MeetingAnalyzer.Context`.
+- **Context sizing must budget the turns the title adds.** The title turn puts the summary reply
+  (up to `summaryOptions.maxTokens`) into context as input, which previously was the *final*
+  output (covered by the output reservation). Generalize `ContextSizing.contextSizeForAnalysis`:
+  - `followUpUser: String?` → `followUpUsers: [String]` (count all follow-up user turns:
+    summary and/or title instructions; both tiny but counted for correctness).
+  - `assistantReserveTokens` becomes the sum of assistant replies that **remain in context**
+    before the final generation:
+    `(doSpeakers && (doSummary || doTitle) ? speakerOptions.maxTokens : 0) + (doSummary && doTitle ? summaryOptions.maxTokens : 0)`.
+  - The final turn's own output is still covered by `outputReservation`. The title's ~32-token
+    output is negligible and absorbed by `outputReservationBase`.
+- Update `buildFirstUserContent` only if needed (the title-only first-user path is reachable when
+  `!doSpeakers && !doSummary && doTitle` — size it with `titleOnlyFirstUser`).
+
+### 10.8 SettingsUI caption (minor)
+
+Update the single-toggle caption to mention titles, e.g. *"Generate a title and summary from the
+transcript, and guess the names of speakers from context."* (string-only; the toggle itself is
+unchanged).
+
+### 10.9 Testing
+
+- DataStore: `applyGeneratedTitle` writes when default+not-edited; no-ops when title is
+  non-default or `editedTitle == true`; leaves `editedTitle == false`. `Meeting.defaultTitle`
+  used by `RecordingController.autoTitle()`.
+- Prompt builders: `titleOnlyFirstUser` structure; `titleFollowUpUser` == instructions.
+- Title cleaning: quotes/label/multiline/empty cases.
+- `MeetingAnalyzer` message sequencing (FakeLLMSession): the four `doTitle` combinations produce
+  the sequences in functional spec §11.4; the title follow-up contains **no** second transcript;
+  `applyGeneratedTitle` is invoked with the cleaned title.
+- Intelligence gating truth table: `doTitle` true only when default+not-edited; independent of
+  `force`; title turn skipped otherwise; runs on both auto and manual paths.
+- ContextSizing: the new `followUpUsers`/`assistantReserveTokens` math.

@@ -47,27 +47,28 @@ enum ContextSizing {
 
     /// Conversation-aware context sizing for the multi-turn analysis.
     ///
-    /// Counts the transcript once (in `firstUser`) and adds budget for the
-    /// assistant-1 turn (speaker output) and the follow-up user-2 turn.
+    /// Counts the transcript once (in `firstUser`) and adds budget for
+    /// assistant replies that remain in context before the final generation
+    /// and all follow-up user turns.
     ///
     /// - Parameters:
     ///   - firstUser: The first user turn content (contains the transcript).
     ///   - system: The system prompt.
-    ///   - followUpUser: The second user turn (summary instructions), or nil
-    ///     if the conversation is single-turn.
-    ///   - assistantReserveTokens: Budget for the assistant-1 reply sitting
-    ///     in context during the summary turn (e.g. `speakerOptions.maxTokens`
-    ///     when `doSpeakers`, else 0).
+    ///   - followUpUsers: Follow-up user turns (summary and/or title
+    ///     instructions); both tiny but counted for correctness.
+    ///   - assistantReserveTokens: Budget for all assistant replies that
+    ///     remain in context before the final generation (sum of prior
+    ///     maxTokens budgets).
     ///   - session: The LLM session for token counting.
     static func contextSizeForAnalysis(
         firstUser: String,
         system: String,
-        followUpUser: String?,
+        followUpUsers: [String],
         assistantReserveTokens: Int,
         session: any LLMSession
     ) async throws -> Int {
         var msgs: [LLMMessage] = [.system(system), .user(firstUser)]
-        if let followUp = followUpUser {
+        for followUp in followUpUsers {
             msgs.append(.user(followUp))
         }
         let base = try await session.countTokens(messages: msgs)

@@ -440,3 +440,90 @@ These run under the gating `make test` target.
    pipeline shows the two stages (speakers → summary) under that single setting.
 7. `make ci` (lint + test + build) is green; the LLM manual-test steps are marked not-run for
    a human hardware pass.
+
+## 11. Title Generation (Phase 5)
+
+### 11.1 What it does
+
+Generates a short, human-readable title for a meeting as a **third turn** of the same analysis
+conversation (speaker inference → summary → **title**). Because the transcript, the resolved
+speaker names, and the generated summary are already in context, the title turn is a tiny
+incremental generation (a handful of tokens) that benefits from everything inferred before it.
+
+### 11.2 When it runs (gating) — strict, non-destructive
+
+Title generation runs **only** when the meeting still carries the system default title and the
+user has not renamed it. Concretely, `doTitle` is true **iff both**:
+
+- `meeting.title == <the default-title constant>` — the canonical "Untitled Meeting" string the
+  app assigns to a new recording. **Use the existing constant, not a hand-typed literal** (today
+  it is `RecordingController.autoTitle()`; this project promotes it to a shared constant so the
+  Intelligence layer and the DataStore guard reference the same source of truth). Note the
+  stored value is `"Untitled Meeting"` (capital M) — distinct from the lowercase UI
+  placeholders; the check must use the real stored default.
+- `meeting.editedTitle == false` — the user has not manually renamed the meeting (mirrors the
+  `editedSummary` flag that already exists for summaries).
+
+It therefore **never** replaces:
+- a title that came from a calendar event (calendar association already set a non-default title,
+  so the equality check fails), or
+- a user-edited title (`editedTitle == true`).
+
+`doTitle` is **independent of `force`** (unlike `doSummary`). `force` exists to let a manual
+regenerate overwrite an *edited summary*; titles have a stricter rule — a non-default or
+user-edited title is never touched, even on a forced manual run. There is **no** "regenerate
+title" control; title generation only ever rides along with an analysis run.
+
+### 11.3 Where it runs
+
+In the shared analysis session, so it applies to **both** triggers:
+- **Auto-run after transcription** — gated by the single AI toggle (`aiAnalysisEnabled`) like the
+  rest of the analysis; the title turn runs when `doTitle` holds.
+- **Manual "Regenerate Summary"** — not gated by the toggle (explicit intent); the title turn
+  runs when `doTitle` holds.
+
+If `doTitle` is false, the title turn is skipped entirely (no wasted generation).
+
+### 11.4 The turn (conversation shape)
+
+The title turn is appended after whatever earlier turns ran, reusing the context:
+- If a prior turn ran (speakers and/or summary), the transcript is already in context, so the
+  title turn is a lean follow-up user message: just the title instruction.
+- If **no** prior turn ran (e.g. all speakers human-set **and** the summary was user-edited, yet
+  the meeting is still "Untitled Meeting"), the title turn becomes the first turn and includes
+  the meeting details + transcript, then the title instruction.
+
+Generation is **buffered** (not streamed — the title is short and has no live-typing UI), with a
+small token budget. The model is asked for a concise, specific title (a few words), output as a
+single bare line with no quotes, label, or trailing punctuation.
+
+### 11.5 Persistence — it actually updates the title
+
+After the title turn, the cleaned title is written via a DataStore method that **stores an
+AI-generated title without marking it user-edited** (`editedTitle` stays `false`, mirroring
+`applyGeneratedSummary` leaving `editedSummary == false`). The write is the authoritative
+enforcement point: it re-checks the gate (current title == default **and** not user-edited) so a
+late change can't cause an overwrite. Leaving `editedTitle == false` means a later calendar
+association can still replace an AI title with a real event title — desirable, as a real event
+title outranks a guess. Once a (non-default) AI title is stored, a subsequent analysis run sees a
+non-default title and will not regenerate it (no churn). An empty/blank cleaned result is not
+written.
+
+### 11.6 Status
+
+A new `EnhancementStatus.generatingTitle` stage is emitted while the title turn runs (parallel to
+`identifyingSpeakers` / `summarizing`), so the UI can show a brief "Generating title…" indicator;
+the run then completes as today. The meeting-detail title field already binds to the stored title
+and refreshes on completion, so the new title appears with no additional UI wiring.
+
+### 11.7 Acceptance criteria (Phase 5)
+
+1. A meeting whose title is the default "Untitled Meeting" (and not user-edited) gets an
+   AI-generated title after analysis (auto-run or manual regenerate); the stored title changes
+   and `editedTitle` remains `false`.
+2. A meeting with a calendar-derived title or a user-edited title is **never** retitled, including
+   on a forced manual regenerate.
+3. The title turn reuses the prior conversation context (no second transcript copy) when speakers
+   and/or summary ran; it still works (with the transcript) when neither did.
+4. `make ci` (lint + test + build) is green; LocalLLM is untouched so the `llm_*` manual-test
+   steps are unaffected by this phase.

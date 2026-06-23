@@ -62,6 +62,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let summary: String
     /// Whether the user has manually edited the summary.
     public let editedSummary: Bool
+    /// Whether the user has manually edited the title.
+    public let editedTitle: Bool
 
     public init(
         id: UUID,
@@ -76,7 +78,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         notes: String = "",
         versions: [TranscriptVersionData] = [],
         summary: String = "",
-        editedSummary: Bool = false
+        editedSummary: Bool = false,
+        editedTitle: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -91,6 +94,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.versions = versions
         self.summary = summary
         self.editedSummary = editedSummary
+        self.editedTitle = editedTitle
     }
 }
 
@@ -399,7 +403,8 @@ public extension DataStore {
             notes: meeting.notes,
             versions: transcriptVersions(meetingID: id),
             summary: meeting.summary,
-            editedSummary: meeting.editedSummary
+            editedSummary: meeting.editedSummary,
+            editedTitle: meeting.editedTitle
         )
     }
 

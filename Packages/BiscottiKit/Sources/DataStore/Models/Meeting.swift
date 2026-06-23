@@ -5,6 +5,9 @@ import SwiftData
 
 /// A recorded (or upcoming) meeting — the central aggregate in the data model.
 @Model public final class Meeting {
+    /// The default title assigned to new recordings. Used as the gate
+    /// condition for AI title generation (only replace this exact string).
+    public static let defaultTitle = "Untitled Meeting"
     public var id = UUID()
     public var title: String = ""
     public var startDate: Date?

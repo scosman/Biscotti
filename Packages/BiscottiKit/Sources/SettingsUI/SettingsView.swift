@@ -297,7 +297,7 @@ private extension SettingsView {
                 )
                 .disabled(!viewModel.modelAvailable)
                 Text(
-                    "Generate a summary from the transcript, and guess the names of speakers from context."
+                    "Generate a title and summary from the transcript, and guess the names of speakers from context."
                 )
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)

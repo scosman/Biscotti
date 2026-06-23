@@ -166,27 +166,28 @@ public final class Intelligence {
         )
         let doSpeakers = !allIDs.subtracting(Set(human.keys)).isEmpty
 
-        // Nothing to do: both tasks skipped
-        guard doSpeakers || doSummary else { return }
+        // Title generation: only when the meeting still has the default
+        // title and the user has not renamed it. Independent of `force`.
+        let doTitle = detail.title == Meeting.defaultTitle
+            && !detail.editedTitle
 
-        // Pre-compute content on MainActor before entering the session closure
+        // Nothing to do: all tasks skipped
+        guard doSpeakers || doSummary || doTitle else { return }
+
         let firstUser = buildFirstUserContent(
-            doSpeakers: doSpeakers,
+            doSpeakers: doSpeakers, doSummary: doSummary,
             detail: detail, transcript: transcript, human: human
         )
-        let followUpUser: String? = if doSpeakers, doSummary {
-            IntelligencePrompts.summaryFollowUpUser
-        } else {
-            nil
-        }
-        let assistantReserve = doSpeakers && doSummary
-            ? MeetingAnalyzer.speakerOptions.maxTokens : 0
+        let (followUpUsers, assistantReserve) = contextBudget(
+            doSpeakers: doSpeakers, doSummary: doSummary,
+            doTitle: doTitle
+        )
 
         try await llm.withSession(config: .modelOnly) { session in
             let contextSize = try await ContextSizing.contextSizeForAnalysis(
                 firstUser: firstUser,
                 system: IntelligencePrompts.analysisSystem,
-                followUpUser: followUpUser,
+                followUpUsers: followUpUsers,
                 assistantReserveTokens: assistantReserve,
                 session: session
             )
@@ -196,6 +197,7 @@ public final class Intelligence {
                 meetingID: meetingID, detail: detail,
                 transcript: transcript, human: human,
                 doSpeakers: doSpeakers, doSummary: doSummary,
+                doTitle: doTitle,
                 store: self.store,
                 onStage: { self.jobs[meetingID] = $0 },
                 onPartialSummary: { self.streamingSummary[meetingID] = $0 }
@@ -204,10 +206,38 @@ public final class Intelligence {
         }
     }
 
+    /// Returns follow-up user turns and the assistant-reply token budget
+    /// for context sizing, based on which analysis tasks are active.
+    private func contextBudget(
+        doSpeakers: Bool, doSummary: Bool, doTitle: Bool
+    ) -> (followUpUsers: [String], assistantReserve: Int) {
+        var users: [String] = []
+        var reserve = 0
+
+        if doSpeakers, doSummary || doTitle {
+            reserve += MeetingAnalyzer.speakerOptions.maxTokens
+            if doSummary {
+                users.append(IntelligencePrompts.summaryFollowUpUser)
+            }
+            if doTitle {
+                users.append(IntelligencePrompts.titleFollowUpUser)
+            }
+        } else if doSummary, doTitle {
+            users.append(IntelligencePrompts.titleFollowUpUser)
+        }
+
+        if doSummary, doTitle {
+            reserve += MeetingAnalyzer.summaryOptions.maxTokens
+        }
+
+        return (users, reserve)
+    }
+
     /// Builds the first user turn content for context sizing. Matches what
     /// `MeetingAnalyzer.run` will build for the actual generation.
     private func buildFirstUserContent(
         doSpeakers: Bool,
+        doSummary: Bool,
         detail: MeetingDetailData,
         transcript: TranscriptData,
         human: [Int: PersonData]
@@ -218,10 +248,17 @@ public final class Intelligence {
                 detail: detail, human: human,
                 transcriptSpeakerLabeled: plain
             )
-        } else {
+        } else if doSummary {
             let names = human.mapValues(\.name)
             let plain = TranscriptFormatter.plain(transcript, names: names)
             return IntelligencePrompts.summaryOnlyFirstUser(
+                detail: detail, transcriptNamed: plain
+            )
+        } else {
+            // Title-only: no speakers, no summary
+            let names = human.mapValues(\.name)
+            let plain = TranscriptFormatter.plain(transcript, names: names)
+            return IntelligencePrompts.titleOnlyFirstUser(
                 detail: detail, transcriptNamed: plain
             )
         }

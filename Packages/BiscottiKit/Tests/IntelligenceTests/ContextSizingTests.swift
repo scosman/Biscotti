@@ -173,7 +173,7 @@ struct ContextSizingTests {
         let size = try await ContextSizing.contextSizeForAnalysis(
             firstUser: "user content",
             system: "system",
-            followUpUser: "follow up",
+            followUpUsers: ["follow up"],
             assistantReserveTokens: 512,
             session: session
         )
@@ -189,7 +189,7 @@ struct ContextSizingTests {
         let size = try await ContextSizing.contextSizeForAnalysis(
             firstUser: "user content",
             system: "system",
-            followUpUser: nil,
+            followUpUsers: [],
             assistantReserveTokens: 0,
             session: session
         )
@@ -204,7 +204,7 @@ struct ContextSizingTests {
         let size = try await ContextSizing.contextSizeForAnalysis(
             firstUser: "big transcript",
             system: "system",
-            followUpUser: "follow up",
+            followUpUsers: ["follow up"],
             assistantReserveTokens: 512,
             session: session
         )
@@ -219,7 +219,7 @@ struct ContextSizingTests {
             _ = try await ContextSizing.contextSizeForAnalysis(
                 firstUser: "user",
                 system: "system",
-                followUpUser: nil,
+                followUpUsers: [],
                 assistantReserveTokens: 0,
                 session: session
             )
@@ -232,7 +232,7 @@ struct ContextSizingTests {
         let size = try await ContextSizing.contextSizeForAnalysis(
             firstUser: "big transcript",
             system: "system",
-            followUpUser: "follow up",
+            followUpUsers: ["follow up"],
             assistantReserveTokens: 512,
             session: session
         )
@@ -240,5 +240,21 @@ struct ContextSizingTests {
         let expected = ContextSizing.contextSize(forInputTokens: 20512)
         #expect(size == expected)
         #expect(size < ContextSizing.maxContextSize)
+    }
+
+    @Test("contextSizeForAnalysis with multiple followUpUsers")
+    func analysisMultipleFollowUps() async throws {
+        let session = MockCountingSession(tokenCounts: [500])
+        let size = try await ContextSizing.contextSizeForAnalysis(
+            firstUser: "user content",
+            system: "system",
+            followUpUsers: ["summary instructions", "title instructions"],
+            assistantReserveTokens: 512 + 2048,
+            session: session
+        )
+        // base = 500 (from countTokens), total = 500 + 2560 = 3060
+        let expected = ContextSizing.contextSize(forInputTokens: 3060)
+        #expect(size == expected)
+        #expect(session.callCount == 1)
     }
 }

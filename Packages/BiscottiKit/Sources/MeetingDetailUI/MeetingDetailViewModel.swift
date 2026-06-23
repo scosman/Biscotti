@@ -536,6 +536,7 @@ public extension MeetingDetailViewModel {
         enhancementStatus == .preparing
             || enhancementStatus == .identifyingSpeakers
             || enhancementStatus == .summarizing
+            || enhancementStatus == .generatingTitle
     }
 
     /// Whether the AI model is downloaded and available.
@@ -588,7 +589,8 @@ public extension MeetingDetailViewModel {
         default: false
         }
         let enhancementActive = switch enhStatus {
-        case .preparing, .identifyingSpeakers, .summarizing: true
+        case .preparing, .identifyingSpeakers, .summarizing,
+             .generatingTitle: true
         default: false
         }
 
@@ -644,6 +646,14 @@ public extension MeetingDetailViewModel {
                 }
             stages.append(PipelineStage(
                 label: "Summarizing", state: summaryState
+            ))
+        }
+
+        // Stage 4: Generating title (gated -- only during active title gen)
+        if enhStatus == .generatingTitle {
+            stages.append(PipelineStage(
+                label: "Generating title\u{2026}",
+                state: .active
             ))
         }
 

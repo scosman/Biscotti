@@ -3,16 +3,21 @@ import Foundation
 import LocalLLM
 
 /// The multi-turn conversation orchestrator that replaced the separate
-/// `SpeakerIdentifier` and `Summarizer`. Handles three cases:
-/// - A: both speaker identification + summary (multi-turn, transcript reused)
+/// `SpeakerIdentifier` and `Summarizer`. Handles four cases:
+/// - A: speaker identification + summary + title (multi-turn, transcript reused)
 /// - B: speakers only (single turn)
 /// - C: summary only (single turn, human names in transcript)
+/// - D: title only (single turn, when speakers + summary are both skipped)
+/// Plus any two-task combination; each turn threads onto the shared messages.
 enum MeetingAnalyzer {
     static let speakerOptions = GenerationOptions(
         maxTokens: 512, temperature: 0.2, thinking: .off
     )
     static let summaryOptions = GenerationOptions(
         maxTokens: 2048, temperature: 0.6, thinking: .off
+    )
+    static let titleOptions = GenerationOptions(
+        maxTokens: 32, temperature: 0.3, thinking: .off
     )
 
     /// Groups all parameters for an analysis run, keeping function
@@ -24,6 +29,7 @@ enum MeetingAnalyzer {
         let human: [Int: PersonData]
         let doSpeakers: Bool
         let doSummary: Bool
+        let doTitle: Bool
         let store: DataStore
         let onStage: @MainActor (EnhancementStatus) -> Void
         let onPartialSummary: @MainActor (String) -> Void
@@ -38,15 +44,28 @@ enum MeetingAnalyzer {
             .system(IntelligencePrompts.analysisSystem)
         ]
 
+        // Track whether any prior turn ran (for title first-user logic)
+        var priorTurnRan = false
+
         if ctx.doSpeakers {
             try await runSpeakerTurn(
                 session, &messages, ctx
             )
+            priorTurnRan = true
         }
 
         if ctx.doSummary {
             try await runSummaryTurn(
-                session, messages, ctx
+                session, &messages, ctx,
+                priorTurnRan: priorTurnRan
+            )
+            priorTurnRan = true
+        }
+
+        if ctx.doTitle {
+            try await runTitleTurn(
+                session, &messages, ctx,
+                priorTurnRan: priorTurnRan
             )
         }
     }
@@ -77,12 +96,6 @@ enum MeetingAnalyzer {
 
         // Feed model output back verbatim (maximizes KV reuse)
         messages.append(.assistant(raw))
-
-        if ctx.doSummary {
-            messages.append(
-                .user(IntelligencePrompts.summaryFollowUpUser)
-            )
-        }
     }
 
     // MARK: - Summary Turn
@@ -90,13 +103,17 @@ enum MeetingAnalyzer {
     @MainActor
     private static func runSummaryTurn(
         _ session: any LLMSession,
-        _ messages: [LLMMessage],
-        _ ctx: Context
+        _ messages: inout [LLMMessage],
+        _ ctx: Context,
+        priorTurnRan: Bool
     ) async throws {
-        var msgs = messages
-
-        // If the speaker turn did NOT run, build the summary-only first user turn
-        if !ctx.doSpeakers {
+        if priorTurnRan {
+            // Transcript is already in context; just add the summary task
+            messages.append(
+                .user(IntelligencePrompts.summaryFollowUpUser)
+            )
+        } else {
+            // No prior turn -- build the summary-only first user turn
             let names = ctx.human.mapValues(\.name)
             let transcript = TranscriptFormatter.plain(
                 ctx.transcript, names: names
@@ -104,14 +121,14 @@ enum MeetingAnalyzer {
             let userContent = IntelligencePrompts.summaryOnlyFirstUser(
                 detail: ctx.detail, transcriptNamed: transcript
             )
-            msgs.append(.user(userContent))
+            messages.append(.user(userContent))
         }
 
         ctx.onStage(.summarizing)
 
         var accumulated = ""
         let stream = await session.generateStreaming(
-            messages: msgs, options: summaryOptions
+            messages: messages, options: summaryOptions
         )
 
         for try await event in stream {
@@ -130,6 +147,101 @@ enum MeetingAnalyzer {
         try await ctx.store.applyGeneratedSummary(
             accumulated, for: ctx.meetingID
         )
+
+        // Feed model output back verbatim (for subsequent title turn)
+        messages.append(.assistant(accumulated))
+    }
+
+    // MARK: - Title Turn
+
+    @MainActor
+    private static func runTitleTurn(
+        _ session: any LLMSession,
+        _ messages: inout [LLMMessage],
+        _ ctx: Context,
+        priorTurnRan: Bool
+    ) async throws {
+        if priorTurnRan {
+            // Transcript is already in context; just add the title task
+            messages.append(
+                .user(IntelligencePrompts.titleFollowUpUser)
+            )
+        } else {
+            // No prior turn -- build the title-only first user turn
+            let names = ctx.human.mapValues(\.name)
+            let transcript = TranscriptFormatter.plain(
+                ctx.transcript, names: names
+            )
+            let userContent = IntelligencePrompts.titleOnlyFirstUser(
+                detail: ctx.detail, transcriptNamed: transcript
+            )
+            messages.append(.user(userContent))
+        }
+
+        ctx.onStage(.generatingTitle)
+
+        let raw = try await session.generate(
+            messages: messages, options: titleOptions
+        )
+
+        if let cleaned = cleanTitle(raw) {
+            try await ctx.store.applyGeneratedTitle(
+                cleaned, for: ctx.meetingID
+            )
+        }
+
+        messages.append(.assistant(raw))
+    }
+
+    // MARK: - Title Cleaning
+
+    /// Cleans a raw LLM title output to a usable title string.
+    ///
+    /// Steps: trim whitespace/newlines; take first non-empty line; strip
+    /// a leading `Title:` or `Title -` prefix; strip surrounding matching
+    /// quotes; trim again; cap length at 120 characters; return nil if empty.
+    static func cleanTitle(_ raw: String) -> String? {
+        // Take first non-empty line
+        let firstLine = raw
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+
+        guard var result = firstLine else { return nil }
+
+        // Strip "Title:" or "Title -" prefix (case-insensitive)
+        let prefixes = ["title:", "title -"]
+        let lower = result.lowercased()
+        if let matched = prefixes.first(where: { lower.hasPrefix($0) }) {
+            result = String(result.dropFirst(matched.count))
+                .trimmingCharacters(in: .whitespaces)
+        }
+
+        // Strip surrounding matching quotes
+        if result.count >= 2,
+           let first = result.first,
+           let last = result.last
+        {
+            let matchingQuotes: [(Character, Character)] = [
+                ("\"", "\""), ("\u{201C}", "\u{201D}"),
+                ("'", "'"), ("\u{2018}", "\u{2019}")
+            ]
+            for (open, close) in matchingQuotes where first == open && last == close {
+                result = String(result.dropFirst().dropLast())
+                    .trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
+        // Final trim
+        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Cap length
+        if result.count > 120 {
+            result = String(result.prefix(120))
+        }
+
+        return result.isEmpty ? nil : result
     }
 
     // MARK: - Persistence

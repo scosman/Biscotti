@@ -27,6 +27,23 @@ public extension DataStore {
     }
 }
 
+// MARK: - AI-Generated Title
+
+public extension DataStore {
+    /// Stores an AI-generated title IFF the meeting still has the default
+    /// title and the user has not renamed it. Leaves `editedTitle == false`
+    /// so a later calendar association can still apply a real event title.
+    /// No-op otherwise.
+    func applyGeneratedTitle(_ title: String, for meetingID: UUID) throws {
+        guard let meeting = try meeting(id: meetingID) else {
+            throw DataStoreError.notFound(meetingID)
+        }
+        guard meeting.title == Meeting.defaultTitle, !meeting.editedTitle else { return }
+        meeting.title = title
+        try save()
+    }
+}
+
 // MARK: - Speaker Assignments
 
 public extension DataStore {

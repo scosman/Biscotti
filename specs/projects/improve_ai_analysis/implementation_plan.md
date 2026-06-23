@@ -4,10 +4,10 @@ status: complete
 
 # Implementation Plan: Improve AI Analysis
 
-Four phases, matching the project's intended sequence (service format → KV reuse → app
-integration → settings/UI). Each phase is one coherent, reviewable unit and ends green on
-`make ci` (lint + test + build). Details live in `architecture.md` (section refs below);
-this is the ordered checklist.
+Five phases, matching the project's intended sequence (service format → KV reuse → app
+integration → settings/UI → title generation). Each phase is one coherent, reviewable unit and
+ends green on `make ci` (lint + test + build). Details live in `architecture.md` (section refs
+below); this is the ordered checklist.
 
 ## Phases
 
@@ -45,3 +45,18 @@ this is the ordered checklist.
   — `runSummary(force:)` → `runAnalysis`, keep the "Regenerate Summary" label + edited-summary
   confirm, keep two pipeline stages gated on the single flag, `aiAnalysisEnabled` in the view
   model. Tests: SettingsUI/MeetingDetailUI view-model updates. (Arch §3.2, §5)
+
+- [x] **Phase 5 — Title generation.** Add a third analysis turn that generates a meeting title,
+  gated to run **only** when the title is still the default and not user-edited (never replaces a
+  calendar/user title; independent of `force`). DataStore: promote `"Untitled Meeting"` to
+  `Meeting.defaultTitle` (used by `RecordingController.autoTitle()`), add `editedTitle` to
+  `MeetingDetailData` (+ mapping), add `applyGeneratedTitle(_:for:)` with an internal
+  default-and-not-edited guard (leaves `editedTitle == false`). Intelligence:
+  `titleTaskInstructions` / `titleFollowUpUser` / `titleOnlyFirstUser`; `MeetingAnalyzer` title
+  turn (`titleOptions`, `doTitle`, uniform message threading, buffered generate, pure
+  title-cleaning helper, `applyGeneratedTitle`); `EnhancementStatus.generatingTitle`; compute
+  `doTitle` in `runAnalysisSession` + relax the early-out guard; generalize `ContextSizing` to
+  `followUpUsers: [String]` and the summed assistant reserve. SettingsUI caption mentions titles.
+  **No LocalLLM changes** — `llm_*` manual tests unaffected. Tests: `applyGeneratedTitle` gate,
+  prompt/title-cleaning, `MeetingAnalyzer` sequencing for the four `doTitle` cases (lean
+  follow-up, transcript-once), gating truth table, ContextSizing math. (Arch §10)

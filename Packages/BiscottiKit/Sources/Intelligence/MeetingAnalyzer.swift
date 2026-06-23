@@ -1,6 +1,9 @@
 import DataStore
 import Foundation
 import LocalLLM
+#if DEBUG
+    import os
+#endif
 
 /// The multi-turn conversation orchestrator that replaced the separate
 /// `SpeakerIdentifier` and `Summarizer`. Handles four cases:
@@ -19,6 +22,15 @@ enum MeetingAnalyzer {
     static let titleOptions = GenerationOptions(
         maxTokens: 32, temperature: 0.3, thinking: .off
     )
+
+    #if DEBUG
+        /// DEBUG-only diagnostics logger. Used to capture the raw speaker-ID
+        /// turn output so we can harden the parser/prompt against weaker
+        /// models (e.g. E2B). Not compiled into release builds.
+        private static let debugLog = Logger(
+            subsystem: "net.scosman.biscotti", category: "MeetingAnalyzer"
+        )
+    #endif
 
     /// Groups all parameters for an analysis run, keeping function
     /// signatures within the lint threshold.
@@ -91,6 +103,12 @@ enum MeetingAnalyzer {
         let raw = try await session.generate(
             messages: messages, options: speakerOptions
         )
+
+        #if DEBUG
+            debugLog.info(
+                "Speaker-ID turn raw response:\n\(raw, privacy: .public)"
+            )
+        #endif
 
         try await persistSpeakers(raw, ctx)
 

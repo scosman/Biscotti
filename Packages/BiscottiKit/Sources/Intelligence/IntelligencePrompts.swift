@@ -87,12 +87,21 @@ public enum IntelligencePrompts {
     are already correctly assigned -- do not change them. Only assign the \
     currently unassigned speakers.
 
-    Output format -- one line per newly identified speaker, nothing else:
-    <speakerIndex> | <Full Name> | <email-or-blank>
+    Output ONLY one line per newly identified speaker and nothing else -- no \
+    preamble, no commentary, no markdown table, no numbering, no surrounding \
+    text. Each line MUST follow this EXACT format, using " | " (space pipe \
+    space) to separate exactly three fields:
 
-    Example:
+    ```
+    <speakerIndex> | <Full Name> | <email-or-blank>
+    ```
+
+    For example, your entire response must look exactly like this:
+
+    ```
     0 | Daniel Lee | daniel@acme.com
     1 | Priya Patel |
+    ```
     """
 
     /// Instructions for the summary task.
@@ -101,8 +110,11 @@ public enum IntelligencePrompts {
     key decisions, discussion topics, and outcomes. At the end, include a \
     "## Action Items" section as a checklist using `- [ ]` format, with owners \
     noted when clear from the transcript. You may reference the speaker names \
-    identified earlier. Output markdown only -- no preamble, no commentary, and \
-    do not invent content that is not in the transcript.
+    identified earlier, but do NOT repeat or restate the speaker mapping/list. \
+    Your response must contain ONLY a summary of the meeting and nothing else: \
+    no speaker mapping, no preamble, no commentary, and no content that is not \
+    in the transcript. Output markdown only, and begin your response directly \
+    with the summary.
     """
 
     // MARK: - User Turn Builders

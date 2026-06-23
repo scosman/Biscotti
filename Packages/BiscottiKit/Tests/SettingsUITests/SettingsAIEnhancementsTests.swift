@@ -133,55 +133,26 @@ struct SettingsAIEnhancementsTests {
         #expect(storedSettings.aiAnalysisEnabled == true)
     }
 
-    // MARK: - Download state
+    // MARK: - Active model display name
 
-    @Test("modelDownload shows notDownloaded when no model present")
-    func downloadStateFromModelManager() throws {
-        let fixture = try makeCoreFixture(modelDownloaded: false)
-        defer { fixture.cleanup() }
-
-        let viewModel = SettingsViewModel(core: fixture.core)
-
-        #expect(viewModel.modelDownload == .notDownloaded)
-    }
-
-    @Test("modelDownload shows downloaded when model present")
-    func downloadStateDownloaded() throws {
+    @Test("activeModelDisplayName returns display name when model active")
+    func activeModelDisplayNamePresent() throws {
         let fixture = try makeCoreFixture(modelDownloaded: true)
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
-
-        #expect(viewModel.modelDownload == .downloaded)
-        #expect(viewModel.modelAvailable == true)
+        #expect(viewModel.activeModelDisplayName != nil)
+        // The first catalog model is downloaded by the fixture
+        #expect(viewModel.activeModelDisplayName == LLMModelCatalog.all.first?.displayName)
     }
 
-    // MARK: - Start download
-
-    @Test("startModelDownload picks recommended model and delegates to ModelManager")
-    func startModelDownloadDelegates() async throws {
+    @Test("activeModelDisplayName returns nil when no model active")
+    func activeModelDisplayNameNil() throws {
         let fixture = try makeCoreFixture(modelDownloaded: false)
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
-        await viewModel.load()
-
-        #expect(viewModel.modelAvailable == false)
-
-        // Trigger download via SettingsViewModel
-        viewModel.startModelDownload()
-
-        // Wait for the background Task to complete
-        // The fake download completes synchronously, so a short yield suffices.
-        try await Task.sleep(for: .milliseconds(50))
-
-        // Verify ModelManager received the download and auto-selected
-        #expect(fixture.modelManager.isModelAvailable == true)
-
-        // The downloaded model should be the one recommended by ModelManager
-        let recommendedID = fixture.modelManager.recommendedModelID()
-        #expect(recommendedID != nil)
-        #expect(fixture.modelManager.activeModelID == recommendedID)
+        #expect(viewModel.activeModelDisplayName == nil)
     }
 
     // MARK: - Load refreshes model state

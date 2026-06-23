@@ -350,6 +350,7 @@ let package = Package(
                 "DataStore",
                 "DesignSystem",
                 "Intelligence",
+                "LocalLLM",
                 "Permissions"
             ],
             swiftSettings: warningsAsErrors

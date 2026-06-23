@@ -14,6 +14,7 @@ public struct SettingsView: View {
     /// SettingsSystemAudioRow.swift can bind to it.
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
+    @State private var showManageModels = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -303,10 +304,7 @@ private extension SettingsView {
                 .foregroundStyle(Tokens.secondaryText)
             }
 
-            // Conditional download row when no model is present
-            if !viewModel.modelAvailable {
-                modelDownloadRow
-            }
+            aiLanguageModelRow
         } header: {
             HStack {
                 Text(Self.sectionTitles[3])
@@ -314,6 +312,41 @@ private extension SettingsView {
                 Text(Self.aiEnhancementsHeaderCaption)
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
+            }
+        }
+        .sheet(isPresented: $showManageModels) {
+            ManageModelsSheet(
+                viewModel: ManageModelsViewModel(core: viewModel.appCore)
+            )
+        }
+    }
+
+    var aiLanguageModelRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("AI Language Model")
+                Text("The AI model used to summarize meetings")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            if let displayName = viewModel.activeModelDisplayName {
+                Text(displayName)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                Button("Manage") {
+                    showManageModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Button("Download\u{2026}") {
+                    showManageModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
@@ -329,54 +362,6 @@ private extension SettingsView {
                 Task { await viewModel.setAIAnalysisEnabled(newValue) }
             }
         )
-    }
-
-    @ViewBuilder
-    var modelDownloadRow: some View {
-        // Only rendered inside `if !viewModel.modelAvailable`, so
-        // `.downloaded` is unreachable; grouped with the idle states
-        // for exhaustiveness.
-        switch viewModel.modelDownload {
-        case .notDownloaded, .unknown, .downloaded:
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Text("Download Local Language AI Model?")
-                Text("Several GB \u{00B7} runs entirely on your Mac.")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                Button("Download") {
-                    viewModel.startModelDownload()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-
-        case let .downloading(fraction):
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                if let fraction {
-                    ProgressView(value: fraction)
-                    Text("Downloading\u{2026} \(Int(fraction * 100))%")
-                        .font(Tokens.metadataFont)
-                        .foregroundStyle(Tokens.secondaryText)
-                } else {
-                    ProgressView()
-                    Text("Downloading\u{2026}")
-                        .font(Tokens.metadataFont)
-                        .foregroundStyle(Tokens.secondaryText)
-                }
-            }
-
-        case let .failed(message):
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Text("Download failed: \(message)")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(.red)
-                Button("Retry") {
-                    viewModel.startModelDownload()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        }
     }
 }
 

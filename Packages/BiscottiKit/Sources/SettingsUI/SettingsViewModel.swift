@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import LocalLLM
 import Permissions
 import ServiceManagement
 
@@ -30,7 +31,14 @@ public struct CalendarGroup: Identifiable, Sendable, Equatable {
 /// overview with inline request actions, and general preferences.
 @MainActor @Observable
 public final class SettingsViewModel {
-    private let core: AppCore
+    /// Exposed (read-only) so `ManageModelsSheet` can be constructed from the
+    /// same `AppCore` instance. Not used for direct mutations outside this VM.
+    let appCore: AppCore
+
+    /// Legacy alias -- internal code still references `core` throughout.
+    private var core: AppCore {
+        appCore
+    }
 
     /// Seam for reading the system launch-at-login status. Defaults to
     /// `SMAppService.mainApp.status == .enabled`. Injected in tests.
@@ -81,25 +89,15 @@ public final class SettingsViewModel {
     /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
     public private(set) var aiAnalysisEnabled: Bool = true
 
-    /// Current model download lifecycle state for the active model
-    /// (observed from ModelManager).
-    public var modelDownload: ModelDownloadState {
-        let mgr = core.modelManager
-        if let activeID = mgr.activeModelID {
-            return mgr.downloads[activeID] ?? .notDownloaded
-        }
-        // No active model: show the first in-flight download, or notDownloaded
-        for (_, state) in mgr.downloads {
-            if case .downloading = state {
-                return state
-            }
-        }
-        return .notDownloaded
-    }
-
     /// Whether any AI model is available (active model exists).
     public var modelAvailable: Bool {
         core.modelManager.isModelAvailable
+    }
+
+    /// Display name of the currently active model, or `nil` if none.
+    public var activeModelDisplayName: String? {
+        guard let id = core.modelManager.activeModelID else { return nil }
+        return LLMModelCatalog.model(id: id)?.displayName
     }
 
     // MARK: - Calendar state
@@ -146,7 +144,7 @@ public final class SettingsViewModel {
         core: AppCore,
         readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil
     ) {
-        self.core = core
+        appCore = core
         self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
             #if canImport(ServiceManagement)
                 ServiceManagement.SMAppService.mainApp.status == .enabled
@@ -517,13 +515,5 @@ public extension SettingsViewModel {
         } catch {
             aiAnalysisEnabled = !enabled
         }
-    }
-
-    /// Starts an AI model download. Runs asynchronously; the download
-    /// state is observed through `modelDownload` (from ModelManager).
-    /// Downloads the recommended model when no specific id is given.
-    func startModelDownload() {
-        guard let id = core.modelManager.recommendedModelID() else { return }
-        Task { await core.modelManager.downloadModel(id: id) }
     }
 }

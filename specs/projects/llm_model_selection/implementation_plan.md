@@ -38,7 +38,7 @@ Ordered, dependency-first. Each phase compiles green and is reviewable on its ow
   auto-select on first download, delete→fallback/clear, select-guard, one-at-a-time, `modelChoices`
   matrix, Intelligence passes the active URL / no-ops when none. (Arch §2.3–2.7, §4, §5, §6.)
 
-- [ ] **Phase 5 — SettingsUI row + Manage Models sheet.** Permanent `aiLanguageModelRow` (replaces the
+- [x] **Phase 5 — SettingsUI row + Manage Models sheet.** Permanent `aiLanguageModelRow` (replaces the
   conditional download row); `ManageModelsSheet` + `ModelRowView` (per-state matrix, Recommended
   badge, Default/Choose, Download/Delete, warnings, progress); `ManageModelsViewModel` + delete
   confirmation; update `SettingsViewModel` (`isModelAvailable`/`activeModelDisplayName`, `load()` →

@@ -30,7 +30,7 @@
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
 - 🛑 **Auto‑stop** — detects when your call ends and stops recording.
 - 🪶 **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
-- 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No feedback or echo.
+- 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No echo.
 - 📝 **Markdown notes with timestamps** — jot notes in markdown, linked to the moment they happened.
 
 ## Biscotti vs. other notetaking apps

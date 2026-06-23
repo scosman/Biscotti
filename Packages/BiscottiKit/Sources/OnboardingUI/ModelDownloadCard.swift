@@ -126,6 +126,44 @@ extension ModelDownloadRow where ExtraContent == EmptyView {
     }
 }
 
+// MARK: - IndeterminateBar
+
+/// A sage capsule segment that bounces back and forth within a hairline track.
+/// Falls back to a static left-parked segment when Reduce Motion is on.
+private struct IndeterminateBar: View {
+    let trackWidth: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animate = false
+
+    private let segmentWidth: CGFloat = 40
+
+    private var maxOffset: CGFloat {
+        trackWidth - segmentWidth
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.hairline)
+                .frame(width: trackWidth, height: 3)
+            Capsule()
+                .fill(Color.sage)
+                .frame(width: segmentWidth, height: 3)
+                .offset(x: animate ? maxOffset : 0)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(
+                .easeInOut(duration: 0.9)
+                    .repeatForever(autoreverses: true)
+            ) {
+                animate = true
+            }
+        }
+    }
+}
+
 // MARK: - DownloadControl
 
 /// The trailing control for a model download row.
@@ -134,10 +172,13 @@ struct DownloadControl: View {
     let state: ModelRowState
     let onDownload: () -> Void
 
+    /// Shared width for the bar tracks and the entire control column.
+    private let controlWidth: CGFloat = 120
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        VStack(alignment: .center, spacing: 6) {
             switch state {
             case let .idle(sizeCaption):
                 GrantPill(
@@ -148,6 +189,7 @@ struct DownloadControl: View {
                 Text(sizeCaption)
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkTertiary)
+                    .multilineTextAlignment(.center)
 
             case let .downloading(progress):
                 downloadingContent(progress)
@@ -162,7 +204,7 @@ struct DownloadControl: View {
                 Text(message)
                     .font(.biscottiMono(11))
                     .foregroundStyle(.signalRed)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(.center)
                 GrantPill(
                     title: "Retry",
                     systemImage: "arrow.clockwise",
@@ -174,6 +216,7 @@ struct DownloadControl: View {
                     .controlSize(.small)
             }
         }
+        .frame(width: controlWidth, alignment: .center)
     }
 
     // MARK: - Downloading states
@@ -182,12 +225,12 @@ struct DownloadControl: View {
     private func downloadingContent(_ progress: RowDownloadProgress) -> some View {
         switch progress {
         case let .indeterminate(status):
-            indeterminateBar
+            IndeterminateBar(trackWidth: controlWidth)
             if let status {
                 Text(status)
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
             }
 
         case let .determinate(fraction):
@@ -196,37 +239,27 @@ struct DownloadControl: View {
                 Text("Downloading\u{2026} \(Int(fraction * 100))%")
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
             } else {
-                indeterminateBar
+                IndeterminateBar(trackWidth: controlWidth)
                 Text("Downloading\u{2026}")
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
+                    .multilineTextAlignment(.center)
             }
         }
     }
 
-    /// Indeterminate sage capsule bar (120x3, fill half-width, centered).
-    private var indeterminateBar: some View {
-        ZStack(alignment: .leading) {
-            Capsule()
-                .fill(Color.hairline)
-                .frame(width: 120, height: 3)
-            Capsule()
-                .fill(Color.sage)
-                .frame(width: 60, height: 3)
-        }
-    }
-
-    /// Determinate sage capsule bar (120x3, fill proportional to fraction).
+    /// Determinate sage capsule bar; fill proportional to fraction.
     private func determinateBar(fraction: Double) -> some View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(Color.hairline)
-                .frame(width: 120, height: 3)
+                .frame(width: controlWidth, height: 3)
             Capsule()
                 .fill(Color.sage)
                 .frame(
-                    width: max(3, 120 * min(fraction, 1.0)),
+                    width: max(3, controlWidth * min(fraction, 1.0)),
                     height: 3
                 )
                 .animation(
@@ -244,6 +277,7 @@ struct DownloadControl: View {
                 .font(.caption2)
             Text("Insufficient free space on disk")
                 .font(.system(size: 12.5))
+                .multilineTextAlignment(.center)
         }
         .foregroundStyle(.warningOchre)
     }

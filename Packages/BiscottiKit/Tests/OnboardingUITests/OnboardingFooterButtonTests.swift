@@ -123,8 +123,40 @@ struct OnboardingFooterButtonTests {
 
     // MARK: - Model download: Skip before download, Continue after
 
-    @Test("model download step shows Skip before download, Continue after")
+    @Test("model download step shows Skip before download, Continue when both ready")
     func modelDownloadSkipThenContinue() async throws {
+        // Language model pre-downloaded so only transcription is needed
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+
+        // Before downloading: should show Skip (transcription not ready)
+        #expect(model.footerButton(for: .modelDownload) == .skip)
+
+        // Walk to model download step (prepareModelStep refreshes ModelManager)
+        await model.advance() // welcome -> permissions
+        await model.skip() // -> modelDownload
+
+        #expect(model.currentStep == .modelDownload)
+        // Language is ready (pre-downloaded), but transcription is not yet
+        // downloaded via startTranscriptionDownload -- however prepareModelStep
+        // probes modelsReady() which succeeds on the FakeTranscriber, so
+        // transcriptionDownloaded is true. Both models are ready.
+        #expect(model.bothModelsReady == true)
+        #expect(
+            model.footerButton(for: .modelDownload)
+                == .continueButton
+        )
+        #expect(model.isCurrentStepComplete == true)
+    }
+
+    @Test("model download step shows Skip when only transcription ready")
+    func modelDownloadSkipWhenOnlyTranscription() async throws {
+        // No language model pre-downloaded
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied
         )
@@ -132,25 +164,15 @@ struct OnboardingFooterButtonTests {
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Before downloading: should show Skip
-        #expect(model.footerButton(for: .modelDownload) == .skip)
-
         // Walk to model download step
         await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
-        #expect(model.currentStep == .modelDownload)
+        // Transcription is ready (FakeTranscriber succeeds on modelsReady),
+        // but language model is not downloaded
+        #expect(model.transcriptionReady == true)
+        #expect(model.languageReady == false)
         #expect(model.footerButton(for: .modelDownload) == .skip)
-        #expect(model.isCurrentStepComplete == false)
-
-        // Download models
-        await model.startDownload()
-        #expect(model.downloadComplete == true)
-        #expect(
-            model.footerButton(for: .modelDownload)
-                == .continueButton
-        )
-        #expect(model.isCurrentStepComplete == true)
     }
 
     // MARK: - Already-granted permission shows Continue on entry

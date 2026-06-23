@@ -3,6 +3,8 @@ import AppKit
 import Calendar
 import DataStore
 import Foundation
+import Intelligence
+import LocalLLM
 import Permissions
 import TranscriptionService
 
@@ -74,13 +76,23 @@ public final class OnboardingViewModel {
     public var showFixPermissionsAlert: Bool = false
 
     /// Calendar selection (reuses the grouped pattern).
-    public private(set) var calendarGroups: [OnboardingCalendarGroup] = []
-    public private(set) var enabledCalendarIDs: Set<String>?
+    /// Setters are internal so calendar-related extensions within the
+    /// module can mutate them.
+    public internal(set) var calendarGroups: [OnboardingCalendarGroup] = []
+    public internal(set) var enabledCalendarIDs: Set<String>?
 
-    /// Model download state.
+    /// Model download state (transcription).
     public private(set) var downloadStatus: String?
     public private(set) var isDownloading: Bool = false
     public private(set) var downloadComplete: Bool = false
+    public private(set) var downloadFailed: Bool = false
+
+    /// True when transcription models were already on disk when the step
+    /// was entered (set by `prepareModelStep()`).
+    public private(set) var transcriptionDownloaded: Bool = false
+
+    /// Presentation state for the "See all options" Manage Models sheet.
+    public var showVariantSheet: Bool = false
 
     // MARK: - Granted-state derivation
 
@@ -104,6 +116,14 @@ public final class OnboardingViewModel {
         microphoneGranted && systemAudioGranted && calendarGranted && notificationsGranted
     }
 
+    // MARK: - AppCore exposure (for sheet construction)
+
+    /// Read-only access to the application core, used by the view to
+    /// construct `ManageModelsViewModel(core:)` for the variant sheet.
+    public var appCore: AppCore {
+        core
+    }
+
     /// The footer button to display for a given step.
     public enum FooterButton: Equatable, Sendable {
         /// Show the primary "Continue" button (step action is done).
@@ -124,7 +144,7 @@ public final class OnboardingViewModel {
         case .permissions:
             allPermissionsGranted ? .continueButton : .skip
         case .modelDownload:
-            downloadComplete ? .continueButton : .skip
+            bothModelsReady ? .continueButton : .skip
         }
     }
 
@@ -136,8 +156,9 @@ public final class OnboardingViewModel {
     /// Disk space check for the model download step.
     public private(set) var hasSufficientDisk: Bool = true
 
-    /// Approximate disk space required for models (MB).
-    public static let requiredDiskSpaceMB: Int = 2000
+    /// Approximate disk space required for the transcription model (MB).
+    /// Aligned with the ~1.5 GB WhisperKit model bundle.
+    public static let requiredDiskSpaceMB: Int = 1500
 
     /// Seam for reading available disk bytes. Defaults to the real
     /// filesystem check. Override in tests for determinism.
@@ -223,51 +244,10 @@ public final class OnboardingViewModel {
         notificationsGranted = granted
     }
 
-    /// Whether a calendar is enabled (checked).
-    public func isCalendarEnabled(_ calendarID: String) -> Bool {
-        guard let enabled = enabledCalendarIDs else { return true }
-        return enabled.contains(calendarID)
-    }
-
-    /// Toggle a calendar on/off. Persists to settings.
-    public func toggleCalendar(_ calendarID: String) async {
-        let allIDs = calendarGroups
-            .flatMap(\.calendars)
-            .map(\.id)
-
-        var newSet: Set<String>
-        if let current = enabledCalendarIDs {
-            newSet = current
-            if newSet.contains(calendarID) {
-                newSet.remove(calendarID)
-            } else {
-                newSet.insert(calendarID)
-            }
-        } else {
-            newSet = Set(allIDs)
-            newSet.remove(calendarID)
-        }
-
-        if newSet.count == allIDs.count {
-            enabledCalendarIDs = nil
-        } else {
-            enabledCalendarIDs = newSet
-        }
-
-        do {
-            let updated = enabledCalendarIDs
-            try await core.store.updateSettings { settings in
-                settings.enabledCalendarIDs = updated
-            }
-        } catch {
-            // Revert on failure
-            enabledCalendarIDs = nil
-        }
-    }
-
-    /// Start the model download (on the model download step).
-    public func startDownload() async {
+    /// Start the transcription model download.
+    public func startTranscriptionDownload() async {
         isDownloading = true
+        downloadFailed = false
         downloadStatus = "Preparing\u{2026}"
         do {
             try await core.transcription
@@ -278,10 +258,19 @@ public final class OnboardingViewModel {
                 }
             downloadComplete = true
         } catch {
+            downloadFailed = true
             downloadStatus =
                 "Download failed. You can retry or skip."
         }
         isDownloading = false
+    }
+
+    /// Start the language model download for the current target model.
+    public func startLanguageDownload() {
+        guard let targetID = languageTargetModelID else { return }
+        Task {
+            await core.modelManager.downloadModel(id: targetID)
+        }
     }
 
     /// Open System Settings for a denied permission.
@@ -317,6 +306,9 @@ public final class OnboardingViewModel {
         downloadStatus = nil
         isDownloading = false
         downloadComplete = false
+        downloadFailed = false
+        transcriptionDownloaded = false
+        showVariantSheet = false
         hasSufficientDisk = true
     }
 
@@ -335,11 +327,11 @@ public final class OnboardingViewModel {
                 calendarGroups = Self.groupCalendars(infos)
                 currentStep = .calendarSelection
             } else {
-                checkDiskSpace()
+                await prepareModelStep()
                 currentStep = .modelDownload
             }
         case .calendarSelection:
-            checkDiskSpace()
+            await prepareModelStep()
             currentStep = .modelDownload
         case .modelDownload:
             currentStep = .done
@@ -347,6 +339,14 @@ public final class OnboardingViewModel {
             await completeOnboarding()
         }
         syncLivePermissionState()
+    }
+
+    /// Prepares state for the model download step: probes transcription
+    /// readiness, refreshes the ModelManager, and checks disk space.
+    private func prepareModelStep() async {
+        await core.modelManager.refresh()
+        transcriptionDownloaded = await core.transcription.modelsReady()
+        checkDiskSpace()
     }
 
     /// Reads the live system permission state for the current step
@@ -378,21 +378,5 @@ public final class OnboardingViewModel {
             * 1_048_576
         let available = availableDiskBytes()
         hasSufficientDisk = available >= requiredBytes
-    }
-
-    /// Groups CalendarInfo items by sourceTitle (same logic as SettingsVM).
-    public static func groupCalendars(
-        _ infos: [CalendarInfo]
-    ) -> [OnboardingCalendarGroup] {
-        let grouped = Dictionary(grouping: infos, by: \.sourceTitle)
-        return grouped
-            .sorted { $0.key < $1.key }
-            .map { source, calendars in
-                OnboardingCalendarGroup(
-                    id: source,
-                    sourceTitle: source,
-                    calendars: calendars.sorted { $0.title < $1.title }
-                )
-            }
     }
 }

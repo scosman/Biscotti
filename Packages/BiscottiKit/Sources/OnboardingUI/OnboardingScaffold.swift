@@ -5,6 +5,7 @@ import SwiftUI
 /// ProgressHeader (top), centered content, BrandFooter (bottom).
 struct OnboardingScaffold<Content: View>: View {
     let step: OnboardingViewModel.Step
+    var contentMaxWidth: CGFloat = 520
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -15,7 +16,7 @@ struct OnboardingScaffold<Content: View>: View {
             Spacer(minLength: 24)
 
             content
-                .frame(maxWidth: 520)
+                .frame(maxWidth: contentMaxWidth)
                 .multilineTextAlignment(.center)
 
             Spacer(minLength: 24)

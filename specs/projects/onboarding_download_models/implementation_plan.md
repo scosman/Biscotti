@@ -26,7 +26,7 @@ module).
   - *Green via `hooks-mcp` build + test + lint.* Settings behavior is unchanged — this CR is just the
     move. If the repo's top-level `architecture.md` documents the module DAG, add `ModelManagementUI`.
 
-- [ ] **Phase 2 — OnboardingUI view-model logic + reuse seams (no screen rewrite).** Wire the data path
+- [x] **Phase 2 — OnboardingUI view-model logic + reuse seams (no screen rewrite).** Wire the data path
   with the screen still rendering its old body so the package stays green.
   - `Package.swift`: add `ModelManagementUI`, `Intelligence`, `LocalLLM` to `OnboardingUI`; add
     `Intelligence`, `LocalLLM` to `OnboardingUITests`.

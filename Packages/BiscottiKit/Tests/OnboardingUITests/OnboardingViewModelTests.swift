@@ -145,7 +145,7 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .modelDownload)
 
-        await model.startDownload()
+        await model.startTranscriptionDownload()
         // FakeTranscriber's ensureModelsDownloaded succeeds immediately
         #expect(model.downloadComplete == true)
         #expect(model.isDownloading == false)
@@ -266,7 +266,7 @@ struct OnboardingViewModelTests {
         #expect(model.currentStep == .modelDownload)
 
         // Mutate some state to verify reset clears it
-        await model.startDownload()
+        await model.startTranscriptionDownload()
         #expect(model.downloadComplete == true)
 
         // Reset
@@ -282,6 +282,9 @@ struct OnboardingViewModelTests {
         #expect(model.downloadStatus == nil)
         #expect(model.isDownloading == false)
         #expect(model.downloadComplete == false)
+        #expect(model.downloadFailed == false)
+        #expect(model.transcriptionDownloaded == false)
+        #expect(model.showVariantSheet == false)
         #expect(model.hasSufficientDisk == true)
     }
 }

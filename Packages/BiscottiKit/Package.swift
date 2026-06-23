@@ -413,8 +413,11 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Intelligence",
+                "ModelManagementUI",
                 "Permissions",
-                "TranscriptionService"
+                "TranscriptionService",
+                .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -426,11 +429,13 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
                 .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors

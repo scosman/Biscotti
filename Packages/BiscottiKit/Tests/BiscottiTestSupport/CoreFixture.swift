@@ -471,6 +471,7 @@ public func makeCoreFixture(
     useImmediateDetectorClock: Bool = false,
     modelDownloaded: Bool = false,
     hardwareRAMBytes: UInt64 = 32_000_000_000,
+    hardwareDiskBytes: Int64? = 100_000_000_000,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -552,7 +553,8 @@ public func makeCoreFixture(
         downloaded: modelDownloaded
     )
     let fakeHardwareProbe = FakeCoreHardwareProbe(
-        physicalMemoryBytes: hardwareRAMBytes
+        physicalMemoryBytes: hardwareRAMBytes,
+        diskBytes: hardwareDiskBytes
     )
     let modelManager = ModelManager(
         store: store,

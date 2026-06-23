@@ -322,7 +322,7 @@ extension OnboardingView {
             }
         } else {
             Button {
-                Task { await viewModel.startDownload() }
+                Task { await viewModel.startTranscriptionDownload() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.down.circle")

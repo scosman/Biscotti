@@ -181,6 +181,9 @@ public struct AppSettingsData: Sendable, Equatable {
     /// Whether AI analysis (summary + speaker inference) runs automatically
     /// after transcription completes. Default: on.
     public var aiAnalysisEnabled: Bool
+    /// The stable ID of the user's chosen LLM model (e.g. "gemma-4-12b").
+    /// Empty string means no explicit choice yet (drives migration/fallback).
+    public var selectedModelID: String
 
     public init(
         customVocabulary: [String] = [],
@@ -193,7 +196,8 @@ public struct AppSettingsData: Sendable, Equatable {
         calendarNotificationMode: CalendarNotificationMode = .allMeetings,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
-        aiAnalysisEnabled: Bool = true
+        aiAnalysisEnabled: Bool = true,
+        selectedModelID: String = ""
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -206,6 +210,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
         self.aiAnalysisEnabled = aiAnalysisEnabled
+        self.selectedModelID = selectedModelID
     }
 }
 
@@ -458,7 +463,8 @@ public extension DataStore {
                 calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs,
-                aiAnalysisEnabled: existing.aiAnalysisEnabled
+                aiAnalysisEnabled: existing.aiAnalysisEnabled,
+                selectedModelID: existing.selectedModelID
             )
         }
         // Create the singleton with defaults
@@ -491,7 +497,8 @@ public extension DataStore {
             calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs,
-            aiAnalysisEnabled: model.aiAnalysisEnabled
+            aiAnalysisEnabled: model.aiAnalysisEnabled,
+            selectedModelID: model.selectedModelID
         )
         mutate(&dto)
 
@@ -506,6 +513,7 @@ public extension DataStore {
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         model.aiAnalysisEnabled = dto.aiAnalysisEnabled
+        model.selectedModelID = dto.selectedModelID
         try save()
     }
 

@@ -20,7 +20,7 @@ Ordered, dependency-first. Each phase compiles green and is reviewable on its ow
   Tests: catalog distinctness/lookup, inventory path/presence/filter/delete (incl. `.partial`).
   *Touches `Packages/LocalLLM` → mark existing `llm_*` manual steps `not-run`.* (Arch §1.2, §2.1, §7.)
 
-- [ ] **Phase 2 — DataStore `selectedModelID`.** Add the persisted `selectedModelID: String = ""` to
+- [x] **Phase 2 — DataStore `selectedModelID`.** Add the persisted `selectedModelID: String = ""` to
   `AppSettings`, `AppSettingsData`, and the `settings()`/`updateSettings()` mapping. Test: round-trip
   + default. *Additive, small.* (Arch §1.1.)
 

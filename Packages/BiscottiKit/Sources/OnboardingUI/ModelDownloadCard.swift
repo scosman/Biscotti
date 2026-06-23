@@ -190,6 +190,7 @@ struct DownloadControl: View {
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkTertiary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
             case let .downloading(progress):
                 downloadingContent(progress)
@@ -205,6 +206,7 @@ struct DownloadControl: View {
                     .font(.biscottiMono(11))
                     .foregroundStyle(.signalRed)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 GrantPill(
                     title: "Retry",
                     systemImage: "arrow.clockwise",
@@ -231,6 +233,7 @@ struct DownloadControl: View {
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
         case let .determinate(fraction):
@@ -240,12 +243,14 @@ struct DownloadControl: View {
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 IndeterminateBar(trackWidth: controlWidth)
                 Text("Downloading\u{2026}")
                     .font(.biscottiMono(11))
                     .foregroundStyle(.inkSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

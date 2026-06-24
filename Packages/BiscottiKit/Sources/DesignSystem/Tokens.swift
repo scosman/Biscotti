@@ -25,8 +25,8 @@ public enum Tokens {
     /// Warm ivory content background.
     public static let contentBackground = Color.paper
 
-    /// Card fill (white).
-    public static let cardFill = Color.white
+    /// Card fill (adaptive: white / warm dark).
+    public static let cardFill = Color.cardFill
 
     /// Hairline separator: ink @ 11%.
     public static let hairline = Color.hairline
@@ -70,6 +70,30 @@ public enum Tokens {
 
     /// "Add note" + "Keep Recording" button fill.
     public static let softSageFill = Color.softSageFill
+
+    /// Button fills -- deeper sage for white-label contrast in dark.
+    public static let accentFill = Color.accentFill
+
+    /// Elevated control fill (white buttons/fields in light, card surface in dark).
+    public static let elevatedFill = Color.elevatedFill
+
+    /// Long-form body text (transcripts) -- brighter in dark for reading.
+    public static let read = Color.read
+
+    /// Custom progress-bar fills.
+    public static let accentTrack = Color.accentTrack
+
+    /// Standalone red text labels -- lighter in dark for AA legibility.
+    public static let signalRedText = Color.signalRedText
+
+    /// Home card shadow (adaptive opacity).
+    public static let cardShadow = Color.cardShadow
+
+    /// Control shadow for light-alert buttons (adaptive opacity).
+    public static let controlShadow = Color.controlShadow
+
+    /// Avatar stacked-ring border (matches surface behind overlapping avatars).
+    public static let avatarRing = Color.avatarRing
 
     /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
     public static let liveGreen = Color.sage

@@ -122,7 +122,7 @@ public struct EventPickerSheet: View {
                     Button("Remove association") {
                         onRemove()
                     }
-                    .foregroundStyle(.signalRed)
+                    .foregroundStyle(.signalRedText)
                 }
                 Spacer()
                 Button("Cancel") { onCancel() }

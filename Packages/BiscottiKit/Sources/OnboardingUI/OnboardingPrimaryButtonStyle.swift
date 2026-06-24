@@ -15,7 +15,7 @@ struct OnboardingPrimaryButtonStyle: ButtonStyle {
             .frame(height: 40)
             .background(
                 RoundedRectangle(cornerRadius: 9)
-                    .fill(Color.sage)
+                    .fill(Color.accentFill)
                     .overlay(alignment: .top) {
                         RoundedRectangle(cornerRadius: 9)
                             .fill(

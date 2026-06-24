@@ -16,7 +16,7 @@ public struct JoinRecordButtonStyle: ButtonStyle {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: Tokens.buttonRadius)
-                    .fill(Color.sage)
+                    .fill(Color.accentFill)
                     .overlay(alignment: .top) {
                         // Subtle top highlight
                         RoundedRectangle(cornerRadius: Tokens.buttonRadius)
@@ -40,7 +40,7 @@ public struct JoinRecordButtonStyle: ButtonStyle {
 /// them grey instead of the requested color. This custom style draws the fill
 /// explicitly so the color is guaranteed regardless of toolbar hosting context.
 ///
-/// Usage: `.buttonStyle(ToolbarRecordButtonStyle(fill: .sage))` for idle,
+/// Usage: `.buttonStyle(ToolbarRecordButtonStyle(fill: .accentFill))` for idle,
 /// `.buttonStyle(ToolbarRecordButtonStyle(fill: .signalRed))` for active.
 public struct ToolbarRecordButtonStyle: ButtonStyle {
     let fill: Color

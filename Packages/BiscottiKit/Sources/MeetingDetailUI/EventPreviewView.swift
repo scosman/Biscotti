@@ -60,6 +60,7 @@ public struct EventPreviewView: View {
             .padding(.top, Tokens.homeVerticalPadding)
             .padding(.bottom, Tokens.homeVerticalPadding)
             .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
         .background(Tokens.contentBackground)
         .frame(

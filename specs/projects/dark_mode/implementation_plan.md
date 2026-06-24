@@ -28,7 +28,7 @@ decisions**. Details live in `functional_spec.md` (token map, repoint list) and
   - Green `make lint` + `make test` (via `hooks-mcp`). No call-site repoints yet —
     after this phase the app already renders dark for all redefined tokens.
 
-- [ ] **Phase 2 — Split repoints, hardcoded sites, verification.**
+- [x] **Phase 2 — Split repoints, hardcoded sites, verification.**
   - Repoint the ≈16 call sites in functional-spec §4: `accentFill` button fills,
     `elevatedFill` (button style + focused title field), `read` transcript body,
     `signalRedText` red-text labels, `accentTrack` progress bars, and the two

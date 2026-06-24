@@ -96,7 +96,7 @@ public struct AppShellView: View {
                                 }
                             }
                             .buttonStyle(
-                                ToolbarRecordButtonStyle(fill: .sage)
+                                ToolbarRecordButtonStyle(fill: .accentFill)
                             )
                             .help("Start recording")
                         }

@@ -214,7 +214,7 @@ public struct RecordingView: View {
             Text("RECORDING")
                 .font(.biscottiMono(12.5, weight: .medium))
                 .tracking(1.5)
-                .foregroundStyle(Color.signalRed)
+                .foregroundStyle(Color.signalRedText)
         }
     }
 

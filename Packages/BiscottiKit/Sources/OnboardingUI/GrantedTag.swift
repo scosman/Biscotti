@@ -15,7 +15,7 @@ struct GrantedTag: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(Color.sage)
+                .fill(Color.accentFill)
                 .frame(width: 15, height: 15)
                 .overlay(
                     Image(systemName: "checkmark")

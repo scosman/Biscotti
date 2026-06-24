@@ -149,7 +149,7 @@ private struct IndeterminateBar: View {
                 .fill(Color.hairline)
                 .frame(width: trackWidth, height: 3)
             Capsule()
-                .fill(Color.sage)
+                .fill(Color.accentTrack)
                 .frame(width: segmentWidth, height: 3)
                 .offset(x: animate ? maxOffset : 0)
         }
@@ -205,7 +205,7 @@ struct DownloadControl: View {
             case let .failed(message):
                 Text(message)
                     .font(.biscottiMono(11))
-                    .foregroundStyle(.signalRed)
+                    .foregroundStyle(.signalRedText)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 GrantPill(
@@ -263,7 +263,7 @@ struct DownloadControl: View {
                 .fill(Color.hairline)
                 .frame(width: controlWidth, height: 3)
             Capsule()
-                .fill(Color.sage)
+                .fill(Color.accentTrack)
                 .frame(
                     width: max(3, controlWidth * min(fraction, 1.0)),
                     height: 3

@@ -33,7 +33,7 @@ struct ProgressHeader: View {
                     .frame(width: trackWidth, height: trackHeight)
 
                 Capsule()
-                    .fill(Color.sage)
+                    .fill(Color.accentTrack)
                     .frame(
                         width: trackWidth * fillFraction,
                         height: trackHeight

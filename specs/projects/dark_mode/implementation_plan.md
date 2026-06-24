@@ -42,7 +42,7 @@ decisions**. Details live in `functional_spec.md` (token map, repoint list) and
     white-on-light / light-on-light defects, nothing unreadable. (Aesthetic
     sign-off is Phase 3.)
 
-- [ ] **Phase 3 — Human visual review of agent decisions.**
+- [x] **Phase 3 — Human visual review of agent decisions.**
   This project is the agent interpreting design *comps* against the real code, so
   every color choice gets an explicit human eyeball before it's considered done.
   - **Agent prepares a review packet:** run the app and capture **side-by-side

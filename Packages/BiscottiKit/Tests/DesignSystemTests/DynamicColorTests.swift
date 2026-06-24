@@ -246,6 +246,12 @@ struct LightValuesTests {
         let color = resolve(Color.controlShadow, appearance: .aqua)
         assertSRGB(color, expected: SRGB(red: 0, green: 0, blue: 0, alpha: 0.06), label: "controlShadow")
     }
+
+    @Test("avatarRing light == #FFFFFF")
+    func avatarRingLight() {
+        let color = resolve(Color.avatarRing, appearance: .aqua)
+        assertSRGB(color, expected: SRGB(red: 1.0, green: 1.0, blue: 1.0, alpha: 1), label: "avatarRing")
+    }
 }
 
 // MARK: - Test 2: Dark values match design spec
@@ -416,6 +422,12 @@ struct DarkValuesTests {
     func controlShadowDark() {
         let color = resolve(Color.controlShadow, appearance: .darkAqua)
         assertSRGB(color, expected: SRGB(red: 0, green: 0, blue: 0, alpha: 0.40), label: "controlShadow dark")
+    }
+
+    @Test("avatarRing dark == #1A170F")
+    func avatarRingDark() {
+        let color = resolve(Color.avatarRing, appearance: .darkAqua)
+        assertSRGB(color, expected: SRGB(red: 0.102, green: 0.090, blue: 0.059, alpha: 1), label: "avatarRing dark")
     }
 
     // Opacity-derived tokens: auto-adapt via their dynamic base color.

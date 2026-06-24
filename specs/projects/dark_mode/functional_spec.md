@@ -137,6 +137,7 @@ kicker vs value (see §6) — one bright amber text value reads well for both.
 | **`elevatedFill`** *(NEW)* | `#FFFFFF` (= white) | `#1A170F` (= card) | the white-fill **buttons/fields**: Stop&Save / REC pill chrome (`LightAlertButtonStyle`), focused title field. Identical value to `card` today but semantically a control fill. |
 | **`cardShadow`** *(NEW)* | `black @5%` | `black @40%` | `HomeCardModifier` shadow. Adaptive opacity only; radius/offset unchanged. |
 | **`controlShadow`** *(NEW)* | `black @6%` | `black @40%` | `LightAlertButtonStyle` shadow. Separate token to keep light's 6% exact. |
+| **`avatarRing`** *(NEW)* | `#FFFFFF` | `#1A170F` (= card) | Avatar stacked-border ring. Matches the surface behind overlapping avatars. |
 
 > Shadows "recede" on dark (design §3). Tokenizing is low-stakes — black@5% on a
 > near-black surface is nearly invisible regardless — but we tokenize for fidelity
@@ -227,9 +228,11 @@ token's light value equals what's there today).
   — white text/icon on sage/red fill is correct in both modes. Keep.
 - **White sheen gradients** over filled buttons (`JoinRecordButtonStyle:24-25`,
   `OnboardingPrimaryButtonStyle:22-23`) — a top highlight on the fill; keep.
-- **Avatars** (`Avatar.swift` palette gradient, white rings `:48,64,187,217,227`,
-  white initials `:53,57,221`) — unchanged per design §6; the separator/`+N` rings
-  already use the `card` token and track the surface automatically.
+- **Avatars** (`Avatar.swift` palette gradient, white initials `:53,57,221`,
+  inset hairline rings `:48,217`) — white-on-colored-fill elements stay white.
+  The **stacked border rings** (`:64,187,227`) now use the adaptive `avatarRing`
+  token (`#FFFFFF` / `#1A170F`) so the thick 2pt ring matches the surface in
+  both modes instead of being a stark white outline on dark backgrounds.
 - **`.ultraThinMaterial`** (`MeetingDetailView.swift:1064`) — adapts automatically;
   behind a `macOS 26` `.glassEffect` guard. Leave.
 - **`Color(hex:)`** calendar colors and **`Tokens.avatarPalette`** — data/identity

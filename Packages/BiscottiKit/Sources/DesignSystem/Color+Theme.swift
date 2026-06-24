@@ -239,6 +239,14 @@ public extension Color {
         light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.06),
         dark: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.40)
     )
+
+    /// Avatar stacked-ring border (#FFFFFF / #1A170F).
+    /// Matches the surface behind overlapping avatars so the ring cuts a
+    /// visual gap between circles. Dark value = cardFill-dark.
+    static let avatarRing = dynamicColor(
+        light: NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1),
+        dark: NSColor(srgbRed: 0.102, green: 0.090, blue: 0.059, alpha: 1)
+    )
 }
 
 // MARK: - ShapeStyle sugar
@@ -308,5 +316,9 @@ public extension ShapeStyle where Self == Color {
 
     static var cardFill: Color {
         .cardFill
+    }
+
+    static var avatarRing: Color {
+        .avatarRing
     }
 }

@@ -92,6 +92,9 @@ public enum Tokens {
     /// Control shadow for light-alert buttons (adaptive opacity).
     public static let controlShadow = Color.controlShadow
 
+    /// Avatar stacked-ring border (matches surface behind overlapping avatars).
+    public static let avatarRing = Color.avatarRing
+
     /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
     public static let liveGreen = Color.sage
 

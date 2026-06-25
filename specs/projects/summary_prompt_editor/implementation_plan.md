@@ -20,7 +20,7 @@ Ordered, dependency-first. Each phase is one reviewable unit and ends green on
   - `AppCore`: `defaultSummaryPrompt`, `effectiveSummaryPrompt()`, `saveSummaryPrompt()` (clear-to-default). [arch §3]
   - Update existing `AISettings` / `MeetingAnalyzer.Context` constructors in tests/fakes; add the default-unchanged guard + the generation/persistence tests. [arch §7]
 
-- [ ] **Phase 2 — `SummaryPromptUI` module + the editor field.**
+- [x] **Phase 2 — `SummaryPromptUI` module + the editor field.**
   The reusable, callback-driven sheet — no entry points wired yet.
   - New `SummaryPromptUI` target (+ tests) in `Packages/BiscottiKit/Package.swift`, deps DesignSystem + MarkdownEditorUI. [arch §5.3]
   - `MarkdownPromptField` in `MarkdownEditorUI` — engine control used directly, bounded/scrolling, optional JetBrains Mono, clear background for host chrome. [arch §4.3]

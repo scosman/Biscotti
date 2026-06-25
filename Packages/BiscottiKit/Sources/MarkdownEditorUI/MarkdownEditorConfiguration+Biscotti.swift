@@ -2,6 +2,25 @@ import AppKit
 import DesignSystem
 import MarkdownEngine
 
+// MARK: - Shared Biscotti theme
+
+public extension MarkdownEditorTheme {
+    /// The F Sage color palette shared by all Biscotti editor configurations.
+    ///
+    /// Ink body text, sage links, dimmed-ink markers.
+    static let biscotti = MarkdownEditorTheme(
+        bodyText: .ink,
+        mutedText: .inkSecondary,
+        disabledText: .inkTertiary,
+        headingMarker: .inkSecondary,
+        link: .sage,
+        incompleteLink: .sage,
+        findMatchHighlight: .accentWashStrong,
+        findCurrentMatchHighlight: .findHighlightFocused,
+        strikethroughColor: .inkSecondary
+    )
+}
+
 // MARK: - Biscotti configuration factory
 
 public extension MarkdownEditorConfiguration {
@@ -23,26 +42,14 @@ public extension MarkdownEditorConfiguration {
     /// - No wiki-link, image-embed, syntax-highlight, or LaTeX services.
     ///
     static func biscotti() -> MarkdownEditorConfiguration {
-        let theme = MarkdownEditorTheme(
-            bodyText: .ink,
-            mutedText: .inkSecondary,
-            disabledText: .inkTertiary,
-            headingMarker: .inkSecondary,
-            link: .sage,
-            incompleteLink: .sage,
-            findMatchHighlight: .accentWashStrong,
-            findCurrentMatchHighlight: .findHighlightFocused,
-            strikethroughColor: .inkSecondary
-        )
-
         // Markers use the engine default `hiddenMarkerFontSize` (0.1pt).
         // The engine's shrink mechanism applies both a tiny font AND a
         // negative kern equal to the font size, collapsing layout width.
         // Setting hiddenMarkerFontSize = baseFontSize draws the glyph at
         // full size but the -14pt kern shifts following text left, causing
         // overlap. The default 0.1pt keeps hide/reveal correct.
-        return MarkdownEditorConfiguration(
-            theme: theme,
+        MarkdownEditorConfiguration(
+            theme: .biscotti,
             lists: ListStyle(helpersEnabled: true, autoClosePairsEnabled: false),
             overscroll: OverscrollPolicy(percent: 0, maxPoints: 8, minPoints: 4),
             textInsets: TextInsets(horizontal: 8, vertical: 8),

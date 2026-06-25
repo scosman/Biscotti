@@ -625,7 +625,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     ) async -> UNNotificationPresentationOptions {
         notificationService?.foregroundPresentationOptions(
             for: notification
-        ) ?? [.banner, .sound]
+        ) ?? [.banner]
     }
 }
 

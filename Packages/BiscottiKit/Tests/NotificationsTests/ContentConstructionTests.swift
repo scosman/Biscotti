@@ -20,7 +20,7 @@ struct ContentConstructionTests {
         #expect(content.title == "Standup")
         #expect(content.categoryIdentifier == "biscotti.meeting-starting")
         #expect(content.interruptionLevel == .timeSensitive)
-        #expect(content.sound != nil)
+        #expect(content.sound == nil)
         #expect(content.userInfo["biscotti.eventKey"] as? String == "k")
         #expect(content.userInfo["biscotti.kind"] as? String == "meeting-starting")
     }
@@ -86,6 +86,6 @@ struct ContentConstructionTests {
         let content = fake.addedRequests[0].content
         #expect(content.title.contains("10"))
         #expect(content.categoryIdentifier == "biscotti.stop-countdown")
-        #expect(content.sound != nil)
+        #expect(content.sound == nil)
     }
 }

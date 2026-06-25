@@ -39,10 +39,10 @@ public final class NotificationService {
 
     // MARK: - Authorization
 
-    /// Requests notification authorization (alert + sound).
+    /// Requests notification authorization (alert only, no sound).
     /// Returns `true` if granted. Safe to call multiple times.
     public func requestAuthorization() async -> Bool {
-        logger.info("requestAuthorization: entry, options=[.alert, .sound]")
+        logger.info("requestAuthorization: entry, options=[.alert]")
         do {
             let granted = try await provider.requestAuthorization()
             cachedAuthStatus = granted ? .authorized : .denied
@@ -201,10 +201,10 @@ public final class NotificationService {
     public func foregroundPresentationOptions(
         for _: UNNotification
     ) -> UNNotificationPresentationOptions {
-        // Always show banner + sound in the foreground.
+        // Always show banner in the foreground (silent — no sound).
         // The stop-countdown notification is the only surface for the "Keep
         // recording" action — it must be visible even when the app is frontmost.
-        [.banner, .sound]
+        [.banner]
     }
 
     // MARK: - Private
@@ -289,7 +289,6 @@ private func makeRequest(for kind: NotificationKind) -> UNNotificationRequest {
         content.subtitle = "App: \(appName)"
         content.body = ""
         content.interruptionLevel = .timeSensitive
-        content.sound = .default
         content.categoryIdentifier = CategoryID.adHocDetected
         content.userInfo = [
             UserInfoKey.kind: KindValue.adHoc,
@@ -316,7 +315,6 @@ private func fillMeetingStartContent(
     content.title = title
     content.body = ""
     content.interruptionLevel = .timeSensitive
-    content.sound = .default
     content.categoryIdentifier = joinURL != nil
         ? CategoryID.meetingStartingWithJoin
         : CategoryID.meetingStarting
@@ -338,7 +336,6 @@ private func fillCountdownContent(
 ) {
     content.title = "Recording will stop in \(secondsRemaining)s"
     content.body = "Tap to keep recording"
-    content.sound = .default
     content.categoryIdentifier = CategoryID.stopCountdown
     content.userInfo = [
         UserInfoKey.kind: KindValue.countdown,

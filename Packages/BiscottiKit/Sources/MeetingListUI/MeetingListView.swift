@@ -134,6 +134,30 @@ public struct MeetingListView: View {
             Text(MeetingListViewModel.secondLineText(for: meeting))
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)
+
+            if !meeting.tags.isEmpty {
+                tagLine(meeting.tags)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private func tagLine(_ tags: [TagData]) -> some View {
+        let sorted = tags.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        let visible = Array(sorted.prefix(2))
+        let overflow = sorted.count - visible.count
+
+        return HStack(spacing: 5) {
+            ForEach(visible) { tag in
+                TagPill(tag: tag, size: .compact)
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.monoBadge)
+                    .foregroundStyle(.inkSecondary)
+            }
         }
     }
 

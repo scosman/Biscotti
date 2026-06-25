@@ -247,6 +247,58 @@ public extension Color {
         light: NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1),
         dark: NSColor(srgbRed: 0.102, green: 0.090, blue: 0.059, alpha: 1)
     )
+
+    // MARK: - Tag-dot palette (8 swatches)
+
+    /// Fixed, ordered palette of 8 adaptive tag-dot colours. Sage is
+    /// reserved and absent. Assigned round-robin by creation order; stored
+    /// as a stable `colorSlot` on each tag. Dark values are starting
+    /// proposals -- a human eyeballs them on hardware (Phase 4).
+    static let tagSwatches: [Color] = [
+        // 0: Blue
+        dynamicColor(
+            light: NSColor(srgbRed: 0.243, green: 0.427, blue: 0.659, alpha: 1),
+            dark: NSColor(srgbRed: 0.431, green: 0.604, blue: 0.816, alpha: 1)
+        ),
+        // 1: Clay
+        dynamicColor(
+            light: NSColor(srgbRed: 0.710, green: 0.408, blue: 0.243, alpha: 1),
+            dark: NSColor(srgbRed: 0.816, green: 0.541, blue: 0.369, alpha: 1)
+        ),
+        // 2: Violet
+        dynamicColor(
+            light: NSColor(srgbRed: 0.478, green: 0.416, blue: 0.682, alpha: 1),
+            dark: NSColor(srgbRed: 0.639, green: 0.584, blue: 0.816, alpha: 1)
+        ),
+        // 3: Slate
+        dynamicColor(
+            light: NSColor(srgbRed: 0.420, green: 0.482, blue: 0.525, alpha: 1),
+            dark: NSColor(srgbRed: 0.604, green: 0.667, blue: 0.710, alpha: 1)
+        ),
+        // 4: Red -- reuses signalRed light/dark pair
+        signalRed,
+        // 5: Teal
+        dynamicColor(
+            light: NSColor(srgbRed: 0.165, green: 0.549, blue: 0.494, alpha: 1),
+            dark: NSColor(srgbRed: 0.310, green: 0.702, blue: 0.639, alpha: 1)
+        ),
+        // 6: Amber
+        dynamicColor(
+            light: NSColor(srgbRed: 0.659, green: 0.518, blue: 0.227, alpha: 1),
+            dark: NSColor(srgbRed: 0.796, green: 0.659, blue: 0.369, alpha: 1)
+        ),
+        // 7: Olive
+        dynamicColor(
+            light: NSColor(srgbRed: 0.369, green: 0.549, blue: 0.227, alpha: 1),
+            dark: NSColor(srgbRed: 0.541, green: 0.722, blue: 0.380, alpha: 1)
+        )
+    ]
+
+    /// Returns the tag-dot colour for a given palette slot (0-7).
+    /// Wraps safely for any integer (negative, >7).
+    static func tagSwatch(slot: Int) -> Color {
+        tagSwatches[((slot % 8) + 8) % 8]
+    }
 }
 
 // MARK: - ShapeStyle sugar

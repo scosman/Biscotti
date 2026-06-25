@@ -17,7 +17,7 @@ Each phase is one coherent CR. See `functional_spec.md`, `ui_design.md`, and
   (`SearchField.tags`, weight 3 in `scoreMeeting`, `fieldSortOrder`, `matchedFieldsText`).
   Full data-layer + search tests. No UI. (architecture §1–3, §8)
 
-- [ ] **Phase 2 — Display primitives & list.** Adaptive 8-swatch tag palette in
+- [x] **Phase 2 — Display primitives & list.** Adaptive 8-swatch tag palette in
   `Color+Theme.swift`; `TagPill` (`.detail` / `.compact`); minimal `Layout`-based
   `FlowLayout`; render the compact third line (first 2 + `+N`) in `MeetingListView.meetingRow`.
   Read-only display path, end to end. (architecture §4.1–4.3, §5 list)

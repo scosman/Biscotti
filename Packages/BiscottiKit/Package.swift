@@ -59,12 +59,15 @@ let package = Package(
         ),
         .target(
             name: "DesignSystem",
+            dependencies: [
+                "DataStore"
+            ],
             resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(
             name: "DesignSystemTests",
-            dependencies: ["DesignSystem"],
+            dependencies: ["DesignSystem", "DataStore"],
             swiftSettings: warningsAsErrors
         ),
         .target(

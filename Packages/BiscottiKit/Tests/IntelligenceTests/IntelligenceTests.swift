@@ -1728,6 +1728,43 @@ struct SummaryPromptParameterizationTests {
         #expect(!result.contains("## Action Items"))
     }
 
+    @Test("summaryOnlyFirstUser strips leading Next from default prompt")
+    func summaryOnlyStripsNext() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello"
+        )
+        // The summary-only path strips "Next " so the instruction reads as
+        // a standalone directive, not a follow-up.
+        #expect(!result.contains("Next produce"))
+        #expect(result.contains("Produce a clear"))
+    }
+
+    @Test("summaryOnlyFirstUser does NOT strip Next from custom prompts")
+    func summaryOnlyPreservesCustomNext() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let custom = "Next summarize the key points briefly."
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello",
+            summaryInstructions: custom
+        )
+        // Custom prompts must be passed through verbatim, even if they
+        // happen to start with "Next ".
+        #expect(result.contains(custom))
+    }
+
+    @Test("summaryFollowUpUser preserves Next prefix in default prompt")
+    func followUpPreservesNext() {
+        let result = IntelligencePrompts.summaryFollowUpUser()
+        #expect(result.hasPrefix("Next "))
+    }
+
     @Test("summaryFollowUpUser with custom instructions returns them")
     func followUpThreadsCustom() {
         let custom = "Be very brief."

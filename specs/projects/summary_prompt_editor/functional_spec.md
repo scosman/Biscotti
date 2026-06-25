@@ -54,15 +54,29 @@ default **is today's `summaryTaskInstructions` verbatim** (so default behavior i
 unchanged):
 
 ```
-Produce a clear, well-organized markdown summary of the meeting covering the key
-decisions, discussion topics, and outcomes. At the end, include a "## Action Items"
-section as a checklist using `- [ ]` format, with owners noted when clear from the
-transcript. You may reference the speaker names identified earlier, but do NOT
-repeat or restate the speaker mapping/list. Your response must contain ONLY a
-summary of the meeting and nothing else: no speaker mapping, no preamble, no
-commentary, and no content that is not in the transcript. Output markdown only, and
-begin your response directly with the summary.
+Next produce a clear, well-organized markdown summary of the meeting.
+
+Important: Your response must contain ONLY a summary of the meeting and nothing
+else: no speaker mapping, no preamble, no commentary, and no content that is not
+in the transcript. Output markdown only, and begin your response directly with the
+summary.
+
+Your summary should include the following sections (and optional sub-sections at
+your discretion):
+
+## Summary
+A summary covering the key decisions, discussion topics, and outcomes.
+
+## Action Items
+A checklist using `- [ ]` format, with owners noted when clear from the transcript.
+You may reference the speaker names identified earlier, but do NOT repeat or restate
+the speaker mapping/list.
 ```
+
+> The prompt begins with "Next" for coherence in the follow-up context (after
+> speaker identification). In the summary-only context (no prior speaker turn),
+> the code strips the leading "Next " and capitalizes the remainder so the
+> instruction reads as a standalone directive.
 
 > Note: this default keeps its own output-hygiene guardrails (don't restate the
 > speaker list, no preamble, markdown only, begin directly). If a user deletes
@@ -134,7 +148,7 @@ Top → bottom:
 2. **Prompt editor** — the existing `MarkdownEditor` component (from
    `MarkdownEditorUI`), editable, bound to the working prompt text. It already
    themes Markdown (heading tinting, etc.); no custom syntax styling is added.
-3. **Add example** affordance — lets the user append a pre-canned example block to
+3. **Add Section** affordance — lets the user append a pre-canned section block to
    the end of the prompt (§5).
 4. **Footer** — `Restore default` (left) · spacer · mode-specific buttons (right).
 
@@ -157,18 +171,18 @@ Top → bottom:
 
 ### 4.3 Per-meeting mode (from a meeting's Regenerate Summary)
 
-- **Title:** Re-summarize Meeting
-- **Subtitle:** Customize the prompt for this meeting's summary, then regenerate.
-  Your saved prompt stays as it is unless you choose to save these changes.
+- **Title:** Re-summarize this meeting
+- **Subtitle:** Re-summarize this meeting with AI, optionally changing the prompt.
 - **Working text** initialized from the **effective saved prompt** (the same value
   Global mode would show) — i.e. the user tweaks their normal prompt for this run.
 - **Extra control:** a checkbox **`Also save these changes as my default`**
   (default **off**). When on, Save-on-regenerate also persists the working text to
   the global prompt.
 - **Replace warning:** if this meeting's summary was **manually edited**
-  (`editedSummary == true`), show a small inline caption in the sheet:
-  "Regenerating will replace the summary you edited for this meeting." (No separate
-  pre-sheet dialog.)
+  (`editedSummary == true`), show a warning icon (`exclamationmark.triangle.fill`,
+  `.warningOchre`) and caption "Regenerating will replace the summary you edited
+  for this meeting." **at the top of the sheet body**, directly under the subtitle.
+  (No separate pre-sheet dialog.)
 - **Footer primary:** **`Regenerate`** (prominent, sage tint). **`Cancel`** to its
   left.
 - **Regenerate:** runs summary generation for **this meeting only**, using the
@@ -201,53 +215,59 @@ Top → bottom:
   Cancel. If the editor already equals the default, Restore is a no-op (may be
   disabled).
 
-## 5. Example additions
+## 5. Section additions
 
-The sheet offers a small set of pre-canned **example blocks** the user can append to
-the end of the prompt, to spark ideas. Native-simple treatment (no decorative pill
-chips with custom "added" states): an **`Add Example`** pull-down menu (or an
-equivalent compact, discoverable control — finalized in UI design) listing the
-examples by name. Choosing one **appends its block to the end** of the editor text,
+The sheet offers a small set of pre-canned **section blocks** the user can append to
+the end of the prompt, to spark ideas. Each block is a `## Heading` plus a one-line
+description, matching the default prompt's format so appending any section yields a
+consistent, well-formed prompt. Native-simple treatment: an **`ADD SECTION`** label
+with chip buttons. Choosing one **appends its block to the end** of the editor text,
 separated by a blank line.
 
 ### 5.1 Behavior
 
 - Appends to the **end** only (no insert-at-cursor).
 - After appending, the editor scrolls to / reveals the appended text if practical.
-- **Duplicate guard:** if an example's block is already present verbatim in the
-  editor, that menu item is **disabled** (greyed), so the user can't append it
-  twice. (No custom "added/check" chip styling.)
+- **Duplicate guard:** if a section's block is already present verbatim in the
+  editor, that chip is shown in its **added** state (sage wash, checkmark glyph,
+  click is a no-op), so the user can't append it twice.
 - Appending is a normal edit — it can be further edited or removed by hand, and is
   only persisted via Save/Regenerate like any other edit.
 
-### 5.2 Example blocks
+### 5.2 Section blocks
 
-The same set is offered in both modes (one consistent list):
+The same set is offered in both modes (one consistent list). Each block is a
+`## Heading` plus a one-line description, matching the default prompt's voice
+so appending any section reads as a natural continuation:
 
 ```
 Slack recap →
 ## Notes for Slack
-A short, paste-ready recap I can drop in our team channel — 4 lines max.
+A short, paste-ready recap suitable for dropping in a team channel — four lines max.
 
 Meeting feedback →
 ## Meeting Feedback
-3 things I did well, and 3 I could do better.
+Three things the meeting did well, and three that could be improved.
 
 Decisions →
 ## Decisions
-Every decision made, and who owns it.
+Every decision made during the meeting, and who owns each one.
 
 Key quotes →
 ## Key Quotes
-2–3 notable verbatim quotes.
+Two to three notable verbatim quotes from the transcript.
 
 Sentiment →
 ## Sentiment & Tone
-A read on the mood and energy of the room.
+A read on the overall mood and energy of the room.
+
+Make No Mistakes →
+Make no mistakes
 ```
 
-(Exact wording can be refined during implementation; intent is short, useful,
-self-contained "## Section" additions.)
+> The "Make No Mistakes" chip is a deliberate exception to the `## Heading` +
+> one-line-description rule. Its block is the plain line `Make no mistakes`
+> (the joke). It appends with the same `\n\n` separator as the other sections.
 
 ## 6. Edge cases & error handling
 
@@ -339,8 +359,8 @@ self-contained "## Section" additions.)
    behavior.
 4. **Restore default** (with confirm) returns the editor to the factory default
    text; Save persists it; the setting tracks the built-in default thereafter.
-5. **Add Example** appends a block to the end; a block already present has its menu
-   item disabled.
+5. **Add Section** appends a block to the end; a block already present shows its
+   chip in the added state (disabled).
 6. Empty prompt disables Save/Regenerate with an inline note; Cancel with unsaved
    changes confirms before discarding.
 7. A meeting's **Regenerate Summary** opens the sheet (Per-meeting mode) pre-filled

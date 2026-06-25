@@ -283,14 +283,13 @@ struct SummaryTabRegenerateTests {
         await viewModel.load()
 
         #expect(viewModel.editedSummary == true)
-        #expect(viewModel.showResummarizeSheet == false)
+        #expect(viewModel.summaryPromptModel == nil)
 
         viewModel.presentResummarizeSheet()
 
         // Allow the async Task inside presentResummarizeSheet to complete
         try await Task.sleep(for: .milliseconds(50))
 
-        #expect(viewModel.showResummarizeSheet == true)
         #expect(viewModel.summaryPromptModel != nil)
     }
 
@@ -325,7 +324,7 @@ struct SummaryTabRegenerateTests {
         viewModel.generateSummary()
 
         // Should NOT open the sheet
-        #expect(viewModel.showResummarizeSheet == false)
+        #expect(viewModel.summaryPromptModel == nil)
         // Should have switched to summary tab
         #expect(viewModel.selectedTab == .summary)
     }

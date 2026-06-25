@@ -37,10 +37,10 @@ public struct SummaryPromptSheet: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             headerSection
-            promptLabel
+            replaceWarning
             editorCard
             emptyCaption
-            exampleLabel
+            sectionLabel
             exampleChips
             perMeetingControls
             Divider()
@@ -86,7 +86,7 @@ public struct SummaryPromptSheet: View {
                 .foregroundStyle(.ink)
 
             Text(subtitleText)
-                .font(Tokens.metadataFont)
+                .font(.system(size: 13))
                 .foregroundStyle(.inkSecondary)
                 .frame(maxWidth: 560, alignment: .leading)
 
@@ -116,17 +116,11 @@ public struct SummaryPromptSheet: View {
         case .global:
             "These are the instructions Biscotti sends the on-device model to write each meeting summary. Edit them directly. Changes apply to every future summary."
         case .perMeeting:
-            "Customize the prompt for this meeting\u{2019}s summary, then regenerate. Your saved prompt stays as it is unless you choose to save these changes."
+            "Re-summarize this meeting with AI, optionally changing the prompt."
         }
     }
 
     // MARK: - Prompt editor
-
-    private var promptLabel: some View {
-        Text("PROMPT")
-            .kicker()
-            .foregroundStyle(.inkTertiary)
-    }
 
     private var editorCard: some View {
         MarkdownPromptField(
@@ -166,10 +160,10 @@ public struct SummaryPromptSheet: View {
         }
     }
 
-    // MARK: - Example chips
+    // MARK: - Section chips
 
-    private var exampleLabel: some View {
-        Text("ADD EXAMPLE")
+    private var sectionLabel: some View {
+        Text("ADD SECTION")
             .kicker()
             .foregroundStyle(.inkTertiary)
     }
@@ -207,20 +201,30 @@ public struct SummaryPromptSheet: View {
         .disabled(isAdded)
     }
 
+    // MARK: - Replace warning (per-meeting, at top under subtitle)
+
+    @ViewBuilder
+    private var replaceWarning: some View {
+        if case let .perMeeting(_, summaryWasEdited) = model.mode,
+           summaryWasEdited
+        {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.warningOchre)
+                Text("Regenerating will replace the summary you edited for this meeting.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(.inkSecondary)
+            }
+        }
+    }
+
     // MARK: - Per-meeting controls
 
     @ViewBuilder
     private var perMeetingControls: some View {
-        if case let .perMeeting(_, summaryWasEdited) = model.mode {
-            VStack(alignment: .leading, spacing: Tokens.spacingSM) {
-                Toggle("Also save these changes as my default", isOn: $model.alsoSaveAsDefault)
-
-                if summaryWasEdited {
-                    Text("Regenerating will replace the summary you edited for this meeting.")
-                        .font(Tokens.metadataFont)
-                        .foregroundStyle(.inkSecondary)
-                }
-            }
+        if case .perMeeting = model.mode {
+            Toggle("Also save these changes as my default", isOn: $model.alsoSaveAsDefault)
         }
     }
 
@@ -285,26 +289,24 @@ public struct SummaryPromptSheet: View {
 // MARK: - Previews
 
 #if DEBUG
+    /// Preview placeholder -- SummaryPromptUI cannot import Intelligence, so
+    /// we use a short stand-in instead of duplicating defaultSummaryPrompt.
+    /// The real app always passes the resolved prompt from AppCore.
+    private let previewPrompt = """
+    Produce a clear, well-organized markdown summary of the meeting.
+
+    ## Summary
+    Key decisions, discussion topics, and outcomes.
+
+    ## Action Items
+    A checklist using `- [ ]` format, with owners noted when clear.
+    """
+
     #Preview("Global Mode") {
         let model = SummaryPromptModel(
-            workingText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes. At the end, \
-            include a "## Action Items" section as a checklist using `- [ ]` format, \
-            with owners noted when clear from the transcript.
-            """,
-            initialText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes. At the end, \
-            include a "## Action Items" section as a checklist using `- [ ]` format, \
-            with owners noted when clear from the transcript.
-            """,
-            defaultText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes. At the end, \
-            include a "## Action Items" section as a checklist using `- [ ]` format, \
-            with owners noted when clear from the transcript.
-            """,
+            workingText: previewPrompt,
+            initialText: previewPrompt,
+            defaultText: previewPrompt,
             mode: .global
         )
 
@@ -324,18 +326,9 @@ public struct SummaryPromptSheet: View {
             duration: 2700
         )
         let model = SummaryPromptModel(
-            workingText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes.
-            """,
-            initialText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes.
-            """,
-            defaultText: """
-            Produce a clear, well-organized markdown summary of the meeting \
-            covering the key decisions, discussion topics, and outcomes.
-            """,
+            workingText: previewPrompt,
+            initialText: previewPrompt,
+            defaultText: previewPrompt,
             mode: .perMeeting(reference: reference, summaryWasEdited: true)
         )
 

@@ -31,7 +31,7 @@ Customize the instructions used to write meeting summaries.
 - `HStack { VStack(alignment:.leading, spacing: spacingXS){ Text("Summary Prompt"); Text(subtitle).font(metadataFont).foregroundStyle(secondaryText) }; Spacer(); Button("Customize…"){…}.buttonStyle(.bordered).controlSize(.small) }`.
 - No chevron / accent tint — same chrome as "Manage".
 - Disabled (`.disabled(!aiAnalysisEnabled)`) when AI Analysis & Summary is off.
-- Presents the editor sheet (Global mode) via `.sheet(isPresented:)`.
+- Presents the editor sheet (Global mode) via `.sheet(item:)` driven by `summaryPromptModel`.
 
 ---
 
@@ -44,32 +44,32 @@ padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 
 1. **Header** — kicker · serif title · subtitle (+ meeting reference chip in
    Per-meeting mode).
-2. **`PROMPT`** field label.
+2. (Per-meeting only, when `editedSummary`) **Replace warning** — inline
+   warning icon (`exclamationmark.triangle.fill`, `.warningOchre`) + caption.
 3. **Editor** card — `MarkdownEditor`.
 4. (empty-prompt caption, when empty)
-5. **`ADD EXAMPLE`** field label.
-6. **Example chips** — wrapping `FlowLayout` row.
-7. (Per-meeting only) **Also-save checkbox** + replace warning.
+5. **`ADD SECTION`** field label.
+6. **Section chips** — wrapping `FlowLayout` row.
+7. (Per-meeting only) **Also-save checkbox**.
 8. **Footer** — Restore Default · spacer · Cancel · primary.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐  width 720
 │  MEETING SUMMARY                                                       │  kicker(), .sage
 │  Summary Prompt                                                        │  biscottiSerif(27), .ink
-│  These are the instructions Biscotti sends the on-device model to      │  metadataFont, .inkSecondary
+│  These are the instructions Biscotti sends the on-device model to      │  .system(size:13), .inkSecondary
 │  write each meeting summary. Edit them directly. Changes apply to      │  (max width ~560)
 │  every future summary.                                                 │
+│  ⚠ Regenerating will replace the summary you edited for this meeting.  │  (per-meeting only, when edited)
 │                                                                        │
-│  PROMPT                                                                │  kicker(), .inkTertiary
 │  ┌──────────────────────────────────────────────────────────────────┐ │  MarkdownEditor
-│  │ Produce a clear, well-organized markdown summary of the meeting   │ │  native scrolling,
-│  │ covering the key decisions, discussion topics, and outcomes. At   │ │  bounded ~340pt,
-│  │ the end, include a "## Action Items" section …                    │ │  .cardFill / .cardStroke
-│  │ ▏                                                                  │ │  / cardRadius
-│  └──────────────────────────────────────────────────────────────────┘ │
+│  │ Next produce a clear, well-organized markdown summary of the      │ │  native scrolling,
+│  │ meeting. ...                                                       │ │  bounded ~340pt,
+│  │ ▏                                                                  │ │  .cardFill / .cardStroke
+│  └──────────────────────────────────────────────────────────────────┘ │  / cardRadius
 │  The prompt can't be empty.                  (only when empty)         │  metadataFont, .signalRedText
 │                                                                        │
-│  ADD EXAMPLE                                                           │  kicker(), .inkTertiary
+│  ADD SECTION                                                           │  kicker(), .inkTertiary
 │  [ + Slack recap ] [ + Meeting feedback ] [ + Decisions ]             │  FlowLayout of chips
 │  [ + Key quotes ] [ + Sentiment ]                                     │
 │                                                                        │
@@ -82,11 +82,12 @@ padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 - Kicker: `Text("MEETING SUMMARY").kicker().foregroundStyle(.sage)` (the `kicker()`
   modifier supplies JetBrains Mono 10.5 / uppercase / tracking; caller sets the color).
 - Title: `Text("Summary Prompt").font(.biscottiSerif(27)).tracking(-0.27).foregroundStyle(.ink)`.
-- Subtitle: `.font(Tokens.metadataFont).foregroundStyle(.inkSecondary)`, `frame(maxWidth: ~560, alignment:.leading)`.
+- Subtitle: `.font(.system(size: 13)).foregroundStyle(.inkSecondary)`, `frame(maxWidth: ~560, alignment:.leading)` (2pt larger than `Tokens.metadataFont`).
 
-### 2.2 Field labels (`PROMPT`, `ADD EXAMPLE`)
-- `Text("PROMPT").kicker().foregroundStyle(.inkTertiary)` — the design's small mono
-  field labels, rendered with the app's kicker style.
+### 2.2 Field label (`ADD SECTION`)
+- `Text("ADD SECTION").kicker().foregroundStyle(.inkTertiary)` — the design's small mono
+  field label, rendered with the app's kicker style. The `PROMPT` label above the editor
+  was removed (duplicative with the main title).
 
 ### 2.3 Editor
 - Reuse `MarkdownEditor` (decided — it trumps a bespoke monospace box; it renders the
@@ -110,9 +111,10 @@ padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 ### 2.4 Empty-prompt caption
 - When working text is empty/whitespace: `Text("The prompt can't be empty.").font(Tokens.metadataFont).foregroundStyle(.signalRedText)` under the editor; primary disabled (§2.6). Hidden otherwise.
 
-### 2.5 Example chips (visible, wrapping)
-- A `FlowLayout` row of chip buttons, one per example: `+ Slack recap`,
-  `+ Meeting feedback`, `+ Decisions`, `+ Key quotes`, `+ Sentiment`.
+### 2.5 Section chips (visible, wrapping)
+- A `FlowLayout` row of chip buttons, one per section: `+ Slack recap`,
+  `+ Meeting feedback`, `+ Decisions`, `+ Key quotes`, `+ Sentiment`,
+  `+ Make No Mistakes`.
 - **Chip styling (token-based, not TagPill):** a `Button` with a small `HStack` (a
   `plus`/`checkmark` SF Symbol + label, system ~11.5 medium), `chipRadius`/`buttonRadius`
   corner, `.buttonStyle(.plain)`.
@@ -142,11 +144,11 @@ padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 |---|---|---|
 | Kicker | `MEETING SUMMARY` | `RE-SUMMARIZE` |
 | Title | `Summary Prompt` | `Re-summarize this meeting` |
-| Subtitle | "These are the instructions Biscotti sends the on-device model to write each meeting summary. Edit them directly. Changes apply to every future summary." | "Customize the prompt for this meeting's summary, then regenerate. Your saved prompt stays as it is unless you choose to save these changes." |
+| Subtitle | "These are the instructions Biscotti sends the on-device model to write each meeting summary. Edit them directly. Changes apply to every future summary." | "Re-summarize this meeting with AI, optionally changing the prompt." |
 | Meeting chip | — | read-only reference chip below the subtitle: `waveform` glyph · meeting title · date (· duration if available), styled `.neutralChip` / `metadataFont` / `.inkSecondary` |
 | Initial text | effective saved prompt | effective saved prompt |
 | Extra control | — | `Toggle("Also save these changes as my default", isOn:)` default **off**, above the Divider |
-| Replace warning | — | when `editedSummary == true`: caption "Regenerating will replace the summary you edited for this meeting." (`metadataFont`, `.inkSecondary`), above the Divider |
+| Replace warning | — | when `editedSummary == true`: warning icon (`exclamationmark.triangle.fill`, `.warningOchre`) + caption "Regenerating will replace the summary you edited for this meeting." (`metadataFont`, `.inkSecondary`), directly under the subtitle at the top of the sheet body |
 | Primary | `Save` | `Regenerate` |
 | On primary | persist (clear-to-default rule) · dismiss | regenerate this meeting · optional save · dismiss · switch to Summary tab |
 

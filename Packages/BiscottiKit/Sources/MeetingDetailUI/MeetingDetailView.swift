@@ -143,21 +143,19 @@ public struct MeetingDetailView: View {
                 "This permanently deletes the recording and transcript."
             )
         }
-        .sheet(isPresented: $viewModel.showResummarizeSheet) {
-            if let model = viewModel.summaryPromptModel {
-                SummaryPromptSheet(
-                    model: model,
-                    onSave: { _ in },
-                    onRegenerate: { text, alsoSave in
-                        viewModel.regenerate(
-                            withPrompt: text, alsoSave: alsoSave
-                        )
-                    },
-                    onCancel: {
-                        viewModel.showResummarizeSheet = false
-                    }
-                )
-            }
+        .sheet(item: $viewModel.summaryPromptModel) { model in
+            SummaryPromptSheet(
+                model: model,
+                onSave: { _ in },
+                onRegenerate: { text, alsoSave in
+                    viewModel.regenerate(
+                        withPrompt: text, alsoSave: alsoSave
+                    )
+                },
+                onCancel: {
+                    viewModel.summaryPromptModel = nil
+                }
+            )
         }
         .sheet(
             item: Binding(

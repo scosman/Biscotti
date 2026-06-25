@@ -227,6 +227,25 @@ struct SummaryPromptModelTests {
         #expect(model.isDefault)
     }
 
+    // MARK: - Identifiable (sheet(item:) support)
+
+    @Test("model is Identifiable with a unique id per instance")
+    @MainActor func identifiableUniqueIDs() {
+        let model1 = SummaryPromptModel(
+            workingText: Self.defaultPrompt,
+            initialText: Self.defaultPrompt,
+            defaultText: Self.defaultPrompt,
+            mode: .global
+        )
+        let model2 = SummaryPromptModel(
+            workingText: Self.defaultPrompt,
+            initialText: Self.defaultPrompt,
+            defaultText: Self.defaultPrompt,
+            mode: .global
+        )
+        #expect(model1.id != model2.id)
+    }
+
     // MARK: - alsoSaveAsDefault
 
     @Test("alsoSaveAsDefault: defaults to false")

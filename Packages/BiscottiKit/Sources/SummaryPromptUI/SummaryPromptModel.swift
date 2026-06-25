@@ -7,7 +7,9 @@ import Foundation
 /// model is callback-driven and never imports persistence or generation
 /// modules.
 @MainActor @Observable
-public final class SummaryPromptModel {
+public final class SummaryPromptModel: Identifiable {
+    public let id = UUID()
+
     // MARK: - State
 
     /// The text currently in the editor (two-way bound to the field).

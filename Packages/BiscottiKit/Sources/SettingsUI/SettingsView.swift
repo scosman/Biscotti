@@ -17,7 +17,6 @@ public struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
     @State private var showManageModels = false
-    @State private var showSummaryPrompt = false
     @State private var summaryPromptModel: SummaryPromptModel?
 
     public init(viewModel: SettingsViewModel) {
@@ -344,22 +343,20 @@ private extension SettingsView {
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
         }
-        .sheet(isPresented: $showSummaryPrompt) {
-            if let model = summaryPromptModel {
-                SummaryPromptSheet(
-                    model: model,
-                    onSave: { text in
-                        Task {
-                            await viewModel.saveSummaryPrompt(text)
-                        }
-                        showSummaryPrompt = false
-                    },
-                    onRegenerate: { _, _ in },
-                    onCancel: {
-                        showSummaryPrompt = false
+        .sheet(item: $summaryPromptModel) { model in
+            SummaryPromptSheet(
+                model: model,
+                onSave: { text in
+                    Task {
+                        await viewModel.saveSummaryPrompt(text)
                     }
-                )
-            }
+                    summaryPromptModel = nil
+                },
+                onRegenerate: { _, _ in },
+                onCancel: {
+                    summaryPromptModel = nil
+                }
+            )
         }
     }
 
@@ -377,13 +374,15 @@ private extension SettingsView {
             Button("Customize\u{2026}") {
                 Task {
                     let effective = await viewModel.loadEffectivePrompt()
+                    // Setting summaryPromptModel drives the .sheet(item:)
+                    // presentation, so the model is guaranteed to be populated
+                    // when the sheet content is first evaluated.
                     summaryPromptModel = SummaryPromptModel(
                         workingText: effective,
                         initialText: effective,
                         defaultText: viewModel.defaultSummaryPrompt,
                         mode: .global
                     )
-                    showSummaryPrompt = true
                 }
             }
             .buttonStyle(.bordered)

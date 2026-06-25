@@ -138,12 +138,16 @@ struct RegenerateWiringTests {
         )
         await viewModel.load()
 
-        viewModel.showResummarizeSheet = true
+        // Simulate an open sheet by setting a model
         let effective = await fix.core.effectiveSummaryPrompt()
+        viewModel.summaryPromptModel = SummaryPromptModel(
+            workingText: effective, initialText: effective,
+            defaultText: fix.core.defaultSummaryPrompt, mode: .global
+        )
         viewModel.regenerate(withPrompt: effective, alsoSave: false)
 
-        // Sheet should be dismissed synchronously
-        #expect(viewModel.showResummarizeSheet == false)
+        // Sheet should be dismissed synchronously (model cleared)
+        #expect(viewModel.summaryPromptModel == nil)
         // Tab should switch to summary
         #expect(viewModel.selectedTab == .summary)
     }
@@ -164,8 +168,6 @@ struct RegenerateWiringTests {
 
         // Wait for the async Task inside presentResummarizeSheet
         try await Task.sleep(for: .milliseconds(100))
-
-        #expect(viewModel.showResummarizeSheet == true)
 
         let model = try #require(viewModel.summaryPromptModel)
         let effective = await fix.core.effectiveSummaryPrompt()

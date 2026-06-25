@@ -19,42 +19,48 @@ public struct PromptExample: Sendable, Identifiable {
 // MARK: - Built-in examples
 
 public extension PromptExample {
-    /// The five shipped example blocks from the functional spec.
+    /// The shipped section blocks. Most are formatted as a `## Heading`
+    /// plus a one-line description so appending any block after the default
+    /// prompt's Action Items section yields a consistent, well-formed prompt.
     static let builtIn: [PromptExample] = [
         PromptExample(
             name: "Slack recap",
             block: """
             ## Notes for Slack
-            A short, paste-ready recap I can drop in our team channel \u{2014} 4 lines max.
+            A short, paste-ready recap suitable for dropping in a team channel \u{2014} four lines max.
             """
         ),
         PromptExample(
             name: "Meeting feedback",
             block: """
             ## Meeting Feedback
-            3 things I did well, and 3 I could do better.
+            Three things the meeting did well, and three that could be improved.
             """
         ),
         PromptExample(
             name: "Decisions",
             block: """
             ## Decisions
-            Every decision made, and who owns it.
+            Every decision made during the meeting, and who owns each one.
             """
         ),
         PromptExample(
             name: "Key quotes",
             block: """
             ## Key Quotes
-            2\u{2013}3 notable verbatim quotes.
+            Two to three notable verbatim quotes from the transcript.
             """
         ),
         PromptExample(
             name: "Sentiment",
             block: """
             ## Sentiment & Tone
-            A read on the mood and energy of the room.
+            A read on the overall mood and energy of the room.
             """
+        ),
+        PromptExample(
+            name: "Make No Mistakes",
+            block: "Make no mistakes"
         )
     ]
 }

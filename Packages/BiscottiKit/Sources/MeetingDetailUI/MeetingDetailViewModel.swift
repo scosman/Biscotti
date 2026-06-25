@@ -182,10 +182,10 @@ public final class MeetingDetailViewModel {
     /// Whether the user has manually edited the summary.
     public private(set) var editedSummary: Bool = false
 
-    /// Whether to show the summary prompt sheet for re-summarization.
-    public var showResummarizeSheet: Bool = false
-
-    /// The model for the summary prompt sheet, prepared when the sheet opens.
+    /// The model for the summary prompt sheet. Setting to non-nil presents the
+    /// sheet (via `.sheet(item:)`); nil dismisses it. This replaces the former
+    /// two-state (`showResummarizeSheet` + `summaryPromptModel`) pattern which
+    /// raced: the sheet could present before the model was populated.
     public var summaryPromptModel: SummaryPromptModel?
 
     /// Debounce handle for summary autosave.
@@ -1126,8 +1126,11 @@ public extension MeetingDetailViewModel {
     /// Opens the summary prompt sheet for re-summarization.
     ///
     /// Prepares a `SummaryPromptModel` with the effective saved prompt and
-    /// presents the sheet. The first-run "Generate Summary" button (no prior
-    /// summary) still calls `runSummary(force: false)` directly.
+    /// presents the sheet. Setting `summaryPromptModel` to non-nil drives
+    /// the `.sheet(item:)` presentation, so the model is guaranteed to be
+    /// populated when the sheet content is first evaluated. The first-run
+    /// "Generate Summary" button (no prior summary) still calls
+    /// `runSummary(force: false)` directly.
     func presentResummarizeSheet() {
         Task {
             let effective = await core.effectiveSummaryPrompt()
@@ -1145,7 +1148,6 @@ public extension MeetingDetailViewModel {
                     summaryWasEdited: editedSummary
                 )
             )
-            showResummarizeSheet = true
         }
     }
 
@@ -1167,7 +1169,7 @@ public extension MeetingDetailViewModel {
 
         summaryRegenRequested = true
         selectedTab = .summary
-        showResummarizeSheet = false
+        summaryPromptModel = nil
 
         Task {
             // Save first (if requested) so the effective prompt is updated

@@ -24,6 +24,9 @@ actions:
   - name: "test"
     description: "Gating: run the package test suite (swift test)"
     command: "bash -c 'set -o pipefail; make test 2>&1 | tail -n 400'"
+    # Full cross-package suite (including LocalLLM's XCFramework fetch) exceeds
+    # the default timeout; 300s matches build/build_llm/test_llm.
+    timeout: 300
 
   - name: "lint"
     description: "Check formatting + lint (non-mutating)"

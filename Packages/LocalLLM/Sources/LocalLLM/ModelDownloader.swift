@@ -128,29 +128,18 @@ public struct ModelDownloader: Sendable {
     // MARK: - Network (isolated for testability)
 
     /// Returns the server's expected content length (nil if not provided).
+    ///
+    /// Streams the response to disk in whole `Data` chunks via a `URLSessionDataDelegate`.
+    /// The previous implementation iterated `URLSession.AsyncBytes` one `UInt8` at a time,
+    /// which is CPU-bound (billions of async-sequence iterations for a multi-GB file) and
+    /// capped throughput far below the link speed. Delegate `didReceive` chunks let the
+    /// transfer run at network speed while still reporting progress.
     @discardableResult
     private func performDownload(
         from source: URL,
         to destination: URL,
         progress: @Sendable @escaping (_ bytes: Int64, _ total: Int64?) -> Void
     ) async throws -> Int64? {
-        let request = URLRequest(url: source)
-        let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200 ... 299).contains(httpResponse.statusCode)
-        else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw LocalLLMError.downloadFailed(
-                url: source, underlying: "HTTP \(code)"
-            )
-        }
-
-        let totalBytes: Int64? = {
-            let length = httpResponse.expectedContentLength
-            return length > 0 ? length : nil
-        }()
-
         guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
             throw LocalLLMError.downloadFailed(
                 url: source, underlying: "Failed to create file at \(destination.path)"
@@ -158,29 +147,146 @@ public struct ModelDownloader: Sendable {
         }
         let fileHandle = try FileHandle(forWritingTo: destination)
 
-        defer { try? fileHandle.close() }
+        let delegate = StreamingDownloadDelegate(
+            source: source, fileHandle: fileHandle, progress: progress
+        )
+        // A delegate cannot be attached to `URLSession.shared`, so we spin up a dedicated
+        // session and tear it down when the transfer completes (breaks the session→delegate
+        // retain cycle).
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
 
-        var downloaded: Int64 = 0
-        var buffer = Data()
-        let flushThreshold = 1024 * 1024 // 1 MB chunks
+        return try await delegate.run(session: session, request: URLRequest(url: source))
+    }
+}
 
-        for try await byte in asyncBytes {
-            buffer.append(byte)
-            downloaded += 1
+/// Bridges a `URLSessionDataTask` to async/await, streaming response chunks straight to a
+/// `FileHandle` and reporting progress.
+///
+/// All callbacks arrive serially on the session's delegate queue; mutable state is still guarded
+/// by `lock` to publish safely to the awaiting task and to satisfy Swift 6 `Sendable`.
+private final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let source: URL
+    private let fileHandle: FileHandle
+    private let progress: @Sendable (Int64, Int64?) -> Void
 
-            if buffer.count >= flushThreshold {
-                try fileHandle.write(contentsOf: buffer)
-                buffer.removeAll(keepingCapacity: true)
-                progress(downloaded, totalBytes)
+    private let lock = NSLock()
+    private var downloaded: Int64 = 0
+    private var total: Int64?
+    private var failure: Error?
+    private var continuation: CheckedContinuation<Int64?, Error>?
+    private var finished = false
+
+    init(
+        source: URL,
+        fileHandle: FileHandle,
+        progress: @escaping @Sendable (Int64, Int64?) -> Void
+    ) {
+        self.source = source
+        self.fileHandle = fileHandle
+        self.progress = progress
+    }
+
+    /// Starts the data task and suspends until the transfer completes (or fails).
+    ///
+    /// Cooperative cancellation: if the enclosing Swift `Task` is cancelled, the
+    /// `onCancel` handler calls `dataTask.cancel()`, which triggers the delegate's
+    /// `didCompleteWithError` with `NSURLErrorCancelled` — that resumes the
+    /// continuation normally, so the exactly-once guarantee is preserved.
+    /// - Returns: the server's `Content-Length` (nil if unknown).
+    func run(session: URLSession, request: URLRequest) async throws -> Int64? {
+        // Create the task synchronously so the cancellation handler can capture it.
+        // `task` is a `let` — safe to read from the concurrent `onCancel` closure
+        // without additional synchronisation.
+        let task = session.dataTask(with: request)
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Int64?, Error>) in
+                lock.lock()
+                continuation = cont
+                lock.unlock()
+                task.resume()
             }
+        } onCancel: {
+            task.cancel()
         }
+    }
 
-        // Flush remaining
-        if !buffer.isEmpty {
-            try fileHandle.write(contentsOf: buffer)
+    func urlSession(
+        _: URLSession,
+        dataTask _: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse,
+              (200 ... 299).contains(http.statusCode)
+        else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            recordFailure(LocalLLMError.downloadFailed(url: source, underlying: "HTTP \(code)"))
+            completionHandler(.cancel)
+            return
         }
-        progress(downloaded, totalBytes)
+        let length = http.expectedContentLength
+        lock.lock()
+        total = length > 0 ? length : nil
+        lock.unlock()
+        completionHandler(.allow)
+    }
 
-        return totalBytes
+    func urlSession(_: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        if failure != nil {
+            lock.unlock()
+            return
+        }
+        do {
+            try fileHandle.write(contentsOf: data)
+        } catch {
+            failure = error
+            lock.unlock()
+            dataTask.cancel()
+            return
+        }
+        downloaded += Int64(data.count)
+        let bytes = downloaded
+        let totalBytes = total
+        lock.unlock()
+        // Reported outside the lock to avoid re-entrancy with caller-side throttling.
+        progress(bytes, totalBytes)
+    }
+
+    func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        if finished {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let cont = continuation
+        continuation = nil
+        let storedFailure = failure
+        let totalBytes = total
+        lock.unlock()
+
+        // Close the file handle outside the lock (no deadlock risk either way, but
+        // clearer separation). Must happen before resuming the continuation so the
+        // outer atomic-move sees a flushed/closed file.
+        try? fileHandle.close()
+
+        if let storedFailure {
+            cont?.resume(throwing: storedFailure)
+        } else if let error {
+            cont?.resume(throwing: LocalLLMError.downloadFailed(
+                url: source, underlying: error.localizedDescription
+            ))
+        } else {
+            cont?.resume(returning: totalBytes)
+        }
+    }
+
+    private func recordFailure(_ error: Error) {
+        lock.lock()
+        if failure == nil { failure = error }
+        lock.unlock()
     }
 }

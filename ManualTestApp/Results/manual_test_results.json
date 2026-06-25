@@ -71,115 +71,92 @@
     "timestamp" : "2026-06-19T16:18:54Z"
   },
   "llm_action_items_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_action_items_quality",
-    "timestamp" : "2026-06-23T18:42:01Z"
+    "status" : "not-run",
+    "stepID" : "llm_action_items_quality"
   },
   "llm_action_items_run" : {
-    "status" : "pass",
-    "stepID" : "llm_action_items_run",
-    "timestamp" : "2026-06-23T18:41:59Z"
+    "status" : "not-run",
+    "stepID" : "llm_action_items_run"
   },
   "llm_ai_tests_passed" : {
-    "status" : "pass",
-    "stepID" : "llm_ai_tests_passed",
-    "timestamp" : "2026-06-23T18:41:20Z"
+    "status" : "not-run",
+    "stepID" : "llm_ai_tests_passed"
   },
   "llm_chat_system" : {
-    "status" : "pass",
-    "stepID" : "llm_chat_system",
-    "timestamp" : "2026-06-23T18:41:34Z"
+    "status" : "not-run",
+    "stepID" : "llm_chat_system"
   },
   "llm_chat_system_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_chat_system_quality",
-    "timestamp" : "2026-06-23T18:41:36Z"
+    "status" : "not-run",
+    "stepID" : "llm_chat_system_quality"
   },
   "llm_e2b_download" : {
-    "status" : "pass",
-    "stepID" : "llm_e2b_download",
-    "timestamp" : "2026-06-23T18:10:28Z"
+    "status" : "not-run",
+    "stepID" : "llm_e2b_download"
   },
   "llm_e2b_kv_reuse" : {
-    "status" : "pass",
-    "stepID" : "llm_e2b_kv_reuse",
-    "timestamp" : "2026-06-23T19:18:57Z"
+    "status" : "not-run",
+    "stepID" : "llm_e2b_kv_reuse"
   },
   "llm_e2b_kv_reuse_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_e2b_kv_reuse_quality",
-    "timestamp" : "2026-06-23T19:19:01Z"
+    "status" : "not-run",
+    "stepID" : "llm_e2b_kv_reuse_quality"
   },
   "llm_kv_reuse" : {
-    "status" : "pass",
-    "stepID" : "llm_kv_reuse",
-    "timestamp" : "2026-06-23T19:18:44Z"
+    "status" : "not-run",
+    "stepID" : "llm_kv_reuse"
   },
   "llm_kv_reuse_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_kv_reuse_quality",
-    "timestamp" : "2026-06-23T19:18:51Z"
+    "status" : "not-run",
+    "stepID" : "llm_kv_reuse_quality"
   },
   "llm_model_disk" : {
-    "status" : "pass",
-    "stepID" : "llm_model_disk",
-    "timestamp" : "2026-06-23T17:57:50Z"
+    "status" : "not-run",
+    "stepID" : "llm_model_disk"
   },
   "llm_model_download" : {
-    "status" : "pass",
-    "stepID" : "llm_model_download",
-    "timestamp" : "2026-06-23T18:30:01Z"
+    "status" : "not-run",
+    "stepID" : "llm_model_download"
   },
   "llm_reclamation" : {
-    "note" : "No BiscottiLLM service process found (reclaimed)",
-    "status" : "pass",
-    "stepID" : "llm_reclamation",
-    "timestamp" : "2026-06-23T19:19:05Z"
+    "status" : "not-run",
+    "stepID" : "llm_reclamation"
   },
   "llm_speaker_names_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_speaker_names_quality",
-    "timestamp" : "2026-06-23T18:42:16Z"
+    "status" : "not-run",
+    "stepID" : "llm_speaker_names_quality"
   },
   "llm_speaker_names_run" : {
-    "status" : "pass",
-    "stepID" : "llm_speaker_names_run",
-    "timestamp" : "2026-06-23T18:42:13Z"
+    "status" : "not-run",
+    "stepID" : "llm_speaker_names_run"
   },
   "llm_streaming_channels" : {
-    "status" : "pass",
-    "stepID" : "llm_streaming_channels",
-    "timestamp" : "2026-06-23T19:17:23Z"
+    "status" : "not-run",
+    "stepID" : "llm_streaming_channels"
   },
   "llm_streaming_run" : {
-    "status" : "pass",
-    "stepID" : "llm_streaming_run",
-    "timestamp" : "2026-06-23T19:17:40Z"
+    "status" : "not-run",
+    "stepID" : "llm_streaming_run"
   },
   "llm_summarize_quality" : {
-    "status" : "pass",
-    "stepID" : "llm_summarize_quality",
-    "timestamp" : "2026-06-23T18:41:48Z"
+    "status" : "not-run",
+    "stepID" : "llm_summarize_quality"
   },
   "llm_summarize_run" : {
-    "status" : "pass",
-    "stepID" : "llm_summarize_run",
-    "timestamp" : "2026-06-23T18:41:46Z"
+    "status" : "not-run",
+    "stepID" : "llm_summarize_run"
   },
   "llm_thinking_mode" : {
-    "status" : "pass",
-    "stepID" : "llm_thinking_mode",
-    "timestamp" : "2026-06-23T19:17:13Z"
+    "status" : "not-run",
+    "stepID" : "llm_thinking_mode"
   },
   "llm_thinking_run" : {
-    "status" : "pass",
-    "stepID" : "llm_thinking_run",
-    "timestamp" : "2026-06-23T18:42:58Z"
+    "status" : "not-run",
+    "stepID" : "llm_thinking_run"
   },
   "llm_xpc_inference" : {
-    "status" : "pass",
-    "stepID" : "llm_xpc_inference",
-    "timestamp" : "2026-06-23T18:41:29Z"
+    "status" : "not-run",
+    "stepID" : "llm_xpc_inference"
   },
   "tx_ai_test_passed" : {
     "status" : "not-run",

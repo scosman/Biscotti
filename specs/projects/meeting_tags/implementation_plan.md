@@ -22,7 +22,7 @@ Each phase is one coherent CR. See `functional_spec.md`, `ui_design.md`, and
   `FlowLayout`; render the compact third line (first 2 + `+N`) in `MeetingListView.meetingRow`.
   Read-only display path, end to end. (architecture §4.1–4.3, §5 list)
 
-- [ ] **Phase 3 — Detail-pane editing.** `TagAddButton` (three states); `TagPickerPopover`
+- [x] **Phase 3 — Detail-pane editing.** `TagAddButton` (three states); `TagPickerPopover`
   + pure `computeTagPickerResult` (tested) with keyboard nav; wire `MeetingDetailViewModel`
   (load catalogue, `toggleTag` / `createAndApply` / `removeTag`, refresh + `reloadSummaries`);
   insert the wrapping tags row into `MeetingDetailView.chrome`. (architecture §4.4–4.5, §5 detail)

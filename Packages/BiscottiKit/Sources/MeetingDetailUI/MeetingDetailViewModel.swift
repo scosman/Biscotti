@@ -155,6 +155,14 @@ public final class MeetingDetailViewModel {
     /// Whether a delete operation is in progress.
     public private(set) var isDeleting: Bool = false
 
+    // MARK: - Tags
+
+    /// All tags in the catalogue, loaded from the store.
+    public private(set) var catalogueTags: [TagData] = []
+
+    /// Whether the tag picker popover is open.
+    public var tagPickerOpen: Bool = false
+
     // MARK: - Speaker mapping sheet
 
     /// The transcript ID for which the speaker mapping sheet is presented.
@@ -1016,6 +1024,7 @@ private extension MeetingDetailViewModel {
         summaryText = detail?.summary ?? ""
         editedSummary = detail?.editedSummary ?? false
         versions = detail?.versions ?? []
+        catalogueTags = try await core.store.allTags()
         let settings = try? await core.store.settings()
         aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
     }
@@ -1368,6 +1377,59 @@ public extension MeetingDetailViewModel {
         summaryAutosaveTask = nil
         await core.deleteMeeting(meetingID: meetingID)
         isDeleting = false
+    }
+}
+
+// MARK: - Tag actions
+
+public extension MeetingDetailViewModel {
+    /// The IDs of tags currently applied to this meeting.
+    var appliedTagIDs: Set<UUID> {
+        Set(detail?.tags.map(\.id) ?? [])
+    }
+
+    /// Tags applied to this meeting (from detail data, already sorted).
+    var appliedTags: [TagData] {
+        detail?.tags ?? []
+    }
+
+    /// Toggles a tag's application on/off for this meeting.
+    func toggleTag(_ tag: TagData) async {
+        do {
+            if appliedTagIDs.contains(tag.id) {
+                try await core.store.removeTag(tagID: tag.id, from: meetingID)
+            } else {
+                try await core.store.applyTag(tagID: tag.id, to: meetingID)
+            }
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Creates a new tag and applies it to this meeting.
+    func createAndApply(_ name: String) async {
+        do {
+            _ = try await core.store.createTagAndApply(
+                name: name, to: meetingID
+            )
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Removes a tag's application from this meeting.
+    func removeTag(_ tag: TagData) async {
+        do {
+            try await core.store.removeTag(tagID: tag.id, from: meetingID)
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
     }
 }
 

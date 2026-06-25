@@ -45,6 +45,9 @@ import SwiftData
     public var calendarSnapshot: CalendarSnapshot?
 
     @Relationship
+    public var tags: [Tag] = []
+
+    @Relationship
     public var participants: [Person] = []
 
     @Relationship

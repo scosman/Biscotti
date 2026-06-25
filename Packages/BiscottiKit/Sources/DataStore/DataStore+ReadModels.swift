@@ -17,6 +17,8 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
     public let participants: [PersonData]
     /// Total distinct participant count (drives the "+N" badge).
     public let participantCount: Int
+    /// Tags applied to this meeting, sorted alphabetically.
+    public let tags: [TagData]
 
     public init(
         id: UUID,
@@ -25,7 +27,8 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
         hasTranscript: Bool,
         recordingDuration: TimeInterval? = nil,
         participants: [PersonData] = [],
-        participantCount: Int = 0
+        participantCount: Int = 0,
+        tags: [TagData] = []
     ) {
         self.id = id
         self.title = title
@@ -34,6 +37,7 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
         self.recordingDuration = recordingDuration
         self.participants = participants
         self.participantCount = participantCount
+        self.tags = tags
     }
 }
 
@@ -64,6 +68,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let editedSummary: Bool
     /// Whether the user has manually edited the title.
     public let editedTitle: Bool
+    /// Tags applied to this meeting, sorted alphabetically.
+    public let tags: [TagData]
 
     public init(
         id: UUID,
@@ -79,7 +85,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         versions: [TranscriptVersionData] = [],
         summary: String = "",
         editedSummary: Bool = false,
-        editedTitle: Bool = false
+        editedTitle: Bool = false,
+        tags: [TagData] = []
     ) {
         self.id = id
         self.title = title
@@ -95,6 +102,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.summary = summary
         self.editedSummary = editedSummary
         self.editedTitle = editedTitle
+        self.tags = tags
     }
 }
 
@@ -292,12 +300,26 @@ public struct TranscriptVersionData: Sendable, Identifiable, Equatable {
     }
 }
 
+/// A tag DTO safe to hold on `@MainActor`.
+public struct TagData: Sendable, Identifiable, Equatable, Hashable {
+    public let id: UUID
+    public let name: String
+    public let colorSlot: Int
+
+    public init(id: UUID, name: String, colorSlot: Int) {
+        self.id = id
+        self.name = name
+        self.colorSlot = colorSlot
+    }
+}
+
 /// Which field a search term matched in.
 public enum SearchField: Sendable, Equatable {
     case title
     case people
     case transcript
     case notes
+    case tags
 }
 
 /// Audio file reference result for a meeting.
@@ -363,6 +385,8 @@ public extension DataStore {
                 PersonData(id: $0.id, name: $0.name, email: $0.email)
             }
 
+            let mappedTags = mapTags(meeting.tags)
+
             return MeetingSummary(
                 id: meeting.id,
                 title: meeting.title,
@@ -370,7 +394,8 @@ public extension DataStore {
                 hasTranscript: meeting.preferredTranscriptID != nil,
                 recordingDuration: meeting.recordingDuration,
                 participants: mappedParticipants,
-                participantCount: deduped.count
+                participantCount: deduped.count,
+                tags: mappedTags
             )
         }
     }
@@ -395,6 +420,8 @@ public extension DataStore {
 
         let hasAudio = !meeting.audioFiles.isEmpty && meeting.audioFiles.contains(where: \.isPresent)
 
+        let mappedTags = mapTags(meeting.tags)
+
         return try MeetingDetailData(
             id: meeting.id,
             title: meeting.title,
@@ -409,7 +436,8 @@ public extension DataStore {
             versions: transcriptVersions(meetingID: id),
             summary: meeting.summary,
             editedSummary: meeting.editedSummary,
-            editedTitle: meeting.editedTitle
+            editedTitle: meeting.editedTitle,
+            tags: mappedTags
         )
     }
 
@@ -674,6 +702,13 @@ public extension DataStore {
                 score += 1
                 fields.insert(.notes)
             }
+            // Tags scored at the same weight as title (3).
+            if meeting.tags.contains(where: {
+                $0.name.lowercased().localizedStandardContains(term)
+            }) {
+                score += 3
+                fields.insert(.tags)
+            }
         }
 
         guard score > 0 else { return nil }
@@ -687,6 +722,13 @@ public extension DataStore {
     }
 
     // MARK: - Private Mappers
+
+    /// Maps a collection of `Tag` models to sorted `TagData` DTOs (alphabetical, case-insensitive).
+    private func mapTags(_ tags: [Tag]) -> [TagData] {
+        tags
+            .map { TagData(id: $0.id, name: $0.name, colorSlot: $0.colorSlot) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
 
     private func mapTranscript(_ record: TranscriptRecord) throws -> TranscriptData {
         let sortedSegments = record.segments.sorted(by: { $0.index < $1.index })
@@ -727,9 +769,10 @@ public extension DataStore {
     private func fieldSortOrder(_ field: SearchField) -> Int {
         switch field {
         case .title: 0
-        case .people: 1
-        case .transcript: 2
-        case .notes: 3
+        case .tags: 1
+        case .people: 2
+        case .transcript: 3
+        case .notes: 4
         }
     }
 }

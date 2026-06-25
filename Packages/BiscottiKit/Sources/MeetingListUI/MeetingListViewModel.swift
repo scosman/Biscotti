@@ -294,6 +294,7 @@ public final class MeetingListViewModel {
             case .people: "people"
             case .transcript: "transcript"
             case .notes: "notes"
+            case .tags: "tags"
             }
         }.joined(separator: ", ")
     }

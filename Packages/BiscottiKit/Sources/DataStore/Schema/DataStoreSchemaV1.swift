@@ -8,6 +8,7 @@ public enum DataStoreSchemaV1: VersionedSchema {
     public static var models: [any PersistentModel.Type] {
         [
             Meeting.self,
+            Tag.self,
             Person.self,
             TranscriptRecord.self,
             TranscriptSegmentRecord.self,

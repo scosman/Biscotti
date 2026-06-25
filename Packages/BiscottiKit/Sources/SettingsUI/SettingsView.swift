@@ -6,6 +6,7 @@ import DesignSystem
 import Intelligence
 import ModelManagementUI
 import Permissions
+import SummaryPromptUI
 import SwiftUI
 
 /// In-window settings screen. General preferences, permissions overview
@@ -16,6 +17,8 @@ public struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
     @State private var showManageModels = false
+    @State private var showSummaryPrompt = false
+    @State private var summaryPromptModel: SummaryPromptModel?
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -324,6 +327,8 @@ private extension SettingsView {
                 .foregroundStyle(Tokens.secondaryText)
             }
 
+            summaryPromptRow
+
             aiLanguageModelRow
         } header: {
             HStack {
@@ -339,6 +344,52 @@ private extension SettingsView {
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
         }
+        .sheet(isPresented: $showSummaryPrompt) {
+            if let model = summaryPromptModel {
+                SummaryPromptSheet(
+                    model: model,
+                    onSave: { text in
+                        Task {
+                            await viewModel.saveSummaryPrompt(text)
+                        }
+                        showSummaryPrompt = false
+                    },
+                    onRegenerate: { _, _ in },
+                    onCancel: {
+                        showSummaryPrompt = false
+                    }
+                )
+            }
+        }
+    }
+
+    var summaryPromptRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Summary Prompt")
+                Text("Customize the instructions used to write meeting summaries.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            Button("Customize\u{2026}") {
+                Task {
+                    let effective = await viewModel.loadEffectivePrompt()
+                    summaryPromptModel = SummaryPromptModel(
+                        workingText: effective,
+                        initialText: effective,
+                        defaultText: viewModel.defaultSummaryPrompt,
+                        mode: .global
+                    )
+                    showSummaryPrompt = true
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .disabled(!viewModel.aiAnalysisEnabled)
     }
 
     var aiLanguageModelRow: some View {

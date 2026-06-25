@@ -28,7 +28,7 @@ Ordered, dependency-first. Each phase is one reviewable unit and ends green on
   - `SummaryPromptSheet` View per `ui_design.md` (kicker/serif title/subtitle/+chip, PROMPT label, editor + field chrome, empty caption, ADD EXAMPLE chips in `FlowLayout`, per-meeting toggle + replace warning, footer Restore/Cancel/primary, confirmations). Previews.
   - Unit tests for `SummaryPromptModel` logic.
 
-- [ ] **Phase 3 — Wire entry points.**
+- [x] **Phase 3 — Wire entry points.**
   - Settings (Global): `Summary Prompt` row in `aiEnhancementsSection` (`.disabled(!aiAnalysisEnabled)`) + `Customize…` → sheet; `SettingsViewModel` load-effective + `onSave`→`core.saveSummaryPrompt`. [arch §5.1]
   - Meeting detail (Per-meeting): overflow **Regenerate Summary** → presents the sheet; `MeetingDetailViewModel.regenerate(withPrompt:alsoSave:)` (compute `markEdited`, optional save, `runAnalysis` override) ; remove the old regenerate-confirm path; first-run **Generate Summary** unchanged. [arch §5.2]
   - `SettingsUI` + `MeetingDetailUI` depend on `SummaryPromptUI`. [arch §5.3]

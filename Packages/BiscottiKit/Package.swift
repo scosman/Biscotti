@@ -246,6 +246,7 @@ let package = Package(
                 "DesignSystem",
                 "Intelligence",
                 "MarkdownEditorUI",
+                "SummaryPromptUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors
@@ -357,7 +358,8 @@ let package = Package(
                 "Intelligence",
                 "LocalLLM",
                 "ModelManagementUI",
-                "Permissions"
+                "Permissions",
+                "SummaryPromptUI"
             ],
             swiftSettings: warningsAsErrors
         ),

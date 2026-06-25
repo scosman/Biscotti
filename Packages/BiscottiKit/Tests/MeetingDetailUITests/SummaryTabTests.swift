@@ -253,11 +253,11 @@ struct SummaryTabStreamingTests {
 
 // MARK: - Regenerate gating
 
-@Suite("Summary tab -- regenerate confirmation gating")
+@Suite("Summary tab -- regenerate via summary prompt sheet")
 struct SummaryTabRegenerateTests {
-    @Test("generateSummary shows confirmation when editedSummary is true")
+    @Test("presentResummarizeSheet opens the sheet")
     @MainActor
-    func regenerateConfirmWhenEdited() async throws {
+    func presentResummarizeSheetOpensSheet() async throws {
         let fix = try makeCoreFixture(
             modelDownloaded: true,
             testName: "SummaryTabTests"
@@ -283,16 +283,20 @@ struct SummaryTabRegenerateTests {
         await viewModel.load()
 
         #expect(viewModel.editedSummary == true)
-        #expect(viewModel.showRegenerateConfirm == false)
+        #expect(viewModel.showResummarizeSheet == false)
 
-        viewModel.generateSummary()
+        viewModel.presentResummarizeSheet()
 
-        #expect(viewModel.showRegenerateConfirm == true)
+        // Allow the async Task inside presentResummarizeSheet to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(viewModel.showResummarizeSheet == true)
+        #expect(viewModel.summaryPromptModel != nil)
     }
 
-    @Test("generateSummary runs directly when editedSummary is false")
+    @Test("generateSummary runs directly for first-run Generate button")
     @MainActor
-    func regenerateNoConfirmWhenNotEdited() async throws {
+    func generateSummaryRunsDirectly() async throws {
         let fix = try makeCoreFixture(
             modelDownloaded: true,
             testName: "SummaryTabTests"
@@ -320,8 +324,8 @@ struct SummaryTabRegenerateTests {
         #expect(viewModel.editedSummary == false)
         viewModel.generateSummary()
 
-        // Should NOT show the confirmation dialog
-        #expect(viewModel.showRegenerateConfirm == false)
+        // Should NOT open the sheet
+        #expect(viewModel.showResummarizeSheet == false)
         // Should have switched to summary tab
         #expect(viewModel.selectedTab == .summary)
     }

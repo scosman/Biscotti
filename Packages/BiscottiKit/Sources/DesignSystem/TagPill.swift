@@ -75,22 +75,41 @@ public struct TagPill: View {
         self.onRemove = onRemove
     }
 
+    /// Whether this pill renders the interactive hover-to-remove X.
+    private var hasRemove: Bool {
+        size == .detail && onRemove != nil
+    }
+
+    /// Gap between the label and the remove X — tighter than the dot→text gap
+    /// so the X doesn't float, keeping the reserved space (when the X is hidden)
+    /// closer to centred.
+    private let removeGap: CGFloat = 3
+
+    /// Trailing inset. With a remove X we tuck it closer to the edge than the
+    /// leading padding, lowering the padding on both sides of the X.
+    private var trailingPadding: CGFloat {
+        hasRemove ? 5 : size.horizontalPadding
+    }
+
     public var body: some View {
-        HStack(spacing: size.dotTextGap) {
-            Circle()
-                .fill(Color.tagSwatch(slot: tag.colorSlot))
-                .frame(width: size.dotDiameter, height: size.dotDiameter)
+        HStack(spacing: removeGap) {
+            HStack(spacing: size.dotTextGap) {
+                Circle()
+                    .fill(Color.tagSwatch(slot: tag.colorSlot))
+                    .frame(width: size.dotDiameter, height: size.dotDiameter)
 
-            Text(tag.name)
-                .font(size.font)
-                .foregroundStyle(.ink)
-                .lineLimit(1)
+                Text(tag.name)
+                    .font(size.font)
+                    .foregroundStyle(.ink)
+                    .lineLimit(1)
+            }
 
-            if size == .detail, onRemove != nil {
+            if hasRemove {
                 removeButton
             }
         }
-        .padding(.horizontal, size.horizontalPadding)
+        .padding(.leading, size.horizontalPadding)
+        .padding(.trailing, trailingPadding)
         .frame(height: size.height)
         .background(
             Color.neutralChip,

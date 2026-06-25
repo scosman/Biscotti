@@ -146,7 +146,7 @@ public struct MeetingListView: View {
         let sorted = tags.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
-        let visible = Array(sorted.prefix(2))
+        let visible = Array(sorted.prefix(3))
         let overflow = sorted.count - visible.count
 
         return HStack(spacing: 5) {

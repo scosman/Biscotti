@@ -148,9 +148,9 @@ Behaviours:
   rendering **compact** tag pills.
 - The third line is **hidden entirely** when a meeting has no tags (no reserved empty
   space — row height stays compact for untagged meetings).
-- **Overflow cap:** show at most the **first 2** pills (alphabetical), then a mono **`+N`**
-  count for the remainder (e.g. `● Customer  ● Important  +1`). Keeps row height predictable
-  in a dense list.
+- **Overflow cap:** show at most the **first 3** pills (alphabetical), then a mono **`+N`**
+  count for the remainder (e.g. `● Customer  ● Design  ● Important  +1`). Keeps row height
+  predictable in a dense list.
 - Compact pills are **not removable** and not interactive — display only. Tag editing
   happens on the detail pane.
 - **Selection legibility:** the selected row already uses the system's light sage selection
@@ -191,7 +191,7 @@ The existing search (a custom toolbar field → debounced `searchHits` → ranke
 - **Meeting deleted** → its applications drop; the tags persist.
 - **Long name** → capped at 40 chars on input; compact list pills truncate with tail
   ellipsis and single line; detail pills show the full (capped) name on one line.
-- **Many tags on one meeting** → detail row wraps to multiple lines; list shows first 2 +
+- **Many tags on one meeting** → detail row wraps to multiple lines; list shows first 3 +
   `+N`.
 
 ---

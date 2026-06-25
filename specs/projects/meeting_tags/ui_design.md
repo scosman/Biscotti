@@ -164,8 +164,8 @@ defined in `Color+Theme.swift` via `dynamicColor(light:dark:)`. Slot 4 reuses th
 In `MeetingListView.meetingRow`, add a third child to the row `VStack` after the
 when-line, **only when the meeting has tags** (no empty reserve):
 
-- `HStack(spacing: 5)` of `.compact` `TagPill`s, **alphabetical**, capped at the **first 2**.
-- If more than 2, a trailing `+N` in `.monoBadge` (JetBrains Mono Medium 9pt),
+- `HStack(spacing: 5)` of `.compact` `TagPill`s, **alphabetical**, capped at the **first 3**.
+- If more than 3, a trailing `+N` in `.monoBadge` (JetBrains Mono Medium 9pt),
   `.inkSecondary`.
 - Top spacing ~6 under the when-line. Bump the row `VStack` spacing only for the tagged
   rows so untagged rows keep their current height.
@@ -187,7 +187,7 @@ change required; just don't override the dots' colour on selection.
 - **Discoverability:** the empty-state sage "Add tags" affordance turns the otherwise-blank
   tags row into a visible call-to-action, so users find tagging without hunting.
 - **Low cognitive load:** colour lives only in the dot, so a row of pills stays calm against
-  the ivory paper and scans by hue; the list caps at 2 + `+N` to keep row height stable.
+  the ivory paper and scans by hue; the list caps at 3 + `+N` to keep row height stable.
 - **Consistency:** the picker reuses the speaker-mapping popover's exact interaction model,
   so users meet a pattern they already know; pills reuse `SourcePill`'s construction and
   the `neutralChip` fill shared by every chip in the app.

@@ -263,4 +263,15 @@ struct MeetingListMatchedFieldsTests {
         let notesOnly = MeetingListViewModel.matchedFieldsText([.notes])
         #expect(notesOnly == "notes")
     }
+
+    @Test("includes tags field")
+    func matchedFieldsTextIncludesTags() {
+        let text = MeetingListViewModel.matchedFieldsText(
+            [.title, .tags]
+        )
+        #expect(text == "title, tags")
+
+        let tagsOnly = MeetingListViewModel.matchedFieldsText([.tags])
+        #expect(tagsOnly == "tags")
+    }
 }

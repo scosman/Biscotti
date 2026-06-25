@@ -104,8 +104,12 @@ public enum IntelligencePrompts {
     ```
     """
 
+    /// The factory-default summary instruction. Editable copies start from this;
+    /// an empty stored `summaryPrompt` resolves to this value.
+    public static let defaultSummaryPrompt = summaryTaskInstructions
+
     /// Instructions for the summary task.
-    public static let summaryTaskInstructions = """
+    static let summaryTaskInstructions = """
     Produce a clear, well-organized markdown summary of the meeting covering the \
     key decisions, discussion topics, and outcomes. At the end, include a \
     "## Action Items" section as a checklist using `- [ ]` format, with owners \
@@ -144,7 +148,8 @@ public enum IntelligencePrompts {
     /// Transcript uses resolved human names where available.
     public static func summaryOnlyFirstUser(
         detail: MeetingDetailData,
-        transcriptNamed: String
+        transcriptNamed: String,
+        summaryInstructions: String = defaultSummaryPrompt
     ) -> String {
         var parts: [String] = []
 
@@ -152,13 +157,18 @@ public enum IntelligencePrompts {
         if !details.isEmpty { parts.append(details) }
 
         parts.append("<transcript>\n\(transcriptNamed)\n</transcript>")
-        parts.append(summaryTaskInstructions)
+        parts.append(summaryInstructions)
 
         return parts.joined(separator: "\n\n")
     }
 
     /// Follow-up user turn for the summary task (transcript already in context).
-    public static let summaryFollowUpUser = summaryTaskInstructions
+    /// Defaults to the factory-default summary instructions.
+    public static func summaryFollowUpUser(
+        summaryInstructions: String = defaultSummaryPrompt
+    ) -> String {
+        summaryInstructions
+    }
 
     // MARK: - Title Task
 

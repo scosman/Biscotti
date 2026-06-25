@@ -192,6 +192,9 @@ public struct AppSettingsData: Sendable, Equatable {
     /// The stable ID of the user's chosen LLM model (e.g. "gemma-4-12b").
     /// Empty string means no explicit choice yet (drives migration/fallback).
     public var selectedModelID: String
+    /// User's custom meeting-summary instruction prompt. Empty means "use the
+    /// built-in default" (so the shipped default can evolve for non-customizers).
+    public var summaryPrompt: String
 
     public init(
         customVocabulary: [String] = [],
@@ -205,7 +208,8 @@ public struct AppSettingsData: Sendable, Equatable {
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
-        selectedModelID: String = ""
+        selectedModelID: String = "",
+        summaryPrompt: String = ""
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -219,6 +223,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.enabledCalendarIDs = enabledCalendarIDs
         self.aiAnalysisEnabled = aiAnalysisEnabled
         self.selectedModelID = selectedModelID
+        self.summaryPrompt = summaryPrompt
     }
 }
 
@@ -492,7 +497,8 @@ public extension DataStore {
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs,
                 aiAnalysisEnabled: existing.aiAnalysisEnabled,
-                selectedModelID: existing.selectedModelID
+                selectedModelID: existing.selectedModelID,
+                summaryPrompt: existing.summaryPrompt
             )
         }
         // Create the singleton with defaults
@@ -526,7 +532,8 @@ public extension DataStore {
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs,
             aiAnalysisEnabled: model.aiAnalysisEnabled,
-            selectedModelID: model.selectedModelID
+            selectedModelID: model.selectedModelID,
+            summaryPrompt: model.summaryPrompt
         )
         mutate(&dto)
 
@@ -542,6 +549,7 @@ public extension DataStore {
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         model.aiAnalysisEnabled = dto.aiAnalysisEnabled
         model.selectedModelID = dto.selectedModelID
+        model.summaryPrompt = dto.summaryPrompt
         try save()
     }
 

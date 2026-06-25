@@ -24,11 +24,19 @@ public enum ModelDownloadState: Sendable, Equatable {
 }
 
 /// Settings that gate the AI auto-run. Read from DataStore on each run.
-/// A single `enabled` flag maps to `AppSettings.aiAnalysisEnabled`.
+/// `enabled` maps to `AppSettings.aiAnalysisEnabled`; `summaryPrompt`
+/// is the resolved (never-empty) summary instruction.
 public struct AISettings: Sendable {
     public var enabled: Bool
+    /// Resolved summary prompt: empty → `defaultSummaryPrompt` at the
+    /// call site that builds `AISettings`.
+    public var summaryPrompt: String
 
-    public init(enabled: Bool) {
+    public init(
+        enabled: Bool,
+        summaryPrompt: String = IntelligencePrompts.defaultSummaryPrompt
+    ) {
         self.enabled = enabled
+        self.summaryPrompt = summaryPrompt
     }
 }

@@ -52,6 +52,10 @@ import SwiftData
     /// Empty string means no explicit choice yet (drives migration/fallback).
     public var selectedModelID: String = ""
 
+    /// User's custom meeting-summary instruction prompt. Empty means "use the
+    /// built-in default" (so the shipped default can evolve for non-customizers).
+    public var summaryPrompt: String = ""
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -88,7 +92,8 @@ import SwiftData
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
-        selectedModelID: String = ""
+        selectedModelID: String = "",
+        summaryPrompt: String = ""
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -104,5 +109,6 @@ import SwiftData
         }
         self.aiAnalysisEnabled = aiAnalysisEnabled
         self.selectedModelID = selectedModelID
+        self.summaryPrompt = summaryPrompt
     }
 }

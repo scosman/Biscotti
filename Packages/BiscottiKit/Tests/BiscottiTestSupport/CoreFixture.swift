@@ -572,7 +572,12 @@ public func makeCoreFixture(
         store: store,
         llm: fakeLLMRunner,
         modelManager: modelManager,
-        settings: { AISettings(enabled: true) }
+        settings: {
+            AISettings(
+                enabled: true,
+                summaryPrompt: IntelligencePrompts.defaultSummaryPrompt
+            )
+        }
     )
 
     let core = AppCore(

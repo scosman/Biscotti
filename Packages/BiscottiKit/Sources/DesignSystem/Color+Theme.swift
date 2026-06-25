@@ -248,6 +248,34 @@ public extension Color {
         dark: NSColor(srgbRed: 0.102, green: 0.090, blue: 0.059, alpha: 1)
     )
 
+    // MARK: - List pane
+
+    /// List pane background — a distinct **third** warm ivory, between `paper`
+    /// (main content) and `sidebarTint` (sidebar). Used for the meetings list.
+    /// Light `#F7F3EB` / dark **provisional** `#17140D`.
+    /// provisional dark — eyeball in Phase 5
+    static let listPaneBackground = dynamicColor(
+        light: NSColor(srgbRed: 0.969, green: 0.953, blue: 0.922, alpha: 1),
+        dark: NSColor(srgbRed: 0.090, green: 0.078, blue: 0.051, alpha: 1)
+    )
+
+    // MARK: - On solid-accent (selected) surface tokens
+
+    /// Primary text on a solid-accent (selected) surface — pure white.
+    /// Appearance-independent (white reads on both light and dark `accentFill`).
+    static let onAccent: Color = .white
+
+    /// Secondary text on a solid-accent surface — white @ 72%.
+    /// Used for the when-line and `+N` overflow on selected rows.
+    static let onAccentMuted: Color = .white.opacity(0.72)
+
+    /// Tag pill fill on a solid-accent surface — white @ 18%.
+    static let onAccentChipFill: Color = .white.opacity(0.18)
+
+    /// Tag dot ring on a solid-accent surface — white @ 50%.
+    /// A 0.5px ring around coloured dots so slate/teal/olive stay legible on sage.
+    static let onAccentChipRing: Color = .white.opacity(0.5)
+
     // MARK: - Tag-dot palette (8 swatches)
 
     /// Fixed, ordered palette of 8 adaptive tag-dot colours. Sage is
@@ -372,5 +400,14 @@ public extension ShapeStyle where Self == Color {
 
     static var avatarRing: Color {
         .avatarRing
+    }
+
+    /// On solid-accent (selected) surface tokens
+    static var onAccent: Color {
+        .onAccent
+    }
+
+    static var onAccentMuted: Color {
+        .onAccentMuted
     }
 }

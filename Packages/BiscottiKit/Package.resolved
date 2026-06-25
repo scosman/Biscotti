@@ -1,5 +1,5 @@
 {
-  "originHash" : "b25ffa28a4fea2923db41553a99bff0261607b6a79ea33e3fc6f56a9a394650d",
+  "originHash" : "7ef69ed84a0e460b58c428e82c354d692c87ce309c835f2c874b61fcf964973f",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -40,9 +40,10 @@
     {
       "identity" : "swift-markdown-engine",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/scosman/swift-markdown-engine",
+      "location" : "https://github.com/nodes-app/swift-markdown-engine",
       "state" : {
-        "revision" : "6edaa33637bcfc39272415f635c5f2ed6ff2853b"
+        "revision" : "8a97fc5748ce044e39a0a5327780b158dd9357f0",
+        "version" : "0.7.1"
       }
     },
     {

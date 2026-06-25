@@ -5,9 +5,9 @@ import UserNotifications
 
 @Suite("Foreground presentation")
 struct ForegroundPresentationTests {
-    @Test("Meeting-start shows banner and sound")
+    @Test("Meeting-start shows banner without sound")
     @MainActor
-    func foregroundMeetingStartShowsBannerAndSound() async throws {
+    func foregroundMeetingStartShowsBannerWithoutSound() async throws {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         _ = await service.requestAuthorization()
@@ -22,12 +22,12 @@ struct ForegroundPresentationTests {
         ))
         let options = service.foregroundPresentationOptions(for: notification)
         #expect(options.contains(.banner))
-        #expect(options.contains(.sound))
+        #expect(!options.contains(.sound))
     }
 
-    @Test("Countdown shows banner and sound (only UI for Keep Recording)")
+    @Test("Countdown shows banner without sound (only UI for Keep Recording)")
     @MainActor
-    func foregroundCountdownShowsBannerAndSound() async throws {
+    func foregroundCountdownShowsBannerWithoutSound() async throws {
         let fake = FakeNotificationCenter()
         let service = NotificationService(provider: fake)
         _ = await service.requestAuthorization()
@@ -43,7 +43,7 @@ struct ForegroundPresentationTests {
         ))
         let options = service.foregroundPresentationOptions(for: notification)
         #expect(options.contains(.banner))
-        #expect(options.contains(.sound))
+        #expect(!options.contains(.sound))
     }
 }
 

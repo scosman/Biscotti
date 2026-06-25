@@ -54,6 +54,7 @@ public struct TagPill: View {
 
     private let tag: TagData
     private let size: Size
+    private let onAccent: Bool
     private let onRemove: (() -> Void)?
 
     @State private var hovered = false
@@ -63,15 +64,21 @@ public struct TagPill: View {
     /// - Parameters:
     ///   - tag: The tag data to display.
     ///   - size: `.detail` or `.compact`.
+    ///   - onAccent: When `true` (compact pills on a selected row), renders
+    ///     with white-on-accent styling: white @18% fill, white text, and a
+    ///     0.5px white ring on the coloured dot. Default `false` keeps the
+    ///     standard neutral-chip appearance.
     ///   - onRemove: If non-nil (`.detail` only), shows a hover-X that
     ///     calls this closure on click.
     public init(
         tag: TagData,
         size: Size,
+        onAccent: Bool = false,
         onRemove: (() -> Void)? = nil
     ) {
         self.tag = tag
         self.size = size
+        self.onAccent = onAccent
         self.onRemove = onRemove
     }
 
@@ -97,10 +104,16 @@ public struct TagPill: View {
                 Circle()
                     .fill(Color.tagSwatch(slot: tag.colorSlot))
                     .frame(width: size.dotDiameter, height: size.dotDiameter)
+                    .overlay {
+                        if onAccent {
+                            Circle()
+                                .strokeBorder(Color.onAccentChipRing, lineWidth: 0.5)
+                        }
+                    }
 
                 Text(tag.name)
                     .font(size.font)
-                    .foregroundStyle(.ink)
+                    .foregroundStyle(onAccent ? .onAccent : .ink)
                     .lineLimit(1)
             }
 
@@ -112,7 +125,7 @@ public struct TagPill: View {
         .padding(.trailing, trailingPadding)
         .frame(height: size.height)
         .background(
-            Color.neutralChip,
+            onAccent ? Color.onAccentChipFill : Color.neutralChip,
             in: RoundedRectangle(cornerRadius: size.cornerRadius)
         )
         .onHover { hovered = $0 }

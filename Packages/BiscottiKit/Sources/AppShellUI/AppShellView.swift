@@ -365,40 +365,48 @@ private struct MeetingsSplitView: View {
             MeetingListView(
                 viewModel: viewModel.meetingListViewModel
             )
-            .frame(minWidth: 180, idealWidth: 220, maxWidth: 420)
+            .frame(minWidth: 126, idealWidth: 154, maxWidth: 420)
 
-            Group {
-                let selection = viewModel.meetingsSelection
-                if selection.count == 1, let id = selection.first {
-                    MeetingDetailView(
-                        viewModel: viewModel.meetingDetailViewModel(
-                            for: id
-                        )
+            // Stable outer container so HSplitView always sees the
+            // same structural child — prevents the divider from
+            // snapping back to idealWidth when the detail content
+            // changes (selection, .id swap, or placeholder toggle).
+            detailPane
+                .frame(minWidth: 360, maxWidth: .infinity)
+                .background(Tokens.contentBackground)
+        }
+    }
+
+    private var detailPane: some View {
+        ZStack {
+            let selection = viewModel.meetingsSelection
+            if selection.count == 1, let id = selection.first {
+                MeetingDetailView(
+                    viewModel: viewModel.meetingDetailViewModel(
+                        for: id
                     )
-                    .id(id)
-                } else if selection.count > 1 {
-                    MultiSelectPlaceholder(
-                        count: selection.count,
-                        listViewModel: viewModel.meetingListViewModel
-                    )
-                } else {
-                    ContentUnavailableView {
-                        Label {
-                            Text("No Meeting Selected")
-                                .font(.serifHeadline)
-                        } icon: {
-                            Image(systemName: "quote.bubble")
-                        }
-                    } description: {
-                        Text(
-                            "Select a meeting to see its transcript and details."
-                        )
+                )
+                .id(id)
+            } else if selection.count > 1 {
+                MultiSelectPlaceholder(
+                    count: selection.count,
+                    listViewModel: viewModel.meetingListViewModel
+                )
+            } else {
+                ContentUnavailableView {
+                    Label {
+                        Text("No Meeting Selected")
+                            .font(.serifHeadline)
+                    } icon: {
+                        Image(systemName: "quote.bubble")
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } description: {
+                    Text(
+                        "Select a meeting to see its transcript and details."
+                    )
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(minWidth: 360, maxWidth: .infinity)
-            .background(Tokens.contentBackground)
         }
     }
 }

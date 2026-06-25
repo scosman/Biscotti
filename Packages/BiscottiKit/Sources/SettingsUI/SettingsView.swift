@@ -35,29 +35,39 @@ public struct SettingsView: View {
     /// Muted caption trailing the AI Enhancements header.
     static let aiEnhancementsHeaderCaption = "AI runs locally on your Mac."
 
+    /// Page-level heading, styled like content-page serif titles
+    /// (EventPreview, MeetingDetail).
+    static let pageTitle = "Settings"
+
     public var body: some View {
         ScrollView {
-            // Sections in spec order (section 13.3)
-            Form {
-                generalSection
-                permissionsSection
-                notificationsSection
-                aiEnhancementsSection
-                calendarSection
+            VStack(alignment: .leading, spacing: Tokens.spacingMD) {
+                Text(Self.pageTitle)
+                    .font(.biscottiSerif(27))
+                    .tracking(-0.27)
+                    .foregroundStyle(.ink)
+                    // Match the grouped Form's internal leading inset
+                    .padding(.leading, Tokens.groupedFormLeadingInset)
 
-                #if DEBUG
-                    debugSection
-                #endif
+                Form {
+                    generalSection
+                    permissionsSection
+                    notificationsSection
+                    aiEnhancementsSection
+                    calendarSection
+
+                    #if DEBUG
+                        debugSection
+                    #endif
+                }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .padding(Tokens.spacingMD)
+            .frame(maxWidth: Tokens.contentColumnMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Tokens.homeVerticalPadding)
         }
-        .frame(
-            maxWidth: .infinity,
-            maxHeight: .infinity,
-            alignment: .topLeading
-        )
         .background(Tokens.contentBackground)
         .task { await viewModel.load() }
     }
@@ -72,10 +82,10 @@ public struct SettingsView: View {
             )
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(
-                    "Exit app on window close",
-                    isOn: exitOnWindowCloseBinding
+                    "Keep app running in tray",
+                    isOn: keepRunningInTrayBinding
                 )
-                Text("When off, closing the window keeps Biscotti running in the menu bar.")
+                Text("Biscotti will continue running in menu bar, even if window is closed.")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
@@ -112,11 +122,13 @@ public struct SettingsView: View {
         )
     }
 
-    private var exitOnWindowCloseBinding: Binding<Bool> {
+    /// Inverted binding: "Keep running in tray" is the logical
+    /// opposite of the stored "exit on window close" setting.
+    private var keepRunningInTrayBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.exitOnWindowClose },
+            get: { !viewModel.exitOnWindowClose },
             set: { newValue in
-                Task { await viewModel.setExitOnWindowClose(newValue) }
+                Task { await viewModel.setExitOnWindowClose(!newValue) }
             }
         )
     }
@@ -385,7 +397,7 @@ private extension SettingsView {
                     isOn: monitorForMeetingsBinding
                 )
                 Text(
-                    "Detect when an app starts using your microphone and offer to record. Nothing is recorded or processed unless you start recording."
+                    "Notify when ad-hoc meeting detected."
                 )
                 .font(Tokens.metadataFont)
                 .foregroundStyle(Tokens.secondaryText)

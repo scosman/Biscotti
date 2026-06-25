@@ -60,12 +60,12 @@ public enum Tokens {
     /// Light Stop/REC button hover.
     public static let recordingHoverFill = Color.recordingHoverFill
 
-    /// Left chip amber fill (<=5 min / overtime). Reuses `warningBackground`
+    /// Remaining chip amber fill (<=5 min / overtime). Reuses `warningBackground`
     /// (warningOchre @ 0.15) per ui_design.md guidance -- close enough to
     /// the spec's 0.16 to avoid a near-duplicate token.
     public static let warningChipFill = warningBackground
 
-    /// Left chip amber kicker + value text color.
+    /// Remaining chip amber kicker + value text color.
     public static let warningChipText = Color.warningChipText
 
     /// "Add note" + "Keep Recording" button fill.
@@ -199,8 +199,15 @@ public enum Tokens {
     /// event preview, pinned transport bar).
     public static let readableContentMaxWidth: CGFloat = 760
 
-    /// Maximum width for the Home content column.
-    public static let homeColumnMaxWidth: CGFloat = 800
+    /// Leading inset that `.formStyle(.grouped)` applies to section
+    /// headers/content on macOS. Used to align page titles with the
+    /// grouped Form's content edge.
+    public static let groupedFormLeadingInset: CGFloat = 28
+
+    /// Maximum width for the narrow content column used by Home,
+    /// Event Preview, and Settings. Narrower than
+    /// `readableContentMaxWidth` (used by Meeting Detail).
+    public static let contentColumnMaxWidth: CGFloat = 620
 
     /// Page padding top/bottom.
     public static let homeVerticalPadding: CGFloat = 24
@@ -243,7 +250,7 @@ public enum Tokens {
     // MARK: - Avatar
 
     /// Fixed width for the avatar column in home rows.
-    public static let avatarColumnWidth: CGFloat = 80
+    public static let avatarColumnWidth: CGFloat = 88
 
     /// Default avatar size for ordinary rows.
     public static let avatarSize: CGFloat = 26

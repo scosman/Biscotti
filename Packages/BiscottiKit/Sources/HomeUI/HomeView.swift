@@ -33,7 +33,7 @@ public struct HomeView: View {
                     BrandFooter()
                         .padding(.top, 30)
                 }
-                .frame(maxWidth: Tokens.homeColumnMaxWidth, alignment: .leading)
+                .frame(maxWidth: Tokens.contentColumnMaxWidth, alignment: .leading)
                 .padding(.vertical, Tokens.homeVerticalPadding)
                 .padding(.horizontal, Tokens.homeHorizontalPadding)
                 .frame(maxWidth: .infinity)

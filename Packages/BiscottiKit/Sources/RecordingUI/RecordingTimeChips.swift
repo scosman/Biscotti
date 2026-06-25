@@ -6,11 +6,11 @@ import SwiftUI
 /// Extracted from `RecordingView` to keep the main struct under the
 /// lint body-length limit.
 extension RecordingView {
-    /// The time chips row: Elapsed (always) + Left/Over (conditional).
+    /// The time chips row: Elapsed (always) + Remaining/Over (conditional).
     ///
     /// Both chips are computed from the **same** `context.date` inside a
     /// single `TimelineView`, anchored to a whole-second boundary. This
-    /// guarantees ELAPSED and LEFT/OVER flip on the exact same frame --
+    /// guarantees ELAPSED and REMAINING/OVER flip on the exact same frame --
     /// no desync from the engine's async elapsed pump.
     var timeChipsRow: some View {
         TimelineView(
@@ -21,7 +21,7 @@ extension RecordingView {
                 startDate: viewModel.recordingStartDate,
                 now: now
             )
-            let chip = RecordingViewModel.leftChip(
+            let chip = RecordingViewModel.remainingChip(
                 scheduledEnd: viewModel.scheduledEnd,
                 now: now
             )
@@ -38,13 +38,13 @@ extension RecordingView {
                     EmptyView()
                 case let .normal(label):
                     timeChip(
-                        kicker: "LEFT",
+                        kicker: "REMAINING",
                         value: label,
                         style: .neutral
                     )
                 case let .warning(label):
                     timeChip(
-                        kicker: "LEFT",
+                        kicker: "REMAINING",
                         value: label,
                         style: .warning
                     )

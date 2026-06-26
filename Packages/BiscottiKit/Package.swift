@@ -27,7 +27,8 @@ let package = Package(
         .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
         .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
         .library(name: "Intelligence", targets: ["Intelligence"]),
-        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"])
+        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
+        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
@@ -245,6 +246,7 @@ let package = Package(
                 "DesignSystem",
                 "Intelligence",
                 "MarkdownEditorUI",
+                "SummaryPromptUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors
@@ -356,7 +358,8 @@ let package = Package(
                 "Intelligence",
                 "LocalLLM",
                 "ModelManagementUI",
-                "Permissions"
+                "Permissions",
+                "SummaryPromptUI"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -536,6 +539,21 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Intelligence",
                 .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "SummaryPromptUI",
+            dependencies: [
+                "DesignSystem",
+                "MarkdownEditorUI"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SummaryPromptUITests",
+            dependencies: [
+                "SummaryPromptUI"
             ],
             swiftSettings: warningsAsErrors
         ),

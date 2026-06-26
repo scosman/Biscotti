@@ -42,6 +42,8 @@ enum MeetingAnalyzer {
         let doSpeakers: Bool
         let doSummary: Bool
         let doTitle: Bool
+        let summaryInstructions: String
+        let markSummaryEdited: Bool
         let store: DataStore
         let onStage: @MainActor (EnhancementStatus) -> Void
         let onPartialSummary: @MainActor (String) -> Void
@@ -128,7 +130,9 @@ enum MeetingAnalyzer {
         if priorTurnRan {
             // Transcript is already in context; just add the summary task
             messages.append(
-                .user(IntelligencePrompts.summaryFollowUpUser)
+                .user(IntelligencePrompts.summaryFollowUpUser(
+                    summaryInstructions: ctx.summaryInstructions
+                ))
             )
         } else {
             // No prior turn -- build the summary-only first user turn
@@ -137,7 +141,8 @@ enum MeetingAnalyzer {
                 ctx.transcript, names: names
             )
             let userContent = IntelligencePrompts.summaryOnlyFirstUser(
-                detail: ctx.detail, transcriptNamed: transcript
+                detail: ctx.detail, transcriptNamed: transcript,
+                summaryInstructions: ctx.summaryInstructions
             )
             messages.append(.user(userContent))
         }
@@ -163,7 +168,8 @@ enum MeetingAnalyzer {
         }
 
         try await ctx.store.applyGeneratedSummary(
-            accumulated, for: ctx.meetingID
+            accumulated, for: ctx.meetingID,
+            markEdited: ctx.markSummaryEdited
         )
 
         // Feed model output back verbatim (for subsequent title turn)

@@ -6,6 +6,7 @@ import DesignSystem
 import Intelligence
 import ModelManagementUI
 import Permissions
+import SummaryPromptUI
 import SwiftUI
 
 /// In-window settings screen. General preferences, permissions overview
@@ -16,6 +17,7 @@ public struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
     @State private var showManageModels = false
+    @State private var summaryPromptModel: SummaryPromptModel?
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -324,6 +326,8 @@ private extension SettingsView {
                 .foregroundStyle(Tokens.secondaryText)
             }
 
+            summaryPromptRow
+
             aiLanguageModelRow
         } header: {
             HStack {
@@ -339,6 +343,52 @@ private extension SettingsView {
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
         }
+        .sheet(item: $summaryPromptModel) { model in
+            SummaryPromptSheet(
+                model: model,
+                onSave: { text in
+                    Task {
+                        await viewModel.saveSummaryPrompt(text)
+                    }
+                    summaryPromptModel = nil
+                },
+                onRegenerate: { _, _ in },
+                onCancel: {
+                    summaryPromptModel = nil
+                }
+            )
+        }
+    }
+
+    var summaryPromptRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Summary Prompt")
+                Text("Customize the instructions used to write meeting summaries.")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            Button("Customize\u{2026}") {
+                Task {
+                    let effective = await viewModel.loadEffectivePrompt()
+                    // Setting summaryPromptModel drives the .sheet(item:)
+                    // presentation, so the model is guaranteed to be populated
+                    // when the sheet content is first evaluated.
+                    summaryPromptModel = SummaryPromptModel(
+                        workingText: effective,
+                        initialText: effective,
+                        defaultText: viewModel.defaultSummaryPrompt,
+                        mode: .global
+                    )
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .disabled(!viewModel.aiAnalysisEnabled)
     }
 
     var aiLanguageModelRow: some View {

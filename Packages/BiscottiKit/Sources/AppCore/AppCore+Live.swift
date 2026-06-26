@@ -112,9 +112,13 @@ public extension AppCore {
             llm: llmRunner,
             modelManager: modelManager,
             settings: { [store] in
-                let settings = try? await store.settings()
+                let saved = try? await store.settings()
+                let raw = saved?.summaryPrompt ?? ""
+                let effective = raw.isEmpty
+                    ? IntelligencePrompts.defaultSummaryPrompt : raw
                 return AISettings(
-                    enabled: settings?.aiAnalysisEnabled ?? true
+                    enabled: saved?.aiAnalysisEnabled ?? true,
+                    summaryPrompt: effective
                 )
             }
         )

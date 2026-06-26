@@ -89,7 +89,9 @@ public final class Intelligence {
                 meetingID: meetingID,
                 detail: detail, transcript: transcript,
                 doSummary: !detail.editedSummary,
-                modelURL: modelURL
+                modelURL: modelURL,
+                summaryInstructions: settings.summaryPrompt,
+                markSummaryEdited: false
             )
             jobs[meetingID] = .completed
         } catch is CancellationError {
@@ -106,8 +108,16 @@ public final class Intelligence {
     /// (speakers + summary) for the given transcript version. `force`
     /// bypasses the edited-summary check (caller already confirmed).
     /// Not gated by `settings.enabled` (manual intent always works).
+    ///
+    /// - Parameters:
+    ///   - summaryPromptOverride: When non-nil, used as the summary
+    ///     instruction instead of the saved prompt for this run only.
+    ///   - markResultEdited: When `true`, the resulting summary is
+    ///     flagged as user-owned (`editedSummary = true`).
     public func runAnalysis(
-        meetingID: UUID, transcriptID: UUID, force: Bool
+        meetingID: UUID, transcriptID: UUID, force: Bool,
+        summaryPromptOverride: String? = nil,
+        markResultEdited: Bool = false
     ) async {
         guard inFlightMeetingID == nil else { return }
         inFlightMeetingID = meetingID
@@ -130,12 +140,21 @@ public final class Intelligence {
         // Guard against overwriting user edits unless forced
         let doSummary = !detail.editedSummary || force
 
+        // Resolve the effective summary instruction
+        let effective: String = if let override = summaryPromptOverride {
+            override
+        } else {
+            await (settingsProvider()).summaryPrompt
+        }
+
         do {
             try await runAnalysisSession(
                 meetingID: meetingID,
                 detail: detail, transcript: transcript,
                 doSummary: doSummary,
-                modelURL: modelURL
+                modelURL: modelURL,
+                summaryInstructions: effective,
+                markSummaryEdited: markResultEdited
             )
             jobs[meetingID] = .completed
         } catch is CancellationError {
@@ -155,7 +174,9 @@ public final class Intelligence {
         detail: MeetingDetailData,
         transcript: TranscriptData,
         doSummary: Bool,
-        modelURL: URL
+        modelURL: URL,
+        summaryInstructions: String = IntelligencePrompts.defaultSummaryPrompt,
+        markSummaryEdited: Bool = false
     ) async throws {
         let human = await (try? store.humanSetSpeakerMappings(
             for: transcript.id
@@ -175,11 +196,13 @@ public final class Intelligence {
 
         let firstUser = buildFirstUserContent(
             doSpeakers: doSpeakers, doSummary: doSummary,
-            detail: detail, transcript: transcript, human: human
+            detail: detail, transcript: transcript, human: human,
+            summaryInstructions: summaryInstructions
         )
         let followUpUsers = contextBudgetFollowUps(
             doSpeakers: doSpeakers, doSummary: doSummary,
-            doTitle: doTitle
+            doTitle: doTitle,
+            summaryInstructions: summaryInstructions
         )
 
         try await llm.withSession(model: modelURL, config: .modelOnly) { session in
@@ -201,6 +224,8 @@ public final class Intelligence {
                 transcript: transcript, human: human,
                 doSpeakers: doSpeakers, doSummary: doSummary,
                 doTitle: doTitle,
+                summaryInstructions: summaryInstructions,
+                markSummaryEdited: markSummaryEdited,
                 store: self.store,
                 onStage: { self.jobs[meetingID] = $0 },
                 onPartialSummary: { self.streamingSummary[meetingID] = $0 }
@@ -213,13 +238,16 @@ public final class Intelligence {
     /// analysis tasks are active. Output reservation is now handled by
     /// `ContextSizing.contextSizeForAnalysis` via the per-task booleans.
     private func contextBudgetFollowUps(
-        doSpeakers: Bool, doSummary: Bool, doTitle: Bool
+        doSpeakers: Bool, doSummary: Bool, doTitle: Bool,
+        summaryInstructions: String = IntelligencePrompts.defaultSummaryPrompt
     ) -> [String] {
         var users: [String] = []
 
         if doSpeakers, doSummary || doTitle {
             if doSummary {
-                users.append(IntelligencePrompts.summaryFollowUpUser)
+                users.append(IntelligencePrompts.summaryFollowUpUser(
+                    summaryInstructions: summaryInstructions
+                ))
             }
             if doTitle {
                 users.append(IntelligencePrompts.titleFollowUpUser)
@@ -238,7 +266,8 @@ public final class Intelligence {
         doSummary: Bool,
         detail: MeetingDetailData,
         transcript: TranscriptData,
-        human: [Int: PersonData]
+        human: [Int: PersonData],
+        summaryInstructions: String = IntelligencePrompts.defaultSummaryPrompt
     ) -> String {
         if doSpeakers {
             let plain = TranscriptFormatter.plain(transcript, names: [:])
@@ -250,7 +279,8 @@ public final class Intelligence {
             let names = human.mapValues(\.name)
             let plain = TranscriptFormatter.plain(transcript, names: names)
             return IntelligencePrompts.summaryOnlyFirstUser(
-                detail: detail, transcriptNamed: plain
+                detail: detail, transcriptNamed: plain,
+                summaryInstructions: summaryInstructions
             )
         } else {
             // Title-only: no speakers, no summary

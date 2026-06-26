@@ -104,17 +104,34 @@ public enum IntelligencePrompts {
     ```
     """
 
+    /// The factory-default summary instruction. Editable copies start from this;
+    /// an empty stored `summaryPrompt` resolves to this value.
+    ///
+    /// Begins with "Next" so it reads naturally as a follow-up turn (after
+    /// speaker identification). When used as the *first* user turn
+    /// (summary-only, no prior speaker turn), `summaryOnlyFirstUser` strips
+    /// the leading "Next " so the instruction reads as a standalone directive.
+    public static let defaultSummaryPrompt = summaryTaskInstructions
+
     /// Instructions for the summary task.
-    public static let summaryTaskInstructions = """
-    Produce a clear, well-organized markdown summary of the meeting covering the \
-    key decisions, discussion topics, and outcomes. At the end, include a \
-    "## Action Items" section as a checklist using `- [ ]` format, with owners \
-    noted when clear from the transcript. You may reference the speaker names \
-    identified earlier, but do NOT repeat or restate the speaker mapping/list. \
-    Your response must contain ONLY a summary of the meeting and nothing else: \
-    no speaker mapping, no preamble, no commentary, and no content that is not \
-    in the transcript. Output markdown only, and begin your response directly \
-    with the summary.
+    static let summaryTaskInstructions = """
+    Next produce a clear, well-organized markdown summary of the meeting.
+
+    Important: Your response must contain ONLY a summary of the meeting and \
+    nothing else: no speaker mapping, no preamble, no commentary, and no \
+    content that is not in the transcript. Output markdown only, and begin \
+    your response directly with the summary.
+
+    Your summary should include the following sections (and optional \
+    sub-sections at your discretion):
+
+    ## Summary
+    A summary covering the key decisions, discussion topics, and outcomes.
+
+    ## Action Items
+    A checklist using `- [ ]` format, with owners noted when clear from the \
+    transcript. You may reference the speaker names identified earlier, but \
+    do NOT repeat or restate the speaker mapping/list.
     """
 
     // MARK: - User Turn Builders
@@ -142,9 +159,16 @@ public enum IntelligencePrompts {
 
     /// First user turn when ONLY the summary runs (no speaker turn).
     /// Transcript uses resolved human names where available.
+    ///
+    /// When the instructions are the built-in default, strips the leading
+    /// "Next " framing word so the prompt reads as a standalone directive
+    /// ("Produce a clear...") rather than a follow-up ("Next produce a
+    /// clear..."). Custom prompts are passed through verbatim -- a user
+    /// who writes "Next " at the start of their own prompt intends it.
     public static func summaryOnlyFirstUser(
         detail: MeetingDetailData,
-        transcriptNamed: String
+        transcriptNamed: String,
+        summaryInstructions: String = defaultSummaryPrompt
     ) -> String {
         var parts: [String] = []
 
@@ -152,13 +176,32 @@ public enum IntelligencePrompts {
         if !details.isEmpty { parts.append(details) }
 
         parts.append("<transcript>\n\(transcriptNamed)\n</transcript>")
-        parts.append(summaryTaskInstructions)
+
+        // Only strip "Next " from the built-in default prompt. Custom
+        // prompts are passed through verbatim so user text is never
+        // silently modified.
+        if summaryInstructions == defaultSummaryPrompt,
+           summaryInstructions.hasPrefix("Next ")
+        {
+            var stripped = String(summaryInstructions.dropFirst(5))
+            if let first = stripped.first {
+                stripped = first.uppercased() + stripped.dropFirst()
+            }
+            parts.append(stripped)
+        } else {
+            parts.append(summaryInstructions)
+        }
 
         return parts.joined(separator: "\n\n")
     }
 
     /// Follow-up user turn for the summary task (transcript already in context).
-    public static let summaryFollowUpUser = summaryTaskInstructions
+    /// Defaults to the factory-default summary instructions.
+    public static func summaryFollowUpUser(
+        summaryInstructions: String = defaultSummaryPrompt
+    ) -> String {
+        summaryInstructions
+    }
 
     // MARK: - Title Task
 

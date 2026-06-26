@@ -4,6 +4,7 @@ import DataStore
 import DesignSystem
 import Intelligence
 import MarkdownEditorUI
+import SummaryPromptUI
 import SwiftUI
 import TranscriptionService
 
@@ -142,18 +143,18 @@ public struct MeetingDetailView: View {
                 "This permanently deletes the recording and transcript."
             )
         }
-        .confirmationDialog(
-            "Replace your edited summary?",
-            isPresented: $viewModel.showRegenerateConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Replace", role: .destructive) {
-                viewModel.confirmRegenerate()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "This overwrites the summary you edited with a new AI-generated one."
+        .sheet(item: $viewModel.summaryPromptModel) { model in
+            SummaryPromptSheet(
+                model: model,
+                onSave: { _ in },
+                onRegenerate: { text, alsoSave in
+                    viewModel.regenerate(
+                        withPrompt: text, alsoSave: alsoSave
+                    )
+                },
+                onCancel: {
+                    viewModel.summaryPromptModel = nil
+                }
             )
         }
         .sheet(
@@ -488,7 +489,7 @@ private extension MeetingDetailView {
 
             if viewModel.canRegenerateSummary {
                 Button {
-                    viewModel.generateSummary()
+                    viewModel.presentResummarizeSheet()
                 } label: {
                     Label(
                         "Regenerate Summary",

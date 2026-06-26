@@ -5,6 +5,7 @@ import DataStore
 import DesignSystem
 import Foundation
 import Intelligence
+import SummaryPromptUI
 import TranscriptionService
 
 /// The three display states of the Meeting Detail screen.
@@ -181,8 +182,11 @@ public final class MeetingDetailViewModel {
     /// Whether the user has manually edited the summary.
     public private(set) var editedSummary: Bool = false
 
-    /// Whether to show the regenerate-edited-summary confirmation dialog.
-    public var showRegenerateConfirm: Bool = false
+    /// The model for the summary prompt sheet. Setting to non-nil presents the
+    /// sheet (via `.sheet(item:)`); nil dismisses it. This replaces the former
+    /// two-state (`showResummarizeSheet` + `summaryPromptModel`) pattern which
+    /// raced: the sheet could present before the model was populated.
+    public var summaryPromptModel: SummaryPromptModel?
 
     /// Debounce handle for summary autosave.
     private var summaryAutosaveTask: Task<Void, Never>?
@@ -1119,20 +1123,77 @@ public extension MeetingDetailViewModel {
         }
     }
 
-    /// Initiates summary generation. If the summary has been edited,
-    /// shows a confirmation dialog; otherwise generates immediately.
-    func generateSummary() {
-        if editedSummary {
-            showRegenerateConfirm = true
-        } else {
-            runSummary(force: false)
+    /// Opens the summary prompt sheet for re-summarization.
+    ///
+    /// Prepares a `SummaryPromptModel` with the effective saved prompt and
+    /// presents the sheet. Setting `summaryPromptModel` to non-nil drives
+    /// the `.sheet(item:)` presentation, so the model is guaranteed to be
+    /// populated when the sheet content is first evaluated. The first-run
+    /// "Generate Summary" button (no prior summary) still calls
+    /// `runSummary(force: false)` directly.
+    func presentResummarizeSheet() {
+        Task {
+            let effective = await core.effectiveSummaryPrompt()
+            let reference = MeetingReference(
+                title: detail?.title ?? "",
+                date: detail?.date ?? Date(),
+                duration: detail?.duration
+            )
+            summaryPromptModel = SummaryPromptModel(
+                workingText: effective,
+                initialText: effective,
+                defaultText: core.defaultSummaryPrompt,
+                mode: .perMeeting(
+                    reference: reference,
+                    summaryWasEdited: editedSummary
+                )
+            )
         }
     }
 
-    /// Confirms regeneration after the user accepted the overwrite dialog.
-    func confirmRegenerate() {
-        showRegenerateConfirm = false
-        runSummary(force: true)
+    /// Initiates summary generation for the first-run "Generate Summary"
+    /// button (no prior summary). Uses the saved prompt directly.
+    func generateSummary() {
+        runSummary(force: false)
+    }
+
+    /// Regenerates this meeting's summary with the given prompt text.
+    ///
+    /// The `markEdited` flag is computed per the ownership rule:
+    /// - Prompt == effective global (after any save): `false` (standard result).
+    /// - Prompt != effective global, alsoSave off: `true` (meeting-specific).
+    /// - Prompt != effective global, alsoSave on: the save makes them equal,
+    ///   so `false` (now the user's standard prompt).
+    func regenerate(withPrompt text: String, alsoSave: Bool) {
+        guard let transcriptID = activeVersionID else { return }
+
+        summaryRegenRequested = true
+        selectedTab = .summary
+        summaryPromptModel = nil
+
+        Task {
+            // Save first (if requested) so the effective prompt is updated
+            // before the markEdited comparison.
+            if alsoSave {
+                try? await core.saveSummaryPrompt(text)
+            }
+
+            // Resolve the effective global prompt AFTER the save step
+            let effectiveGlobal = await core.effectiveSummaryPrompt()
+            let trimmedText = text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedGlobal = effectiveGlobal
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let markEdited = !alsoSave && trimmedText != trimmedGlobal
+
+            await core.intelligence.runAnalysis(
+                meetingID: meetingID,
+                transcriptID: transcriptID,
+                force: true,
+                summaryPromptOverride: text,
+                markResultEdited: markEdited
+            )
+        }
     }
 
     /// Retries a failed summary generation (force = true).

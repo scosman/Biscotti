@@ -522,4 +522,24 @@ public extension SettingsViewModel {
             aiAnalysisEnabled = !enabled
         }
     }
+
+    /// Loads the effective summary prompt (custom if set, else factory default).
+    func loadEffectivePrompt() async -> String {
+        await core.effectiveSummaryPrompt()
+    }
+
+    /// The factory-default summary prompt, surfaced for sheet initialization
+    /// without importing Intelligence in the view.
+    var defaultSummaryPrompt: String {
+        core.defaultSummaryPrompt
+    }
+
+    /// Persists the summary prompt using the clear-to-default rule.
+    ///
+    /// No settings reload is needed: no visible Settings row reflects the
+    /// stored prompt value. The effective prompt is loaded on-demand when
+    /// the sheet reopens (via `loadEffectivePrompt`).
+    func saveSummaryPrompt(_ text: String) async {
+        try? await core.saveSummaryPrompt(text)
+    }
 }

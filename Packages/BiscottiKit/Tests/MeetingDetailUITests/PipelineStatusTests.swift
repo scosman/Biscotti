@@ -349,9 +349,11 @@ struct PipelinePreparingTests {
         #expect(stages[0].label == "Transcribing")
         #expect(stages[0].state == .done)
 
-        // Gated stages should be .pending during .preparing
+        // .preparing = enhancement has started working (model load,
+        // settings read). Speaker inference is next, so it shows as
+        // active; summarizing is still pending.
         #expect(stages[1].label == "Inferring participant names")
-        #expect(stages[1].state == .pending)
+        #expect(stages[1].state == .active)
         #expect(stages[2].label == "Summarizing")
         #expect(stages[2].state == .pending)
     }
@@ -399,11 +401,12 @@ struct PipelinePreparingTests {
         )
         await viewModel.load()
 
-        // Phase 0: Preparing (before model load)
+        // Phase 0: Preparing (model load / settings read). Speaker
+        // inference is the next stage, so it shows active immediately.
         fix.intelligence.jobs[meetingID] = .preparing
         var stages = try #require(viewModel.pipelineStages)
         #expect(stages[0].state == .done) // Transcribing (not running)
-        #expect(stages[1].state == .pending) // Inferring
+        #expect(stages[1].state == .active) // Inferring (preparing)
         #expect(stages[2].state == .pending) // Summarizing
 
         // Phase 1: Speaker ID starts
@@ -702,11 +705,12 @@ struct PipelineHandoffTests {
         fix.core.transcription.jobs[meetingID] = .completed
         #expect(viewModel.pipelineStages != nil)
 
-        // Enhancement starts -- handoff gap ends, normal pipeline takes over
+        // Enhancement starts -- .preparing = actively working (model load).
+        // Speaker inference is active from the moment enhancement begins.
         fix.intelligence.jobs[meetingID] = .preparing
         let stages = try #require(viewModel.pipelineStages)
         #expect(stages[1] == PipelineStage(
-            label: "Inferring participant names", state: .pending
+            label: "Inferring participant names", state: .active
         ))
     }
 
@@ -836,11 +840,12 @@ struct PipelineRegenerateStagesTests {
         viewModel.summaryRegenRequested = true
         fix.intelligence.jobs[meetingID] = .preparing
 
-        // Phase 0: Preparing -- all 3 stages
+        // Phase 0: Preparing -- all 3 stages; speaker stage is active
+        // because regenStartup bridges the gap until .identifyingSpeakers
         var stages = try #require(viewModel.pipelineStages)
         #expect(stages.count == 3)
         #expect(stages[0].state == .done) // Transcribing
-        #expect(stages[1].state == .pending) // Inferring
+        #expect(stages[1].state == .active) // Inferring (regen startup)
         #expect(stages[2].state == .pending) // Summarizing
 
         // Phase 1: Speaker ID running
@@ -857,8 +862,10 @@ struct PipelineRegenerateStagesTests {
         #expect(stages[1].state == .done) // Inferring
         #expect(stages[2].state == .active) // Summarizing
 
-        // Phase 3: Completed
+        // Phase 3: Completed -- onEnhancementStatusChange resets
+        // summaryRegenRequested, which clears the pipeline
         fix.intelligence.jobs[meetingID] = .completed
+        await viewModel.onEnhancementStatusChange(.completed)
         #expect(viewModel.pipelineStages == nil)
     }
 
@@ -915,6 +922,268 @@ struct PipelineRegenerateStagesTests {
             .failed(message: "model error")
         )
         #expect(viewModel.summaryRegenRequested == false)
+    }
+}
+
+// MARK: - Regenerate startup window (Issue 1 regenerate path)
+
+@Suite("Pipeline status -- regenerate startup spinner")
+struct PipelineRegenerateStartupTests {
+    @Test("regenerate startup: .preparing shows active speaker immediately")
+    @MainActor
+    func regenStartupPreparingShowsActive() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Startup Preparing"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate regenerate: summaryRegenRequested set synchronously,
+        // then the Task body sets .preparing (overwriting stale .completed)
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        // Speaker stage is active from .preparing (model load = work started)
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[0] == PipelineStage(
+            label: "Transcribing", state: .done
+        ))
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .active
+        ))
+        #expect(stages[2] == PipelineStage(
+            label: "Summarizing", state: .pending
+        ))
+    }
+
+    @Test("regenerate startup shows active speaker stage when enhStatus is nil")
+    @MainActor
+    func regenStartupWithNilStatus() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Startup Nil"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // enhStatus is nil (never run before), but summaryRegenRequested
+        // is true (user clicked Generate Summary for the first time)
+        viewModel.summaryRegenRequested = true
+
+        // Only regenStartup applies here (jobStatus is nil, not
+        // .completed, so handoffToEnhancement does not match).
+        // Pipeline is visible with an active spinner via regenStartup.
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .active
+        ))
+    }
+
+    @Test("regenerate full lifecycle: preparing -> speakers -> summarizing -> done")
+    @MainActor
+    func regenStartupFullLifecycle() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Transition"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Phase 0: Regenerate requested, Task body sets .preparing
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+        var stages = try #require(viewModel.pipelineStages)
+        #expect(stages[1].state == .active) // preparing = active
+
+        // Phase 1: .identifyingSpeakers
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages[1].state == .active) // genuinely active
+
+        // Phase 2: .summarizing -- speakers done
+        fix.intelligence.jobs[meetingID] = .summarizing
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages[1].state == .done) // speakers done
+        #expect(stages[2].state == .active) // summarizing active
+
+        // Phase 3: Completed -- onEnhancementStatusChange resets
+        // summaryRegenRequested, which clears the pipeline
+        fix.intelligence.jobs[meetingID] = .completed
+        await viewModel.onEnhancementStatusChange(.completed)
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("regenerate startup with editedSummary still shows all 3 stages")
+    @MainActor
+    func regenStartupWithEditedSummary() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Edited Startup"
+        )
+        try await fix.store.setSummary(
+            "User edited", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+        #expect(viewModel.editedSummary == true)
+
+        // Regenerate startup with editedSummary: .preparing shows all 3
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3) // All 3 stages, not 2
+        #expect(stages[0].state == .done)
+        #expect(stages[1].state == .active)
+        #expect(stages[2].state == .pending)
+    }
+
+    @Test("regenerate startup not triggered when AI is disabled")
+    @MainActor
+    func regenStartupNotTriggeredWhenAIOff() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { settings in
+            settings.aiAnalysisEnabled = false
+        }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen AI Off"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        fix.intelligence.jobs[meetingID] = .completed
+        viewModel.summaryRegenRequested = true
+
+        // No pipeline because AI is off
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("regenerate startup not triggered when no model")
+    @MainActor
+    func regenStartupNotTriggeredWhenNoModel() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: false,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen No Model"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        fix.intelligence.jobs[meetingID] = .completed
+        viewModel.summaryRegenRequested = true
+
+        // No pipeline because no model
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("regen startup speaker is done once enhancement reaches .summarizing")
+    @MainActor
+    func regenStartupSpeakerDoneOnceSummarizing() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Speaker Done"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .summarizing
+
+        let stages = try #require(viewModel.pipelineStages)
+        // regenStartup is true but enhStatus == .summarizing, so the
+        // regenStartup clause for speakers is excluded (guard excludes
+        // .summarizing); speakers fall to .done
+        #expect(stages[1].state == .done) // speakers done
+        #expect(stages[2].state == .active) // summarizing active
+    }
+
+    @Test("regen startup with stale .completed shows speakers as done, not active")
+    @MainActor
+    func regenStartupStaleCompletedShowsDone() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Stale Completed"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Stale .completed from a prior run + summaryRegenRequested
+        // (the one-tick window before the Task body sets .preparing)
+        fix.intelligence.jobs[meetingID] = .completed
+        viewModel.summaryRegenRequested = true
+
+        // Pipeline IS visible (regenStartup keeps it showing)
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+
+        // Speaker stage must be .done, NOT .active — the .completed
+        // exclusion prevents a spinner on a fully-completed enhancement
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .done
+        ))
+        #expect(stages[2] == PipelineStage(
+            label: "Summarizing", state: .pending
+        ))
     }
 }
 

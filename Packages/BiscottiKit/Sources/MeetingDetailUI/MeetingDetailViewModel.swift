@@ -646,8 +646,19 @@ public extension MeetingDetailViewModel {
             && enhStatus == nil
             && aiAnalysisEnabled && modelAvailable
 
+        // Regenerate startup: summaryRegenRequested is set synchronously
+        // in runSummary(force:) / regenerate(withPrompt:alsoSave:), but
+        // the Task body that calls intelligence.runAnalysis() may not
+        // have executed yet — the enhancement status can still be stale
+        // (.completed from the prior run, or nil). Keep the pipeline
+        // visible and show the first stage as active so the user sees
+        // an immediate spinner the moment they trigger regenerate.
+        let regenStartup = summaryRegenRequested
+            && aiAnalysisEnabled && modelAvailable
+            && !transcriptionActive
+
         guard transcriptionActive || enhancementActive
-            || handoffToEnhancement
+            || handoffToEnhancement || regenStartup
         else {
             return nil
         }
@@ -670,11 +681,26 @@ public extension MeetingDetailViewModel {
             let speakerState: StageState =
                 if enhStatus == .identifyingSpeakers {
                     .active
+                } else if enhStatus == .preparing {
+                    // Enhancement work has started (loading model, reading
+                    // settings/data). Speaker inference is the next step --
+                    // show as active so the spinner runs from the moment
+                    // work begins, not when inference tokens arrive.
+                    .active
                 } else if handoffToEnhancement {
                     // Transcription just finished; enhancement hasn't set
                     // .preparing yet. Show as active to bridge the gap.
                     .active
-                } else if transcriptionActive || enhStatus == .preparing {
+                } else if regenStartup, enhStatus != .summarizing,
+                          enhStatus != .generatingTitle,
+                          enhStatus != .completed
+                {
+                    // Regenerate just requested: enhancement hasn't reached
+                    // .preparing yet (still nil from prior run cleared by
+                    // onEnhancementStatusChange). Show active immediately
+                    // so the user sees a spinner.
+                    .active
+                } else if transcriptionActive {
                     .pending
                 } else {
                     // Transcription done. Enhancement active but not on speakers
@@ -702,6 +728,7 @@ public extension MeetingDetailViewModel {
                     || enhStatus == .identifyingSpeakers
                     || enhStatus == .preparing
                     || handoffToEnhancement
+                    || regenStartup
                 {
                     .pending
                 } else {

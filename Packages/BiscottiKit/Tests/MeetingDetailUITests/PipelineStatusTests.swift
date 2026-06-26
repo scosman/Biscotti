@@ -539,8 +539,10 @@ struct PipelineAutoJumpTests {
         fix.core.transcription.jobs[meetingID] = .transcribing
         #expect(viewModel.isPipelineActive == true)
 
+        // Transcription completed with AI on + model available: handoff
+        // state keeps the pipeline active while enhancement starts up.
         fix.core.transcription.jobs[meetingID] = .completed
-        #expect(viewModel.isPipelineActive == false)
+        #expect(viewModel.isPipelineActive == true)
 
         fix.intelligence.jobs[meetingID] = .identifyingSpeakers
         #expect(viewModel.isPipelineActive == true)
@@ -587,6 +589,332 @@ struct PipelineReTranscribeTests {
 
         // The LLM runner should have been called (proving auto-enhancements ran)
         #expect(fix.fakeLLMRunner.sessionCount == 1)
+    }
+}
+
+// MARK: - Handoff gap (Issue 1: no spinner between transcribe and enhance)
+
+@Suite("Pipeline status -- transcription-to-enhancement handoff")
+struct PipelineHandoffTests {
+    @Test("pipeline stays visible during handoff gap (transcription completed, enhancement not started)")
+    @MainActor
+    func handoffGapShowsPipeline() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Handoff Gap"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate the gap: transcription completed, no enhancement yet
+        fix.core.transcription.jobs[meetingID] = .completed
+        // enhStatus is nil -- the gap state
+
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[0] == PipelineStage(
+            label: "Transcribing", state: .done
+        ))
+        // Speaker inference shows as active during handoff
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .active
+        ))
+        #expect(stages[2] == PipelineStage(
+            label: "Summarizing", state: .pending
+        ))
+    }
+
+    @Test("handoff gap not triggered when AI analysis is disabled")
+    @MainActor
+    func handoffGapNotShownWhenAIOff() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { settings in
+            settings.aiAnalysisEnabled = false
+        }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Handoff AI Off"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        fix.core.transcription.jobs[meetingID] = .completed
+
+        // No pipeline visible because AI is off
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("handoff gap not triggered when no model available")
+    @MainActor
+    func handoffGapNotShownWhenNoModel() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: false,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Handoff No Model"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        fix.core.transcription.jobs[meetingID] = .completed
+
+        // No pipeline visible because no model
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("handoff gap clears when enhancement starts")
+    @MainActor
+    func handoffGapClearsOnEnhancementStart() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Handoff Clear"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Start in handoff gap
+        fix.core.transcription.jobs[meetingID] = .completed
+        #expect(viewModel.pipelineStages != nil)
+
+        // Enhancement starts -- handoff gap ends, normal pipeline takes over
+        fix.intelligence.jobs[meetingID] = .preparing
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .pending
+        ))
+    }
+
+    @Test("handoff gap omits Summarizing when editedSummary is true")
+    @MainActor
+    func handoffGapOmitsSummarizingWhenEdited() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Handoff Edited"
+        )
+        // Mark summary as user-edited
+        try await fix.store.setSummary(
+            "User edited", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Handoff gap with editedSummary: should show 2 stages only
+        fix.core.transcription.jobs[meetingID] = .completed
+
+        let stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 2)
+        #expect(stages[0] == PipelineStage(
+            label: "Transcribing", state: .done
+        ))
+        #expect(stages[1] == PipelineStage(
+            label: "Inferring participant names", state: .active
+        ))
+    }
+
+    @Test("isPipelineActive is true during handoff gap")
+    @MainActor
+    func isPipelineActiveDuringHandoff() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Active Handoff"
+        )
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        fix.core.transcription.jobs[meetingID] = .completed
+
+        #expect(viewModel.isPipelineActive == true)
+    }
+}
+
+// MARK: - Regenerate shows all stages (Issue 2: missing Summarizing stage)
+
+@Suite("Pipeline status -- regenerate shows Summarizing stage")
+struct PipelineRegenerateStagesTests {
+    @Test("regenerate shows Summarizing stage even when editedSummary is true")
+    @MainActor
+    func regenerateShowsSummarizingWhenEdited() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Stages"
+        )
+        // Mark summary as user-edited
+        try await fix.store.setSummary(
+            "User edited", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Without regeneration: pipeline omits Summarizing when edited
+        fix.intelligence.jobs[meetingID] = .preparing
+        var stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 2) // Transcribing + Inferring only
+
+        // Set summaryRegenRequested (as runSummary does)
+        viewModel.summaryRegenRequested = true
+
+        // Now the pipeline should show all 3 stages
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[0].label == "Transcribing")
+        #expect(stages[1].label == "Inferring participant names")
+        #expect(stages[2].label == "Summarizing")
+        #expect(stages[2].state == .pending)
+    }
+
+    @Test("regenerate pipeline shows Summarizing through full lifecycle")
+    @MainActor
+    func regenerateFullLifecycle() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Lifecycle"
+        )
+        try await fix.store.setSummary(
+            "User edited", for: meetingID
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        // Simulate regenerate request
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+
+        // Phase 0: Preparing -- all 3 stages
+        var stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[0].state == .done) // Transcribing
+        #expect(stages[1].state == .pending) // Inferring
+        #expect(stages[2].state == .pending) // Summarizing
+
+        // Phase 1: Speaker ID running
+        fix.intelligence.jobs[meetingID] = .identifyingSpeakers
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[1].state == .active) // Inferring
+        #expect(stages[2].state == .pending) // Summarizing
+
+        // Phase 2: Summarizing
+        fix.intelligence.jobs[meetingID] = .summarizing
+        stages = try #require(viewModel.pipelineStages)
+        #expect(stages.count == 3)
+        #expect(stages[1].state == .done) // Inferring
+        #expect(stages[2].state == .active) // Summarizing
+
+        // Phase 3: Completed
+        fix.intelligence.jobs[meetingID] = .completed
+        #expect(viewModel.pipelineStages == nil)
+    }
+
+    @Test("summaryRegenRequested resets on completion")
+    @MainActor
+    func summaryRegenRequestedResetsOnCompletion() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Reset"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.summaryRegenRequested = true
+        #expect(viewModel.summaryRegenRequested == true)
+
+        // Completion resets the flag
+        await viewModel.onEnhancementStatusChange(.completed)
+        #expect(viewModel.summaryRegenRequested == false)
+    }
+
+    @Test("summaryRegenRequested resets on failure")
+    @MainActor
+    func summaryRegenRequestedResetsOnFailed() async throws {
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PipelineStatusTests"
+        )
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Regen Failed Reset"
+        )
+
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core, meetingID: meetingID
+        )
+        await viewModel.load()
+
+        viewModel.summaryRegenRequested = true
+        fix.intelligence.jobs[meetingID] = .preparing
+        #expect(viewModel.summaryRegenRequested == true)
+
+        // Failure resets the flag so the pipeline doesn't stick
+        await viewModel.onEnhancementStatusChange(
+            .failed(message: "model error")
+        )
+        #expect(viewModel.summaryRegenRequested == false)
     }
 }
 

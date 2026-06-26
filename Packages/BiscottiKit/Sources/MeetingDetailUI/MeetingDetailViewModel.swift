@@ -620,6 +620,7 @@ public extension MeetingDetailViewModel {
     /// (no transcription or enhancement in progress). Stage gating:
     /// - "Inferring participant names" only when guessSpeakers on + model
     /// - "Summarizing" only when summarize on + model + !editedSummary
+    ///   (overridden by `summaryRegenRequested` for explicit Regenerate)
     var pipelineStages: [PipelineStage]? {
         let jobStatus = core.transcription.jobs[meetingID]
         let enhStatus = core.intelligence.jobs[meetingID]
@@ -636,7 +637,18 @@ public extension MeetingDetailViewModel {
         default: false
         }
 
-        guard transcriptionActive || enhancementActive else {
+        // Handoff state: transcription just completed and AI enhancement
+        // is about to start (the sequential await gap in stopRecording's
+        // Task between `transcribe()` returning and `runAutoEnhancements()`
+        // setting .preparing). Show the pipeline with speaker inference
+        // as active so the user never sees a dead-spinner gap.
+        let handoffToEnhancement = jobStatus == .completed
+            && enhStatus == nil
+            && aiAnalysisEnabled && modelAvailable
+
+        guard transcriptionActive || enhancementActive
+            || handoffToEnhancement
+        else {
             return nil
         }
 
@@ -658,6 +670,10 @@ public extension MeetingDetailViewModel {
             let speakerState: StageState =
                 if enhStatus == .identifyingSpeakers {
                     .active
+                } else if handoffToEnhancement {
+                    // Transcription just finished; enhancement hasn't set
+                    // .preparing yet. Show as active to bridge the gap.
+                    .active
                 } else if transcriptionActive || enhStatus == .preparing {
                     .pending
                 } else {
@@ -672,8 +688,12 @@ public extension MeetingDetailViewModel {
         }
 
         // Stage 3: Summarizing (gated)
+        // Show when AI is on + model available + either the summary hasn't
+        // been user-edited OR the user explicitly requested regeneration
+        // (summaryRegenRequested overrides the editedSummary gate so the
+        // pipeline always shows the full 3-stage progress on Regenerate).
         let showSummary = aiAnalysisEnabled && modelAvailable
-            && !editedSummary
+            && (!editedSummary || summaryRegenRequested)
         if showSummary {
             let summaryState: StageState =
                 if enhStatus == .summarizing {
@@ -681,6 +701,7 @@ public extension MeetingDetailViewModel {
                 } else if transcriptionActive
                     || enhStatus == .identifyingSpeakers
                     || enhStatus == .preparing
+                    || handoffToEnhancement
                 {
                     .pending
                 } else {

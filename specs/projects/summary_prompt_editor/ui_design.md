@@ -38,7 +38,7 @@ Customize the instructions used to write meeting summaries.
 ## 2. The editor sheet — shared layout
 
 One reusable view, two modes (Global / Per-meeting). Standard modal `.sheet`, fixed
-width **720** (the design's editor width), height fits content up to the window height,
+width **792** (the design's editor width), height fits content up to the window height,
 the editor scrolls internally. Outer `VStack(alignment:.leading, spacing: spacingMD)`,
 padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 
@@ -54,7 +54,7 @@ padding `spacingLG`. Top → bottom, **matching the design spec's order**:
 8. **Footer** — Restore Default · spacer · Cancel · primary.
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐  width 720
+┌──────────────────────────────────────────────────────────────────────┐  width 792
 │  MEETING SUMMARY                                                       │  kicker(), .sage
 │  Summary Prompt                                                        │  biscottiSerif(27), .ink
 │  These are the instructions Biscotti sends the on-device model to      │  .system(size:13), .inkSecondary

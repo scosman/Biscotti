@@ -47,7 +47,7 @@ public struct SummaryPromptSheet: View {
             footerSection
         }
         .padding(Tokens.spacingLG)
-        .frame(width: 720)
+        .frame(width: 792)
         .confirmationDialog(
             "Restore the default summary prompt?",
             isPresented: $showRestoreConfirm,

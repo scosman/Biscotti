@@ -12,11 +12,15 @@ import SwiftUI
 /// In-window settings screen. General preferences, permissions overview
 /// with inline request/grant actions, and calendar include/exclude.
 public struct SettingsView: View {
-    /// Internal (not private) so the cross-file extension in
-    /// SettingsSystemAudioRow.swift can bind to it.
+    /// Internal (not private) so cross-file extensions in
+    /// SettingsSystemAudioRow.swift and SettingsCalendarSection.swift
+    /// can bind to it.
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
     @State private var showManageModels = false
+    /// Internal (not private) so the cross-file calendar section extension
+    /// can present the sheet.
+    @State var showConnectCalendar = false
     @State private var summaryPromptModel: SummaryPromptModel?
 
     public init(viewModel: SettingsViewModel) {
@@ -164,37 +168,9 @@ public struct SettingsView: View {
         )
     }
 
-    // MARK: - Calendar section
+    // MARK: - Calendar helpers (section body is in SettingsCalendarSection.swift)
 
-    private var calendarSection: some View {
-        Section(Self.sectionTitles[4]) {
-            if viewModel.calendarState == .authorized {
-                if viewModel.calendarGroups.isEmpty {
-                    Text("No calendars found.")
-                        .font(Tokens.metadataFont)
-                        .foregroundStyle(Tokens.secondaryText)
-                } else {
-                    ForEach(viewModel.calendarGroups) { group in
-                        Section(header: Text(group.sourceTitle)) {
-                            ForEach(group.calendars) { cal in
-                                calendarRow(cal)
-                            }
-                        }
-                    }
-                }
-            } else {
-                Text("Calendar access not granted.")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                permissionActionButton(
-                    state: viewModel.calendarState,
-                    kind: .calendar
-                )
-            }
-        }
-    }
-
-    private func calendarRow(_ cal: CalendarInfo) -> some View {
+    func calendarRow(_ cal: CalendarInfo) -> some View {
         Toggle(isOn: calendarBinding(cal.id)) {
             HStack(spacing: Tokens.spacingSM) {
                 Circle()
@@ -205,7 +181,7 @@ public struct SettingsView: View {
         }
     }
 
-    private func calendarBinding(_ id: String) -> Binding<Bool> {
+    func calendarBinding(_ id: String) -> Binding<Bool> {
         Binding(
             get: { viewModel.isCalendarEnabled(id) },
             set: { _ in Task { await viewModel.toggleCalendar(id) } }
@@ -261,7 +237,7 @@ public struct SettingsView: View {
     /// - `.denied` -> "Open Settings" (deep link to System Settings)
     /// - `.authorized` -> no button
     @ViewBuilder
-    private func permissionActionButton(
+    func permissionActionButton(
         state: PermissionState,
         kind: PermissionKind
     ) -> some View {

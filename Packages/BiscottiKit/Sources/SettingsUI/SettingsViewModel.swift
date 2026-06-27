@@ -411,6 +411,14 @@ public final class SettingsViewModel {
         calendarGroups = Self.groupCalendars(infos)
     }
 
+    /// Re-fetches the calendar list from EventKit. Called on app-foreground
+    /// so that newly added accounts appear without restarting.
+    public func reloadCalendars() async {
+        guard calendarState == .authorized else { return }
+        let infos = await core.calendar.calendars()
+        calendarGroups = Self.groupCalendars(infos)
+    }
+
     // MARK: - Grouping (pure, testable)
 
     /// Groups CalendarInfo items by sourceTitle.

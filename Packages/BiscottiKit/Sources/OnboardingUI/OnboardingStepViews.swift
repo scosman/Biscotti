@@ -1,3 +1,4 @@
+import AppKit
 import Calendar
 import DesignSystem
 import ModelManagementUI
@@ -213,8 +214,18 @@ extension OnboardingView {
                 .foregroundStyle(.inkSecondary)
                 .padding(.top, 12)
 
-            calendarToggles
-                .padding(.top, 20)
+            if viewModel.calendarGroups.isEmpty {
+                calendarEmptyState
+                    .padding(.top, 20)
+            } else {
+                calendarToggles
+                    .padding(.top, 20)
+
+                MissingCalendarsHint(onMoreInfo: {
+                    viewModel.showConnectCalendarSheet = true
+                })
+                .padding(.top, Tokens.spacingSM)
+            }
 
             Button("Continue") {
                 Task { await viewModel.advance() }
@@ -222,6 +233,50 @@ extension OnboardingView {
             .buttonStyle(OnboardingPrimaryButtonStyle())
             .padding(.top, 24)
         }
+        .sheet(isPresented: $viewModel.showConnectCalendarSheet) {
+            ConnectCalendarSheet()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            Task { await viewModel.reloadCalendars() }
+        }
+    }
+
+    /// Rich empty state for onboarding: icon tile + serif headline + body + "More info".
+    private var calendarEmptyState: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            // Calendar icon tile
+            RoundedRectangle(cornerRadius: Tokens.buttonRadius)
+                .fill(Color.neutralChip)
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Image(systemName: "calendar")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.inkSecondary)
+                )
+
+            Text("No calendars found")
+                .font(.serifHeadline)
+                .foregroundStyle(.ink)
+
+            Text(
+                "If you use Google Calendar in the browser, add your Google account to the Mac\u{2019}s Calendar app so Biscotti can see your events."
+            )
+            .font(.system(size: 14))
+            .foregroundStyle(.inkSecondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 400)
+
+            MoreInfoLink(action: {
+                viewModel.showConnectCalendarSheet = true
+            })
+        }
+        .padding(Tokens.spacingLG)
+        .homeCard()
+        .frame(maxWidth: 520)
     }
 
     private var calendarToggles: some View {

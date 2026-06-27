@@ -98,6 +98,9 @@ public final class OnboardingViewModel {
     /// Presentation state for the "See all options" Manage Models sheet.
     public var showVariantSheet: Bool = false
 
+    /// Presentation state for the "Connect a calendar" how-to sheet.
+    public var showConnectCalendarSheet: Bool = false
+
     // MARK: - Granted-state derivation
 
     /// Whether the microphone permission has been granted in this session.
@@ -282,6 +285,15 @@ public final class OnboardingViewModel {
         }
     }
 
+    /// Reload the calendar list from EventKit. Called when the app
+    /// returns to the foreground while on the calendar-selection step,
+    /// so newly added accounts appear without restarting.
+    public func reloadCalendars() async {
+        guard currentStep == .calendarSelection else { return }
+        let infos = await core.calendar.calendars()
+        calendarGroups = Self.groupCalendars(infos)
+    }
+
     /// Open System Settings for a denied permission.
     public func openSettings(for kind: PermissionKind) {
         let url = core.permissions.settingsURL(for: kind)
@@ -321,6 +333,7 @@ public final class OnboardingViewModel {
         transcriptionDownloaded = false
         isPreparingModelStep = false
         showVariantSheet = false
+        showConnectCalendarSheet = false
         hasSufficientDisk = true
     }
 

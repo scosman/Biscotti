@@ -576,3 +576,57 @@ struct SettingsSystemAudioTests {
         #expect(viewModel.systemAudioState == .requestedNotVerified)
     }
 }
+
+// MARK: - Calendar reload on foreground
+
+@Suite("SettingsViewModel -- calendar reload")
+@MainActor
+struct SettingsCalendarReloadTests {
+    @Test("reloadCalendars fetches calendars when authorized")
+    func reloadCalendarsWhenAuthorized() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            calendarInfos: []
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+
+        #expect(viewModel.calendarGroups.isEmpty)
+
+        // Simulate adding a calendar externally
+        fixture.fakeEventStore.calendarInfos = [
+            CalendarInfo(
+                id: "c1", title: "Work",
+                colorHex: "#0066CC", sourceTitle: "Google"
+            )
+        ]
+
+        await viewModel.reloadCalendars()
+
+        #expect(viewModel.calendarGroups.count == 1)
+        #expect(viewModel.calendarGroups[0].calendars[0].title == "Work")
+    }
+
+    @Test("reloadCalendars is a no-op when not authorized")
+    func reloadCalendarsNoOpWhenNotAuthorized() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+
+        // Even if calendars are available, reload should not fetch
+        fixture.fakeEventStore.calendarInfos = [
+            CalendarInfo(
+                id: "c1", title: "Work",
+                colorHex: "#0066CC", sourceTitle: "Google"
+            )
+        ]
+
+        await viewModel.reloadCalendars()
+        #expect(viewModel.calendarGroups.isEmpty)
+    }
+}

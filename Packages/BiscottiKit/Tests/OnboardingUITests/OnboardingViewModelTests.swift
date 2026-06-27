@@ -286,6 +286,69 @@ struct OnboardingViewModelTests {
         #expect(model.transcriptionDownloaded == false)
         #expect(model.isPreparingModelStep == false)
         #expect(model.showVariantSheet == false)
+        #expect(model.showConnectCalendarSheet == false)
         #expect(model.hasSufficientDisk == true)
+    }
+}
+
+// MARK: - Calendar reload on foreground
+
+@Suite("OnboardingViewModel -- calendar reload")
+@MainActor
+struct OnboardingCalendarReloadTests {
+    @Test("reloadCalendars fetches calendars when on calendarSelection step")
+    func reloadCalendarsOnCalendarStep() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .authorized,
+            calendarInfos: []
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+
+        // Navigate to calendar selection step
+        await model.advance() // welcome -> permissions
+        await model.requestCalendar()
+        await model.advance() // permissions -> calendarSelection
+
+        #expect(model.currentStep == .calendarSelection)
+        #expect(model.calendarGroups.isEmpty)
+
+        // Simulate adding a calendar externally
+        fixture.fakeEventStore.calendarInfos = [
+            CalendarInfo(
+                id: "c1", title: "Work",
+                colorHex: "#0066CC", sourceTitle: "Google"
+            )
+        ]
+
+        await model.reloadCalendars()
+
+        #expect(model.calendarGroups.count == 1)
+        #expect(model.calendarGroups[0].calendars[0].title == "Work")
+    }
+
+    @Test("reloadCalendars is a no-op when not on calendarSelection step")
+    func reloadCalendarsNoOpOnOtherSteps() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+
+        // Stay on welcome step
+        #expect(model.currentStep == .welcome)
+
+        // Even if there are calendars available, reload should not fetch
+        fixture.fakeEventStore.calendarInfos = [
+            CalendarInfo(
+                id: "c1", title: "Work",
+                colorHex: "#0066CC", sourceTitle: "Google"
+            )
+        ]
+
+        await model.reloadCalendars()
+        #expect(model.calendarGroups.isEmpty)
     }
 }

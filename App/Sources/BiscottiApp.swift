@@ -331,9 +331,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         let hasVisibleWindows = NSApp.windows.contains { window in
             window.isVisible && window.canBecomeMain
         }
-        if !hasVisibleWindows {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        guard !hasVisibleWindows else { return }
+        NSApp.setActivationPolicy(.accessory)
+        // The window's view tree is being torn down; reclaim its
+        // (transient) footprint back to the OS shortly after, once
+        // SwiftUI has finished deallocating the views.
+        MemoryPressure.relieve(after: 1, reason: "window-close")
     }
 
     /// Shows the main window and switches to regular app mode

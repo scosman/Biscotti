@@ -476,6 +476,11 @@ public final class AppCore {
             await intelligence.runAutoEnhancements(meetingID: meetingID)
         }
 
+        // The audio engine and its capture buffers were just torn down;
+        // reclaim that ~transient footprint back to the OS. Delayed so the
+        // teardown has fully settled before we scavenge.
+        MemoryPressure.relieve(after: 4, reason: "recording-stop")
+
         return meetingID
     }
 

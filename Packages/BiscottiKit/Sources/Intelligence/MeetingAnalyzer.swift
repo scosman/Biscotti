@@ -287,4 +287,39 @@ enum MeetingAnalyzer {
             assignments, for: ctx.transcript.id
         )
     }
+
+    // MARK: - Empty-Transcript Short-Circuit
+
+    /// Summary applied when the transcript has zero segments.
+    static let emptyTranscriptSummary = "Meeting transcript was empty."
+
+    /// Title applied when the transcript has zero segments and the
+    /// meeting still has the default title.
+    static let emptyTranscriptTitle = "Empty Meeting"
+
+    /// Applies canned results for an empty transcript without loading
+    /// an LLM model or opening a session. Speaker assignments are left
+    /// untouched (there are no segments to assign).
+    static func applyEmptyTranscriptResults(
+        meetingID: UUID,
+        detail: MeetingDetailData,
+        doSummary: Bool,
+        markSummaryEdited: Bool,
+        store: DataStore
+    ) async throws {
+        if doSummary {
+            try await store.applyGeneratedSummary(
+                emptyTranscriptSummary, for: meetingID,
+                markEdited: markSummaryEdited
+            )
+        }
+
+        let doTitle = detail.title == Meeting.defaultTitle
+            && !detail.editedTitle
+        if doTitle {
+            try await store.applyGeneratedTitle(
+                emptyTranscriptTitle, for: meetingID
+            )
+        }
+    }
 }

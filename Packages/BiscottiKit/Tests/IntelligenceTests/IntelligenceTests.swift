@@ -285,6 +285,29 @@ private func makeMeetingWithTranscript(
     return (meetingID, transcriptID)
 }
 
+private func makeEmptyTranscriptResult() -> TranscriptResult {
+    TranscriptResult(
+        transcriptionMethodId: "v1",
+        language: "en",
+        speakerCount: 0,
+        segments: [],
+        speakerEmbeddings: [:],
+        processingDuration: 0.5
+    )
+}
+
+private func makeMeetingWithEmptyTranscript(
+    store: DataStore, title: String = Meeting.defaultTitle
+) async throws -> (UUID, UUID) {
+    let meetingID = try await store.createMeeting(title: title)
+    let result = makeEmptyTranscriptResult()
+    let transcriptID = try await store.addTranscript(
+        result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+    )
+    try await store.setPreferredTranscript(transcriptID, for: meetingID)
+    return (meetingID, transcriptID)
+}
+
 /// Groups the Intelligence service and its fakes for test convenience.
 struct IntelligenceFixture {
     let intel: Intelligence
@@ -2041,5 +2064,159 @@ struct HumanSetSpeakerMappingsTests {
         await #expect(throws: DataStoreError.self) {
             try await store.humanSetSpeakerMappings(for: UUID())
         }
+    }
+}
+
+// MARK: - Empty Transcript Short-Circuit Tests
+
+@Suite("Empty transcript short-circuit")
+struct EmptyTranscriptTests {
+    @Test("auto-run with empty transcript sets canned summary and title without LLM")
+    @MainActor func autoRunEmptyTranscript() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // No LLM session should have been opened
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.editedSummary == false)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("auto-run with empty transcript skips summary when edited")
+    @MainActor func autoRunEmptyTranscriptEditedSummary() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+        try await store.setSummary("My notes", for: meetingID)
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        // Summary should not have been overwritten
+        #expect(detail?.summary == "My notes")
+        #expect(detail?.editedSummary == true)
+        // Title should still get the canned value
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("auto-run with empty transcript skips title when not default")
+    @MainActor func autoRunEmptyTranscriptCustomTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store, title: "Custom Title"
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        // Title should remain unchanged
+        #expect(detail?.title == "Custom Title")
+    }
+
+    @Test("manual runAnalysis with empty transcript sets canned values")
+    @MainActor func manualRunAnalysisEmptyTranscript() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("manual runAnalysis with empty transcript and markResultEdited=true marks summary edited")
+    @MainActor func manualRunAnalysisEmptyTranscriptMarkEdited() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true,
+            markResultEdited: true
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.editedSummary == true)
+    }
+
+    @Test("auto-run with empty transcript works even without a downloaded model")
+    @MainActor func autoRunEmptyTranscriptNoModel() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(
+            store: store, downloaded: false
+        )
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("manual runAnalysis with empty transcript works even without a downloaded model")
+    @MainActor func manualRunAnalysisEmptyTranscriptNoModel() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(
+            store: store, downloaded: false
+        )
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("empty transcript canned values are correct strings")
+    func cannedValues() {
+        #expect(MeetingAnalyzer.emptyTranscriptSummary == "Meeting transcript was empty.")
+        #expect(MeetingAnalyzer.emptyTranscriptTitle == "Empty Meeting")
     }
 }

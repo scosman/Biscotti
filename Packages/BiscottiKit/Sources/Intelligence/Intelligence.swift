@@ -72,14 +72,30 @@ public final class Intelligence {
             jobs.removeValue(forKey: meetingID)
             return
         }
-        guard let modelURL = modelManager.activeModelURL() else {
-            jobs.removeValue(forKey: meetingID)
-            return
-        }
 
         guard let detail = try? await store.meetingDetail(id: meetingID),
               let transcript = detail.preferredTranscript
         else {
+            jobs.removeValue(forKey: meetingID)
+            return
+        }
+
+        // Empty transcript: apply canned results without a model.
+        if transcript.segments.isEmpty {
+            do {
+                try await MeetingAnalyzer.applyEmptyTranscriptResults(
+                    meetingID: meetingID, detail: detail,
+                    doSummary: !detail.editedSummary,
+                    markSummaryEdited: false, store: store
+                )
+                jobs[meetingID] = .completed
+            } catch {
+                jobs[meetingID] = .failed(message: shortDescription(error))
+            }
+            return
+        }
+
+        guard let modelURL = modelManager.activeModelURL() else {
             jobs.removeValue(forKey: meetingID)
             return
         }
@@ -125,8 +141,6 @@ public final class Intelligence {
             inFlightMeetingID = nil
         }
 
-        guard let modelURL = modelManager.activeModelURL() else { return }
-
         // Set preparing SYNCHRONOUSLY before any await.
         jobs[meetingID] = .preparing
 
@@ -139,6 +153,24 @@ public final class Intelligence {
 
         // Guard against overwriting user edits unless forced
         let doSummary = !detail.editedSummary || force
+
+        // Empty transcript: apply canned results without a model.
+        if transcript.segments.isEmpty {
+            do {
+                try await MeetingAnalyzer.applyEmptyTranscriptResults(
+                    meetingID: meetingID, detail: detail,
+                    doSummary: doSummary,
+                    markSummaryEdited: markResultEdited,
+                    store: store
+                )
+                jobs[meetingID] = .completed
+            } catch {
+                jobs[meetingID] = .failed(message: shortDescription(error))
+            }
+            return
+        }
+
+        guard let modelURL = modelManager.activeModelURL() else { return }
 
         // Resolve the effective summary instruction
         let effective: String = if let override = summaryPromptOverride {

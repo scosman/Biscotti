@@ -44,7 +44,7 @@ triggered — `manual_test_results.json` is untouched.
 
 - [x] **Phase 3 — Chrome, extras & docs.** Toolbar **Home** button (`ToolbarItem(.navigation)`); hide
   the window **title** (`NSWindow.titleVisibility = .hidden` in the app target); Home **"See all"** row
-  at the bottom of Recent Meetings. Repo-root **`architecture.md` doc edits** (rewrite #19
+  at the bottom of Recent Meetings. **`specs/architecture.md` doc edits** (rewrite #19
   *MeetingListUI*; delete #20 *SearchUI*; drop `SRCH` from the dependency graph). Fill in
   `review_for_human.md` → "Autonomous calls made during development". → `ui_design.md` §6, §8,
   `architecture.md` §0, §6.

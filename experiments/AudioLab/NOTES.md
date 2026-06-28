@@ -2,7 +2,7 @@
 
 Working notes for the AudioLab capture experiment. (Hardware-validated test
 scripts live in [`VALIDATION.md`](VALIDATION.md); the deep mic-level writeup lives
-in [`research/audio/mic_capture_level_findings.md`](../../research/audio/mic_capture_level_findings.md).)
+in [`specs/research/audio/mic_capture_level_findings.md`](../../specs/research/audio/mic_capture_level_findings.md).)
 
 ---
 

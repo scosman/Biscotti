@@ -34,7 +34,7 @@ extension MicCapture: MicCapturing {}
 ///
 /// Why this exists: the AVCaptureSession path (`MicCapture`) records the
 /// built-in mic's *raw* 3-channel beamformer array (~−48 dBFS, near-silent
-/// during meetings — see `research/audio/mic_capture_level_findings.md`). The
+/// during meetings — see `specs/research/audio/mic_capture_level_findings.md`). The
 /// loud, normalised, noise-suppressed, echo-cancelled **mono** only exists
 /// *after* Apple's voice-processing pipeline. Becoming a first-class VPIO client
 /// is the only route to it.

@@ -8,7 +8,7 @@ status: complete
 
 This Project ships **no product behavior**. Its "users" are **developers and CI** (human and agent). So the "features" are the **developer command surface**, the **CI gates**, and the **repo skeleton** that every later Project builds inside. The quality bar: a fresh checkout can build, test, lint, and launch an empty app with one set of commands that behave identically locally and in CI.
 
-It realizes the [`architecture.md` workspace layout](../../../architecture.md#workspace-layout) and the [thin-app composition rule](../../../architecture.md#thin-app-composition): everything testable lives in SPM packages (`swift build`/`swift test`); the only thing needing `xcodebuild` is a logic-free app shell.
+It realizes the [`architecture.md` workspace layout](../../architecture.md#workspace-layout) and the [thin-app composition rule](../../architecture.md#thin-app-composition): everything testable lives in SPM packages (`swift build`/`swift test`); the only thing needing `xcodebuild` is a logic-free app shell.
 
 Locked decisions from the overview: **XcodeGen** for the app project, bundle ID **`net.scosman.biscotti`**, **bare-window** shell.
 
@@ -115,7 +115,7 @@ Both tools are used, with a clean division so they don't fight:
 
 Dev/CI only — **no** Developer ID, hardened runtime, or notarization (those are Project 9).
 
-- **Bundle ID:** `net.scosman.biscotti` (locked; TCC grants will persist against it). This **supersedes** the `com.biscotti.app` placeholder in `research/permissions/README.md` — that doc gets a one-line correction as a deliverable here.
+- **Bundle ID:** `net.scosman.biscotti` (locked; TCC grants will persist against it). This **supersedes** the `com.biscotti.app` placeholder in `specs/research/permissions/README.md` — that doc gets a one-line correction as a deliverable here.
 - **Signing:** ad-hoc — `CODE_SIGN_IDENTITY = "-"`, `CODE_SIGN_STYLE = Manual`, `DEVELOPMENT_TEAM` empty (overridable later via an untracked local xcconfig). Enough to launch locally and build in CI; a real team ID/cert is Project 9. *(Per permissions research risk #5, ad-hoc TCC grants can drop across rebuilds — irrelevant now since nothing requests TCC yet.)*
 - **Entitlements (`Biscotti.entitlements`):** `com.apple.security.device.audio-input = true` — wired now so audio Projects don't retrofit; harmless without hardened runtime.
 - **Info.plist usage strings** (verbatim drafts from research, product can reword later):
@@ -222,7 +222,7 @@ The root `CLAUDE.md` currently states there are "no repo-wide check commands unt
 7. `make hooks` installs the pre-commit hook; it formats + re-stages, lints, and runs `swift test`, blocking the commit on any failure.
 8. Build settings enforce Swift 6 language mode (complete concurrency) + warnings-as-errors across packages and app.
 9. `hooks_mcp.yaml` + `.mcp.json` present; an agent can list the actions and run `test`/`lint`/`format` through hooks_mcp (each wrapping its `make` target).
-10. `CLAUDE.md` updated; `research/permissions` bundle-ID line corrected to `net.scosman.biscotti`.
+10. `CLAUDE.md` updated; `specs/research/permissions` bundle-ID line corrected to `net.scosman.biscotti`.
 
 ---
 

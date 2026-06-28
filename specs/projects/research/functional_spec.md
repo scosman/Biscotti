@@ -6,16 +6,16 @@ status: complete
 
 This project is **research, not product**. Its output is knowledge (decision docs) and disposable reference apps (experiments) that de-risk the Biscotti app's hard technical bets. Success is measured by whether, at the end, we can design the core app with **no significant remaining technical unknowns**.
 
-See [`/app_overview.md`](../../../app_overview.md) for the product this research serves.
+See [`specs/app_overview.md`](../../app_overview.md) for the product this research serves.
 
 ## Definition of Done
 
 The project is done when:
 
-1. Every research area below has a **decision doc** under `/research/<area>/` that answers its key questions and records a clear recommendation (not just options).
+1. Every research area below has a **decision doc** under `/specs/research/<area>/` that answers its key questions and records a clear recommendation (not just options).
 2. Every experiment app/library builds, runs, and demonstrates its target capability on real hardware.
 3. Every validation script has been run by the user and its results recorded back into the relevant research doc.
-4. A short top-level `/research/README.md` summarizes the recommendations and links the per-area docs.
+4. A short top-level `/specs/research/README.md` summarizes the recommendations and links the per-area docs.
 
 ## Baseline Assumptions
 
@@ -26,7 +26,7 @@ The project is done when:
 
 ## Deliverable Conventions
 
-- **Research docs:** `/research/<area>/` (e.g. `/research/audio/`). Markdown. Each ends with a **Recommendation** section and an **Open questions for the team** section (genuine choices to send to the ArgMax folks or revisit later).
+- **Research docs:** `/specs/research/<area>/` (e.g. `/specs/research/audio/`). Markdown. Each ends with a **Recommendation** section and an **Open questions for the team** section (genuine choices to send to the ArgMax folks or revisit later).
 - **Experiments:** `/experiments/<Name>/`, each an independent, self-contained app/package. Lighter test bar — test where it materially helps; these are throwaway/reference.
 - **Validation:** each experiment ships a short `VALIDATION.md` (a numbered manual test script the user runs; agent writes it, human clicks and confirms).
 
@@ -49,7 +49,7 @@ The audio API is itself an open question — **find the best API**, don't assume
 - What are the **failure modes** (e.g. zero-filled buffers on sample-rate renegotiation, level attenuation with multi-output devices) and their mitigations?
 - What is the **CPU/memory/NPU** cost of the recording path? (Goal: rock-solid, lightweight recorder that never crashes.)
 
-**Deliverable:** `/research/audio/` doc with a recommended API, stream strategy (1 vs 2 streams), recommended format/encoder settings, crash-safe streaming approach, and known gotchas + mitigations.
+**Deliverable:** `/specs/research/audio/` doc with a recommended API, stream strategy (1 vs 2 streams), recommended format/encoder settings, crash-safe streaming approach, and known gotchas + mitigations.
 
 ### R2 — EventKit / Calendar
 
@@ -59,7 +59,7 @@ The audio API is itself an open question — **find the best API**, don't assume
 - What event fields are available — title, participants/attendees, organizer, description, times, conferencing/URL info — and in what shape?
 - What's the right way to **copy** event data into our own model so we don't depend on the EventKit link persisting?
 
-**Deliverable:** `/research/eventkit/` doc, including a **data-availability report** (every useful field EventKit exposes) to inform the core app's `Meeting`/`Event` data model.
+**Deliverable:** `/specs/research/eventkit/` doc, including a **data-availability report** (every useful field EventKit exposes) to inform the core app's `Meeting`/`Event` data model.
 
 ### R3 — ArgMax STT + Diarization (incl. ML Isolation & Lifecycle)
 
@@ -80,7 +80,7 @@ Wrap WhisperKit (STT) + SpeakerKit (diarization) from `argmax-oss-swift` into a 
 - How does this compose with the `processAudio` API (e.g. the call runs in the isolated worker)?
 
 **Deliverables:**
-- `/research/argmax/` doc answering the above (covering both SDK/models and the recommended isolation+lifecycle architecture), **plus** a drafted "**Questions for the ArgMax team**" list at a "we obviously read the code, these are good questions" level (including a "confirm this approach sounds good" summary).
+- `/specs/research/argmax/` doc answering the above (covering both SDK/models and the recommended isolation+lifecycle architecture), **plus** a drafted "**Questions for the ArgMax team**" list at a "we obviously read the code, these are good questions" level (including a "confirm this approach sounds good" summary).
 - The `processAudio` library (see Experiment E3).
 
 ### R4 — Permissions Matrix
@@ -92,7 +92,7 @@ One consolidated doc covering **every** system permission the app will need.
 - Sandboxing & **notarization** implications of the chosen audio API and entitlements.
 - Ordering/strategy: when to request each, how to pre-check status (e.g. TCC probing) and handle denial/re-request gracefully.
 
-**Deliverable:** `/research/permissions/` doc — a table of permission → key/entitlement → prompt trigger → handling, plus sandbox/notarization notes. Cross-references R1 (audio) and R2 (calendar).
+**Deliverable:** `/specs/research/permissions/` doc — a table of permission → key/entitlement → prompt trigger → handling, plus sandbox/notarization notes. Cross-references R1 (audio) and R2 (calendar).
 
 ---
 

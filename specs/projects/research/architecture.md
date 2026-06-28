@@ -54,12 +54,12 @@ Each research phase spawns a research sub-agent that:
 
 1. Reads the relevant section of `functional_spec.md` (the key questions for its area).
 2. Investigates: web search, official Apple docs, the `argmax-oss-swift` source/model library, reference projects (AudioCap, AudioTee).
-3. Writes `/research/<area>/README.md` using the template below.
+3. Writes `/specs/research/<area>/README.md` using the template below.
 4. Returns a short summary.
 
 Research agents **do not write experiment code** — they produce knowledge + recommendations the coding phases consume.
 
-### Research Doc Template (`/research/<area>/README.md`)
+### Research Doc Template (`/specs/research/<area>/README.md`)
 
 ```markdown
 # <Area> Research
@@ -99,7 +99,7 @@ XcodeGen macOS SwiftUI app implementing R1's recommended audio API.
 XcodeGen macOS SwiftUI app implementing R2.
 
 - Request calendar access (full-access flow); list calendars with include/exclude toggles; list events from selected calendars showing title/participants/organizer/description/times/conferencing info.
-- A **"Dump data report"** action that prints/exports every useful field EventKit exposes (feeds the core app's Meeting model design). The report content is also folded into `/research/eventkit/README.md`.
+- A **"Dump data report"** action that prints/exports every useful field EventKit exposes (feeds the core app's Meeting model design). The report content is also folded into `/specs/research/eventkit/README.md`.
 - **Info.plist:** `NSCalendarsFullAccessUsageDescription` (finalized by R2/R4).
 - No library wrapper — proof-of-concept + reference code.
 
@@ -130,7 +130,7 @@ SPM package: a `ArgMaxKit` **library** + an `argmaxkit-cli` **executable harness
 
 ## Validation (manual scripts — end of project)
 
-Each experiment ships `experiments/<Name>/VALIDATION.md`: a numbered script the **user** runs once on real hardware; the agent writes it, the human clicks/confirms, and results are recorded back into the matching `/research/<area>/README.md`. Covers V1 (audio), V2 (eventkit), V3 (argmaxkit) per the functional spec.
+Each experiment ships `experiments/<Name>/VALIDATION.md`: a numbered script the **user** runs once on real hardware; the agent writes it, the human clicks/confirms, and results are recorded back into the matching `/specs/research/<area>/README.md`. Covers V1 (audio), V2 (eventkit), V3 (argmaxkit) per the functional spec.
 
 ## Error Handling & Testing Strategy (summary)
 

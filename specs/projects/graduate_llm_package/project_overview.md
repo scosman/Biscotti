@@ -33,7 +33,7 @@ This involves:
 - It was built and hardware-validated under the `llm_xpc_service` spec project; the
   validation (`experiments/llm/VALIDATION.md`) recommends porting it "largely as-is" and
   judges the core API "production-grade."
-- In the roadmap (`architecture.md` / `implementation_plan.md`), the eventual **Intelligence**
+- In the roadmap (`specs/architecture.md` / `specs/implementation_plan.md`), the eventual **Intelligence**
   package (Project 10, P2) is the product feature layer — a provider abstraction (local +
   external OpenAI-compatible) delivering summaries, action items, speaker-name inference, and
   vocab extraction. This graduation is **not** Project 10: it ships the local inference

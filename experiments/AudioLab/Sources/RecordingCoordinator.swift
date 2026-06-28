@@ -17,7 +17,7 @@ final class RecordingCoordinator {
     /// - `false` → `MicCapture`: the original `AVCaptureSession` path (records
     ///   the raw beamformer array; near-silent during meetings).
     ///
-    /// See `research/audio/mic_capture_level_findings.md`.
+    /// See `specs/research/audio/mic_capture_level_findings.md`.
     static let useVoiceProcessingMic = true
 
     private(set) var isRecording = false

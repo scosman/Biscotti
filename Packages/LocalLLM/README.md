@@ -97,7 +97,7 @@ BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
 
 ## Chat template rendering -- why hand-rolled
 
-The hand-rolled `GemmaChatTemplate` byte-matches the model's embedded Jinja template. `llama_chat_apply_template` cannot render Gemma 4 correctly (drops system, omits turn markers, no `<|think|>`). The proper future path for multi-model support is [huggingface/swift-jinja](https://github.com/huggingface/swift-jinja). See the chat template discussion in `research/argmax/README.md` for full details.
+The hand-rolled `GemmaChatTemplate` byte-matches the model's embedded Jinja template. `llama_chat_apply_template` cannot render Gemma 4 correctly (drops system, omits turn markers, no `<|think|>`). The proper future path for multi-model support is [huggingface/swift-jinja](https://github.com/huggingface/swift-jinja). See the chat template discussion in `specs/research/argmax/README.md` for full details.
 
 ## Build/test gotcha: orphaned processes and the `.build` lock
 

@@ -66,7 +66,7 @@ public struct BundledMeetingCatalog: MeetingCatalog {
     // MARK: - Static data
 
     /// Known meeting app bundle IDs (user-facing + helpers).
-    /// Source: `research/meeting_apps/README.md` and
+    /// Source: `specs/research/meeting_apps/README.md` and
     /// `AudioProcess.knownMeetingBundleIDs`.
     private static let meetingBundleIDs: Set<String> = [
         // Native meeting apps
@@ -149,7 +149,7 @@ public struct BundledMeetingCatalog: MeetingCatalog {
             // Cisco Webex: any *.webex.com path — recall-first
             ("Cisco Webex", #"https?://(?:[\w.-]+\.)?webex\.com/[^\s]+"#),
 
-            // Slack Huddle (UNVERIFIED — see research/meeting_apps/README.md)
+            // Slack Huddle (UNVERIFIED — see specs/research/meeting_apps/README.md)
             ("Slack Huddle", #"https?://app\.slack\.com/huddle/[^\s]+"#),
 
             // GoTo Meeting: distinctive hosts, any join path accepted

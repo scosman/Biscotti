@@ -126,7 +126,7 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need a calendar acco
    - [ ] "Copied!" confirmation appears briefly.
    - [ ] Paste into a text editor to confirm the full report was copied.
 
-**Result:** **PASS (low value).** Report generated and copy-to-clipboard worked. Tester noted this test is largely a copy/paste check; the underlying field availability is already covered by the Events-tab detail (Test 6) and documented in `research/eventkit/README.md` §3.
+**Result:** **PASS (low value).** Report generated and copy-to-clipboard worked. Tester noted this test is largely a copy/paste check; the underlying field availability is already covered by the Events-tab detail (Test 6) and documented in `specs/research/eventkit/README.md` §3.
 
 ### 9. Conference URL Detection (Spot Check)
 

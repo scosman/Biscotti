@@ -8,13 +8,13 @@ status: complete
 
 ## Overview
 
-Final phase: update the repo-root roadmap docs to reflect that LLM/AI features are built, and verify all CI gates are green. The on-hardware app click-through (download model, record/transcribe, observe AI features, tune prompts) is deferred to a human.
+Final phase: update the `specs/` roadmap docs to reflect that LLM/AI features are built, and verify all CI gates are green. The on-hardware app click-through (download model, record/transcribe, observe AI features, tune prompts) is deferred to a human.
 
 ## Steps
 
-1. **Update root `architecture.md`** — reflect that Intelligence is no longer P2/future but built and wired into AppCore + MeetingDetailUI + SettingsUI. Update the component card, dependency graph annotations, and P2 placement table.
+1. **Update `specs/architecture.md`** — reflect that Intelligence is no longer P2/future but built and wired into AppCore + MeetingDetailUI + SettingsUI. Update the component card, dependency graph annotations, and P2 placement table.
 
-2. **Update root `implementation_plan.md`** — update Project 10 (Intelligence/LLM) status to reflect that the LLM features spec project has built the core AI features (summarization + speaker identification) as part of the `llm_features` project. Clarify what remains (provider abstraction, external provider, vocab extraction are still future).
+2. **Update `specs/implementation_plan.md`** — update Project 10 (Intelligence/LLM) status to reflect that the LLM features spec project has built the core AI features (summarization + speaker identification) as part of the `llm_features` project. Clarify what remains (provider abstraction, external provider, vocab extraction are still future).
 
 3. **Check `CLAUDE.md` and `app_overview.md`** for status lines that should reflect these features being implemented. Update conservatively.
 

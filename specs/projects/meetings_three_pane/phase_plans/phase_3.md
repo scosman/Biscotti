@@ -7,7 +7,7 @@ status: complete
 ## Overview
 
 Adds the remaining UI chrome (toolbar Home button, hidden window title, Home "See all" row),
-updates the repo-root `architecture.md` to reflect the SearchUI removal and MeetingListUI rewrite,
+updates the `specs/architecture.md` to reflect the SearchUI removal and MeetingListUI rewrite,
 and fills in the `review_for_human.md` autonomous-calls log. This is the final build phase before
 the human on-device verification (Phase 4).
 
@@ -32,7 +32,7 @@ the human on-device verification (Phase 4).
    `"See all"` + `Image(systemName: "chevron.right")`. Tapping routes to the Meetings screen
    in browse mode.
 
-4. **Update repo-root `architecture.md`.**
+4. **Update `specs/architecture.md`.**
    - Rewrite component #19 (MeetingListUI): update description to reflect its new role as the
      dedicated Meetings-screen list with grouped past meetings, in-place search results, and
      native `List(selection:)`.

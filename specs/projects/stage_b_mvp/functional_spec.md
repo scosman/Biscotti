@@ -12,7 +12,7 @@ This document specifies **what** the MVP must do and the contracts between the n
 components. Concrete API shapes (types, signatures) live in [`architecture.md`](architecture.md)
 (and in `components/*.md` where a module needs more depth). The static topology — which component
 lives where, its boundaries, its dependency edges — is already fixed by the repo
-[`architecture.md`](../../../architecture.md) and is **not** re-litigated here. The screen/navigation
+[`architecture.md`](../../architecture.md) and is **not** re-litigated here. The screen/navigation
 design lives in [`ui_design.md`](ui_design.md).
 
 **Grounding — consume, don't re-derive:**
@@ -23,7 +23,7 @@ design lives in [`ui_design.md`](ui_design.md).
   `attachAudio`, `addTranscript`, `setPreferredTranscript`, `recentMeetings`, `meeting(id:)`, …).
 - The XPC service `XPCServices/BiscottiTranscriber` already exists and is wired into `ManualTestApp`.
   This project replicates that wiring into the **main app target** (`App/project.yml`).
-- Permissions approach: [`research/permissions`](../../../research/permissions/README.md) — Core-Audio
+- Permissions approach: [`research/permissions`](../../research/permissions/README.md) — Core-Audio
   taps (`kTCCServiceAudioCapture`, the "System Audio Recording" pane) + mic
   (`AVCaptureDevice` / `kTCCServiceMicrophone`); system-audio has **no public status API**, so denial
   is inferred from all-zero buffers (the engine already exposes `probableSystemAudioDenied()`).

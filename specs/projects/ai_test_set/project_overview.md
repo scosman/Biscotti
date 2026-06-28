@@ -4,7 +4,7 @@ status: complete
 
 # A.5 — AI Test Set & Manual Test App Updates
 
-This project is **Project A.5: AI test set**, plus a round of updates to the **Manual Test App**. See `implementation_plan.md` (Stage A → "Project 5 — AI test set") for the roadmap entry.
+This project is **Project A.5: AI test set**, plus a round of updates to the **Manual Test App**. See `specs/implementation_plan.md` (Stage A → "Project 5 — AI test set") for the roadmap entry.
 
 ## Part 1 — AI test set (Project A.5)
 

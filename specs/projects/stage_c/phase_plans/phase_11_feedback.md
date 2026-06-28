@@ -6,7 +6,7 @@ status: in-progress
 
 User feedback from running the feature-complete V1 on real Apple-silicon hardware. Implemented in grouped sub-agent passes (coding → CR → commit), keeping `make ci` green. Items marked **[TODO]** are intentionally deferred with an in-code `// TODO`. Checked = landed.
 
-Also pending from the decisions review: **architecture.md reconcile** — document that conference detection lives in the `MeetingCatalog` (L0) module rather than the RemoteConfig/Calendar split the doc still describes (do at start of Phase 11 coding).
+Also pending from the decisions review: **`specs/architecture.md` reconcile** — document that conference detection lives in the `MeetingCatalog` (L0) module rather than the RemoteConfig/Calendar split the doc still describes (do at start of Phase 11 coding).
 
 ---
 
@@ -55,4 +55,4 @@ Also pending from the decisions review: **architecture.md reconcile** — docume
 - [ ] **Dock icon should disappear when the window is closed** (menu-bar-only), and reappear when a window opens — activation-policy switch (`.accessory` ↔ `.regular`). *(Refines C7.)*
 
 ## G7 — Docs
-- [ ] Reconcile `architecture.md`: conference detection lives in `MeetingCatalog` (L0), not the RemoteConfig/Calendar split the doc describes.
+- [ ] Reconcile `specs/architecture.md`: conference detection lives in `MeetingCatalog` (L0), not the RemoteConfig/Calendar split the doc describes.

@@ -15,7 +15,7 @@ The four parts:
 
 ## How this spec is structured (per the requested shape)
 
-- **Separate architecture / component docs for each of parts 1, 2, 3** — one component design doc per library, designing its real API inside the boundary the repo `architecture.md` already draws. Parts 1 and 2 are largely a **packaging, testing, and API-design exercise**: the hard technical unknowns are already resolved by the completed `research/` project and proven in `experiments/`. We consume those findings; we do not re-derive them.
+- **Separate architecture / component docs for each of parts 1, 2, 3** — one component design doc per library, designing its real API inside the boundary the repo `specs/architecture.md` already draws. Parts 1 and 2 are largely a **packaging, testing, and API-design exercise**: the hard technical unknowns are already resolved by the completed `specs/research/` project and proven in `experiments/`. We consume those findings; we do not re-derive them.
 - **A separate architecture / component doc for part 4** (the manual test app) — its own design, its own UI shape, its own set of phases.
 - **An implementation plan with 4 clear stages** (one per part), each broken into as many phases as needed.
 
@@ -25,8 +25,8 @@ The whole point of combining these is **one big agentic run**. The implementatio
 
 ## Notes / starting points
 
-- For Projects 1 and 2: look at the `research/` project. Most unknowns are solved — this becomes a packaging, testing, and API-design exercise.
-- Component homes, boundaries, and dependencies are already fixed by the repo `architecture.md`; this spec designs the concrete APIs inside those boundaries.
+- For Projects 1 and 2: look at the `specs/research/` project. Most unknowns are solved — this becomes a packaging, testing, and API-design exercise.
+- Component homes, boundaries, and dependencies are already fixed by the repo `specs/architecture.md`; this spec designs the concrete APIs inside those boundaries.
 - The `Transcription` and `AudioCapture` packages are their own SPM packages; `DataStore` is a module inside `BiscottiKit`.
 </content>
 </invoke>

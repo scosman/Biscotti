@@ -6,7 +6,7 @@ status: complete
 
 This project is **architecture, not implementation, and not interface design**. Its output is the *shape* of the Biscotti codebase: which packages/components exist, what each is responsible for, who depends on whom, and the order to build them. It deliberately stops short of designing any concrete API. Each component's real interface is designed later by the task that builds that component, working inside the boundary this project draws.
 
-See [`/app_overview.md`](../../../app_overview.md) for the product, and [`/research/README.md`](../../../research/README.md) for the already-validated technical findings this design builds on.
+See [`specs/app_overview.md`](../../app_overview.md) for the product, and [`specs/research/README.md`](../../research/README.md) for the already-validated technical findings this design builds on.
 
 ## Why This Project Exists
 
@@ -35,7 +35,7 @@ Each roadmap entry is sized so it's a sensible unit of work — not so wide it c
 - **Foundation/library Projects** — one complex, critical component built deep (e.g. the transcription library, the audio-recording library). Each gets its **own** Project with many internal phases; never rolled into a broader feature Project (too wide a scope). Validated by tests + a manual test-app/CLI harness (the `/experiments/` pattern) — these are the front-loaded, risk-reducing enablers and do **not** ship a runnable app on their own.
 - **Feature/integration Projects** — deliver a self-standing, runnable app increment by wiring already-built components + UI. The first is the MVP (e.g. "record & transcribe app + UI"), runnable once its foundation-library deps land. Subsequent ones layer vertical features (notifications, calendar, search, onboarding, intelligence, …); a smaller feature spans several components but stays a **single** Project with internal phases — not over-subdivided.
 
-**Note:** `architecture.md` and `implementation_plan.md` have been **promoted to the repo root** (`/architecture.md`, `/implementation_plan.md`) as the durable master roadmap. This spec folder keeps the planning record (`project_overview.md`, `functional_spec.md`).
+**Note:** `architecture.md` and `implementation_plan.md` have been **promoted to `specs/`** (`specs/architecture.md`, `specs/implementation_plan.md`) as the durable master roadmap. This spec folder keeps the planning record (`project_overview.md`, `functional_spec.md`).
 
 ## The Depth Contract
 
@@ -124,7 +124,7 @@ The topology must place **all** of the following. This is the coverage checklist
 
 ## Relationship to Other Work
 
-- **Builds on `research`** (complete): audio, eventkit, argmax, permissions findings in `/research/`. The topology should not re-litigate those technical choices — it consumes them.
+- **Builds on `research`** (complete): audio, eventkit, argmax, permissions findings in `/specs/research/`. The topology should not re-litigate those technical choices — it consumes them.
 - **Productionizes `/experiments/`**: `AudioLab`, `EventKitLab`, `ArgMaxKit` are reference code. The architecture notes which component each experiment seeds (the `From:` field on a card). Experiments themselves are disposable and not part of the shipped shape.
 - **Precedes the build.** Per `plan.md`'s staging (Research → Scaffolding → Library Building → App), this project produces the design and order; the **scaffolding** (CI, lint, format, package skeletons) and the **per-component builds** are later `/spec` projects/tasks. This project creates **no code and no scaffolding.**
 
@@ -140,5 +140,5 @@ The topology must place **all** of the following. This is the coverage checklist
 
 - Any concrete API/interface, type, or schema (the whole point).
 - Scaffolding, tooling, CI, package skeletons, or any code.
-- Re-deriving research decisions already settled in `/research/`.
+- Re-deriving research decisions already settled in `/specs/research/`.
 - Detailed UI/UX design (screen layouts, visual design) — only the *placement* of UI components in the topology.

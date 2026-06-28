@@ -4,7 +4,7 @@ status: complete
 
 # Component: AudioCapture (`Packages/AudioCapture`)
 
-Productionizes `experiments/AudioLab`. Designs the real API inside the boundary the repo [`architecture.md` §1](../../../../architecture.md) draws. Consumes [`research/audio`](../../../../research/audio/README.md) + [`phase9_validation_findings.md`](../../../../research/audio/phase9_validation_findings.md) — do not re-derive.
+Productionizes `experiments/AudioLab`. Designs the real API inside the boundary the repo [`architecture.md` §1](../../../architecture.md) draws. Consumes [`research/audio`](../../../research/audio/README.md) + [`phase9_validation_findings.md`](../../../research/audio/phase9_validation_findings.md) — do not re-derive.
 
 ## Purpose & Scope
 

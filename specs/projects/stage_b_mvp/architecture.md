@@ -6,7 +6,7 @@ status: complete
 
 Technical design for the MVP, deep enough to code from. The **static topology** (component homes,
 boundaries, dependency edges) is already fixed by the repo
-[`architecture.md`](../../../architecture.md); this doc designs the **concrete app-level APIs** for
+[`architecture.md`](../../architecture.md); this doc designs the **concrete app-level APIs** for
 the first slices of those components, the threading model, storage, orphan recovery, and the
 package/Xcode wiring. Foundation-engine APIs are fixed and only **consumed** here.
 

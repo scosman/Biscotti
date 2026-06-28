@@ -6,7 +6,7 @@ status: complete
 
 Technical design, deep enough to code from. This is a **UI/navigation restructuring** within the
 existing `BiscottiKit` UI modules + `AppCore` + the app target. It introduces no new persistence, no
-new services, and no new ML. The static topology is fixed by the repo `../../../architecture.md`; this
+new services, and no new ML. The static topology is fixed by the repo `../../architecture.md`; this
 doc records the **deltas** to that topology and the **concrete app-level APIs** for the change.
 
 Builds on the existing app shell (`NavigationSplitView` + `Route`-driven content), the `@MainActor
@@ -19,7 +19,7 @@ complexity to warrant per-component docs).
 
 ---
 
-## 0. Topology delta (vs. repo `architecture.md`)
+## 0. Topology delta (vs. repo `specs/architecture.md`)
 
 | Module | Change |
 |---|---|

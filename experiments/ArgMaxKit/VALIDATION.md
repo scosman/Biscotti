@@ -174,4 +174,4 @@ Run this on a Mac with Apple Silicon running macOS 15+. You need an internet con
 | 9. Diarization Quality | PASS (small sample) | 3 speakers, transitions tracked content; short scripted clip only. |
 | 10. Performance | PASS | ~0.43x real-time (warm models) on M4. |
 
-**Validation run summary:** Run by the coding agent on an Apple M4 / macOS 15 with models pre-cached, against `~/Downloads/voice_test.mp3` (25.1s, 3 speakers). 8 of 10 tests PASS (Test 7 optional/not-run; Test 6 functionally passes, memory unquantified). One bug found and fixed (`--json` stdout pollution → diagnostics moved to stderr). Findings folded into `research/argmax/README.md`.
+**Validation run summary:** Run by the coding agent on an Apple M4 / macOS 15 with models pre-cached, against `~/Downloads/voice_test.mp3` (25.1s, 3 speakers). 8 of 10 tests PASS (Test 7 optional/not-run; Test 6 functionally passes, memory unquantified). One bug found and fixed (`--json` stdout pollution → diagnostics moved to stderr). Findings folded into `specs/research/argmax/README.md`.

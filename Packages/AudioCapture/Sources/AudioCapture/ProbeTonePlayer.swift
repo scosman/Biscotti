@@ -23,7 +23,7 @@ private let logger = Logger(
 /// - Note: TODO — if the low-frequency/ultra-low-amplitude tone proves unreliable
 ///   on some output paths (e.g. Bluetooth codecs that gate silence), fall back to a
 ///   high-frequency (~18-19 kHz) tone or a brief slightly louder blip. See
-///   architecture.md section 2.4.
+///   specs/architecture.md section 2.4.
 final class ProbeTonePlayer: @unchecked Sendable {
     // MARK: - Tunable constants (HW-tuned)
 

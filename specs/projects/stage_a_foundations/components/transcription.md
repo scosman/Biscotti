@@ -4,7 +4,7 @@ status: complete
 
 # Component: Transcription (`Packages/Transcription`)
 
-Productionizes `experiments/ArgMaxKit`. Designs the real API inside the boundary the repo [`architecture.md` §2](../../../../architecture.md) draws. Consumes [`research/argmax`](../../../../research/argmax/README.md) — do not re-derive its findings.
+Productionizes `experiments/ArgMaxKit`. Designs the real API inside the boundary the repo [`architecture.md` §2](../../../architecture.md) draws. Consumes [`research/argmax`](../../../research/argmax/README.md) — do not re-derive its findings.
 
 ## Purpose & Scope
 

@@ -56,7 +56,7 @@ quality bar is split:
   - Summarize a meeting transcript.
   - Generate action items from a meeting transcript.
   - …and the other LLM tasks Biscotti wants (speaker-name inference, follow-up) — see
-    `app_overview.md` → "LLM Enhancements".
+    `specs/app_overview.md` → "LLM Enhancements".
 
 ## Out of scope
 

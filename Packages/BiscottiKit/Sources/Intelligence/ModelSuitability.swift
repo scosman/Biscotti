@@ -1,10 +1,10 @@
 import LocalLLM
 
-/// Pure functions that determine whether a model can run on this hardware,
-/// which model to recommend, and whether there is enough disk to download.
+/// Pure functions that determine whether a model can run on this hardware
+/// and which model to recommend.
 ///
-/// All inputs are value types (RAM bytes, disk bytes, catalog entries) --
-/// no side effects, fully unit-testable with fabricated values.
+/// All inputs are value types (RAM bytes, catalog entries) -- no side
+/// effects, fully unit-testable with fabricated values.
 public enum ModelSuitability {
     /// Whether `model` is runnable on a Mac with `ram` bytes of physical RAM.
     ///
@@ -40,17 +40,5 @@ public enum ModelSuitability {
         // recommended for machines below the 24 GB threshold even if 12B is
         // technically runnable (the "middle band" at 15-23 GB).
         return catalog.last { canRun($0, ram: ram) }?.id
-    }
-
-    /// Whether there is enough free disk space to download `model`.
-    ///
-    /// Returns `true` when `freeBytes` is `nil` (unknown capacity) -- never
-    /// falsely block a download on a failed capacity read; the downloader's
-    /// size validation is the backstop.
-    public static func hasEnoughDisk(
-        _ model: LLMModel, freeBytes: Int64?
-    ) -> Bool {
-        guard let freeBytes else { return true }
-        return freeBytes >= model.approxDownloadBytes
     }
 }

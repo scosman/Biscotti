@@ -160,12 +160,10 @@ public final class OnboardingViewModel {
         footerButton(for: currentStep) == .continueButton
     }
 
-    /// Disk space check for the model download step.
-    public private(set) var hasSufficientDisk: Bool = true
-
-    /// Approximate disk space required for the transcription model (MB).
-    /// Aligned with the ~1.5 GB WhisperKit model bundle.
-    public static let requiredDiskSpaceMB: Int = 1500
+    /// Disk-space warning for the click-time check. When non-nil, drives
+    /// the "Not Enough Disk Space" alert. Set by download actions; cleared
+    /// on dismiss.
+    public var diskWarning: DiskWarning?
 
     /// Pre-warm task that runs model probes early (on the permissions
     /// screen) so the model-download screen arrives spinner-free when
@@ -257,7 +255,19 @@ public final class OnboardingViewModel {
     }
 
     /// Start the transcription model download.
+    ///
+    /// Runs a click-time disk-space check first; if insufficient, sets
+    /// `diskWarning` and returns without starting the download.
     public func startTranscriptionDownload() async {
+        let downloadBytes = core.transcription.estimatedModelDownloadBytes
+        if let warning = ModelDiskPolicy.warning(
+            modelName: "Transcription & Speaker ID",
+            downloadBytes: downloadBytes,
+            freeBytes: availableDiskBytes()
+        ) {
+            diskWarning = warning
+            return
+        }
         isDownloading = true
         downloadFailed = false
         downloadStatus = "Preparing\u{2026}"
@@ -278,20 +288,18 @@ public final class OnboardingViewModel {
     }
 
     /// Start the language model download for the current target model.
+    ///
+    /// Runs a click-time disk-space check first; if insufficient, sets
+    /// `diskWarning` and returns without starting the download.
     public func startLanguageDownload() {
         guard let targetID = languageTargetModelID else { return }
+        if let warning = core.modelManager.downloadDiskWarning(id: targetID) {
+            diskWarning = warning
+            return
+        }
         Task {
             await core.modelManager.downloadModel(id: targetID)
         }
-    }
-
-    /// Reload the calendar list from EventKit. Called when the app
-    /// returns to the foreground while on the calendar-selection step,
-    /// so newly added accounts appear without restarting.
-    public func reloadCalendars() async {
-        guard currentStep == .calendarSelection else { return }
-        let infos = await core.calendar.calendars()
-        calendarGroups = Self.groupCalendars(infos)
     }
 
     /// Open System Settings for a denied permission.
@@ -334,7 +342,7 @@ public final class OnboardingViewModel {
         isPreparingModelStep = false
         showVariantSheet = false
         showConnectCalendarSheet = false
-        hasSufficientDisk = true
+        diskWarning = nil
     }
 
     // MARK: - Private
@@ -388,12 +396,11 @@ public final class OnboardingViewModel {
         }
     }
 
-    /// Runs the actual model probes: ModelManager refresh, read-only
-    /// transcription presence check, and disk space check.
+    /// Runs the actual model probes: ModelManager refresh and read-only
+    /// transcription presence check.
     private func runModelProbes() async {
         await core.modelManager.refresh()
         transcriptionDownloaded = await core.transcription.modelsArePresent()
-        checkDiskSpace()
     }
 
     /// Reads the live system permission state for the current step
@@ -418,12 +425,5 @@ public final class OnboardingViewModel {
         default:
             break
         }
-    }
-
-    private func checkDiskSpace() {
-        let requiredBytes = Int64(Self.requiredDiskSpaceMB)
-            * 1_048_576
-        let available = availableDiskBytes()
-        hasSufficientDisk = available >= requiredBytes
     }
 }

@@ -10,7 +10,7 @@ import Testing
 @Suite("OnboardingViewModel -- Transcription row state")
 @MainActor
 struct TranscriptionRowStateTests {
-    @Test("idle when not downloaded, sufficient disk")
+    @Test("idle when not downloaded")
     func transcriptionIdle() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
@@ -22,7 +22,12 @@ struct TranscriptionRowStateTests {
         await viewModel.skip() // -> modelDownload (prepareModelStep runs)
 
         let state = viewModel.transcriptionRowState()
-        #expect(state == .idle(sizeCaption: "~1.5 GB"))
+        // Size comes from TranscriptionDownloadSize via ModelDiskPolicy.formatBytes
+        if case let .idle(sizeCaption) = state {
+            #expect(!sizeCaption.isEmpty)
+        } else {
+            Issue.record("Expected .idle state, got \(state)")
+        }
     }
 
     @Test("ready when transcription already downloaded on entry")
@@ -49,7 +54,12 @@ struct TranscriptionRowStateTests {
         await viewModel.advance()
         await viewModel.skip()
 
-        #expect(viewModel.transcriptionRowState() == .idle(sizeCaption: "~1.5 GB"))
+        // Should be idle (size derived from estimated download bytes)
+        if case .idle = viewModel.transcriptionRowState() {
+            // expected
+        } else {
+            Issue.record("Expected .idle state")
+        }
 
         // Clear the error so download succeeds
         fixture.fakeEngine.backing.ensureModelsError = nil
@@ -59,21 +69,8 @@ struct TranscriptionRowStateTests {
         #expect(viewModel.transcriptionRowState() == .ready)
     }
 
-    @Test("insufficientDisk when disk is low")
-    func transcriptionInsufficientDisk() async throws {
-        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
-        defer { fixture.cleanup() }
-        fixture.fakeEngine.backing.modelsPresentResult = false
-
-        let viewModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 1_048_576 } // 1 MB -- well below threshold
-        )
-        await viewModel.advance()
-        await viewModel.skip()
-
-        #expect(viewModel.transcriptionRowState() == .insufficientDisk)
-    }
+    // The proactive .insufficientDisk state was removed. Disk checks are
+    // now click-time via diskWarning + alert. See OnboardingDiskCheckTests.
 
     // Note: transcription downloading state (.indeterminate) can't be
     // captured in a unit test because FakeTranscriber completes immediately.
@@ -230,9 +227,8 @@ struct LanguageRowStateTests {
         #expect(viewModel.languageRowState() == .failed(message: "Network error"))
     }
 
-    @Test("insufficientDisk when target model blocked by disk")
-    func languageInsufficientDisk() async throws {
-        // Report only 1 byte of free disk so ModelSuitability blocks all models
+    @Test("low disk shows idle (disk check is click-time, not proactive)")
+    func languageLowDiskShowsIdle() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied,
             hardwareDiskBytes: 1
@@ -243,7 +239,12 @@ struct LanguageRowStateTests {
         await viewModel.advance()
         await viewModel.skip()
 
-        #expect(viewModel.languageRowState() == .insufficientDisk)
+        // Should show idle, not .insufficientDisk (which was removed)
+        if case .idle = viewModel.languageRowState() {
+            // expected
+        } else {
+            Issue.record("Expected .idle state, got \(viewModel.languageRowState())")
+        }
     }
 }
 
@@ -944,23 +945,7 @@ struct ModelDownloadNavigationTests {
     }
 }
 
-// MARK: - Format bytes helper
-
-@Suite("OnboardingViewModel -- formatBytes")
-@MainActor
-struct FormatBytesTests {
-    @Test("formats whole gigabytes without decimal")
-    func wholeGB() {
-        #expect(OnboardingViewModel.formatBytes(3_000_000_000) == "~3 GB")
-        #expect(OnboardingViewModel.formatBytes(7_000_000_000) == "~7 GB")
-    }
-
-    @Test("formats fractional gigabytes with one decimal")
-    func fractionalGB() {
-        #expect(OnboardingViewModel.formatBytes(3_200_000_000) == "~3.2 GB")
-        #expect(OnboardingViewModel.formatBytes(1_500_000_000) == "~1.5 GB")
-    }
-}
+// formatBytes moved to ModelDiskPolicy — tests are in ModelSuitabilityTests.
 
 // MARK: - Footer caption
 

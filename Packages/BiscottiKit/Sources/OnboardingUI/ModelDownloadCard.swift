@@ -199,9 +199,6 @@ struct DownloadControl: View {
             case .ready:
                 GrantedTag("READY")
 
-            case .insufficientDisk:
-                diskWarning
-
             case let .failed(message):
                 Text(message)
                     .font(.biscottiMono(11))
@@ -273,19 +270,6 @@ struct DownloadControl: View {
                     value: fraction
                 )
         }
-    }
-
-    // MARK: - Disk warning
-
-    private var diskWarning: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption2)
-            Text("Insufficient free space on disk")
-                .font(.system(size: 12.5))
-                .multilineTextAlignment(.center)
-        }
-        .foregroundStyle(.warningOchre)
     }
 }
 

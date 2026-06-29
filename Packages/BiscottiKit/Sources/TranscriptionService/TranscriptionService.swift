@@ -67,6 +67,12 @@ public final class TranscriptionService {
 
     // MARK: - Model readiness (for onboarding)
 
+    /// Estimated download size in bytes for the transcription models
+    /// (STT + speaker ID). Used by the click-time disk-space check.
+    public var estimatedModelDownloadBytes: Int64 {
+        TranscriptionDownloadSize.estimatedBytes()
+    }
+
     /// Downloads/compiles models if needed, forwarding status messages.
     /// Standalone entry point for the onboarding download step (no
     /// transcription job involved).

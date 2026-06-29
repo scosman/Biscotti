@@ -556,17 +556,8 @@ struct ModelManagerOneAtATimeTests {
         #expect(fix.mgr.downloads[model12B] == .notDownloaded)
     }
 
-    @Test("download blocked for insufficient disk")
-    @MainActor func downloadBlockedInsufficientDisk() async throws {
-        let fix = try makeManager(
-            downloadedIDs: [], disk: 1_000_000_000
-        )
-
-        await fix.mgr.refresh()
-        await fix.mgr.downloadModel(id: modelE2B)
-
-        #expect(fix.models.downloadCalledIDs.isEmpty)
-    }
+    // Disk blocking is now a click-time check via downloadDiskWarning,
+    // not a guard in canStartDownload. See ModelManagerDiskWarningTests.
 }
 
 // MARK: - modelChoices matrix
@@ -588,7 +579,6 @@ struct ModelManagerModelChoicesTests {
         #expect(row12B?.isDownloaded == true)
         #expect(row12B?.isSelected == true)
         #expect(row12B?.isRecommended == true)
-        #expect(row12B?.hasEnoughDiskToDownload == true)
         #expect(row12B?.blockedReason == nil)
         #expect(row12B?.downloadState == .downloaded)
 
@@ -622,38 +612,8 @@ struct ModelManagerModelChoicesTests {
         #expect(rowE2B?.blockedReason == nil)
     }
 
-    @Test("insufficient disk: not-downloaded model blocked")
-    @MainActor func insufficientDisk() async throws {
-        let fix = try makeManager(
-            downloadedIDs: [], disk: 1_000_000_000
-        )
-
-        await fix.mgr.refresh()
-
-        let choices = fix.mgr.modelChoices()
-
-        let rowE2B = choices.first { $0.id == modelE2B }
-        #expect(rowE2B?.hasEnoughDiskToDownload == false)
-        #expect(rowE2B?.blockedReason == .insufficientDisk)
-
-        let row12B = choices.first { $0.id == model12B }
-        #expect(row12B?.hasEnoughDiskToDownload == false)
-        #expect(row12B?.blockedReason == .insufficientDisk)
-    }
-
-    @Test("downloaded model is never blocked by disk")
-    @MainActor func downloadedNotBlockedByDisk() async throws {
-        let fix = try makeManager(
-            downloadedIDs: [modelE2B], disk: 1_000_000_000
-        )
-
-        await fix.mgr.refresh()
-
-        let choices = fix.mgr.modelChoices()
-        let rowE2B = choices.first { $0.id == modelE2B }
-        #expect(rowE2B?.isDownloaded == true)
-        #expect(rowE2B?.blockedReason == nil)
-    }
+    // Disk blocking was removed from modelChoices — it is now a click-time
+    // check via downloadDiskWarning + alert. See ModelManagerDiskWarningTests.
 
     @Test("descriptions come from ModelPolicy")
     @MainActor func descriptionsFromPolicy() async throws {
@@ -679,6 +639,66 @@ struct ModelManagerModelChoicesTests {
         let choices = fix.mgr.modelChoices()
         let selectedCount = choices.filter(\.isSelected).count
         #expect(selectedCount == 0)
+    }
+}
+
+// MARK: - Download disk warning
+
+@Suite("ModelManager downloadDiskWarning")
+struct ModelManagerDiskWarningTests {
+    @Test("returns warning when disk is low")
+    @MainActor func returnsWarningWhenLow() throws {
+        // E2B is ~3 GB; buffer is 2 GB; total required = 5 GB.
+        // With only 4 GB free, a warning should be returned.
+        let fix = try makeManager(
+            downloadedIDs: [], disk: 4_000_000_000
+        )
+
+        let warning = fix.mgr.downloadDiskWarning(id: modelE2B)
+        #expect(warning != nil)
+        #expect(warning?.requiredBytes == 5_000_000_000)
+        #expect(warning?.availableBytes == 4_000_000_000)
+    }
+
+    @Test("returns nil when disk is ample")
+    @MainActor func returnsNilWhenAmple() throws {
+        let fix = try makeManager(
+            downloadedIDs: [], disk: 100_000_000_000
+        )
+
+        let warning = fix.mgr.downloadDiskWarning(id: modelE2B)
+        #expect(warning == nil)
+    }
+
+    @Test("returns nil for unknown model id")
+    @MainActor func returnsNilForUnknownID() throws {
+        let fix = try makeManager(
+            downloadedIDs: [], disk: 1_000_000_000
+        )
+
+        let warning = fix.mgr.downloadDiskWarning(id: "nonexistent")
+        #expect(warning == nil)
+    }
+
+    @Test("returns nil when disk bytes are nil (capacity read failed)")
+    @MainActor func returnsNilWhenDiskNil() throws {
+        let fix = try makeManager(
+            downloadedIDs: [], disk: nil
+        )
+
+        let warning = fix.mgr.downloadDiskWarning(id: modelE2B)
+        #expect(warning == nil)
+    }
+
+    @Test("warning model name matches catalog display name")
+    @MainActor func warningModelNameMatchesCatalog() throws {
+        let fix = try makeManager(
+            downloadedIDs: [], disk: 1_000_000_000
+        )
+
+        let warning = fix.mgr.downloadDiskWarning(id: modelE2B)
+        let catalogName = LLMModelCatalog.model(id: modelE2B)?.displayName
+        #expect(warning?.modelName == catalogName)
     }
 }
 

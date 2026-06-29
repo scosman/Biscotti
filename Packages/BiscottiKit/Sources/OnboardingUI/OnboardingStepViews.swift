@@ -1,6 +1,7 @@
 import AppKit
 import Calendar
 import DesignSystem
+import Intelligence
 import ModelManagementUI
 import Permissions
 import SwiftUI
@@ -341,6 +342,25 @@ extension OnboardingView {
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
         }
+        .alert(
+            "Not Enough Disk Space",
+            isPresented: showDiskWarning
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let warning = viewModel.diskWarning {
+                Text(warning.alertMessage)
+            }
+        }
+    }
+
+    private var showDiskWarning: Binding<Bool> {
+        Binding(
+            get: { viewModel.diskWarning != nil },
+            set: { show in
+                if !show { viewModel.diskWarning = nil }
+            }
+        )
     }
 
     // MARK: - Done

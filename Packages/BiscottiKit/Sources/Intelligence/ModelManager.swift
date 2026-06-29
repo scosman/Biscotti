@@ -9,8 +9,6 @@ import os
 public enum ModelBlockedReason: Sendable, Equatable {
     /// The Mac does not have enough RAM to run this model.
     case cannotRun
-    /// Not enough free disk space to download this model.
-    case insufficientDisk
 }
 
 /// A per-model view value assembled for the Manage Models sheet.
@@ -20,7 +18,6 @@ public struct ModelChoice: Sendable, Identifiable, Equatable {
     public let description: String
     public let isRecommended: Bool
     public let runnable: Bool
-    public let hasEnoughDiskToDownload: Bool
     public let isDownloaded: Bool
     public let isSelected: Bool
     public let downloadState: ModelDownloadState
@@ -29,9 +26,9 @@ public struct ModelChoice: Sendable, Identifiable, Equatable {
     }
 
     /// The reason this model is blocked, if any.
+    /// Disk space is checked at click time via an alert, not proactively.
     public var blockedReason: ModelBlockedReason? {
         if !runnable { return .cannotRun }
-        if !isDownloaded, !hasEnoughDiskToDownload { return .insufficientDisk }
         return nil
     }
 }
@@ -121,14 +118,6 @@ public final class ModelManager {
     /// Assembles the per-model choice matrix for the Manage Models sheet.
     public func modelChoices() -> [ModelChoice] {
         let ram = hardware.physicalMemoryBytes
-        // Assumes all models share one cache directory; uses the first
-        // model's URL to query available disk space.
-        let cacheDir = models.url(for: models.catalog.first?.id ?? "")
-        let freeBytes: Int64? = if let cacheDir {
-            hardware.availableDiskBytes(at: cacheDir)
-        } else {
-            nil
-        }
         let recommendedID = ModelSuitability.recommendedModelID(
             catalog: models.catalog, ram: ram
         )
@@ -137,7 +126,6 @@ public final class ModelManager {
         return models.catalog.map { model in
             let downloaded = downloads[model.id] == .downloaded
             let runnable = ModelSuitability.canRun(model, ram: ram)
-            let enoughDisk = ModelSuitability.hasEnoughDisk(model, freeBytes: freeBytes)
             let state = downloads[model.id] ?? .notDownloaded
 
             return ModelChoice(
@@ -145,7 +133,6 @@ public final class ModelManager {
                 description: ModelPolicy.description(id: model.id),
                 isRecommended: model.id == recommendedID,
                 runnable: runnable,
-                hasEnoughDiskToDownload: enoughDisk,
                 isDownloaded: downloaded,
                 isSelected: model.id == activeID,
                 downloadState: state
@@ -218,8 +205,28 @@ public final class ModelManager {
         }
     }
 
+    /// Returns a `DiskWarning` if there is not enough free disk space
+    /// to download the model with the given id, or nil if space is sufficient
+    /// (or the model id is unknown).
+    ///
+    /// Called at click time, before starting a download. The click-time
+    /// check replaces the old proactive inline disk-blocking states.
+    public func downloadDiskWarning(id: String) -> DiskWarning? {
+        guard let model = models.catalog.first(where: { $0.id == id }) else { return nil }
+        let free = models.url(for: id).flatMap { hardware.availableDiskBytes(at: $0) }
+        return ModelDiskPolicy.warning(
+            modelName: model.displayName,
+            downloadBytes: model.approxDownloadBytes,
+            freeBytes: free
+        )
+    }
+
     /// Pre-flight checks for `downloadModel`: model exists, is runnable,
-    /// has enough disk, and no other download is in flight.
+    /// and no other download is in flight.
+    ///
+    /// Disk space is checked at click time via `downloadDiskWarning(id:)`
+    /// before this method is called; the download-time failure path is the
+    /// backstop if the user's disk fills between tap and download.
     private func canStartDownload(id: String) -> Bool {
         // One-at-a-time guard
         let hasInFlight = downloads.values.contains {
@@ -233,10 +240,6 @@ public final class ModelManager {
 
         let ram = hardware.physicalMemoryBytes
         guard ModelSuitability.canRun(model, ram: ram) else { return false }
-
-        let freeBytes = models.url(for: id)
-            .flatMap { hardware.availableDiskBytes(at: $0) }
-        guard ModelSuitability.hasEnoughDisk(model, freeBytes: freeBytes) else { return false }
         return true
     }
 

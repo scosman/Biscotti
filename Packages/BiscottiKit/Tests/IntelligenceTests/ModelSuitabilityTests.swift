@@ -106,40 +106,94 @@ struct RecommendedModelIDTests {
     }
 }
 
-// MARK: - hasEnoughDisk tests
+// MARK: - ModelDiskPolicy tests
 
-@Suite("ModelSuitability.hasEnoughDisk")
-struct HasEnoughDiskTests {
-    @Test("nil freeBytes returns true (never block on unknown)")
-    func nilFreeBytesReturnsTrue() {
-        #expect(ModelSuitability.hasEnoughDisk(model12B, freeBytes: nil) == true)
-        #expect(ModelSuitability.hasEnoughDisk(modelE2B, freeBytes: nil) == true)
+@Suite("ModelDiskPolicy.warning")
+struct ModelDiskPolicyWarningTests {
+    @Test("nil freeBytes returns nil (never block on unknown)")
+    func nilFreeBytesReturnsNil() {
+        let result = ModelDiskPolicy.warning(
+            modelName: "Test", downloadBytes: 7_000_000_000, freeBytes: nil
+        )
+        #expect(result == nil)
     }
 
-    @Test(
-        "12B disk boundaries (7 GB required)",
-        arguments: [
-            (free: Int64(0), expected: false),
-            (free: Int64(7_000_000_000 - 1), expected: false),
-            (free: Int64(7_000_000_000), expected: true),
-            (free: Int64(20_000_000_000), expected: true)
-        ]
-    )
-    func disk12B(free: Int64, expected: Bool) {
-        #expect(ModelSuitability.hasEnoughDisk(model12B, freeBytes: free) == expected)
+    @Test("sufficient space returns nil")
+    func sufficientSpaceReturnsNil() {
+        // 7 GB download + 2 GB buffer = 9 GB required; 10 GB free is enough
+        let result = ModelDiskPolicy.warning(
+            modelName: "Test", downloadBytes: 7_000_000_000, freeBytes: 10_000_000_000
+        )
+        #expect(result == nil)
     }
 
-    @Test(
-        "E2B disk boundaries (3 GB required)",
-        arguments: [
-            (free: Int64(0), expected: false),
-            (free: Int64(3_000_000_000 - 1), expected: false),
-            (free: Int64(3_000_000_000), expected: true),
-            (free: Int64(10_000_000_000), expected: true)
-        ]
-    )
-    func diskE2B(free: Int64, expected: Bool) {
-        #expect(ModelSuitability.hasEnoughDisk(modelE2B, freeBytes: free) == expected)
+    @Test("exactly at threshold returns nil")
+    func exactlyAtThresholdReturnsNil() {
+        // 7 GB download + 2 GB buffer = 9 GB required; 9 GB free is exactly enough
+        let result = ModelDiskPolicy.warning(
+            modelName: "Test", downloadBytes: 7_000_000_000, freeBytes: 9_000_000_000
+        )
+        #expect(result == nil)
+    }
+
+    @Test("below threshold returns warning")
+    func belowThresholdReturnsWarning() {
+        // 7 GB download + 2 GB buffer = 9 GB required; 8.999 GB is insufficient
+        let result = ModelDiskPolicy.warning(
+            modelName: "TestModel", downloadBytes: 7_000_000_000, freeBytes: 8_999_999_999
+        )
+        #expect(result != nil)
+        #expect(result?.modelName == "TestModel")
+        #expect(result?.requiredBytes == 9_000_000_000)
+        #expect(result?.availableBytes == 8_999_999_999)
+    }
+
+    @Test("zero free bytes returns warning")
+    func zeroFreeBytesReturnsWarning() {
+        let result = ModelDiskPolicy.warning(
+            modelName: "Test", downloadBytes: 3_000_000_000, freeBytes: 0
+        )
+        #expect(result != nil)
+        #expect(result?.requiredBytes == 5_000_000_000)
+    }
+
+    @Test("buffer is exactly 2 GB")
+    func bufferIsExactly2GB() {
+        #expect(ModelDiskPolicy.downloadBufferBytes == 2_000_000_000)
+    }
+}
+
+@Suite("ModelDiskPolicy.formatBytes")
+struct ModelDiskPolicyFormatBytesTests {
+    @Test("formats whole gigabytes without decimal")
+    func wholeGB() {
+        #expect(ModelDiskPolicy.formatBytes(3_000_000_000) == "~3 GB")
+        #expect(ModelDiskPolicy.formatBytes(7_000_000_000) == "~7 GB")
+    }
+
+    @Test("formats fractional gigabytes with one decimal")
+    func fractionalGB() {
+        #expect(ModelDiskPolicy.formatBytes(3_200_000_000) == "~3.2 GB")
+        #expect(ModelDiskPolicy.formatBytes(1_500_000_000) == "~1.5 GB")
+    }
+}
+
+// MARK: - DiskWarning.alertMessage tests
+
+@Suite("DiskWarning.alertMessage")
+struct DiskWarningAlertMessageTests {
+    @Test("alertMessage includes model name, required, and available")
+    func alertMessageContents() {
+        let warning = DiskWarning(
+            modelName: "Test Model",
+            requiredBytes: 5_000_000_000,
+            availableBytes: 1_500_000_000
+        )
+        let message = warning.alertMessage
+        #expect(message.contains("\"Test Model\""))
+        #expect(message.contains("~5 GB"))
+        #expect(message.contains("~1.5 GB"))
+        #expect(message.contains("Free up some space"))
     }
 }
 

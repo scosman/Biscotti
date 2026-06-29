@@ -45,6 +45,15 @@ public extension OnboardingViewModel {
         }
     }
 
+    /// Reload the calendar list from EventKit. Called when the app
+    /// returns to the foreground while on the calendar-selection step,
+    /// so newly added accounts appear without restarting.
+    func reloadCalendars() async {
+        guard currentStep == .calendarSelection else { return }
+        let infos = await appCore.calendar.calendars()
+        calendarGroups = Self.groupCalendars(infos)
+    }
+
     /// Groups CalendarInfo items by sourceTitle (same logic as SettingsVM).
     static func groupCalendars(
         _ infos: [CalendarInfo]

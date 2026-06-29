@@ -287,7 +287,7 @@ struct OnboardingViewModelTests {
         #expect(model.isPreparingModelStep == false)
         #expect(model.showVariantSheet == false)
         #expect(model.showConnectCalendarSheet == false)
-        #expect(model.hasSufficientDisk == true)
+        #expect(model.diskWarning == nil)
     }
 }
 

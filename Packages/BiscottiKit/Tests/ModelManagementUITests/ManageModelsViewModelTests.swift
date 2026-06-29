@@ -254,10 +254,55 @@ struct ModelBlockedReasonTests {
         let reason = ModelBlockedReason.cannotRun
         #expect(reason.warningText == "This Mac can\u{2019}t run this model")
     }
+}
 
-    @Test("insufficientDisk warning text")
-    func insufficientDiskWarningText() {
-        let reason = ModelBlockedReason.insufficientDisk
-        #expect(reason.warningText == "Insufficient free space on disk")
+// MARK: - Disk warning
+
+@Suite("ManageModelsViewModel -- disk warning")
+@MainActor
+struct ManageModelsViewModelDiskWarningTests {
+    @Test("download with low disk sets diskWarning and does not start")
+    func downloadLowDiskSetsWarning() async throws {
+        let fixture = try makeCoreFixture(
+            modelDownloaded: false,
+            hardwareDiskBytes: 1_000_000_000 // 1 GB — below any model's requirement
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = ManageModelsViewModel(core: fixture.core)
+        let firstID = try #require(LLMModelCatalog.all.first?.id)
+
+        viewModel.download(id: firstID)
+
+        // Should set diskWarning, not start a download
+        #expect(viewModel.diskWarning != nil)
+        #expect(viewModel.diskWarning?.modelName == LLMModelCatalog.all.first?.displayName)
+
+        // Wait to confirm no background download started
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(fixture.modelManager.isModelAvailable == false)
+    }
+
+    @Test("download with ample disk proceeds normally")
+    func downloadAmpleDiskProceeds() async throws {
+        let fixture = try makeCoreFixture(
+            modelDownloaded: false,
+            hardwareDiskBytes: 100_000_000_000
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = ManageModelsViewModel(core: fixture.core)
+        let firstID = try #require(LLMModelCatalog.all.first?.id)
+
+        viewModel.download(id: firstID)
+
+        // Should not set diskWarning
+        #expect(viewModel.diskWarning == nil)
+
+        // Wait for the background Task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Download should have proceeded
+        #expect(fixture.modelManager.isModelAvailable == true)
     }
 }

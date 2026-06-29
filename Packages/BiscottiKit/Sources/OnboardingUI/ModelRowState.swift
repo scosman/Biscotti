@@ -1,5 +1,6 @@
 import Intelligence
 import LocalLLM
+import TranscriptionService
 
 /// Progress style for a model download row.
 enum RowDownloadProgress: Equatable {
@@ -13,17 +14,15 @@ enum RowDownloadProgress: Equatable {
 /// The view-state for a single model download row. Computed by the
 /// view model from observable state so SwiftUI re-renders on change.
 enum ModelRowState: Equatable {
-    /// Not yet downloaded, enough disk. Caption shows the approximate size.
+    /// Not yet downloaded. Caption shows the approximate size.
     case idle(sizeCaption: String)
-    /// Not enough free disk space to download this model.
-    case insufficientDisk
     /// Download in progress.
     case downloading(RowDownloadProgress)
     /// Model is downloaded and ready to use.
     case ready
     /// Download failed; message describes the error.
     case failed(message: String)
-    /// Probing readiness / disk space in the background.
+    /// Probing readiness in the background.
     case checking
 }
 
@@ -36,11 +35,6 @@ public extension OnboardingViewModel {
     /// downloaded).
     var transcriptionReady: Bool {
         transcriptionDownloaded || downloadComplete
-    }
-
-    /// Whether the transcription model cannot be downloaded due to disk.
-    internal var transcriptionInsufficientDisk: Bool {
-        !hasSufficientDisk
     }
 
     // MARK: - Language row derivation
@@ -177,13 +171,11 @@ public extension OnboardingViewModel {
         if isPreparingModelStep {
             return .checking
         }
-        if transcriptionInsufficientDisk {
-            return .insufficientDisk
-        }
         if downloadFailed, let status = downloadStatus {
             return .failed(message: status)
         }
-        return .idle(sizeCaption: "~1.5 GB")
+        let estimatedBytes = appCore.transcription.estimatedModelDownloadBytes
+        return .idle(sizeCaption: ModelDiskPolicy.formatBytes(estimatedBytes))
     }
 
     /// Computes the view-state for the language model row.
@@ -212,29 +204,12 @@ public extension OnboardingViewModel {
             return .checking
         }
 
-        // Check disk block via model choices
-        let choices = appCore.modelManager.modelChoices()
-        if let choice = choices.first(where: { $0.id == targetID }),
-           choice.blockedReason == .insufficientDisk
-        {
-            return .insufficientDisk
-        }
-
         // Idle: show approximate download size
         let sizeCaption: String = if let model = LLMModelCatalog.model(id: targetID) {
-            Self.formatBytes(model.approxDownloadBytes)
+            ModelDiskPolicy.formatBytes(model.approxDownloadBytes)
         } else {
             ""
         }
         return .idle(sizeCaption: sizeCaption)
-    }
-
-    /// Formats a byte count to a human-readable "~N.N GB" string.
-    internal static func formatBytes(_ bytes: Int64) -> String {
-        let gigabytes = Double(bytes) / 1_000_000_000
-        if gigabytes == gigabytes.rounded() {
-            return "~\(Int(gigabytes)) GB"
-        }
-        return String(format: "~%.1f GB", gigabytes)
     }
 }

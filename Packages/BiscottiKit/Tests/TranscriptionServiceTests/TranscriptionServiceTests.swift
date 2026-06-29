@@ -698,6 +698,20 @@ private final class StatusCollector: @unchecked Sendable {
     }
 }
 
+// MARK: - Estimated download size
+
+@Suite("TranscriptionService -- estimated download size")
+struct TranscriptionEstimatedDownloadSizeTests {
+    @Test("estimatedModelDownloadBytes delegates to TranscriptionDownloadSize")
+    @MainActor
+    func estimatedModelDownloadBytesDelegates() throws {
+        let fix = try makeFixture()
+        let bytes = fix.service.estimatedModelDownloadBytes
+        // Should be a positive value matching the current method's model
+        #expect(bytes > 0)
+    }
+}
+
 // MARK: - Download phase delay-gate tests (Phase 5a)
 
 @Suite("TranscriptionService -- download phase delay gate")

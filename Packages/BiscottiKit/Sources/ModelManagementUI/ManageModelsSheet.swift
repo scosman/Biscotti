@@ -19,6 +19,11 @@ public final class ManageModelsViewModel {
     /// Set by the Delete button; cleared by cancel or confirm.
     public var deleteTarget: ModelChoice?
 
+    /// Disk-space warning for the click-time check. When non-nil, drives
+    /// the "Not Enough Disk Space" alert. Set by `download(id:)`;
+    /// cleared on dismiss.
+    public var diskWarning: DiskWarning?
+
     public init(core: AppCore) {
         self.core = core
     }
@@ -41,7 +46,14 @@ public final class ManageModelsViewModel {
     // MARK: - Actions
 
     /// Start downloading the model with the given id.
+    ///
+    /// Runs a click-time disk-space check first; if insufficient, sets
+    /// `diskWarning` and returns without starting the download.
     public func download(id: String) {
+        if let warning = core.modelManager.downloadDiskWarning(id: id) {
+            diskWarning = warning
+            return
+        }
         Task { await core.modelManager.downloadModel(id: id) }
     }
 
@@ -125,6 +137,16 @@ public struct ManageModelsSheet: View {
         } message: {
             Text(deleteDialogMessage)
         }
+        .alert(
+            "Not Enough Disk Space",
+            isPresented: showDiskWarning
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let warning = viewModel.diskWarning {
+                Text(warning.alertMessage)
+            }
+        }
     }
 
     // MARK: - Delete confirmation helpers
@@ -149,6 +171,17 @@ public struct ManageModelsSheet: View {
         let sizeGB = target.model.approxDownloadBytes / 1_000_000_000
         return "This frees about \(sizeGB) GB. You can download it again anytime."
     }
+
+    // MARK: - Disk warning helpers
+
+    private var showDiskWarning: Binding<Bool> {
+        Binding(
+            get: { viewModel.diskWarning != nil },
+            set: { show in
+                if !show { viewModel.diskWarning = nil }
+            }
+        )
+    }
 }
 
 // MARK: - ModelRowView
@@ -156,8 +189,8 @@ public struct ManageModelsSheet: View {
 /// A single model row in the Manage Models sheet.
 ///
 /// Renders the per-state matrix from `ModelChoice` (ui_design §2.2):
-/// blocked (not runnable), insufficient disk, downloadable, downloading,
-/// failed, downloaded+selected, downloaded+not-selected.
+/// blocked (not runnable), downloadable, downloading, failed,
+/// downloaded+selected, downloaded+not-selected.
 struct ModelRowView: View {
     let choice: ModelChoice
     /// Whether any model (possibly another) is currently downloading.
@@ -282,11 +315,6 @@ struct ModelRowView: View {
 
             default:
                 descriptionText
-
-                // Warnings (e.g. insufficientDisk)
-                if let reason = choice.blockedReason {
-                    warningLabel(for: reason)
-                }
             }
         }
     }
@@ -341,10 +369,7 @@ struct ModelRowView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(
-                        choice.blockedReason == .insufficientDisk
-                            || (isDownloading && !isThisModelDownloading)
-                    )
+                    .disabled(isDownloading && !isThisModelDownloading)
                 }
             }
         }
@@ -364,8 +389,6 @@ extension ModelBlockedReason {
         switch self {
         case .cannotRun:
             "This Mac can\u{2019}t run this model"
-        case .insufficientDisk:
-            "Insufficient free space on disk"
         }
     }
 }

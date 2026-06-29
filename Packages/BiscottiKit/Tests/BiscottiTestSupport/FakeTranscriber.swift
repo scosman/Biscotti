@@ -13,6 +13,7 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         public var processAudioCalled = false
         public var shutdownCalled = false
         public var modelsPresentCalled = false
+        public var cancelModelDownloadCalled = false
         public var lastMicURL: URL?
         public var lastSystemURL: URL?
         public var lastVocabulary: [String]?
@@ -25,6 +26,19 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
 
         /// Number of times `modelsPresent` has been called.
         public var modelsPresentCallCount = 0
+
+        /// Number of times `cancelModelDownload` has been called.
+        public var cancelModelDownloadCallCount = 0
+
+        /// When `true`, `ensureModelsDownloaded` suspends indefinitely
+        /// until the test resumes `ensureModelsContinuation` (simulates a
+        /// long/blocking download for cancel tests).
+        public var shouldBlockOnEnsureModels = false
+
+        /// Populated by `ensureModelsDownloaded` when
+        /// `shouldBlockOnEnsureModels` is true. The test resumes this to
+        /// unblock the fake download.
+        public var ensureModelsContinuation: CheckedContinuation<Void, any Error>?
 
         /// Error to throw from `ensureModelsDownloaded`, if any.
         public var ensureModelsError: (any Error)?
@@ -79,6 +93,14 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         for message in backing.statusMessages {
             status?(message)
         }
+        // If blocking is enabled, suspend until the test resumes
+        // the continuation (simulates a long-running download for
+        // cancel / reset-while-in-flight tests).
+        if backing.shouldBlockOnEnsureModels {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+                backing.ensureModelsContinuation = cont
+            }
+        }
         if let error = backing.ensureModelsError {
             throw error
         }
@@ -108,6 +130,11 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     public func shutdown() async {
         backing.shutdownCalled = true
         backing.shutdownCallCount += 1
+    }
+
+    public func cancelModelDownload() async {
+        backing.cancelModelDownloadCalled = true
+        backing.cancelModelDownloadCallCount += 1
     }
 
     /// Deterministic UUIDs for test assertions.

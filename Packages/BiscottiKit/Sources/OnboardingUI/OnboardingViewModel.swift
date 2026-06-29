@@ -82,10 +82,12 @@ public final class OnboardingViewModel {
     public internal(set) var enabledCalendarIDs: Set<String>?
 
     /// Model download state (transcription).
-    public private(set) var downloadStatus: String?
+    /// `internal(set)` so the transcription-download extension (same
+    /// module, different file) can mutate them.
+    public internal(set) var downloadStatus: String?
     public internal(set) var isDownloading: Bool = false
-    public private(set) var downloadComplete: Bool = false
-    public private(set) var downloadFailed: Bool = false
+    public internal(set) var downloadComplete: Bool = false
+    public internal(set) var downloadFailed: Bool = false
 
     /// True when transcription models were already on disk when the step
     /// was entered (set by `prepareModelStep()`).
@@ -165,6 +167,26 @@ public final class OnboardingViewModel {
     /// on dismiss.
     public var diskWarning: DiskWarning?
 
+    /// Retained task driving the transcription model download so it can
+    /// be cancelled. Nil when no download is in flight.
+    /// `internal` so the transcription-download extension (same module) can
+    /// access it.
+    var transcriptionDownloadTask: Task<Void, Never>?
+
+    /// Retained cancel-cleanup task. While non-nil, a cancel is still
+    /// tearing down the XPC worker / clearing cache. Guards
+    /// `startTranscriptionDownload()` against the cancel-then-restart race
+    /// where late cleanup would clobber a new download's state.
+    /// `internal` so the transcription-download extension (same module) can
+    /// access it.
+    var transcriptionCancelTask: Task<Void, Never>?
+
+    /// Set before cancelling the transcription task so the download's
+    /// `catch`/success paths don't surface a failure or mark completion.
+    /// `internal` so the transcription-download extension (same module) can
+    /// access it.
+    var transcriptionCancelled = false
+
     /// Pre-warm task that runs model probes early (on the permissions
     /// screen) so the model-download screen arrives spinner-free when
     /// probes finish in time. Nil until `beginModelPrep()` is called.
@@ -172,7 +194,9 @@ public final class OnboardingViewModel {
 
     /// Seam for reading available disk bytes. Defaults to the real
     /// filesystem check. Override in tests for determinism.
-    private let availableDiskBytes: @MainActor () -> Int64
+    /// `internal` so the transcription-download extension (same module) can
+    /// use it for the disk check.
+    let availableDiskBytes: @MainActor () -> Int64
 
     // MARK: - Init
 
@@ -254,39 +278,6 @@ public final class OnboardingViewModel {
         notificationsGranted = granted
     }
 
-    /// Start the transcription model download.
-    ///
-    /// Runs a click-time disk-space check first; if insufficient, sets
-    /// `diskWarning` and returns without starting the download.
-    public func startTranscriptionDownload() async {
-        let downloadBytes = core.transcription.estimatedModelDownloadBytes
-        if let warning = ModelDiskPolicy.warning(
-            modelName: "Transcription & Speaker ID",
-            downloadBytes: downloadBytes,
-            freeBytes: availableDiskBytes()
-        ) {
-            diskWarning = warning
-            return
-        }
-        isDownloading = true
-        downloadFailed = false
-        downloadStatus = "Preparing\u{2026}"
-        do {
-            try await core.transcription
-                .ensureModelsReady { [weak self] message in
-                    Task { @MainActor in
-                        self?.downloadStatus = message
-                    }
-                }
-            downloadComplete = true
-        } catch {
-            downloadFailed = true
-            downloadStatus =
-                "Download failed. You can retry or skip."
-        }
-        isDownloading = false
-    }
-
     /// Start the language model download for the current target model.
     ///
     /// Runs a click-time disk-space check first; if insufficient, sets
@@ -322,6 +313,10 @@ public final class OnboardingViewModel {
     /// button in Settings).
     public func resetForReplay() {
         cancelLanguageDownload()
+        cancelTranscriptionDownload()
+        transcriptionDownloadTask = nil
+        transcriptionCancelTask?.cancel()
+        transcriptionCancelTask = nil
         modelPrepTask?.cancel()
         modelPrepTask = nil
         currentStep = .welcome

@@ -63,7 +63,10 @@ struct TranscriptionRowStateTests {
 
         // Clear the error so download succeeds
         fixture.fakeEngine.backing.ensureModelsError = nil
-        await viewModel.startTranscriptionDownload()
+        viewModel.startTranscriptionDownload()
+
+        // Wait for the retained task to complete
+        try await Task.sleep(for: .milliseconds(50))
 
         #expect(viewModel.downloadComplete == true)
         #expect(viewModel.transcriptionRowState() == .ready)
@@ -90,7 +93,10 @@ struct TranscriptionRowStateTests {
         await viewModel.skip()
 
         // Attempt download with the error set
-        await viewModel.startTranscriptionDownload()
+        viewModel.startTranscriptionDownload()
+
+        // Wait for the retained task to complete
+        try await Task.sleep(for: .milliseconds(50))
 
         // The error message contains "failed"
         #expect(viewModel.transcriptionRowState() == .failed(message: "Download failed. You can retry or skip."))

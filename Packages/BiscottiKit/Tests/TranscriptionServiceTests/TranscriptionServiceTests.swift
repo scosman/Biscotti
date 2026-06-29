@@ -570,6 +570,8 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
             await service.transcribe(meetingID: meetingID)
         }
     }
+
+    func cancelModelDownload() async {}
 }
 
 // MARK: - BlockingFakeTranscriber
@@ -624,6 +626,8 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
     }
 
     func shutdown() async {}
+
+    func cancelModelDownload() async {}
 }
 
 // MARK: - Model readiness tests (Phase 10)
@@ -695,6 +699,33 @@ private final class StatusCollector: @unchecked Sendable {
 
     var messages: [String] {
         lock.withLock { _messages }
+    }
+}
+
+// MARK: - Cancel model download
+
+@Suite("TranscriptionService -- cancel model download")
+struct TranscriptionCancelModelDownloadTests {
+    @Test("cancelModelDownload forwards to engine")
+    @MainActor
+    func cancelModelDownloadForwards() async throws {
+        let fix = try makeFixture()
+
+        await fix.service.cancelModelDownload()
+
+        #expect(fix.fakeEngine.backing.cancelModelDownloadCalled == true)
+        #expect(fix.fakeEngine.backing.cancelModelDownloadCallCount == 1)
+    }
+
+    @Test("cancelModelDownload is safe to call multiple times")
+    @MainActor
+    func cancelModelDownloadIdempotent() async throws {
+        let fix = try makeFixture()
+
+        await fix.service.cancelModelDownload()
+        await fix.service.cancelModelDownload()
+
+        #expect(fix.fakeEngine.backing.cancelModelDownloadCallCount == 2)
     }
 }
 
@@ -807,4 +838,6 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     }
 
     func shutdown() async {}
+
+    func cancelModelDownload() async {}
 }

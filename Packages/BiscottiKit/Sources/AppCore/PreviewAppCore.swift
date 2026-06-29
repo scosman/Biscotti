@@ -142,6 +142,7 @@
         }
 
         func shutdown() async {}
+        func cancelModelDownload() async {}
     }
 
     /// No-op EventStore for previews: authorized, no calendars/events.

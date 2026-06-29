@@ -30,6 +30,14 @@ public protocol Transcribing: Sendable {
     /// worker process can exit. The engine remains usable; subsequent calls
     /// will transparently reconnect.
     func shutdown() async
+
+    /// Stop an in-flight model download and remove partial files.
+    ///
+    /// For hosted backends this kills the XPC worker (stopping its download)
+    /// and deletes the model cache. For in-process backends it just deletes
+    /// the cache (the caller cancels the driving Task). After this call the
+    /// engine returns to the needs-download state.
+    func cancelModelDownload() async
 }
 
 // Re-export Transcription types so downstream modules (AppCore, UI) can use

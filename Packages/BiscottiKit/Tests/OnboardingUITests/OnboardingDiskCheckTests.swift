@@ -27,7 +27,7 @@ struct OnboardingDiskCheckTests {
         await lowDiskModel.skip() // -> modelDownload
 
         // Attempt download
-        await lowDiskModel.startTranscriptionDownload()
+        lowDiskModel.startTranscriptionDownload()
 
         // diskWarning should be set
         #expect(lowDiskModel.diskWarning != nil)
@@ -53,7 +53,10 @@ struct OnboardingDiskCheckTests {
         await okModel.advance() // welcome -> permissions
         await okModel.skip() // -> modelDownload
 
-        await okModel.startTranscriptionDownload()
+        okModel.startTranscriptionDownload()
+
+        // Wait for the retained task to complete
+        try await Task.sleep(for: .milliseconds(50))
 
         // No disk warning
         #expect(okModel.diskWarning == nil)
@@ -114,7 +117,7 @@ struct OnboardingDiskCheckTests {
         await viewModel.advance()
         await viewModel.skip()
 
-        await viewModel.startTranscriptionDownload()
+        viewModel.startTranscriptionDownload()
         #expect(viewModel.diskWarning != nil)
 
         viewModel.resetForReplay()

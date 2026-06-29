@@ -30,7 +30,7 @@ just the build order.
   not `.failed`. Add the "Cancel" control (below progress) to `ManageModelsSheet` and
   the onboarding language row. (Arch §2, §5.) Tests per arch §8.
 
-- [ ] **Phase 3 — Transcription download cancel (best-effort).**
+- [x] **Phase 3 — Transcription download cancel (best-effort).**
   Add `Transcriber.cancelModelDownload()` (hosted: `shutdown()` → kill worker, then
   `ModelStorage.clearCache()`, emit `.needsDownload`), thread through the `Transcribing`
   seam + `TranscriptionService.cancelModelDownload()`. Make `OnboardingViewModel.startTranscriptionDownload()`

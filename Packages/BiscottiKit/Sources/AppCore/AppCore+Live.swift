@@ -231,4 +231,8 @@ private struct LiveTranscriberAdapter: Transcribing {
     func shutdown() async {
         await transcriber.shutdown()
     }
+
+    func cancelModelDownload() async {
+        await transcriber.cancelModelDownload()
+    }
 }

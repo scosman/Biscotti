@@ -28,7 +28,10 @@ struct ModelCard: View {
             why: "Turns speech into text and labels who\u{2019}s speaking.",
             state: viewModel.transcriptionRowState(),
             onDownload: {
-                Task { await viewModel.startTranscriptionDownload() }
+                viewModel.startTranscriptionDownload()
+            },
+            onCancel: {
+                viewModel.cancelTranscriptionDownload()
             }
         )
     }
@@ -118,7 +121,8 @@ extension ModelDownloadRow where ExtraContent == EmptyView {
         name: String,
         why: String,
         state: ModelRowState,
-        onDownload: @escaping () -> Void
+        onDownload: @escaping () -> Void,
+        onCancel: (() -> Void)? = nil
     ) {
         self.init(
             icon: icon,
@@ -126,6 +130,7 @@ extension ModelDownloadRow where ExtraContent == EmptyView {
             why: why,
             state: state,
             onDownload: onDownload,
+            onCancel: onCancel,
             extraContent: { EmptyView() }
         )
     }

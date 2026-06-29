@@ -197,6 +197,21 @@ public actor Transcriber {
         try ModelStorage.clearCache()
     }
 
+    /// Stop an in-flight model download and remove partial files.
+    ///
+    /// For `.hosted`: invalidates the XPC connection (killing the worker and
+    /// its in-flight download), then deletes the model cache directory so no
+    /// partial files remain. For `.inProcess`: just deletes the cache (the
+    /// caller is responsible for cancelling the driving Task).
+    ///
+    /// After this call the status is `.needsDownload` and the next
+    /// ``ensureModelsDownloaded(status:)`` will re-download from scratch.
+    public func cancelModelDownload() async {
+        shutdown()
+        try? ModelStorage.clearCache()
+        emitStatus(.needsDownload)
+    }
+
     /// Tear down the XPC connection, allowing the worker process to exit
     /// and release its memory (loaded ML models are multi-GB).
     ///

@@ -82,6 +82,16 @@ public final class TranscriptionService {
         try await engine.ensureModelsDownloaded(status: status)
     }
 
+    /// Stop an in-flight model download and remove partial files.
+    ///
+    /// Forwards to the engine's `cancelModelDownload()`. For the hosted
+    /// backend this kills the XPC worker; for in-process it clears the
+    /// model cache. After this call the engine returns to the needs-download
+    /// state.
+    public func cancelModelDownload() async {
+        await engine.cancelModelDownload()
+    }
+
     /// Returns `true` when models are already present on disk and do NOT
     /// need to be downloaded.
     ///

@@ -101,6 +101,9 @@ private final class BlockingModelProvider: ModelProviding,
         enteredContinuation.yield()
         var iterator = releaseStream.makeAsyncIterator()
         _ = await iterator.next()
+        // Check for cancellation after being released — mirrors real
+        // URLSession behaviour where a cancelled task throws.
+        try Task.checkCancellation()
         downloadedIDs.insert(id)
     }
 
@@ -292,7 +295,7 @@ struct ModelManagerAutoSelectTests {
         await fix.mgr.refresh()
         #expect(fix.mgr.activeModelID == nil)
 
-        await fix.mgr.downloadModel(id: modelE2B)
+        await fix.mgr.runDownload(id: modelE2B)
 
         #expect(fix.mgr.selectedModelID == modelE2B)
         #expect(fix.mgr.activeModelID == modelE2B)
@@ -309,7 +312,7 @@ struct ModelManagerAutoSelectTests {
         await fix.mgr.refresh()
         #expect(fix.mgr.selectedModelID == model12B)
 
-        await fix.mgr.downloadModel(id: modelE2B)
+        await fix.mgr.runDownload(id: modelE2B)
 
         #expect(fix.mgr.selectedModelID == model12B)
         #expect(fix.mgr.activeModelID == model12B)
@@ -326,7 +329,7 @@ struct ModelManagerAutoSelectTests {
         )
 
         await mgr.refresh()
-        await mgr.downloadModel(id: modelE2B)
+        await mgr.runDownload(id: modelE2B)
 
         #expect(mgr.selectedModelID == "")
         #expect(mgr.activeModelID == nil)
@@ -520,7 +523,7 @@ struct ModelManagerOneAtATimeTests {
         }
 
         let task1 = Task { @MainActor in
-            await mgr.downloadModel(id: modelE2B)
+            await mgr.runDownload(id: modelE2B)
         }
 
         await models.waitUntilEntered()
@@ -532,7 +535,7 @@ struct ModelManagerOneAtATimeTests {
         }
 
         // Try to start second download -- should be blocked
-        await mgr.downloadModel(id: model12B)
+        await mgr.runDownload(id: model12B)
 
         #expect(models.downloadCalledIDs.count == 1)
         #expect(models.downloadCalledIDs.first == modelE2B)
@@ -550,7 +553,7 @@ struct ModelManagerOneAtATimeTests {
         )
 
         await fix.mgr.refresh()
-        await fix.mgr.downloadModel(id: model12B)
+        await fix.mgr.runDownload(id: model12B)
 
         #expect(fix.models.downloadCalledIDs.isEmpty)
         #expect(fix.mgr.downloads[model12B] == .notDownloaded)
@@ -558,6 +561,149 @@ struct ModelManagerOneAtATimeTests {
 
     // Disk blocking is now a click-time check via downloadDiskWarning,
     // not a guard in canStartDownload. See ModelManagerDiskWarningTests.
+}
+
+// MARK: - startDownload / cancelDownload
+
+@Suite("ModelManager startDownload / cancelDownload")
+struct ModelManagerCancelTests {
+    @Test("startDownload retains task and download proceeds")
+    @MainActor func startDownloadProceeds() async throws {
+        let store = try makeStore()
+        let models = BlockingModelProvider()
+        let hardware = MMFakeHardwareProbe()
+        let mgr = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+
+        for model in models.catalog {
+            mgr.downloads[model.id] = .notDownloaded
+        }
+
+        mgr.startDownload(id: modelE2B)
+
+        // Wait until the download has entered the provider
+        await models.waitUntilEntered()
+
+        // Should be in .downloading state
+        if case .downloading = mgr.downloads[modelE2B] {
+            // expected
+        } else {
+            Issue.record("Expected E2B to be in .downloading state")
+        }
+
+        // Release to complete
+        models.release()
+
+        // Wait for the task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(mgr.downloads[modelE2B] == .downloaded)
+    }
+
+    @Test("cancelDownload sets .notDownloaded and clears task entry")
+    @MainActor func cancelSetsNotDownloaded() async throws {
+        let store = try makeStore()
+        let models = BlockingModelProvider()
+        let hardware = MMFakeHardwareProbe()
+        let mgr = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+
+        for model in models.catalog {
+            mgr.downloads[model.id] = .notDownloaded
+        }
+
+        mgr.startDownload(id: modelE2B)
+        await models.waitUntilEntered()
+
+        // Cancel the download
+        mgr.cancelDownload(id: modelE2B)
+
+        // Release so the task can observe cancellation and unwind
+        models.release()
+
+        // Wait for the task to settle
+        try await Task.sleep(for: .milliseconds(50))
+
+        // State should be .notDownloaded, not .failed
+        #expect(mgr.downloads[modelE2B] == .notDownloaded)
+    }
+
+    @Test("after cancel, a new download is startable (one-at-a-time re-enabled)")
+    @MainActor func afterCancelNewDownloadStartable() async throws {
+        let store = try makeStore()
+        let models = BlockingModelProvider()
+        let hardware = MMFakeHardwareProbe()
+        let mgr = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+
+        for model in models.catalog {
+            mgr.downloads[model.id] = .notDownloaded
+        }
+
+        // Start and cancel the first download
+        mgr.startDownload(id: modelE2B)
+        await models.waitUntilEntered()
+        mgr.cancelDownload(id: modelE2B)
+        models.release()
+
+        // Wait for settle
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(mgr.downloads[modelE2B] == .notDownloaded)
+
+        // Now start a second download — should succeed
+        mgr.startDownload(id: modelE2B)
+        await models.waitUntilEntered()
+
+        if case .downloading = mgr.downloads[modelE2B] {
+            // expected: second download started
+        } else {
+            Issue.record("Expected E2B to be in .downloading state for second attempt")
+        }
+
+        // Clean up
+        models.release()
+        try await Task.sleep(for: .milliseconds(50))
+    }
+
+    @Test("startDownload guards against duplicate for same id")
+    @MainActor func startDownloadDuplicateGuard() async throws {
+        let store = try makeStore()
+        let models = BlockingModelProvider()
+        let hardware = MMFakeHardwareProbe()
+        let mgr = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+
+        for model in models.catalog {
+            mgr.downloads[model.id] = .notDownloaded
+        }
+
+        mgr.startDownload(id: modelE2B)
+        await models.waitUntilEntered()
+
+        // Second call for the same id should be a no-op
+        mgr.startDownload(id: modelE2B)
+
+        // Only one download call should have been made
+        #expect(models.downloadCalledIDs.count == 1)
+
+        // Clean up
+        mgr.cancelDownload(id: modelE2B)
+        models.release()
+        try await Task.sleep(for: .milliseconds(50))
+    }
+
+    @Test("cancelDownload on non-downloading id is a safe no-op")
+    @MainActor func cancelNonDownloadingIsNoop() throws {
+        let fix = try makeManager(downloadedIDs: [])
+
+        // Should not crash
+        fix.mgr.cancelDownload(id: modelE2B)
+        fix.mgr.cancelDownload(id: "nonexistent")
+    }
 }
 
 // MARK: - modelChoices matrix

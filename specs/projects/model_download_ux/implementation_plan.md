@@ -22,7 +22,7 @@ just the build order.
   `DownloadControl` disk view). Wire the click-time check + `OK`-only alert into both
   surfaces' download actions. (Arch §1, §4, §5.1; ui_design §2.) Tests per arch §8.
 
-- [ ] **Phase 2 — LLM download cancel.**
+- [x] **Phase 2 — LLM download cancel.**
   Retain the download `Task` in `ModelManager` (`startDownload`/`cancelDownload`,
   `runDownload` core, `defer` cleanup); swap VM call sites from fire-and-forget to
   `startDownload`. Map `NSURLErrorCancelled`/`CancellationError` → `CancellationError`

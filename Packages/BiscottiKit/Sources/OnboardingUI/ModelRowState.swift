@@ -37,7 +37,14 @@ public extension OnboardingViewModel {
         transcriptionDownloaded || downloadComplete
     }
 
-    // MARK: - Language row derivation
+    // MARK: - Language row cancel + derivation
+
+    /// Cancel the in-flight language model download. Resolves the currently
+    /// downloading model id and forwards to `ModelManager.cancelDownload`.
+    func cancelLanguageDownload() {
+        guard let downloadingID = languageDownloadingModelID else { return }
+        appCore.modelManager.cancelDownload(id: downloadingID)
+    }
 
     /// The language model id the onboarding row targets, resolved in
     /// priority order so the row tracks the user's effective choice:
@@ -84,7 +91,11 @@ public extension OnboardingViewModel {
     /// The model id whose download is actively in progress (`.downloading`),
     /// if any. Iterates the catalog in display order for deterministic results
     /// (dictionary iteration order is not stable).
-    private var languageDownloadingModelID: String? {
+    ///
+    /// `internal` (not `private`) so tests can assert the resolved id via
+    /// `@testable import`, and so `cancelLanguageDownload` can access it
+    /// from `OnboardingViewModel.swift`.
+    internal var languageDownloadingModelID: String? {
         for model in LLMModelCatalog.all {
             if case .downloading = appCore.modelManager.downloads[model.id] {
                 return model.id

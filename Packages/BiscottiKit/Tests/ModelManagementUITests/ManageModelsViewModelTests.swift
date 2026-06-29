@@ -112,7 +112,7 @@ struct ManageModelsViewModelTests {
         // Download both models
         let ids = LLMModelCatalog.all.map(\.id)
         for id in ids {
-            await fixture.modelManager.downloadModel(id: id)
+            await fixture.modelManager.runDownload(id: id)
         }
 
         // First model should be selected (auto-select on first download)
@@ -242,6 +242,48 @@ struct ManageModelsViewModelTests {
 
         let viewModel = ManageModelsViewModel(core: fixture.core)
         #expect(viewModel.isDownloading == true)
+    }
+}
+
+// MARK: - Cancel
+
+@Suite("ManageModelsViewModel -- cancel")
+@MainActor
+struct ManageModelsViewModelCancelTests {
+    @Test("cancel delegates to ModelManager.cancelDownload")
+    func cancelDelegation() throws {
+        let fixture = try makeCoreFixture(modelDownloaded: false)
+        defer { fixture.cleanup() }
+
+        let viewModel = ManageModelsViewModel(core: fixture.core)
+        let firstID = LLMModelCatalog.all.first?.id ?? ""
+
+        // Set up downloading state manually
+        fixture.modelManager.downloads[firstID] = .downloading(fraction: 0.3)
+
+        // Cancel should not crash (it calls cancelDownload on the manager;
+        // with no real task in flight, it's a no-op — but verifies the
+        // forwarding path compiles and runs).
+        viewModel.cancel(id: firstID)
+    }
+
+    @Test("download via VM uses startDownload (model becomes available)")
+    func downloadUsesStartDownload() async throws {
+        let fixture = try makeCoreFixture(
+            modelDownloaded: false,
+            hardwareDiskBytes: 100_000_000_000
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = ManageModelsViewModel(core: fixture.core)
+        let firstID = try #require(LLMModelCatalog.all.first?.id)
+
+        viewModel.download(id: firstID)
+
+        // Wait for the retained task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(fixture.modelManager.isModelAvailable == true)
     }
 }
 

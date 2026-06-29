@@ -43,6 +43,9 @@ struct ModelCard: View {
             onDownload: {
                 viewModel.startLanguageDownload()
             },
+            onCancel: {
+                viewModel.cancelLanguageDownload()
+            },
             extraContent: {
                 if case .idle = state {
                     RecommendationLine(
@@ -67,6 +70,7 @@ struct ModelDownloadRow<ExtraContent: View>: View {
     let why: String
     let state: ModelRowState
     let onDownload: () -> Void
+    var onCancel: (() -> Void)?
     @ViewBuilder let extraContent: ExtraContent
 
     var body: some View {
@@ -99,7 +103,7 @@ struct ModelDownloadRow<ExtraContent: View>: View {
             Spacer(minLength: 0)
 
             // Trailing download control
-            DownloadControl(state: state, onDownload: onDownload)
+            DownloadControl(state: state, onDownload: onDownload, onCancel: onCancel)
         }
         .padding(.vertical, 15)
         .padding(.horizontal, 16)
@@ -172,6 +176,7 @@ private struct IndeterminateBar: View {
 struct DownloadControl: View {
     let state: ModelRowState
     let onDownload: () -> Void
+    var onCancel: (() -> Void)?
 
     /// Shared width for the bar tracks and the entire control column.
     private let controlWidth: CGFloat = 120
@@ -250,6 +255,13 @@ struct DownloadControl: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        if let onCancel {
+            Button("Cancel") {
+                onCancel()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 

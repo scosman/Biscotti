@@ -352,3 +352,66 @@ struct OnboardingCalendarReloadTests {
         #expect(model.calendarGroups.isEmpty)
     }
 }
+
+// MARK: - Language download cancel
+
+@Suite("OnboardingViewModel -- language download cancel")
+@MainActor
+struct OnboardingLanguageCancelTests {
+    @Test("cancelLanguageDownload calls ModelManager.cancelDownload")
+    func cancelLanguageDownloadForwards() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
+
+        // Simulate a downloading state for the target model
+        let targetID = viewModel.languageTargetModelID ?? ""
+        fixture.modelManager.downloads[targetID] = .downloading(fraction: 0.3)
+
+        // Cancel should not crash; it forwards to the manager
+        viewModel.cancelLanguageDownload()
+
+        // Verify the downloading model id was resolved correctly
+        #expect(viewModel.languageDownloadingModelID == targetID)
+    }
+
+    @Test("cancelLanguageDownload is a no-op when no download is in flight")
+    func cancelLanguageDownloadNoop() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        // No download in flight — should not crash
+        viewModel.cancelLanguageDownload()
+    }
+
+    @Test("startLanguageDownload uses startDownload (model becomes available)")
+    func startLanguageDownloadUsesStartDownload() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            hardwareDiskBytes: 100_000_000_000
+        )
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+
+        viewModel.startLanguageDownload()
+
+        // Wait for the retained task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(fixture.modelManager.isModelAvailable == true)
+    }
+}

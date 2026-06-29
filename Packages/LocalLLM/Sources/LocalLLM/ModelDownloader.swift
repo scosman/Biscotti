@@ -25,6 +25,11 @@ public struct ModelDownloader: Sendable {
         cacheDirectory.appendingPathComponent(Self.defaultModelURL.lastPathComponent)
     }
 
+    /// The URLSession configuration used for downloads. Defaults to `.default`.
+    /// Override in tests to inject a custom `protocolClasses` for deterministic
+    /// network interception (e.g. cancellation tests).
+    var sessionConfiguration: URLSessionConfiguration = .default
+
     /// Create a downloader that stores models in `cacheDirectory`.
     ///
     /// - Parameter cacheDirectory: The directory to use for model storage. Created on demand
@@ -92,8 +97,13 @@ public struct ModelDownloader: Sendable {
 
             return finalPath
         } catch {
-            // Clean up temp on failure
+            // Clean up temp on failure (including cancel — partial file removed)
             try? FileManager.default.removeItem(at: tempPath)
+            // Preserve CancellationError identity so ModelManager's
+            // `catch is CancellationError` branch fires for user cancels.
+            if error is CancellationError {
+                throw CancellationError()
+            }
             if let llmError = error as? LocalLLMError {
                 throw llmError
             }
@@ -153,7 +163,7 @@ public struct ModelDownloader: Sendable {
         // A delegate cannot be attached to `URLSession.shared`, so we spin up a dedicated
         // session and tear it down when the transfer completes (breaks the session→delegate
         // retain cycle).
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
         return try await delegate.run(session: session, request: URLRequest(url: source))
@@ -276,9 +286,17 @@ private final class StreamingDownloadDelegate: NSObject, URLSessionDataDelegate,
         if let storedFailure {
             cont?.resume(throwing: storedFailure)
         } else if let error {
-            cont?.resume(throwing: LocalLLMError.downloadFailed(
-                url: source, underlying: error.localizedDescription
-            ))
+            // A cancelled URLSessionDataTask surfaces NSURLErrorCancelled.
+            // Propagate as CancellationError so callers (ModelManager) can
+            // distinguish user cancel from genuine failure.
+            let nsError = error as NSError
+            if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+                cont?.resume(throwing: CancellationError())
+            } else {
+                cont?.resume(throwing: LocalLLMError.downloadFailed(
+                    url: source, underlying: error.localizedDescription
+                ))
+            }
         } else {
             cont?.resume(returning: totalBytes)
         }

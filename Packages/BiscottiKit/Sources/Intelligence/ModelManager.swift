@@ -140,6 +140,11 @@ public final class ModelManager {
         }
     }
 
+    // MARK: - Download task retention
+
+    /// Retained download tasks keyed by model id, enabling cancellation.
+    private var downloadTasks: [String: Task<Void, Never>] = [:]
+
     // MARK: - Lifecycle / actions
 
     /// Recomputes downloads from disk and loads/migrates the persisted selection.
@@ -173,17 +178,49 @@ public final class ModelManager {
         }
     }
 
+    /// Start downloading the model with the given id (retained, cancellable).
+    ///
+    /// Replaces the VM-side `Task { downloadModel(id:) }` pattern. The
+    /// download Task is retained in `downloadTasks` so `cancelDownload(id:)`
+    /// can cancel it cooperatively.
+    public func startDownload(id: String) {
+        guard downloadTasks[id] == nil else { return }
+        guard canStartDownload(id: id) else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await runDownload(id: id)
+        }
+        downloadTasks[id] = task
+    }
+
+    /// Cancel an in-flight download. Cooperative cancellation propagates
+    /// through `models.download` -> `ModelDownloader` (URLSession
+    /// task.cancel()), which deletes the `.partial` file. The
+    /// `CancellationError` path in `runDownload` sets `.notDownloaded`.
+    ///
+    /// The task entry in `downloadTasks` is cleared by the `defer` in
+    /// `runDownload` when the cancelled task unwinds, so a subsequent
+    /// `startDownload(id:)` for the same id is intentionally blocked
+    /// until the cancel fully settles.
+    public func cancelDownload(id: String) {
+        downloadTasks[id]?.cancel()
+    }
+
     /// Download the model with the given id.
     ///
     /// Guards: the model must be runnable, have enough disk, and no other
     /// download can be in flight (one-at-a-time). On success, auto-selects
     /// the model if no valid selection exists.
-    public func downloadModel(id: String) async {
+    ///
+    /// Called by `startDownload` (retained Task) or directly from unit tests.
+    public func runDownload(id: String) async {
         guard canStartDownload(id: id) else { return }
 
         downloads[id] = .downloading(fraction: nil)
 
         let lastFraction = LastFraction()
+
+        defer { downloadTasks[id] = nil }
 
         do {
             try await models.download(id) { [weak self] bytes, total in

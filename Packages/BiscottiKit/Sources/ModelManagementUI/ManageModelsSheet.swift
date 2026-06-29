@@ -54,7 +54,12 @@ public final class ManageModelsViewModel {
             diskWarning = warning
             return
         }
-        Task { await core.modelManager.downloadModel(id: id) }
+        core.modelManager.startDownload(id: id)
+    }
+
+    /// Cancel an in-flight download for the model with the given id.
+    public func cancel(id: String) {
+        core.modelManager.cancelDownload(id: id)
     }
 
     /// Stage a model for deletion (shows the confirmation dialog).
@@ -109,6 +114,7 @@ public struct ManageModelsSheet: View {
                         choice: choice,
                         isDownloading: viewModel.isDownloading,
                         onDownload: { viewModel.download(id: choice.model.id) },
+                        onCancel: { viewModel.cancel(id: choice.model.id) },
                         onDelete: { viewModel.requestDelete(choice: choice) },
                         onChoose: { viewModel.choose(id: choice.model.id) }
                     )
@@ -196,6 +202,7 @@ struct ModelRowView: View {
     /// Whether any model (possibly another) is currently downloading.
     let isDownloading: Bool
     let onDownload: () -> Void
+    let onCancel: () -> Void
     let onDelete: () -> Void
     let onChoose: () -> Void
 
@@ -306,6 +313,11 @@ struct ModelRowView: View {
                         .font(Tokens.metadataFont)
                         .foregroundStyle(Tokens.secondaryText)
                 }
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
             case let .failed(message):
                 descriptionText

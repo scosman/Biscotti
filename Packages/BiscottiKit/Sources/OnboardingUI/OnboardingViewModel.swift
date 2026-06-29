@@ -297,9 +297,7 @@ public final class OnboardingViewModel {
             diskWarning = warning
             return
         }
-        Task {
-            await core.modelManager.downloadModel(id: targetID)
-        }
+        core.modelManager.startDownload(id: targetID)
     }
 
     /// Open System Settings for a denied permission.
@@ -323,6 +321,7 @@ public final class OnboardingViewModel {
     /// from the beginning (e.g. via the debug "Replay Onboarding"
     /// button in Settings).
     public func resetForReplay() {
+        cancelLanguageDownload()
         modelPrepTask?.cancel()
         modelPrepTask = nil
         currentStep = .welcome

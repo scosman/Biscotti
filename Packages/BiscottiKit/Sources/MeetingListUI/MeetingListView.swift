@@ -59,6 +59,11 @@ public struct MeetingListView: View {
                         .background(SelectionHighlightSuppressor())
                 }
             }
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                Button(MeetingListViewModel.deleteMenuLabel(for: ids.count)) {
+                    viewModel.requestDeleteContextMenu(ids)
+                }
+            }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .background(Color.listPaneBackground)

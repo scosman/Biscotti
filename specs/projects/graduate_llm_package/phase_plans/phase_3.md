@@ -49,8 +49,8 @@ Add all recordable `llm_*` step IDs to `manual_test_results.json` with `"status"
 
 ### 8. Documentation updates
 
-- Root `architecture.md`: update the Intelligence component card and workspace layout to note `Packages/LocalLLM` exists as a graduated package with `BiscottiLLM.xpc`.
-- Root `implementation_plan.md`: note the NSXPC transport is built ahead of Project 10.
+- `specs/architecture.md`: update the Intelligence component card and workspace layout to note `Packages/LocalLLM` exists as a graduated package with `BiscottiLLM.xpc`.
+- `specs/implementation_plan.md`: note the NSXPC transport is built ahead of Project 10.
 - Root `CLAUDE.md`: add `Packages/LocalLLM` and `XPCServices/BiscottiLLM` to the repo map; extend the staleness rule with `llm_*`/`Packages/LocalLLM`.
 - `Packages/LocalLLM/README.md`: update to reflect the XPC backend is now built.
 

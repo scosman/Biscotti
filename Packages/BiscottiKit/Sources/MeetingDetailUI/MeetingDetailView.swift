@@ -4,6 +4,7 @@ import DataStore
 import DesignSystem
 import Intelligence
 import MarkdownEditorUI
+import SummaryPromptUI
 import SwiftUI
 import TranscriptionService
 
@@ -142,18 +143,18 @@ public struct MeetingDetailView: View {
                 "This permanently deletes the recording and transcript."
             )
         }
-        .confirmationDialog(
-            "Replace your edited summary?",
-            isPresented: $viewModel.showRegenerateConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Replace", role: .destructive) {
-                viewModel.confirmRegenerate()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "This overwrites the summary you edited with a new AI-generated one."
+        .sheet(item: $viewModel.summaryPromptModel) { model in
+            SummaryPromptSheet(
+                model: model,
+                onSave: { _ in },
+                onRegenerate: { text, alsoSave in
+                    viewModel.regenerate(
+                        withPrompt: text, alsoSave: alsoSave
+                    )
+                },
+                onCancel: {
+                    viewModel.summaryPromptModel = nil
+                }
             )
         }
         .sheet(
@@ -389,12 +390,15 @@ private extension MeetingDetailView {
         })
     }
 
-    /// Header + calendar card + tab bar, measured for the chrome-height
-    /// preference key. AudioTransport is now pinned to the bottom of
-    /// the panel (see `pinnedTransportBar`), outside this scroll region.
+    /// Header + tags row + calendar card + tab bar, measured for the
+    /// chrome-height preference key. AudioTransport is now pinned to
+    /// the bottom of the panel (see `pinnedTransportBar`), outside
+    /// this scroll region.
     var chrome: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             header
+
+            tagsRow
 
             if viewModel.showReTranscribeAfterCorrection {
                 reTranscribePrompt
@@ -416,6 +420,47 @@ private extension MeetingDetailView {
                     value: chromeProxy.size.height
                 )
         })
+    }
+
+    /// The tags row: detail-size pills with hover-remove, followed by
+    /// the Add affordance that anchors the tag picker popover. Always
+    /// present (even at zero tags, shows the empty-state Add button).
+    var tagsRow: some View {
+        FlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+            ForEach(viewModel.appliedTags) { tag in
+                TagPill(tag: tag, size: .detail) {
+                    Task { await viewModel.removeTag(tag) }
+                }
+            }
+
+            Button {
+                viewModel.tagPickerOpen.toggle()
+            } label: {
+                TagAddButton(
+                    hasTags: !viewModel.appliedTags.isEmpty,
+                    isPickerOpen: viewModel.tagPickerOpen
+                )
+            }
+            .buttonStyle(.plain)
+            .popover(
+                isPresented: $viewModel.tagPickerOpen,
+                arrowEdge: .bottom
+            ) {
+                TagPickerPopover(
+                    catalogue: viewModel.catalogueTags,
+                    appliedTagIDs: viewModel.appliedTagIDs,
+                    onToggle: { tag in
+                        Task { await viewModel.toggleTag(tag) }
+                    },
+                    onCreate: { name in
+                        Task { await viewModel.createAndApply(name) }
+                    },
+                    onDismiss: {
+                        viewModel.tagPickerOpen = false
+                    }
+                )
+            }
+        }
     }
 
     var overflowMenu: some View {
@@ -444,7 +489,7 @@ private extension MeetingDetailView {
 
             if viewModel.canRegenerateSummary {
                 Button {
-                    viewModel.generateSummary()
+                    viewModel.presentResummarizeSheet()
                 } label: {
                     Label(
                         "Regenerate Summary",

@@ -7,10 +7,10 @@ import Foundation
 import Permissions
 import Recording
 
-// MARK: - Left chip state
+// MARK: - Remaining chip state
 
-/// The display state for the Left/Over time chip.
-public enum LeftChip: Equatable, Sendable {
+/// The display state for the Remaining/Over time chip.
+public enum RemainingChip: Equatable, Sendable {
     /// No scheduled end -- only show Elapsed.
     case none
     /// More than 5 minutes remaining.
@@ -281,7 +281,7 @@ public final class RecordingViewModel {
     /// The wall-clock time when the recording started, if any.
     ///
     /// Used by `TimelineView` to compute elapsed time from a shared `now`,
-    /// so ELAPSED and LEFT/OVER chips are perfectly synchronised.
+    /// so ELAPSED and REMAINING/OVER chips are perfectly synchronised.
     public var recordingStartDate: Date? {
         core.recording.state.startDate
     }
@@ -308,11 +308,11 @@ public final class RecordingViewModel {
         return formatElapsed(interval)
     }
 
-    /// Computes the Left chip state from a scheduled end and current time.
+    /// Computes the Remaining chip state from a scheduled end and current time.
     /// Pure function, unit-tested.
-    public static func leftChip(
+    public static func remainingChip(
         scheduledEnd: Date?, now: Date
-    ) -> LeftChip {
+    ) -> RemainingChip {
         guard let end = scheduledEnd else { return .none }
         let remaining = end.timeIntervalSince(now)
         if remaining <= 0 {

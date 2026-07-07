@@ -27,13 +27,14 @@ let package = Package(
         .library(name: "ManualTestKit", targets: ["ManualTestKit"]),
         .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
         .library(name: "Intelligence", targets: ["Intelligence"]),
-        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"])
+        .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
+        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
         .package(name: "LocalLLM", path: "../LocalLLM"),
-        .package(url: "https://github.com/scosman/swift-markdown-engine", revision: "6edaa33637bcfc39272415f635c5f2ed6ff2853b")
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1")
     ],
     targets: [
         .target(
@@ -59,12 +60,15 @@ let package = Package(
         ),
         .target(
             name: "DesignSystem",
+            dependencies: [
+                "DataStore"
+            ],
             resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(
             name: "DesignSystemTests",
-            dependencies: ["DesignSystem"],
+            dependencies: ["DesignSystem", "DataStore"],
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -242,6 +246,7 @@ let package = Package(
                 "DesignSystem",
                 "Intelligence",
                 "MarkdownEditorUI",
+                "SummaryPromptUI",
                 "TranscriptionService"
             ],
             swiftSettings: warningsAsErrors
@@ -353,7 +358,8 @@ let package = Package(
                 "Intelligence",
                 "LocalLLM",
                 "ModelManagementUI",
-                "Permissions"
+                "Permissions",
+                "SummaryPromptUI"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -533,6 +539,21 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Intelligence",
                 .product(name: "LocalLLM", package: "LocalLLM")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "SummaryPromptUI",
+            dependencies: [
+                "DesignSystem",
+                "MarkdownEditorUI"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SummaryPromptUITests",
+            dependencies: [
+                "SummaryPromptUI"
             ],
             swiftSettings: warningsAsErrors
         ),

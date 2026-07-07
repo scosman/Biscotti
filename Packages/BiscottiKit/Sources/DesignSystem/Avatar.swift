@@ -61,7 +61,7 @@ public struct Avatar: View {
         .overlay {
             if stacked {
                 Circle()
-                    .strokeBorder(.white, lineWidth: 2)
+                    .strokeBorder(.avatarRing, lineWidth: 2)
             }
         }
     }
@@ -184,7 +184,7 @@ public struct AvatarCluster: View {
                 .fill(Color.inkSecondary.opacity(0.28))
 
             Circle()
-                .strokeBorder(.white, lineWidth: 2)
+                .strokeBorder(.avatarRing, lineWidth: 2)
 
             Text("+\(overflowCount)")
                 .font(.monoBadge)
@@ -224,7 +224,7 @@ public struct RecordingAvatar: View {
         .overlay {
             if stacked {
                 Circle()
-                    .strokeBorder(.white, lineWidth: 2)
+                    .strokeBorder(.avatarRing, lineWidth: 2)
             }
         }
     }

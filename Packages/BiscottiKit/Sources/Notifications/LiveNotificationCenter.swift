@@ -14,10 +14,10 @@ public struct LiveNotificationCenter: NotificationCenterProviding, Sendable {
 
     public func requestAuthorization() async throws -> Bool {
         logger.info(
-            "requestAuthorization: calling UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])"
+            "requestAuthorization: calling UNUserNotificationCenter.current().requestAuthorization(options: [.alert])"
         )
         let granted = try await UNUserNotificationCenter.current()
-            .requestAuthorization(options: [.alert, .sound])
+            .requestAuthorization(options: [.alert])
         logger.info(
             "requestAuthorization: UNUserNotificationCenter returned granted=\(granted)"
         )

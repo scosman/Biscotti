@@ -4,7 +4,7 @@ status: draft
 
 # Stage C — V1 Feature Layering
 
-Implement **Stage C** of the root `implementation_plan.md`: the V1 feature layering on top of the Stage B MVP (Record → Transcribe). Stage C covers roadmap **Projects 5–8**:
+Implement **Stage C** of `specs/implementation_plan.md`: the V1 feature layering on top of the Stage B MVP (Record → Transcribe). Stage C covers roadmap **Projects 5–8**:
 
 - **Project 5 — Calendar Integration**: show upcoming meetings, enrich recordings with calendar context, choose which calendars count. Adds `Calendar` + `RemoteConfig` (first slice) modules, calendar permission, calendar-selection settings, upcoming display in menu bar / list, calendar context on a meeting.
 - **Project 6 — Meeting Detection, Background Operation & Notifications**: run in the background (tray-first, no window required), detect meetings starting (calendar-driven + ad-hoc audio), notify with record/stop actions and an auto-stop countdown, launch-on-startup. Adds `MeetingDetection` + `Notifications` modules, the first real `AppCore` slice, menu-bar wiring, and app-target background activation.

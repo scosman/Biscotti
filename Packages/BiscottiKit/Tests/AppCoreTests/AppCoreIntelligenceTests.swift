@@ -177,3 +177,89 @@ struct AppCoreIntelligenceTests {
         #expect(fix.intelligence.jobs[meetingID] == nil)
     }
 }
+
+// MARK: - Summary prompt AppCore helpers
+
+@Suite("AppCore -- summary prompt helpers")
+struct AppCoreSummaryPromptTests {
+    @Test("defaultSummaryPrompt matches IntelligencePrompts")
+    @MainActor
+    func defaultPromptValue() throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        #expect(fix.core.defaultSummaryPrompt == IntelligencePrompts.defaultSummaryPrompt)
+    }
+
+    @Test("effectiveSummaryPrompt returns default when stored is empty")
+    @MainActor
+    func effectiveDefaultWhenEmpty() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        // Fresh store: summaryPrompt is ""
+        let effective = await fix.core.effectiveSummaryPrompt()
+        #expect(effective == IntelligencePrompts.defaultSummaryPrompt)
+    }
+
+    @Test("effectiveSummaryPrompt returns stored text when non-empty")
+    @MainActor
+    func effectiveReturnsCustom() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { settings in
+            settings.summaryPrompt = "Custom instructions"
+        }
+
+        let effective = await fix.core.effectiveSummaryPrompt()
+        #expect(effective == "Custom instructions")
+    }
+
+    @Test("saveSummaryPrompt stores custom text")
+    @MainActor
+    func saveCustomText() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        try await fix.core.saveSummaryPrompt("Be concise.")
+
+        let settings = try await fix.store.settings()
+        #expect(settings.summaryPrompt == "Be concise.")
+    }
+
+    @Test("saveSummaryPrompt clears to empty when text equals default")
+    @MainActor
+    func saveClearsToDefault() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        // First set a custom prompt
+        try await fix.core.saveSummaryPrompt("Custom")
+        let afterCustom = try await fix.store.settings()
+        #expect(afterCustom.summaryPrompt == "Custom")
+
+        // Then save the default text
+        try await fix.core.saveSummaryPrompt(
+            IntelligencePrompts.defaultSummaryPrompt
+        )
+
+        let afterDefault = try await fix.store.settings()
+        #expect(afterDefault.summaryPrompt == "")
+    }
+
+    @Test("saveSummaryPrompt trims whitespace before comparing to default")
+    @MainActor
+    func saveTrimComparison() async throws {
+        let fix = try makeCoreFixture(testName: "SummaryPrompt")
+        defer { fix.cleanup() }
+
+        // Save default with surrounding whitespace
+        let defaultWithWhitespace = "  " + IntelligencePrompts.defaultSummaryPrompt + "  \n"
+        try await fix.core.saveSummaryPrompt(defaultWithWhitespace)
+
+        let settings = try await fix.store.settings()
+        // Should still clear to empty because trimmed matches
+        #expect(settings.summaryPrompt == "")
+    }
+}

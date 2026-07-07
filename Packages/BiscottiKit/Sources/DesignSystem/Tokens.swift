@@ -25,8 +25,8 @@ public enum Tokens {
     /// Warm ivory content background.
     public static let contentBackground = Color.paper
 
-    /// Card fill (white).
-    public static let cardFill = Color.white
+    /// Card fill (adaptive: white / warm dark).
+    public static let cardFill = Color.cardFill
 
     /// Hairline separator: ink @ 11%.
     public static let hairline = Color.hairline
@@ -60,16 +60,40 @@ public enum Tokens {
     /// Light Stop/REC button hover.
     public static let recordingHoverFill = Color.recordingHoverFill
 
-    /// Left chip amber fill (<=5 min / overtime). Reuses `warningBackground`
+    /// Remaining chip amber fill (<=5 min / overtime). Reuses `warningBackground`
     /// (warningOchre @ 0.15) per ui_design.md guidance -- close enough to
     /// the spec's 0.16 to avoid a near-duplicate token.
     public static let warningChipFill = warningBackground
 
-    /// Left chip amber kicker + value text color.
+    /// Remaining chip amber kicker + value text color.
     public static let warningChipText = Color.warningChipText
 
     /// "Add note" + "Keep Recording" button fill.
     public static let softSageFill = Color.softSageFill
+
+    /// Button fills -- deeper sage for white-label contrast in dark.
+    public static let accentFill = Color.accentFill
+
+    /// Elevated control fill (white buttons/fields in light, card surface in dark).
+    public static let elevatedFill = Color.elevatedFill
+
+    /// Long-form body text (transcripts) -- brighter in dark for reading.
+    public static let read = Color.read
+
+    /// Custom progress-bar fills.
+    public static let accentTrack = Color.accentTrack
+
+    /// Standalone red text labels -- lighter in dark for AA legibility.
+    public static let signalRedText = Color.signalRedText
+
+    /// Home card shadow (adaptive opacity).
+    public static let cardShadow = Color.cardShadow
+
+    /// Control shadow for light-alert buttons (adaptive opacity).
+    public static let controlShadow = Color.controlShadow
+
+    /// Avatar stacked-ring border (matches surface behind overlapping avatars).
+    public static let avatarRing = Color.avatarRing
 
     /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
     public static let liveGreen = Color.sage
@@ -175,8 +199,15 @@ public enum Tokens {
     /// event preview, pinned transport bar).
     public static let readableContentMaxWidth: CGFloat = 760
 
-    /// Maximum width for the Home content column.
-    public static let homeColumnMaxWidth: CGFloat = 800
+    /// Leading inset that `.formStyle(.grouped)` applies to section
+    /// headers/content on macOS. Used to align page titles with the
+    /// grouped Form's content edge.
+    public static let groupedFormLeadingInset: CGFloat = 28
+
+    /// Maximum width for the narrow content column used by Home,
+    /// Event Preview, and Settings. Narrower than
+    /// `readableContentMaxWidth` (used by Meeting Detail).
+    public static let contentColumnMaxWidth: CGFloat = 620
 
     /// Page padding top/bottom.
     public static let homeVerticalPadding: CGFloat = 24
@@ -219,7 +250,7 @@ public enum Tokens {
     // MARK: - Avatar
 
     /// Fixed width for the avatar column in home rows.
-    public static let avatarColumnWidth: CGFloat = 80
+    public static let avatarColumnWidth: CGFloat = 88
 
     /// Default avatar size for ordinary rows.
     public static let avatarSize: CGFloat = 26

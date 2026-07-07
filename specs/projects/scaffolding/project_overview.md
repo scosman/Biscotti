@@ -4,11 +4,11 @@ status: complete
 
 # Project 0 — Scaffolding & Tooling
 
-The repo skeleton everything else is built in. This is Project 0 from the [build roadmap](../../../implementation_plan.md): the foundation infrastructure Project, with no runnable product features. It exists largely to nail the historically painful part — `xcodebuild`/CI reliability and the macOS app/package split — exactly once, so every later Project inherits a green, agent-friendly build.
+The repo skeleton everything else is built in. This is Project 0 from the [build roadmap](../../implementation_plan.md): the foundation infrastructure Project, with no runnable product features. It exists largely to nail the historically painful part — `xcodebuild`/CI reliability and the macOS app/package split — exactly once, so every later Project inherits a green, agent-friendly build.
 
 ## What it delivers
 
-The repo skeleton: a buildable, empty `BiscottiKit` package plus a thin `App` Xcode project that launches, with green CI — matching the [`Packages/` + `App/` workspace layout](../../../architecture.md#workspace-layout) and the thin-app composition rule from `architecture.md`.
+The repo skeleton: a buildable, empty `BiscottiKit` package plus a thin `App` Xcode project that launches, with green CI — matching the [`Packages/` + `App/` workspace layout](../../architecture.md#workspace-layout) and the thin-app composition rule from `architecture.md`.
 
 ## In scope (from the roadmap entry)
 
@@ -16,7 +16,7 @@ The repo skeleton: a buildable, empty `BiscottiKit` package plus a thin `App` Xc
 - `BiscottiKit` package skeleton (the shared app package that will hold most modules as targets).
 - Thin app-target shell that launches (window + menu-bar presence), carrying no business logic.
 - **Dev signing:** lock in the **stable production bundle ID** (TCC grants depend on it) plus ad-hoc/local signing for dev & CI builds. (Real Developer ID notarization is the separate Distribution Project, #9.)
-- Entitlements + Info.plist usage strings per `research/permissions`.
+- Entitlements + Info.plist usage strings per `specs/research/permissions`.
 - CI (GitHub Actions) running the **gating package-test tier** (`swift test`) and the **non-gating app/UI tier** (`xcodebuild`).
 - Lint + format (fix & check) + a pre-commit hook.
 - Agent/build integration: **`hooks_mcp`** ([scosman/hooks_mcp](https://github.com/scosman/hooks_mcp)) as the primary agent command surface (a `hooks_mcp.yaml` exposing our common commands, wrapping the Makefile), plus XcodeBuildMCP for the rare `xcodebuild`/run paths — registered via a checked-in `.mcp.json`.
@@ -46,7 +46,7 @@ Author is not a Swift-tooling expert and invited push-back. Proposed starting po
 ## Resolved decisions (during specing)
 
 - **Xcode project management:** **XcodeGen** — a checked-in `project.yml` generates `Biscotti.xcodeproj` (gitignored); no hand-edited `.pbxproj`, no merge conflicts, regenerated in CI.
-- **Stable production bundle ID:** **`net.scosman.biscotti`** (locked now; TCC grants persist against it). Supersedes the `com.biscotti.app` placeholder in `research/permissions`.
+- **Stable production bundle ID:** **`net.scosman.biscotti`** (locked now; TCC grants persist against it). Supersedes the `com.biscotti.app` placeholder in `specs/research/permissions`.
 - **App shell scope:** **bare window only** — a `WindowGroup` placeholder that launches. `MenuBarExtra` + accessory (background) activation are deferred to Project 4 (which owns `AppShellUI`/`MenuBarUI`).
 
 ## Depends on

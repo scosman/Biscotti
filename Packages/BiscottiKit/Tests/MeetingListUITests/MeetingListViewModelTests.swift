@@ -173,6 +173,89 @@ struct MeetingListDeleteConfirmationTests {
     }
 }
 
+// MARK: - Context menu delete tests
+
+@Suite("MeetingListViewModel -- context menu delete")
+struct MeetingListContextMenuDeleteTests {
+    @Test("requestDeleteContextMenu with empty set does not show alert")
+    @MainActor
+    func contextMenuEmptyGuard() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        viewModel.requestDeleteContextMenu([])
+        #expect(viewModel.showDeleteConfirmation == false)
+        #expect(viewModel.deleteConfirmationCount == 0)
+    }
+
+    @Test("requestDeleteContextMenu with single ID shows alert with count 1")
+    @MainActor
+    func contextMenuSingleItem() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        let id = UUID()
+        viewModel.requestDeleteContextMenu([id])
+
+        #expect(viewModel.showDeleteConfirmation == true)
+        #expect(viewModel.deleteConfirmationCount == 1)
+    }
+
+    @Test("requestDeleteContextMenu with multiple IDs shows alert with correct count")
+    @MainActor
+    func contextMenuMultipleItems() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        let ids: Set<UUID> = [UUID(), UUID(), UUID()]
+        viewModel.requestDeleteContextMenu(ids)
+
+        #expect(viewModel.showDeleteConfirmation == true)
+        #expect(viewModel.deleteConfirmationCount == 3)
+    }
+
+    @Test("confirmDelete after context menu request deletes the correct meetings")
+    @MainActor
+    func contextMenuConfirmDeleteRemovesMeetings() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let id1 = try await fix.store.createMeeting(title: "Context A")
+        let id2 = try await fix.store.createMeeting(title: "Context B")
+        let id3 = try await fix.store.createMeeting(title: "Keep Me")
+        await fix.core.reloadSummaries()
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        viewModel.requestDeleteContextMenu([id1, id2])
+        #expect(viewModel.showDeleteConfirmation == true)
+
+        await viewModel.confirmDelete()
+
+        #expect(viewModel.showDeleteConfirmation == false)
+        #expect(try await fix.store.meetingExists(id: id1) == false)
+        #expect(try await fix.store.meetingExists(id: id2) == false)
+        #expect(try await fix.store.meetingExists(id: id3) == true)
+    }
+
+    @Test("deleteMenuLabel returns 'Delete' for single item")
+    func deleteMenuLabelSingular() {
+        #expect(MeetingListViewModel.deleteMenuLabel(for: 1) == "Delete")
+    }
+
+    @Test("deleteMenuLabel returns 'Delete N' for multiple items")
+    func deleteMenuLabelPlural() {
+        #expect(MeetingListViewModel.deleteMenuLabel(for: 3) == "Delete 3")
+    }
+
+    @Test("deleteMenuLabel returns 'Delete' for zero")
+    func deleteMenuLabelZero() {
+        #expect(MeetingListViewModel.deleteMenuLabel(for: 0) == "Delete")
+    }
+}
+
 // MARK: - Mode tests
 
 @Suite("MeetingListViewModel -- mode")
@@ -262,5 +345,16 @@ struct MeetingListMatchedFieldsTests {
 
         let notesOnly = MeetingListViewModel.matchedFieldsText([.notes])
         #expect(notesOnly == "notes")
+    }
+
+    @Test("includes tags field")
+    func matchedFieldsTextIncludesTags() {
+        let text = MeetingListViewModel.matchedFieldsText(
+            [.title, .tags]
+        )
+        #expect(text == "title, tags")
+
+        let tagsOnly = MeetingListViewModel.matchedFieldsText([.tags])
+        #expect(tagsOnly == "tags")
     }
 }

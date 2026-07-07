@@ -285,6 +285,29 @@ private func makeMeetingWithTranscript(
     return (meetingID, transcriptID)
 }
 
+private func makeEmptyTranscriptResult() -> TranscriptResult {
+    TranscriptResult(
+        transcriptionMethodId: "v1",
+        language: "en",
+        speakerCount: 0,
+        segments: [],
+        speakerEmbeddings: [:],
+        processingDuration: 0.5
+    )
+}
+
+private func makeMeetingWithEmptyTranscript(
+    store: DataStore, title: String = Meeting.defaultTitle
+) async throws -> (UUID, UUID) {
+    let meetingID = try await store.createMeeting(title: title)
+    let result = makeEmptyTranscriptResult()
+    let transcriptID = try await store.addTranscript(
+        result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+    )
+    try await store.setPreferredTranscript(transcriptID, for: meetingID)
+    return (meetingID, transcriptID)
+}
+
 /// Groups the Intelligence service and its fakes for test convenience.
 struct IntelligenceFixture {
     let intel: Intelligence
@@ -317,7 +340,10 @@ struct IntelligenceFixture {
         modelManager.downloads[model.id] = models.isDownloaded(model.id)
             ? .downloaded : .notDownloaded
     }
-    let settings = AISettings(enabled: enabled)
+    let settings = AISettings(
+        enabled: enabled,
+        summaryPrompt: IntelligencePrompts.defaultSummaryPrompt
+    )
     let intel = Intelligence(
         store: store, llm: runner, modelManager: modelManager,
         settings: { settings }
@@ -677,8 +703,9 @@ struct IntelligencePromptsTests {
 
     @Test("summaryFollowUpUser is the summary instructions")
     func summaryFollowUpContent() {
-        #expect(IntelligencePrompts.summaryFollowUpUser.contains("## Action Items"))
-        #expect(!IntelligencePrompts.summaryFollowUpUser.contains("<transcript>"))
+        let followUp = IntelligencePrompts.summaryFollowUpUser()
+        #expect(followUp.contains("## Action Items"))
+        #expect(!followUp.contains("<transcript>"))
     }
 }
 
@@ -1682,6 +1709,272 @@ struct MeetingDefaultTitleTests {
     }
 }
 
+// MARK: - Summary Prompt Parameterization Tests
+
+@Suite("Summary prompt parameterization")
+struct SummaryPromptParameterizationTests {
+    @Test("defaultSummaryPrompt equals summaryTaskInstructions")
+    func defaultEqualsInternal() {
+        // The public alias must be byte-identical to the internal constant
+        #expect(IntelligencePrompts.defaultSummaryPrompt == IntelligencePrompts.summaryTaskInstructions)
+    }
+
+    @Test("summaryOnlyFirstUser with default arg produces byte-identical output")
+    func defaultArgByteIdentical() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let withDefault = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello"
+        )
+        let withExplicit = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello",
+            summaryInstructions: IntelligencePrompts.defaultSummaryPrompt
+        )
+        #expect(withDefault == withExplicit)
+    }
+
+    @Test("summaryOnlyFirstUser with custom instructions embeds them")
+    func customInstructionsEmbedded() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let custom = "Write a haiku summary."
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello",
+            summaryInstructions: custom
+        )
+        #expect(result.contains(custom))
+        // Should NOT contain the default instructions
+        #expect(!result.contains("## Action Items"))
+    }
+
+    @Test("summaryOnlyFirstUser strips leading Next from default prompt")
+    func summaryOnlyStripsNext() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello"
+        )
+        // The summary-only path strips "Next " so the instruction reads as
+        // a standalone directive, not a follow-up.
+        #expect(!result.contains("Next produce"))
+        #expect(result.contains("Produce a clear"))
+    }
+
+    @Test("summaryOnlyFirstUser does NOT strip Next from custom prompts")
+    func summaryOnlyPreservesCustomNext() {
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Test", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        let custom = "Next summarize the key points briefly."
+        let result = IntelligencePrompts.summaryOnlyFirstUser(
+            detail: detail, transcriptNamed: "A: Hello",
+            summaryInstructions: custom
+        )
+        // Custom prompts must be passed through verbatim, even if they
+        // happen to start with "Next ".
+        #expect(result.contains(custom))
+    }
+
+    @Test("summaryFollowUpUser preserves Next prefix in default prompt")
+    func followUpPreservesNext() {
+        let result = IntelligencePrompts.summaryFollowUpUser()
+        #expect(result.hasPrefix("Next "))
+    }
+
+    @Test("summaryFollowUpUser with custom instructions returns them")
+    func followUpThreadsCustom() {
+        let custom = "Be very brief."
+        let result = IntelligencePrompts.summaryFollowUpUser(
+            summaryInstructions: custom
+        )
+        #expect(result == custom)
+    }
+
+    @Test("summaryFollowUpUser default returns the default prompt")
+    func followUpDefaultIsDefault() {
+        let result = IntelligencePrompts.summaryFollowUpUser()
+        #expect(result == IntelligencePrompts.defaultSummaryPrompt)
+    }
+}
+
+// MARK: - Summary Prompt Orchestration Tests
+
+@Suite("Summary prompt orchestration")
+struct SummaryPromptOrchestrationTests {
+    @Test("runAnalysis with summaryPromptOverride uses override in summary turn")
+    @MainActor func overrideUsedInSummaryTurn() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        // Assign all speakers so only summary runs (simpler to inspect)
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+
+        let session = FakeSession()
+        session.streamingTokens = [["Custom summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        let customPrompt = "Write a haiku summary."
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false,
+            summaryPromptOverride: customPrompt
+        )
+
+        // The summary-only first user turn should contain the custom prompt
+        #expect(session.streamingCalls.count == 1)
+        let userContent = session.streamingCalls[0].last { $0.role == .user }?.content ?? ""
+        #expect(userContent.contains(customPrompt))
+        #expect(!userContent.contains("## Action Items"))
+    }
+
+    @Test("runAnalysis without override uses settingsProvider summaryPrompt")
+    @MainActor func noOverrideUsesSettings() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        // Assign all speakers so only summary runs
+        let alice = try await store.findOrCreatePerson(name: "Alice", email: nil)
+        let bob = try await store.findOrCreatePerson(name: "Bob", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: alice, for: transcriptID)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: bob, for: transcriptID)
+
+        let session = FakeSession()
+        session.streamingTokens = [["Summary"]]
+
+        // The fixture's settings use defaultSummaryPrompt
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        // Summary turn should contain the default instructions
+        #expect(session.streamingCalls.count == 1)
+        let userContent = session.streamingCalls[0].last { $0.role == .user }?.content ?? ""
+        #expect(userContent.contains("## Action Items"))
+    }
+
+    @Test("runAnalysis with markResultEdited=true sets editedSummary=true")
+    @MainActor func markResultEditedTrue() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Marked summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true,
+            markResultEdited: true
+        )
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "Marked summary")
+        #expect(detail?.editedSummary == true)
+    }
+
+    @Test("runAnalysis with markResultEdited=false (default) sets editedSummary=false")
+    @MainActor func markResultEditedFalseDefault() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Default summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true
+        )
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "Default summary")
+        #expect(detail?.editedSummary == false)
+    }
+
+    @Test("auto-run uses settings summaryPrompt in follow-up turn")
+    @MainActor func autoRunUsesSettingsPrompt() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |\n1 | Bob |"]
+        session.streamingTokens = [["Summary"]]
+
+        // Create intelligence with a custom summaryPrompt in settings
+        let runner = FakeLLMRunner(session: session)
+        let firstModelID = LLMModelCatalog.all.first?.id ?? ""
+        let models = FakeModelProvider(downloadedIDs: [firstModelID])
+        let hardware = FakeHardwareProbe()
+        let modelManager = ModelManager(
+            store: store, models: models, hardware: hardware
+        )
+        for model in models.catalog {
+            modelManager.downloads[model.id] = models.isDownloaded(model.id)
+                ? .downloaded : .notDownloaded
+        }
+        let customPrompt = "Be concise."
+        let settings = AISettings(enabled: true, summaryPrompt: customPrompt)
+        let intel = Intelligence(
+            store: store, llm: runner, modelManager: modelManager,
+            settings: { settings }
+        )
+
+        await intel.runAutoEnhancements(meetingID: meetingID)
+
+        // The summary follow-up should contain the custom prompt
+        #expect(session.streamingCalls.count == 1)
+        let summaryMsgs = session.streamingCalls[0]
+        // The follow-up user turn is the last user message
+        let followUp = summaryMsgs.last { $0.role == .user }?.content ?? ""
+        #expect(followUp == customPrompt)
+    }
+
+    @Test("runAnalysis with override in multi-turn threads override to follow-up")
+    @MainActor func overrideThreadedToFollowUp() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithTranscript(
+            store: store
+        )
+
+        let session = FakeSession()
+        // Speakers + summary
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        let customPrompt = "Summarize in bullet points only."
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true,
+            summaryPromptOverride: customPrompt
+        )
+
+        // Summary follow-up should contain the custom prompt (not the default)
+        #expect(session.streamingCalls.count == 1)
+        let summaryMsgs = session.streamingCalls[0]
+        let followUp = summaryMsgs.last { $0.role == .user }?.content ?? ""
+        #expect(followUp == customPrompt)
+        #expect(!followUp.contains("## Action Items"))
+    }
+}
+
 // MARK: - MeetingDetailData editedTitle Tests
 
 @Suite("MeetingDetailData editedTitle")
@@ -1771,5 +2064,159 @@ struct HumanSetSpeakerMappingsTests {
         await #expect(throws: DataStoreError.self) {
             try await store.humanSetSpeakerMappings(for: UUID())
         }
+    }
+}
+
+// MARK: - Empty Transcript Short-Circuit Tests
+
+@Suite("Empty transcript short-circuit")
+struct EmptyTranscriptTests {
+    @Test("auto-run with empty transcript sets canned summary and title without LLM")
+    @MainActor func autoRunEmptyTranscript() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // No LLM session should have been opened
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.editedSummary == false)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("auto-run with empty transcript skips summary when edited")
+    @MainActor func autoRunEmptyTranscriptEditedSummary() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+        try await store.setSummary("My notes", for: meetingID)
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        // Summary should not have been overwritten
+        #expect(detail?.summary == "My notes")
+        #expect(detail?.editedSummary == true)
+        // Title should still get the canned value
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("auto-run with empty transcript skips title when not default")
+    @MainActor func autoRunEmptyTranscriptCustomTitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store, title: "Custom Title"
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        // Title should remain unchanged
+        #expect(detail?.title == "Custom Title")
+    }
+
+    @Test("manual runAnalysis with empty transcript sets canned values")
+    @MainActor func manualRunAnalysisEmptyTranscript() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("manual runAnalysis with empty transcript and markResultEdited=true marks summary edited")
+    @MainActor func manualRunAnalysisEmptyTranscriptMarkEdited() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(store: store)
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: true,
+            markResultEdited: true
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.editedSummary == true)
+    }
+
+    @Test("auto-run with empty transcript works even without a downloaded model")
+    @MainActor func autoRunEmptyTranscriptNoModel() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(
+            store: store, downloaded: false
+        )
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("manual runAnalysis with empty transcript works even without a downloaded model")
+    @MainActor func manualRunAnalysisEmptyTranscriptNoModel() async throws {
+        let store = try makeStore()
+        let (meetingID, transcriptID) = try await makeMeetingWithEmptyTranscript(
+            store: store
+        )
+
+        let fixture = makeIntelligence(
+            store: store, downloaded: false
+        )
+        await fixture.intel.runAnalysis(
+            meetingID: meetingID, transcriptID: transcriptID, force: false
+        )
+
+        #expect(fixture.runner.sessionCount == 0)
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == MeetingAnalyzer.emptyTranscriptSummary)
+        #expect(detail?.title == MeetingAnalyzer.emptyTranscriptTitle)
+    }
+
+    @Test("empty transcript canned values are correct strings")
+    func cannedValues() {
+        #expect(MeetingAnalyzer.emptyTranscriptSummary == "Meeting transcript was empty.")
+        #expect(MeetingAnalyzer.emptyTranscriptTitle == "Empty Meeting")
     }
 }

@@ -38,6 +38,7 @@
           }
         }
       ],
+      "lighting" : "individual",
       "position" : {
         "scale" : 0.96,
         "translation-in-points" : [
@@ -47,12 +48,12 @@
       },
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 0.5
+        "opacity" : 0.67
       },
-      "specular" : true,
+      "specular" : false,
       "translucency" : {
-        "enabled" : false,
-        "value" : 0.18
+        "enabled" : true,
+        "value" : 0.2
       }
     }
   ],

@@ -72,7 +72,7 @@ public final class LiveEventStore: EventStoreProviding, @unchecked Sendable {
             }
             // For recurring events, event(withIdentifier:) returns only
             // the first occurrence (Apple API limitation — see
-            // research/eventkit/README.md). Fall back to a narrow
+            // specs/research/eventkit/README.md). Fall back to a narrow
             // date-range predicate to locate the specific occurrence.
             return Self.findOccurrence(
                 eventIdentifier: eventIdentifier,

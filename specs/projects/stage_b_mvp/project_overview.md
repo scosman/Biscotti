@@ -10,7 +10,7 @@ level — it **integrates** the three Stage-A foundation libraries (`AudioCaptur
 
 > **Start recording a meeting → stop → get a diarized transcript, stored and viewable.**
 
-This is the build of **Project 4** from the repo roadmap ([`implementation_plan.md`](../../../implementation_plan.md) → "Stage B — First runnable app"). The static topology and component homes are already fixed in [`architecture.md`](../../../architecture.md); this project builds the **first thin slices** of those components and the app target that composes them.
+This is the build of **Project 4** from the repo roadmap ([`implementation_plan.md`](../../implementation_plan.md) → "Stage B — First runnable app"). The static topology and component homes are already fixed in [`architecture.md`](../../architecture.md); this project builds the **first thin slices** of those components and the app target that composes them.
 
 ## What it does (V1 / MVP)
 

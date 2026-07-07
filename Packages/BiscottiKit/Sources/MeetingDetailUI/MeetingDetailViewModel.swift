@@ -5,6 +5,7 @@ import DataStore
 import DesignSystem
 import Foundation
 import Intelligence
+import SummaryPromptUI
 import TranscriptionService
 
 /// The three display states of the Meeting Detail screen.
@@ -155,6 +156,14 @@ public final class MeetingDetailViewModel {
     /// Whether a delete operation is in progress.
     public private(set) var isDeleting: Bool = false
 
+    // MARK: - Tags
+
+    /// All tags in the catalogue, loaded from the store.
+    public private(set) var catalogueTags: [TagData] = []
+
+    /// Whether the tag picker popover is open.
+    public var tagPickerOpen: Bool = false
+
     // MARK: - Speaker mapping sheet
 
     /// The transcript ID for which the speaker mapping sheet is presented.
@@ -173,8 +182,11 @@ public final class MeetingDetailViewModel {
     /// Whether the user has manually edited the summary.
     public private(set) var editedSummary: Bool = false
 
-    /// Whether to show the regenerate-edited-summary confirmation dialog.
-    public var showRegenerateConfirm: Bool = false
+    /// The model for the summary prompt sheet. Setting to non-nil presents the
+    /// sheet (via `.sheet(item:)`); nil dismisses it. This replaces the former
+    /// two-state (`showResummarizeSheet` + `summaryPromptModel`) pattern which
+    /// raced: the sheet could present before the model was populated.
+    public var summaryPromptModel: SummaryPromptModel?
 
     /// Debounce handle for summary autosave.
     private var summaryAutosaveTask: Task<Void, Never>?
@@ -608,6 +620,7 @@ public extension MeetingDetailViewModel {
     /// (no transcription or enhancement in progress). Stage gating:
     /// - "Inferring participant names" only when guessSpeakers on + model
     /// - "Summarizing" only when summarize on + model + !editedSummary
+    ///   (overridden by `summaryRegenRequested` for explicit Regenerate)
     var pipelineStages: [PipelineStage]? {
         let jobStatus = core.transcription.jobs[meetingID]
         let enhStatus = core.intelligence.jobs[meetingID]
@@ -624,7 +637,29 @@ public extension MeetingDetailViewModel {
         default: false
         }
 
-        guard transcriptionActive || enhancementActive else {
+        // Handoff state: transcription just completed and AI enhancement
+        // is about to start (the sequential await gap in stopRecording's
+        // Task between `transcribe()` returning and `runAutoEnhancements()`
+        // setting .preparing). Show the pipeline with speaker inference
+        // as active so the user never sees a dead-spinner gap.
+        let handoffToEnhancement = jobStatus == .completed
+            && enhStatus == nil
+            && aiAnalysisEnabled && modelAvailable
+
+        // Regenerate startup: summaryRegenRequested is set synchronously
+        // in runSummary(force:) / regenerate(withPrompt:alsoSave:), but
+        // the Task body that calls intelligence.runAnalysis() may not
+        // have executed yet — the enhancement status can still be stale
+        // (.completed from the prior run, or nil). Keep the pipeline
+        // visible and show the first stage as active so the user sees
+        // an immediate spinner the moment they trigger regenerate.
+        let regenStartup = summaryRegenRequested
+            && aiAnalysisEnabled && modelAvailable
+            && !transcriptionActive
+
+        guard transcriptionActive || enhancementActive
+            || handoffToEnhancement || regenStartup
+        else {
             return nil
         }
 
@@ -646,7 +681,26 @@ public extension MeetingDetailViewModel {
             let speakerState: StageState =
                 if enhStatus == .identifyingSpeakers {
                     .active
-                } else if transcriptionActive || enhStatus == .preparing {
+                } else if enhStatus == .preparing {
+                    // Enhancement work has started (loading model, reading
+                    // settings/data). Speaker inference is the next step --
+                    // show as active so the spinner runs from the moment
+                    // work begins, not when inference tokens arrive.
+                    .active
+                } else if handoffToEnhancement {
+                    // Transcription just finished; enhancement hasn't set
+                    // .preparing yet. Show as active to bridge the gap.
+                    .active
+                } else if regenStartup, enhStatus != .summarizing,
+                          enhStatus != .generatingTitle,
+                          enhStatus != .completed
+                {
+                    // Regenerate just requested: enhancement hasn't reached
+                    // .preparing yet (still nil from prior run cleared by
+                    // onEnhancementStatusChange). Show active immediately
+                    // so the user sees a spinner.
+                    .active
+                } else if transcriptionActive {
                     .pending
                 } else {
                     // Transcription done. Enhancement active but not on speakers
@@ -660,8 +714,12 @@ public extension MeetingDetailViewModel {
         }
 
         // Stage 3: Summarizing (gated)
+        // Show when AI is on + model available + either the summary hasn't
+        // been user-edited OR the user explicitly requested regeneration
+        // (summaryRegenRequested overrides the editedSummary gate so the
+        // pipeline always shows the full 3-stage progress on Regenerate).
         let showSummary = aiAnalysisEnabled && modelAvailable
-            && !editedSummary
+            && (!editedSummary || summaryRegenRequested)
         if showSummary {
             let summaryState: StageState =
                 if enhStatus == .summarizing {
@@ -669,6 +727,8 @@ public extension MeetingDetailViewModel {
                 } else if transcriptionActive
                     || enhStatus == .identifyingSpeakers
                     || enhStatus == .preparing
+                    || handoffToEnhancement
+                    || regenStartup
                 {
                     .pending
                 } else {
@@ -1016,6 +1076,7 @@ private extension MeetingDetailViewModel {
         summaryText = detail?.summary ?? ""
         editedSummary = detail?.editedSummary ?? false
         versions = detail?.versions ?? []
+        catalogueTags = try await core.store.allTags()
         let settings = try? await core.store.settings()
         aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
     }
@@ -1110,20 +1171,77 @@ public extension MeetingDetailViewModel {
         }
     }
 
-    /// Initiates summary generation. If the summary has been edited,
-    /// shows a confirmation dialog; otherwise generates immediately.
-    func generateSummary() {
-        if editedSummary {
-            showRegenerateConfirm = true
-        } else {
-            runSummary(force: false)
+    /// Opens the summary prompt sheet for re-summarization.
+    ///
+    /// Prepares a `SummaryPromptModel` with the effective saved prompt and
+    /// presents the sheet. Setting `summaryPromptModel` to non-nil drives
+    /// the `.sheet(item:)` presentation, so the model is guaranteed to be
+    /// populated when the sheet content is first evaluated. The first-run
+    /// "Generate Summary" button (no prior summary) still calls
+    /// `runSummary(force: false)` directly.
+    func presentResummarizeSheet() {
+        Task {
+            let effective = await core.effectiveSummaryPrompt()
+            let reference = MeetingReference(
+                title: detail?.title ?? "",
+                date: detail?.date ?? Date(),
+                duration: detail?.duration
+            )
+            summaryPromptModel = SummaryPromptModel(
+                workingText: effective,
+                initialText: effective,
+                defaultText: core.defaultSummaryPrompt,
+                mode: .perMeeting(
+                    reference: reference,
+                    summaryWasEdited: editedSummary
+                )
+            )
         }
     }
 
-    /// Confirms regeneration after the user accepted the overwrite dialog.
-    func confirmRegenerate() {
-        showRegenerateConfirm = false
-        runSummary(force: true)
+    /// Initiates summary generation for the first-run "Generate Summary"
+    /// button (no prior summary). Uses the saved prompt directly.
+    func generateSummary() {
+        runSummary(force: false)
+    }
+
+    /// Regenerates this meeting's summary with the given prompt text.
+    ///
+    /// The `markEdited` flag is computed per the ownership rule:
+    /// - Prompt == effective global (after any save): `false` (standard result).
+    /// - Prompt != effective global, alsoSave off: `true` (meeting-specific).
+    /// - Prompt != effective global, alsoSave on: the save makes them equal,
+    ///   so `false` (now the user's standard prompt).
+    func regenerate(withPrompt text: String, alsoSave: Bool) {
+        guard let transcriptID = activeVersionID else { return }
+
+        summaryRegenRequested = true
+        selectedTab = .summary
+        summaryPromptModel = nil
+
+        Task {
+            // Save first (if requested) so the effective prompt is updated
+            // before the markEdited comparison.
+            if alsoSave {
+                try? await core.saveSummaryPrompt(text)
+            }
+
+            // Resolve the effective global prompt AFTER the save step
+            let effectiveGlobal = await core.effectiveSummaryPrompt()
+            let trimmedText = text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedGlobal = effectiveGlobal
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let markEdited = !alsoSave && trimmedText != trimmedGlobal
+
+            await core.intelligence.runAnalysis(
+                meetingID: meetingID,
+                transcriptID: transcriptID,
+                force: true,
+                summaryPromptOverride: text,
+                markResultEdited: markEdited
+            )
+        }
     }
 
     /// Retries a failed summary generation (force = true).
@@ -1368,6 +1486,59 @@ public extension MeetingDetailViewModel {
         summaryAutosaveTask = nil
         await core.deleteMeeting(meetingID: meetingID)
         isDeleting = false
+    }
+}
+
+// MARK: - Tag actions
+
+public extension MeetingDetailViewModel {
+    /// The IDs of tags currently applied to this meeting.
+    var appliedTagIDs: Set<UUID> {
+        Set(detail?.tags.map(\.id) ?? [])
+    }
+
+    /// Tags applied to this meeting (from detail data, already sorted).
+    var appliedTags: [TagData] {
+        detail?.tags ?? []
+    }
+
+    /// Toggles a tag's application on/off for this meeting.
+    func toggleTag(_ tag: TagData) async {
+        do {
+            if appliedTagIDs.contains(tag.id) {
+                try await core.store.removeTag(tagID: tag.id, from: meetingID)
+            } else {
+                try await core.store.applyTag(tagID: tag.id, to: meetingID)
+            }
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Creates a new tag and applies it to this meeting.
+    func createAndApply(_ name: String) async {
+        do {
+            _ = try await core.store.createTagAndApply(
+                name: name, to: meetingID
+            )
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// Removes a tag's application from this meeting.
+    func removeTag(_ tag: TagData) async {
+        do {
+            try await core.store.removeTag(tagID: tag.id, from: meetingID)
+            try await refreshData()
+            await core.reloadSummaries()
+        } catch {
+            // Non-fatal
+        }
     }
 }
 

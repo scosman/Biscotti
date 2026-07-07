@@ -476,6 +476,11 @@ public final class AppCore {
             await intelligence.runAutoEnhancements(meetingID: meetingID)
         }
 
+        // The audio engine and its capture buffers were just torn down;
+        // reclaim that ~transient footprint back to the OS. Delayed so the
+        // teardown has fully settled before we scavenge.
+        MemoryPressure.relieve(after: 4, reason: "recording-stop")
+
         return meetingID
     }
 
@@ -615,6 +620,27 @@ public final class AppCore {
 // stored properties (which must live in the class body for @Observable).
 
 public extension AppCore {
+    /// Factory default summary prompt, surfaced without importing
+    /// Intelligence in UI modules.
+    var defaultSummaryPrompt: String {
+        IntelligencePrompts.defaultSummaryPrompt
+    }
+
+    /// Saved prompt resolved to its effective text (empty -> default).
+    func effectiveSummaryPrompt() async -> String {
+        let raw = await (try? store.settings())?.summaryPrompt ?? ""
+        return raw.isEmpty ? defaultSummaryPrompt : raw
+    }
+
+    /// Persist with the clear-to-default rule: text == default stores "".
+    func saveSummaryPrompt(_ text: String) async throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultTrimmed = defaultSummaryPrompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = (trimmed == defaultTrimmed) ? "" : text
+        try await store.updateSettings { $0.summaryPrompt = value }
+    }
+
     /// Whether Biscotti's macOS notification style is currently "Banners"
     /// (auto-dismiss after ~5s). Used by the settings UI to show a
     /// guidance row nudging the user to switch to "Alerts".

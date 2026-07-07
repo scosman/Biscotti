@@ -6,7 +6,7 @@ status: complete
 
 ## Package & System Design
 
-We want to design how this app is structured. See app_overview.md, but we want self contained well tested swift packages, and a very thin app layer.
+We want to design how this app is structured. See specs/app_overview.md, but we want self contained well tested swift packages, and a very thin app layer.
 
 This project is to design the library structure. Not exact interfaces, but responsibilities. Plus the order to build the app in (dependency graph).
 

@@ -331,33 +331,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         let hasVisibleWindows = NSApp.windows.contains { window in
             window.isVisible && window.canBecomeMain
         }
-        if !hasVisibleWindows {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        guard !hasVisibleWindows else { return }
+        NSApp.setActivationPolicy(.accessory)
+        // The window's view tree is being torn down; reclaim its
+        // (transient) footprint back to the OS shortly after, once
+        // SwiftUI has finished deallocating the views.
+        MemoryPressure.relieve(after: 1, reason: "window-close")
     }
 
     /// Shows the main window and switches to regular app mode
     /// (Dock icon visible). Called from menu bar "Open Biscotti",
     /// Dock icon click, and notification actions.
     ///
-    /// Uses `launchState.sceneOpener` (captured from SwiftUI's
-    /// `@Environment(\.openWindow)`) to request window creation via
-    /// `openWindow(id: "main")`. This is necessary because AppKit's
-    /// `activate()` alone cannot instantiate a SwiftUI `Window` scene
-    /// from a cold (no-window) state. The `Window(id: "main")` scene
-    /// is single-instance, so `openWindow` is idempotent — it reopens
-    /// the existing window or creates one, never duplicates.
+    /// Uses `launchState.sceneOpener` to request window creation via
+    /// `openWindow(id: "main")` — idempotent (single-instance scene).
+    /// Activates twice: once eagerly (for the window-already-exists
+    /// case), and once deferred so `openWindow`'s asynchronous window
+    /// creation is visible before we bring it to front.
     @MainActor
     func showMainWindow() {
         NSApp.setActivationPolicy(.regular)
-        // Request the SwiftUI Window scene to open/show.
-        // This is idempotent: Window(id:) is single-instance.
         launchState.sceneOpener?()
-        // Activate the app (brings to front).
         NSApp.activate()
-        // If a main-capable window exists, bring it forward.
         if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
             window.makeKeyAndOrderFront(nil)
+        }
+        // openWindow(id:) creates the NSWindow asynchronously. The
+        // activate above may fire before it exists. Re-activate on the
+        // next run-loop iteration to catch the race.
+        DispatchQueue.main.async {
+            NSApp.activate()
+            if let win = NSApp.windows.first(where: { $0.canBecomeMain }) {
+                win.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
@@ -622,7 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     ) async -> UNNotificationPresentationOptions {
         notificationService?.foregroundPresentationOptions(
             for: notification
-        ) ?? [.banner, .sound]
+        ) ?? [.banner]
     }
 }
 

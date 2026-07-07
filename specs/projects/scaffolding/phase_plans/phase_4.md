@@ -6,7 +6,7 @@ status: complete
 
 ## Overview
 
-Final scaffolding phase. Adds the CI workflow (gating package-tier + non-gating app-tier), the opt-in pre-commit hook with `make hooks`, registers XcodeBuildMCP in `.mcp.json` and adds `node` to the Brewfile, updates the root `CLAUDE.md` to document the now-complete build surface, and corrects the bundle ID in `research/permissions/README.md`.
+Final scaffolding phase. Adds the CI workflow (gating package-tier + non-gating app-tier), the opt-in pre-commit hook with `make hooks`, registers XcodeBuildMCP in `.mcp.json` and adds `node` to the Brewfile, updates the root `CLAUDE.md` to document the now-complete build surface, and corrects the bundle ID in `specs/research/permissions/README.md`.
 
 ## Steps
 
@@ -32,7 +32,7 @@ Final scaffolding phase. Adds the CI workflow (gating package-tier + non-gating 
    - Add a "Build & checks" section documenting the Makefile targets, CI tiers, hooks-mcp as agent command surface, XcodeBuildMCP, the pre-commit hook, and the locked bundle ID.
    - Remove "scaffolding in progress" caveats from the Conventions section.
 
-7. **Correct bundle ID in `research/permissions/README.md`**:
+7. **Correct bundle ID in `specs/research/permissions/README.md`**:
    - Change `com.biscotti.app` to `net.scosman.biscotti` in both the Recommendation section and Risk #5.
 
 ## Tests

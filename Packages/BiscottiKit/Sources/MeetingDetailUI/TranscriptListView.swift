@@ -193,7 +193,7 @@ private struct TranscriptSegmentRow: View {
     private var utteranceText: some View {
         Text(segment.text.drop(while: \.isWhitespace))
             .font(.system(size: 14))
-            .foregroundStyle(.inkSecondary)
+            .foregroundStyle(.read)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

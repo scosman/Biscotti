@@ -5,7 +5,7 @@ status: complete
 # Architecture: Stage C — V1 Feature Layering
 
 Technical design, deep enough to code from. The **static topology** (component homes, boundaries,
-dependency edges) is fixed by the repo [`architecture.md`](../../../architecture.md). This doc designs
+dependency edges) is fixed by the repo [`architecture.md`](../../architecture.md). This doc designs
 the **concrete app-level APIs** for the Stage C slices, the cross-component contracts (the seams
 between Calendar / MeetingDetection / Notifications / AppCore / UI), the data-model deltas, and the
 app-target/background/menu-bar wiring. Foundation-engine APIs (`AudioCapture`, `Transcription`) are

@@ -86,11 +86,30 @@ public final class MeetingListViewModel {
     /// Triggered by Delete key or the multi-select placeholder's button.
     /// Captures the current selection and shows a confirmation alert.
     public func requestDeleteSelection() {
-        let ids = selectedIDs
+        requestDelete(selectedIDs)
+    }
+
+    /// Triggered by the right-click context menu. The framework passes
+    /// the IDs it resolved (respecting Apple's native selection semantics:
+    /// right-click on a selected item operates on the whole selection,
+    /// right-click on an unselected item operates on just that item).
+    public func requestDeleteContextMenu(_ ids: Set<UUID>) {
+        requestDelete(ids)
+    }
+
+    /// Shared implementation: captures the given IDs and shows the
+    /// delete confirmation alert. Guards against empty sets.
+    private func requestDelete(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
         pendingDeleteIDs = ids
         deleteConfirmationCount = ids.count
         showDeleteConfirmation = true
+    }
+
+    /// The label for a context-menu delete action covering `count` items.
+    /// "Delete" for a single item, "Delete N" for multiple.
+    public nonisolated static func deleteMenuLabel(for count: Int) -> String {
+        count <= 1 ? "Delete" : "Delete \(count)"
     }
 
     /// Confirms the pending delete. Deletes exactly the IDs that were
@@ -294,6 +313,7 @@ public final class MeetingListViewModel {
             case .people: "people"
             case .transcript: "transcript"
             case .notes: "notes"
+            case .tags: "tags"
             }
         }.joined(separator: ", ")
     }

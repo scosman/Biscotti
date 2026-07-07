@@ -2,7 +2,7 @@
 
 Manual test script for the AudioLab experiment (E1). Run on a Mac with Apple Silicon running macOS 15+. You need a second device or a meeting with at least one other participant to test system audio capture.
 
-**Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15.** Detailed engineering findings (the bugs found and the architecture decisions they drove) live in [`research/audio/phase9_validation_findings.md`](../../research/audio/phase9_validation_findings.md).
+**Results recorded below reflect a run on an Apple M4 MacBook Pro, macOS 15.** Detailed engineering findings (the bugs found and the architecture decisions they drove) live in [`specs/research/audio/phase9_validation_findings.md`](../../specs/research/audio/phase9_validation_findings.md).
 
 ## Key decisions recorded during this run
 
@@ -32,7 +32,7 @@ Manual test script for the AudioLab experiment (E1). Run on a Mac with Apple Sil
    - [x] The app is highlighted as a known meeting app (blue video icon).
 6. Leave the call. Click **Refresh**. Verify the app's input/output status updates.
 
-**Result:** **PASS.** Detection works. Key learning: the user-facing app is often NOT the audio-producing process — FaceTime → `com.apple.avconferenced`, Safari meetings → `com.apple.WebKit.GPU`, Slack huddle → `com.tinyspeck.slackmacgap.helper`. Bundle IDs and routing quirks captured in [`meeting_app_bundle_ids.md`](../../research/audio/meeting_app_bundle_ids.md). **Caveat surfaced:** updates required a manual **Refresh** click — input/output state changes do not fire the process-list listener. This drove a new coding step (see **Test 8: live auto-refresh**). Remaining apps still untested for detection: native Zoom, Chrome (Meet/Zoom web), Microsoft Teams, Webex.
+**Result:** **PASS.** Detection works. Key learning: the user-facing app is often NOT the audio-producing process — FaceTime → `com.apple.avconferenced`, Safari meetings → `com.apple.WebKit.GPU`, Slack huddle → `com.tinyspeck.slackmacgap.helper`. Bundle IDs and routing quirks captured in [`meeting_app_bundle_ids.md`](../../specs/research/audio/meeting_app_bundle_ids.md). **Caveat surfaced:** updates required a manual **Refresh** click — input/output state changes do not fire the process-list listener. This drove a new coding step (see **Test 8: live auto-refresh**). Remaining apps still untested for detection: native Zoom, Chrome (Meet/Zoom web), Microsoft Teams, Webex.
 
 ### 2. Record Tab — Global System Audio Capture
 

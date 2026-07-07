@@ -4,7 +4,7 @@ status: complete
 
 # Component: DataStore (`BiscottiKit` module)
 
-The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not a package — idiomatic for `@Model`; repo [`architecture.md` §Granularity #3](../../../../architecture.md)). Informed by the `EventKitLab` data-availability report.
+The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not a package — idiomatic for `@Model`; repo [`architecture.md` §Granularity #3](../../../architecture.md)). Informed by the `EventKitLab` data-availability report.
 
 ## Purpose & Scope
 
@@ -89,7 +89,7 @@ The SwiftData persistence layer and single owner of persistent types. A module i
 
 @Model public final class CalendarSnapshot {     // clearable in one operation; frozen event metadata
     public var id: UUID                          // UUID
-    // ── link keys (recurring-event-robust re-sync; research/eventkit §re-linking) ──
+    // ── link keys (recurring-event-robust re-sync; specs/research/eventkit §re-linking) ──
     public var eventIdentifier: String?          // EventKit id (shared across occurrences; may change on sync)
     public var calendarItemIdentifier: String?   // local-store id
     public var calendarItemExternalIdentifier: String?  // cross-device id

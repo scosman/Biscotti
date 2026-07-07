@@ -43,7 +43,7 @@ struct AutoStopCountdownCard: View {
                 Spacer()
                 Text("\(secondsLabel)s")
                     .font(.biscottiMono(14, weight: .medium))
-                    .foregroundStyle(Color.signalRed)
+                    .foregroundStyle(Color.signalRedText)
                     .monospacedDigit()
             }
 

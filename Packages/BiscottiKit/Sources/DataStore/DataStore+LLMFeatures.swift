@@ -4,14 +4,18 @@ import SwiftData
 // MARK: - Summary
 
 public extension DataStore {
-    /// Stores an AI-generated summary, marking it as auto-generated
-    /// (`editedSummary = false`). Used after LLM summarization completes.
-    func applyGeneratedSummary(_ markdown: String, for meetingID: UUID) throws {
+    /// Stores an AI-generated summary. When `markEdited` is `false` (the
+    /// default), the summary is treated as standard AI output; when `true`,
+    /// it is treated as user-owned (a per-meeting custom-prompt regeneration)
+    /// so auto-runs won't overwrite it.
+    func applyGeneratedSummary(
+        _ markdown: String, for meetingID: UUID, markEdited: Bool = false
+    ) throws {
         guard let meeting = try meeting(id: meetingID) else {
             throw DataStoreError.notFound(meetingID)
         }
         meeting.summary = markdown
-        meeting.editedSummary = false
+        meeting.editedSummary = markEdited
         try save()
     }
 

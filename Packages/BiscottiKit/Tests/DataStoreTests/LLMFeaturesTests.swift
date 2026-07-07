@@ -541,3 +541,94 @@ struct SettingsAIFieldsTests {
         #expect(restored.aiAnalysisEnabled == true)
     }
 }
+
+// MARK: - applyGeneratedSummary markEdited
+
+@Suite("DataStore -- applyGeneratedSummary markEdited")
+struct ApplyGeneratedSummaryMarkEditedTests {
+    @Test("markEdited=true sets editedSummary=true")
+    func markEditedTrue() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Test")
+
+        try await store.applyGeneratedSummary(
+            "Custom prompt summary", for: meetingID, markEdited: true
+        )
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "Custom prompt summary")
+        #expect(detail?.editedSummary == true)
+    }
+
+    @Test("markEdited=false sets editedSummary=false (default)")
+    func markEditedFalse() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Test")
+
+        // First set as edited
+        try await store.setSummary("User version", for: meetingID)
+        let after = try await store.meetingDetail(id: meetingID)
+        #expect(after?.editedSummary == true)
+
+        // Then regenerate with markEdited=false (default)
+        try await store.applyGeneratedSummary(
+            "AI version", for: meetingID
+        )
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.summary == "AI version")
+        #expect(detail?.editedSummary == false)
+    }
+}
+
+// MARK: - AppSettings summaryPrompt
+
+@Suite("DataStore -- AppSettings summaryPrompt")
+struct AppSettingsSummaryPromptTests {
+    @Test("summaryPrompt defaults to empty string")
+    func defaultsToEmpty() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.summaryPrompt == "")
+    }
+
+    @Test("summaryPrompt round-trips custom text")
+    func roundTripsCustomText() async throws {
+        let store = try makeStore()
+
+        try await store.updateSettings { settings in
+            settings.summaryPrompt = "Write a haiku summary."
+        }
+
+        let result = try await store.settings()
+        #expect(result.summaryPrompt == "Write a haiku summary.")
+    }
+
+    @Test("summaryPrompt round-trips empty string (default)")
+    func roundTripsEmpty() async throws {
+        let store = try makeStore()
+
+        // Set custom then clear
+        try await store.updateSettings { settings in
+            settings.summaryPrompt = "Custom"
+        }
+        try await store.updateSettings { settings in
+            settings.summaryPrompt = ""
+        }
+
+        let result = try await store.settings()
+        #expect(result.summaryPrompt == "")
+    }
+
+    @Test("AppSettingsData carries summaryPrompt from model")
+    func dtoCarriesSummaryPrompt() async throws {
+        let store = try makeStore()
+
+        try await store.updateSettings { settings in
+            settings.summaryPrompt = "Custom instructions"
+        }
+
+        let dto = try await store.settings()
+        #expect(dto.summaryPrompt == "Custom instructions")
+    }
+}

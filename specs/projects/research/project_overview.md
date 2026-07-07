@@ -4,7 +4,7 @@ status: complete
 
 # Research
 
-Up-front technical research for the Biscotti app (see [`/app_overview.md`](../../../app_overview.md)). The goal is to resolve the real technical unknowns — Core Audio, system permissions, on-device STT/diarization, EventKit — before we design and build the core app. Once these are settled, the app layer can be designed in detail with no major technical unknowns remaining.
+Up-front technical research for the Biscotti app (see [`specs/app_overview.md`](../../app_overview.md)). The goal is to resolve the real technical unknowns — Core Audio, system permissions, on-device STT/diarization, EventKit — before we design and build the core app. Once these are settled, the app layer can be designed in detail with no major technical unknowns remaining.
 
 ## Scope
 

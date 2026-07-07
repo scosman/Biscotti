@@ -40,7 +40,7 @@ hardware run (the agent cannot run it).
   (LocalLLM package + `BiscottiLLM` xpc-service target + `embed: true`). The `Local LLM` tab
   (`LocalLLMScript` in ManualTestKit, register in `AllScripts`, `wireLocalLLM` in
   `WiredScripts` driving `BiscottiLLM.xpc` for inference + in-process `ModelDownloader` for
-  download; `llm_reclamation` autoCheck). Docs: root `architecture.md`/`implementation_plan.md`
+  download; `llm_reclamation` autoCheck). Docs: `specs/architecture.md`/`specs/implementation_plan.md`
   notes, `CLAUDE.md` repo-map + `llm_*` staleness rule, README finalize. *Gate:* `make
   build-app` builds ManualTestApp with `BiscottiLLM.xpc` embedded; `make ci` green;
   `manual-tests-check` reports `llm_*` not-run (expected).

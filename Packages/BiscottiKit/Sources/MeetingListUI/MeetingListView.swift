@@ -1,4 +1,5 @@
 import AppCore
+import AppKit
 import DataStore
 import DesignSystem
 import SwiftUI
@@ -44,15 +45,28 @@ public struct MeetingListView: View {
                     set: { viewModel.select($0) }
                 )
             ) {
+                // The suppressor must live INSIDE the List's content so its
+                // backing NSView is a descendant of the NSTableView.  Placing
+                // it on the first Section / row and walking *up* the superview
+                // chain guarantees we target THIS list's table, not a sibling.
                 switch viewModel.mode {
                 case .browse:
                     browseContent
+                        .background(SelectionHighlightSuppressor())
 
                 case .search:
                     searchContent
+                        .background(SelectionHighlightSuppressor())
+                }
+            }
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                Button(MeetingListViewModel.deleteMenuLabel(for: ids.count)) {
+                    viewModel.requestDeleteContextMenu(ids)
                 }
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .background(Color.listPaneBackground)
             .onDeleteCommand {
                 viewModel.requestDeleteSelection()
             }
@@ -95,11 +109,15 @@ public struct MeetingListView: View {
 
     private var browseContent: some View {
         ForEach(viewModel.groups) { group in
-            Section(group.title) {
+            Section {
                 ForEach(group.meetings) { meeting in
                     meetingRow(meeting)
                         .tag(meeting.id)
                 }
+            } header: {
+                Text(group.title)
+                    .kicker()
+                    .foregroundStyle(.inkTertiary)
             }
         }
     }
@@ -126,33 +144,144 @@ public struct MeetingListView: View {
     // MARK: - Row views
 
     private func meetingRow(_ meeting: MeetingSummary) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let isSelected = viewModel.selectedIDs.contains(meeting.id)
+        return VStack(alignment: .leading, spacing: 2) {
             Text(meeting.title)
-                .font(.body)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(isSelected ? .onAccent : .ink)
                 .lineLimit(1)
 
             Text(MeetingListViewModel.secondLineText(for: meeting))
-                .font(Tokens.metadataFont)
-                .foregroundStyle(Tokens.secondaryText)
+                .font(.monoMeta)
+                .foregroundStyle(isSelected ? .onAccentMuted : .inkSecondary)
+
+            if !meeting.tags.isEmpty {
+                tagLine(meeting.tags, isSelected: isSelected)
+                    .padding(.top, 4)
+            }
+        }
+        .listRowSeparator(.hidden)
+        .listRowBackground(selectionBackground(isSelected))
+    }
+
+    /// The custom selection background: solid sage fill when selected,
+    /// clear when not. Paints our own selection independent of the system accent.
+    @ViewBuilder
+    private func selectionBackground(_ isSelected: Bool) -> some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.accentFill)
+                .padding(.horizontal, 8)
+        } else {
+            Color.clear
+        }
+    }
+
+    private func tagLine(_ tags: [TagData], isSelected: Bool) -> some View {
+        let sorted = tags.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        let visible = Array(sorted.prefix(3))
+        let overflow = sorted.count - visible.count
+
+        return HStack(spacing: 5) {
+            ForEach(visible) { tag in
+                TagPill(tag: tag, size: .compact, onAccent: isSelected)
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.monoBadge)
+                    .foregroundStyle(
+                        isSelected ? .onAccentMuted : .inkTertiary
+                    )
+            }
         }
     }
 
     private func searchRow(_ hit: SearchHit) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let isSelected = viewModel.selectedIDs.contains(hit.id)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(hit.title)
-                    .font(.body)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundStyle(isSelected ? .onAccent : .ink)
                     .lineLimit(1)
                 Spacer()
                 Text(TimeFormatting.shortDate(hit.date))
                     .font(.monoMeta)
-                    .foregroundStyle(Tokens.secondaryText)
+                    .foregroundStyle(isSelected ? .onAccentMuted : .inkSecondary)
             }
             Text(
                 "matches: \(MeetingListViewModel.matchedFieldsText(hit.matchedFields))"
             )
             .font(.caption)
-            .foregroundStyle(Tokens.secondaryText)
+            .foregroundStyle(isSelected ? .onAccentMuted : .inkTertiary)
+        }
+        .listRowSeparator(.hidden)
+        .listRowBackground(selectionBackground(isSelected))
+    }
+}
+
+// MARK: - Selection highlight suppressor (AppKit bridge)
+
+/// An invisible `NSViewRepresentable` placed as a `.background()` on
+/// content **inside** the `List { … }` closure so its backing `NSView` is
+/// a descendant of the `NSTableView`.  It walks *up* the superview chain
+/// to find the enclosing `NSTableView` and sets
+/// `selectionHighlightStyle = .none`, suppressing the system-accent
+/// selection highlight entirely.  The selection *model* (keyboard nav,
+/// arrow keys, multi-select) is unaffected — only the visual drawing
+/// is suppressed, letting `MeetingListView` paint its own solid sage
+/// fill via `.listRowBackground`.
+///
+/// The suppression fires on three complementary triggers so it survives
+/// hierarchy rebuilds:
+///   1. `viewDidMoveToSuperview()` — first insertion into the table
+///   2. `viewDidMoveToWindow()` — window re-parenting / tab changes
+///   3. `updateNSView` — every SwiftUI re-render
+///
+/// Modeled on `SearchFieldFocuser` in `AppShellUI/AppShellView.swift`
+/// and the placement pattern from SwiftUI-Introspect (`scope: .ancestor`).
+private struct SelectionHighlightSuppressor: NSViewRepresentable {
+    func makeNSView(context _: Context) -> SuppressorView {
+        SuppressorView()
+    }
+
+    func updateNSView(_ nsView: SuppressorView, context _: Context) {
+        // Re-apply on every SwiftUI update in case the hierarchy is rebuilt.
+        nsView.suppressSelectionHighlight()
+    }
+
+    final class SuppressorView: NSView {
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            suppressSelectionHighlight()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            suppressSelectionHighlight()
+        }
+
+        /// Walks up the superview chain to find the nearest `NSTableView`
+        /// and sets `selectionHighlightStyle = .none`.
+        func suppressSelectionHighlight() {
+            // Defer to the next run-loop tick so SwiftUI's hosting-view
+            // hierarchy is fully assembled before we walk it.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                var ancestor: NSView? = superview
+                // Walk up at most 30 levels — the NSTableView is typically
+                // within ~5-10 levels when placed inside the List content.
+                for _ in 0 ..< 30 {
+                    guard let current = ancestor else { break }
+                    if let tableView = current as? NSTableView {
+                        tableView.selectionHighlightStyle = .none
+                        return
+                    }
+                    ancestor = current.superview
+                }
+            }
         }
     }
 }

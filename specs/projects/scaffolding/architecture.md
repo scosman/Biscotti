@@ -8,7 +8,7 @@ This is the **concrete, file-level** design for the scaffolding. Because the del
 
 **Single-doc decision:** this Project is one coherent infrastructure effort with no internally-complex components, so everything lives here — no `components/` split. It runs long only because config files are verbose.
 
-Inputs: [`project_overview.md`](project_overview.md), [`functional_spec.md`](functional_spec.md), the repo [`architecture.md`](../../../architecture.md) (workspace layout / thin-app rule) and [`research/permissions`](../../../research/permissions/README.md).
+Inputs: [`project_overview.md`](project_overview.md), [`functional_spec.md`](functional_spec.md), the repo [`architecture.md`](../../architecture.md) (workspace layout / thin-app rule) and [`research/permissions`](../../research/permissions/README.md).
 
 ---
 
@@ -485,7 +485,7 @@ App/Biscotti.xcodeproj/
 ## 11. Doc deliverables (edits to existing files)
 
 - **`CLAUDE.md` (root):** add a "Build & checks" section — the Makefile targets and which gate, the two CI tiers, the MCP setup (hooks_mcp primary + XcodeBuildMCP for xcodebuild/run), the locked bundle ID, the `make hooks` opt-in, and that `Packages/`+`App/` now exist. Remove the "not scaffolded yet / no repo-wide check commands" caveats.
-- **`research/permissions/README.md`:** change the bundle-ID references from `com.biscotti.app` to `net.scosman.biscotti` (the "Bundle identifier" line in §1/Recommendation and the risk-#5 example), noting it's the locked production ID.
+- **`specs/research/permissions/README.md`:** change the bundle-ID references from `com.biscotti.app` to `net.scosman.biscotti` (the "Bundle identifier" line in §1/Recommendation and the risk-#5 example), noting it's the locked production ID.
 
 These keep the durable docs truthful per the repo's "when you change things" rule.
 
@@ -522,5 +522,5 @@ No coverage targets at this stage — there's no logic to cover. The point is th
 4. Launch the built `.app` → empty window shows "Biscotti" + "BiscottiKit linked". Record this one manual check.
 5. `make hooks`; make a dummy lint-violating edit, attempt a commit → hook formats/lints/tests and blocks appropriately.
 6. Push a branch → CI: `package-tier` green (required), `app-tier` runs (non-gating).
-7. `CLAUDE.md` + `research/permissions` edits landed.
+7. `CLAUDE.md` + `specs/research/permissions` edits landed.
 ```

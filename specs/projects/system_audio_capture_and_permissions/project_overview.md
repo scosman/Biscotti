@@ -16,7 +16,7 @@ hardening the record pipeline and rethinking how/when we probe for system-audio 
 
 ## Step 0 (resolved) — Is there a permission API? No.
 
-Verified against current Apple APIs and the repo's `research/permissions/README.md`:
+Verified against current Apple APIs and the repo's `specs/research/permissions/README.md`:
 
 - **No public API to query/preflight** whether the app holds system-audio-capture permission
   without creating a tap. (`CGPreflightScreenCaptureAccess` = screen recording only;

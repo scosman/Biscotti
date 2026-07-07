@@ -278,7 +278,7 @@ struct ModelRowView: View {
                 descriptionText
                 Text("Download failed: \(message)")
                     .font(Tokens.metadataFont)
-                    .foregroundStyle(.signalRed)
+                    .foregroundStyle(.signalRedText)
 
             default:
                 descriptionText

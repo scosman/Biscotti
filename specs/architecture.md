@@ -6,7 +6,7 @@ status: complete
 
 This is the **static, final shape** of the Biscotti codebase — every component that will exist (V1 and later), where it lives, what it's responsible for, and how the dependencies flow. It is drawn *to final* so we know where everything slots in.
 
-**Read this with the depth contract from the [functional spec](specs/projects/library_design/functional_spec.md):** components are described at the *shape* level — home, responsibility, capability **outcomes**, boundaries, dependencies, testability seam, risk. **No concrete interfaces, types, or schemas appear here, for any component.** The task that builds a component designs its real API inside the boundary drawn here.
+**Read this with the depth contract from the [functional spec](projects/library_design/functional_spec.md):** components are described at the *shape* level — home, responsibility, capability **outcomes**, boundaries, dependencies, testability seam, risk. **No concrete interfaces, types, or schemas appear here, for any component.** The task that builds a component designs its real API inside the boundary drawn here.
 
 Delivery order (which Projects build what, and when) is the separate concern of [`implementation_plan.md`](implementation_plan.md).
 

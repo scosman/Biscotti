@@ -8,7 +8,7 @@ A dependency-ordered **roadmap of Projects**. Each entry is a future `/spec new 
 
 **How to read an entry.** Each lists *what's in the Project* — the components/parts and capabilities it covers, what it delivers, its dependencies, archetype, and risk. It does **not** break the Project into phases; that's decided when the Project is itself spec'd. Components are grown **incrementally across Projects** (a component may appear in several).
 
-**Two archetypes** (see [functional spec](specs/projects/library_design/functional_spec.md)):
+**Two archetypes** (see [functional spec](projects/library_design/functional_spec.md)):
 - **Foundation/library** — one complex component built deep; validated by tests + a manual harness; **does not ship a runnable app**. These are front-loaded to retire risk.
 - **Feature/integration** — delivers a **self-standing, runnable app increment** by wiring built components + UI. From the MVP onward, *every* Project leaves a working app.
 

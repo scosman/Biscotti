@@ -195,3 +195,85 @@ struct SearchNotesTests {
         #expect(hits.isEmpty)
     }
 }
+
+// MARK: - Tag search tests (searchHits)
+
+@Suite("Search tags field (searchHits)")
+struct SearchTagsTests {
+    private func makeStore() throws -> DataStore {
+        try DataStore(storage: .inMemory)
+    }
+
+    @Test("Tag-only term matches meeting with score 3")
+    func tagOnlyMatch() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Generic Meeting")
+        _ = try await store.createTagAndApply(name: "Customer", to: meetingID)
+
+        let hits = try await store.searchHits("customer", limit: 50)
+        #expect(hits.count == 1)
+        #expect(hits.first?.id == meetingID)
+        #expect(hits.first?.score == 3)
+        #expect(hits.first?.matchedFields.contains(.tags) == true)
+        #expect(hits.first?.matchedFields.contains(.title) == false)
+    }
+
+    @Test("Tag + title both match, scoring additively")
+    func tagPlusTitleScoring() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Customer Review")
+        _ = try await store.createTagAndApply(name: "Customer", to: meetingID)
+
+        let hits = try await store.searchHits("customer", limit: 50)
+        #expect(hits.count == 1)
+        // title (3) + tags (3) = 6
+        #expect(hits.first?.score == 6)
+        #expect(hits.first?.matchedFields.contains(.title) == true)
+        #expect(hits.first?.matchedFields.contains(.tags) == true)
+    }
+
+    @Test("Tag search is case-insensitive")
+    func tagSearchCaseInsensitive() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+        _ = try await store.createTagAndApply(name: "IMPORTANT", to: meetingID)
+
+        let hits = try await store.searchHits("important", limit: 50)
+        #expect(hits.count == 1)
+        #expect(hits.first?.matchedFields.contains(.tags) == true)
+    }
+
+    @Test("Tag search matches partial name")
+    func tagSearchPartialMatch() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+        _ = try await store.createTagAndApply(name: "Customer", to: meetingID)
+
+        let hits = try await store.searchHits("custom", limit: 50)
+        #expect(hits.count == 1)
+        #expect(hits.first?.matchedFields.contains(.tags) == true)
+    }
+
+    @Test("Untagged meeting not matched by tag search")
+    func untaggedMeetingNotMatched() async throws {
+        let store = try makeStore()
+        _ = try await store.createMeeting(title: "Plain Meeting")
+
+        let hits = try await store.searchHits("customer", limit: 50)
+        #expect(hits.isEmpty)
+    }
+
+    @Test("Tags field sort order places tags after title")
+    func tagsFieldSortOrder() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Review")
+        _ = try await store.createTagAndApply(name: "Review", to: meetingID)
+
+        let hits = try await store.searchHits("review", limit: 50)
+        #expect(hits.count == 1)
+        let fields = try #require(hits.first?.matchedFields)
+        // title should come before tags in sorted order
+        #expect(fields.first == .title)
+        #expect(fields.contains(.tags))
+    }
+}

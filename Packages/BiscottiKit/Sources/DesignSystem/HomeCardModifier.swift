@@ -11,7 +11,7 @@ public struct HomeCardModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: Tokens.cardRadius)
                     .strokeBorder(Tokens.cardStroke, lineWidth: 0.5)
             )
-            .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
+            .shadow(color: .cardShadow, radius: 1.5, y: 1)
     }
 }
 

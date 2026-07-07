@@ -1,10 +1,10 @@
 <div align="center">
 
-<img width="64" height="64" alt="biscotti_white-2" src="https://github.com/user-attachments/assets/1da1bc1e-4e88-4e27-b312-4e5932f96b72" />
+<img width="64" height="64" alt="biscotti icon" src="https://github.com/user-attachments/assets/0739cc89-7ddf-4bc7-8c26-4b8cef881c5b" />
 
 ### Biscotti
 
-**Meeting transcripts that never leave your Mac.**
+**Private Meeting Transcripts for MacOS.**
 
 [![Download for macOS](https://img.shields.io/badge/Download_for_macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.zip)
 
@@ -15,21 +15,23 @@
 **Biscotti** is a private and free meeting recorder for macOS. It records your meetings and turns them into accurate, speaker‑labeled transcripts and summaries. No cloud. No bot joining your call. No subscription.
 
 <div align="center">
-🔒 <strong>Private</strong> — runs locally on your Mac  ·  🆓 <strong>Free</strong> no account, no subscription
+🔒 <strong>Private</strong> runs locally on your Mac  •  🆓 <strong>Free</strong> no account, no subscription
 </div>
-
-<!-- Drag & drop a demo video or screenshot here -->
+&nbsp;
+<div align="center">
+  <img width="500" height="340" alt="BiscottiHome-2" src="https://github.com/user-attachments/assets/d252ac15-e2da-41b3-ba20-36ae7de3652d" />
+</div>
 
 ## Features
 
-- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. Nothing is ever uploaded.
+- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. Your data stays local.
 - 🆓 **Totally free** — no account, no subscription, no upsell.
+- 🧠 **Powerful AI summaries** - automatic summaries, action items, meeting titles, and real speaker names.
 - 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
 - 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
-- ✨ **AI that runs locally** — automatic summaries, action items, meeting titles, and real speaker names.
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
-- 🛑 **Auto‑stop** — detects when your call ends and stops recording.
-- 🪶 **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
+- ⏹️ **Auto‑stop** — detects when your call ends and stops recording.
+- ⚡ **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
 - 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No echo.
 - 📝 **Markdown notes** — jot notes in markdown, linked to the moment they happened.
 
@@ -102,3 +104,7 @@ Three steps: an AI model transcribes what you say, a second AI model separates s
 ## Built with
 
 On‑device speech recognition and speaker identification powered by [WhisperKit and SpeakerKit](https://github.com/argmaxinc/argmax-oss-swift) from Argmax.
+
+## License
+
+[PolyForm Perimeter License 1.0.1](/LICENSE.md)

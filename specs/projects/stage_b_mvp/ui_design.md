@@ -62,7 +62,7 @@ Routing is a small enum (`.recording | .meeting(id) | .empty`) owned by the shel
 ```
 
 - Big, calm, single-purpose. Elapsed time counts up (from `Recording`'s observable state). A blinking
-  record dot (opacity pulse — the "VCR LED" option from `app_overview.md`). **No live VU meters** in
+  record dot (opacity pulse — the "VCR LED" option from `specs/app_overview.md`). **No live VU meters** in
   the MVP (engine levels are unwired). One prominent **Stop**. An inline warning banner appears only
   if a permission/denial/write issue is detected, with a "Fix…" deep link.
 

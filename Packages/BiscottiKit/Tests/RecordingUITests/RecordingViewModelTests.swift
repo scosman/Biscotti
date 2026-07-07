@@ -110,14 +110,14 @@ struct RecordingViewModelTests {
     }
 }
 
-// MARK: - Phase 3: Left chip tests
+// MARK: - Phase 3: Remaining chip tests
 
-@Suite("RecordingViewModel.leftChip")
-struct LeftChipTests {
+@Suite("RecordingViewModel.remainingChip")
+struct RemainingChipTests {
     @Test("returns .none when scheduledEnd is nil")
     @MainActor
     func noneWhenNoScheduledEnd() {
-        let result = RecordingViewModel.leftChip(scheduledEnd: nil, now: Date())
+        let result = RecordingViewModel.remainingChip(scheduledEnd: nil, now: Date())
         #expect(result == .none)
     }
 
@@ -126,7 +126,7 @@ struct LeftChipTests {
     func normalAboveFiveMinutes() {
         let now = Date()
         let end = now.addingTimeInterval(600) // 10 minutes
-        let result = RecordingViewModel.leftChip(scheduledEnd: end, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: end, now: now)
         #expect(result == .normal("10:00"))
     }
 
@@ -135,7 +135,7 @@ struct LeftChipTests {
     func warningAtFiveMinutes() {
         let now = Date()
         let end = now.addingTimeInterval(300) // 5 minutes
-        let result = RecordingViewModel.leftChip(scheduledEnd: end, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: end, now: now)
         #expect(result == .warning("5:00"))
     }
 
@@ -144,7 +144,7 @@ struct LeftChipTests {
     func warningBelowFiveMinutes() {
         let now = Date()
         let end = now.addingTimeInterval(120) // 2 minutes
-        let result = RecordingViewModel.leftChip(scheduledEnd: end, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: end, now: now)
         #expect(result == .warning("2:00"))
     }
 
@@ -153,7 +153,7 @@ struct LeftChipTests {
     func overtimePastEnd() {
         let now = Date()
         let end = now.addingTimeInterval(-180) // 3 minutes past
-        let result = RecordingViewModel.leftChip(scheduledEnd: end, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: end, now: now)
         #expect(result == .overtime("+3:00"))
     }
 
@@ -162,7 +162,7 @@ struct LeftChipTests {
     func overtimeLabelHours() {
         let now = Date()
         let end = now.addingTimeInterval(-3661) // 1h 1m 1s past
-        let result = RecordingViewModel.leftChip(scheduledEnd: end, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: end, now: now)
         #expect(result == .overtime("+1:01:01"))
     }
 
@@ -170,7 +170,7 @@ struct LeftChipTests {
     @MainActor
     func overtimeAtExactlyZero() {
         let now = Date()
-        let result = RecordingViewModel.leftChip(scheduledEnd: now, now: now)
+        let result = RecordingViewModel.remainingChip(scheduledEnd: now, now: now)
         #expect(result == .overtime("+0:00"))
     }
 }
@@ -450,7 +450,7 @@ struct ElapsedFromStartDateTests {
         let elapsed = RecordingViewModel.computeElapsed(
             startDate: start, now: now
         )
-        let chip = RecordingViewModel.leftChip(
+        let chip = RecordingViewModel.remainingChip(
             scheduledEnd: scheduledEnd, now: now
         )
 

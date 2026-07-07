@@ -114,7 +114,7 @@ public struct EditableMeetingTitle: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(
                     isFocused
-                        ? Color.white : Color.clear
+                        ? Color.elevatedFill : Color.clear
                 )
         )
         .overlay(

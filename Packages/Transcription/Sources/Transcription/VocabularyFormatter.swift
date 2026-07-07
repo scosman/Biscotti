@@ -22,7 +22,7 @@ public enum VocabularyFormatter {
     /// - Returns: A prompt string, or nil if no terms were provided.
     public static func formatPrompt(from terms: [String]) -> String? {
         // Lowercase defensively: WhisperKit's promptTokens can silently blank
-        // the entire transcript for uppercase terms (research/argmax/README.md Gotcha #16).
+        // the entire transcript for uppercase terms (specs/research/argmax/README.md Gotcha #16).
         let cleaned = terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
 

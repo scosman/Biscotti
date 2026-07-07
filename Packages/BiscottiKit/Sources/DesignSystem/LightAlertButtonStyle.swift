@@ -3,7 +3,7 @@ import SwiftUI
 /// Light alert button style shared by Stop & Save and the recording-state
 /// header button.
 ///
-/// White `cardFill`, `recordingOutline` 0.5pt border, whisper shadow,
+/// Elevated fill `elevatedFill`, `recordingOutline` 0.5pt border, whisper shadow,
 /// `signalRed` content, `recordingHoverFill` on hover. The caller's label
 /// controls layout (padding, height); this style only provides the chrome.
 public struct LightAlertButtonStyle: ButtonStyle {
@@ -17,7 +17,7 @@ public struct LightAlertButtonStyle: ButtonStyle {
             .foregroundStyle(Color.signalRed)
             .background(
                 RoundedRectangle(cornerRadius: 9)
-                    .fill(isHovering ? Color.recordingHoverFill : Tokens.cardFill)
+                    .fill(isHovering ? Color.recordingHoverFill : Color.elevatedFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
@@ -25,7 +25,7 @@ public struct LightAlertButtonStyle: ButtonStyle {
             )
             // Tighter whisper shadow than HomeCardModifier (0.05/1.5/1)
             // -- intentional for the smaller button footprint.
-            .shadow(color: .black.opacity(0.06), radius: 1, x: 0, y: 0.5)
+            .shadow(color: .controlShadow, radius: 1, x: 0, y: 0.5)
             .opacity(
                 !isEnabled ? 0.4 : configuration.isPressed ? 0.7 : 1.0
             )

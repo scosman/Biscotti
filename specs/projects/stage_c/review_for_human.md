@@ -24,7 +24,7 @@ Running log of decisions for the final **human review, feedback & bug-fixing** p
 > Appended as development proceeds. Each is a call I made without stopping; review and flag any to revisit.
 
 - **Conference-link detection**: productionize `experiments/EventKitLab/ConferenceDetector` into the `Calendar` module; regex patterns hardcoded (per C1), with compiled `NSRegularExpression` instances cached. Detect from `event.url` → `event.location` → `event.notes` (priority order). URL-only — **no phone dial-in detection** in V1.
-- **Meeting-app watchlist**: source of truth stays the existing `AudioCapture.AudioProcess.knownMeetingBundleIDs` seed list (per C1), consumed by `MeetingDetection` via a small config-provider seam. Includes helper-process bundle IDs (WebKit GPU, avconferenced, Slack helper) per `research/audio/meeting_app_bundle_ids.md`.
+- **Meeting-app watchlist**: source of truth stays the existing `AudioCapture.AudioProcess.knownMeetingBundleIDs` seed list (per C1), consumed by `MeetingDetection` via a small config-provider seam. Includes helper-process bundle IDs (WebKit GPU, avconferenced, Slack helper) per `specs/research/audio/meeting_app_bundle_ids.md`.
 - **All-day events**: excluded from upcoming/detection/notifications. No "include all-day" setting in V1.
 - **Auto-stop**: 15s countdown, applies to detection-driven recordings when the detected app's audio stops; manual recordings do not auto-stop. Tapping the notification keeps recording. Countdown duration is a single named constant.
 - **System-audio permission status**: keep Stage B's silence-detection inference; do **not** adopt the private TCC preflight API.

@@ -4,7 +4,7 @@ status: complete
 
 # Architecture: Stage A Foundations
 
-This project designs **four separable units**, each in its own component doc. Unlike the repo [`architecture.md`](../../../architecture.md) (which is deliberately *shape-level* — homes, boundaries, dependency edges, no interfaces), **these component docs go deep**: they design the real public API (types and signatures) inside the boundaries the repo architecture already drew. That is the explicit ask for parts 1 & 2 ("packaging, testing, and API-design exercise").
+This project designs **four separable units**, each in its own component doc. Unlike the repo [`architecture.md`](../../architecture.md) (which is deliberately *shape-level* — homes, boundaries, dependency edges, no interfaces), **these component docs go deep**: they design the real public API (types and signatures) inside the boundaries the repo architecture already drew. That is the explicit ask for parts 1 & 2 ("packaging, testing, and API-design exercise").
 
 This top-level doc holds only what is **shared across the four**: the workspace additions, the resolved cross-cutting technical choices, the dependency picture for Stage A, and the autonomy/test-seam strategy. Everything component-specific lives in:
 
@@ -60,17 +60,17 @@ This top-level doc holds only what is **shared across the four**: the workspace 
 |---|---|---|
 | Transcription package tools version | `swift-tools-version: 6.0` (argmax-oss-swift v1.0.0 requires 6.0), `swiftLanguageModes: [.v6]`, warnings-as-errors via `-warnings-as-errors` unsafeFlag | matches `experiments/ArgMaxKit/Package.swift` + scaffolding |
 | AudioCapture / DataStore / ManualTestKit | match `BiscottiKit` manifest (`6.1` tools, `.v6` mode, warnings-as-errors) | scaffolding |
-| Transcription method | **one opaque, extensible `transcriptionMethodId` (`"v1"`)** bundling STT model + quantization, diarization model + strategy, word-timestamps. **No model/strategy/config input in V1**; the engine returns the id, the data model stores it | decided / research/argmax |
-| STT + diarization (inside `v1`) | `openai_whisper-large-v3-v20240930_626MB` (single model regardless of RAM; sequential loading on ≤8 GB, internal) + Pyannote v4 community-1 (~33 MB) + `.subsegment` | research/argmax §2 |
-| Merge for SDK | merge mic+system to **mono 16 kHz `[Float]`** in Transcription, **transiently in memory** (never stored — no merged file); re-transcribe re-merges from the two sources; retain provenance labels | research/argmax §5 |
+| Transcription method | **one opaque, extensible `transcriptionMethodId` (`"v1"`)** bundling STT model + quantization, diarization model + strategy, word-timestamps. **No model/strategy/config input in V1**; the engine returns the id, the data model stores it | decided / specs/research/argmax |
+| STT + diarization (inside `v1`) | `openai_whisper-large-v3-v20240930_626MB` (single model regardless of RAM; sequential loading on ≤8 GB, internal) + Pyannote v4 community-1 (~33 MB) + `.subsegment` | specs/research/argmax §2 |
+| Merge for SDK | merge mic+system to **mono 16 kHz `[Float]`** in Transcription, **transiently in memory** (never stored — no merged file); re-transcribe re-merges from the two sources; retain provenance labels | specs/research/argmax §5 |
 | Capture: system audio | **global** Core Audio process tap (`stereoGlobalTapButExcludeProcesses`) + aggregate device (distinct UID, default-output sub-device, `isPrivate`) — not per-process | phase9 #3 |
 | Capture: mic | **plain `AVAudioEngine`** input-node tap (NOT VPIO); client format = mono processing format; frame count ÷ channelCount (M-series mic is a 3-ch beamforming array) | phase9 #1 |
 | Record format | **record ADTS AAC directly** via `ExtAudioFile` + `kAudioFileAAC_ADTSType` — AAC-LC **mono, 24 kHz, 64 kbps**, `.aac` files; self-syncing → crash-safe with **no finalization**. **No CAF, no PCM scratch, no encode-on-stop.** Bitrate via `AudioConverter` + NULL-`CFArrayRef` `ConverterConfig` commit | **phase9 #5 RESOLVED** |
 | Route-change survival | **file-preserving**: keep the same `ExtAudioFile` open across mic `AVAudioEngineConfigurationChange` (re-query format, reinstall tap, restart) and system output-device rebuild | phase9 #2 |
 | Zero-buffer RMS monitor | keep in place, **unwired** by default | phase9 Test 7 |
-| Permission check | **mic:** definitive `AVCaptureDevice.authorizationStatus` preflight (refuse-to-start on denied); **system audio:** zero-buffer heuristic in first ~2 s (no public API), deferred/unwired | phase9 Test 4 / research/permissions |
+| Permission check | **mic:** definitive `AVCaptureDevice.authorizationStatus` preflight (refuse-to-start on denied); **system audio:** zero-buffer heuristic in first ~2 s (no public API), deferred/unwired | phase9 Test 4 / specs/research/permissions |
 | Live monitoring | push-based per-process `kAudioProcessPropertyIsRunning` listeners (NOT `IsRunningInput/Output` — no notifications), reconciled against the process list | phase9 #8 |
-| XPC host (Stage A) | the **Manual Test App** hosts `BiscottiTranscriber.xpc`; Transcription also offers an **in-process actor fallback** | decided / research/argmax §7 |
+| XPC host (Stage A) | the **Manual Test App** hosts `BiscottiTranscriber.xpc`; Transcription also offers an **in-process actor fallback** | decided / specs/research/argmax §7 |
 | DataStore container | configurable; **in-memory for tests**; CloudKit option wired-but-off | architecture §4 |
 | Manual-test results | checked-in JSON; CI gate on "all marked run"; CLAUDE.md staleness convention | decided / manual_test_app overview |
 | DataStore manual tab | **none** — DataStore is unit-test-only | decided |

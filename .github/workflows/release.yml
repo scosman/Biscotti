@@ -1,0 +1,51 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+
+# Pin Xcode 26.3 — same rationale as ci.yml: the default Xcode on the runner
+# breaks Swift 6 strict concurrency under the macOS 15 deployment target.
+# NOTE: macos-latest may roll forward to a new image that lacks this Xcode version.
+# If the build fails on "DEVELOPER_DIR … does not exist", either update the pin to
+# the Xcode available on the new image, or pin the runner to a specific image
+# (e.g. macos-15) that ships the required Xcode.
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
+jobs:
+  build-release:
+    name: Build release .app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: make generate
+
+      - name: Build Biscotti.app (Release, ad-hoc signed)
+        run: |
+          cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
+            -destination 'platform=macOS,arch=arm64' \
+            -configuration Release \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=YES build
+
+      - name: Zip .app bundle
+        run: |
+          APP_PATH="App/DerivedData/Build/Products/Release/Biscotti.app"
+          test -d "$APP_PATH" || { echo "ERROR: $APP_PATH not found"; ls -la App/DerivedData/Build/Products/Release/ || true; exit 1; }
+          cd App/DerivedData/Build/Products/Release
+          ditto -c -k --sequesterRsrc --keepParent Biscotti.app Biscotti.app.zip
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Biscotti-${{ github.event.release.tag_name }}
+          path: App/DerivedData/Build/Products/Release/Biscotti.app.zip

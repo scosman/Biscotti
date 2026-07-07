@@ -24,14 +24,14 @@
 
 ## Features
 
-- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. No servers or data collection.
+- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. Your data stays local.
 - 🆓 **Totally free** — no account, no subscription, no upsell.
+- 🧠 **Powerful AI summaries** - automatic summaries, action items, meeting titles, and real speaker names.
 - 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
 - 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
-- ✨ **AI that runs locally** — automatic summaries, action items, meeting titles, and real speaker names.
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
-- 🛑 **Auto‑stop** — detects when your call ends and stops recording.
-- 🪶 **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
+- ⏹️ **Auto‑stop** — detects when your call ends and stops recording.
+- ⚡ **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
 - 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No echo.
 - 📝 **Markdown notes** — jot notes in markdown, linked to the moment they happened.
 

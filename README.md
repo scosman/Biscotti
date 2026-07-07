@@ -4,7 +4,7 @@
 
 ### Biscotti
 
-**Meeting transcripts that never leave your Mac.**
+**Private Meeting Transcripts for MacOS.**
 
 [![Download for macOS](https://img.shields.io/badge/Download_for_macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.zip)
 
@@ -17,12 +17,14 @@
 <div align="center">
 🔒 <strong>Private</strong> runs locally on your Mac  •  🆓 <strong>Free</strong> no account, no subscription
 </div>
-
-<!-- Drag & drop a demo video or screenshot here -->
+&nbsp;
+<div align="center">
+  <img width="500" height="340" alt="BiscottiHome-2" src="https://github.com/user-attachments/assets/d252ac15-e2da-41b3-ba20-36ae7de3652d" />
+</div>
 
 ## Features
 
-- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. Nothing is ever uploaded.
+- 🔒 **Private by design** — recording, transcription, and AI all run on your Mac. No servers or data collection.
 - 🆓 **Totally free** — no account, no subscription, no upsell.
 - 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
 - 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
@@ -102,3 +104,7 @@ Three steps: an AI model transcribes what you say, a second AI model separates s
 ## Built with
 
 On‑device speech recognition and speaker identification powered by [WhisperKit and SpeakerKit](https://github.com/argmaxinc/argmax-oss-swift) from Argmax.
+
+## License
+
+[PolyForm Perimeter License 1.0.1](/LICENSE.md)

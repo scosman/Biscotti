@@ -19,6 +19,7 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"          # ad-hoc; real cert is Project 9
     DEVELOPMENT_TEAM: ""
+    INFOPLIST_KEY_CFBundleDisplayName: "Biscotti"
 
 packages:
   BiscottiKit:
@@ -44,7 +45,7 @@ targets:
         INFOPLIST_FILE: Resources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         CODE_SIGN_ENTITLEMENTS: Biscotti.entitlements
-        MARKETING_VERSION: "0.0.1"
+        MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
       - package: BiscottiKit
@@ -84,7 +85,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiTranscriber
         INFOPLIST_FILE: ../XPCServices/BiscottiTranscriber/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiTranscriber/BiscottiTranscriber.entitlements
-        MARKETING_VERSION: "0.0.1"
+        MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
       - package: Transcription
@@ -104,7 +105,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiLLM
         INFOPLIST_FILE: ../XPCServices/BiscottiLLM/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiLLM/BiscottiLLM.entitlements
-        MARKETING_VERSION: "0.0.1"
+        MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
       - package: LocalLLM

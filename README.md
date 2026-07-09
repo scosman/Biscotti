@@ -1,6 +1,5 @@
 <div align="center">
-
-<img width="64" height="64" alt="biscotti icon" src="https://github.com/user-attachments/assets/0739cc89-7ddf-4bc7-8c26-4b8cef881c5b" />
+<img width="84" height="84" alt="biscotti icon" src="https://github.com/user-attachments/assets/0739cc89-7ddf-4bc7-8c26-4b8cef881c5b" />
 
 ### Biscotti
 

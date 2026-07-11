@@ -77,7 +77,8 @@ precommit-checks: ## The pre-commit checks (format + lint + test); the hook and 
 build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
 	  -destination 'platform=macOS,arch=arm64' \
-	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
+	  -configuration Debug CODE_SIGNING_ALLOWED=YES \
+	  CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" build
 	cd ManualTestApp && xcodebuild -quiet -project ManualTestApp.xcodeproj -scheme ManualTestApp \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES build

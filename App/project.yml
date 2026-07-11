@@ -17,9 +17,10 @@ settings:
     GCC_TREAT_WARNINGS_AS_ERRORS: YES
     OTHER_SWIFT_FLAGS: "$(inherited) -warnings-as-errors"
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"          # ad-hoc; real cert is Project 9
-    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY: "Developer ID Application"   # Developer ID for distribution; make build-app overrides to ad-hoc
+    DEVELOPMENT_TEAM: B5L5M4B62J                      # Stephen Cosman (Developer ID Application)
     INFOPLIST_KEY_CFBundleDisplayName: "Biscotti"
+    ENABLE_HARDENED_RUNTIME: YES
 
 packages:
   BiscottiKit:

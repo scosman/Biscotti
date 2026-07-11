@@ -17,7 +17,9 @@ Biscotti requires three distinct system permissions: **microphone** (for the use
 | **Microphone** (user's voice via AVCaptureDevice) | `NSMicrophoneUsageDescription` | `com.apple.security.device.audio-input` = `true` | `com.apple.security.device.microphone` = `true` | `kTCCServiceMicrophone` / Privacy & Security > Microphone | First call to `AVCaptureDevice.requestAccess(for: .audio)`, or first attempt to start an `AVCaptureSession` with an audio input | Orange dot |
 | **System audio capture** (Core Audio process taps) | `NSAudioCaptureUsageDescription` | `com.apple.security.device.audio-input` = `true` (same entitlement as mic) | `com.apple.security.device.audio-input` = `true` | `kTCCServiceAudioCapture` / Privacy & Security > Screen & System Audio Recording (the pane offers per-app toggles that can grant screen-only, audio-only, or both) | First call to `AudioHardwareCreateProcessTap` (or the private `TCCAccessRequest("kTCCServiceAudioCapture", ...)` if pre-requesting) | Purple dot |
 | **System audio capture** (ScreenCaptureKit -- alternative) | None officially documented (see note below) | None required (purely TCC-gated) | None required (purely TCC-gated) | `kTCCServiceScreenCapture` / Privacy & Security > Screen & System Audio Recording | First call to `SCShareableContent.current`, `SCStream.startCapture()`, or `CGRequestScreenCaptureAccess()` | Purple dot |
-| **Calendar full access** (see also R2 -- EventKit research) | `NSCalendarsFullAccessUsageDescription` | None required (TCC-only for non-sandboxed) | `com.apple.security.personal-information.calendars` = `true` | `kTCCServiceCalendar` / Privacy & Security > Calendars | First call to `EKEventStore().requestFullAccessToEvents()` | None |
+| **Calendar full access** (see also R2 -- EventKit research) | `NSCalendarsFullAccessUsageDescription` | **`com.apple.security.personal-information.calendars` = `true`** (see correction below) | `com.apple.security.personal-information.calendars` = `true` | `kTCCServiceCalendar` / Privacy & Security > Calendars | First call to `EKEventStore().requestFullAccessToEvents()` | None |
+
+> **⚠️ Correction (validated on-hardware, macOS 15).** An earlier version of this doc claimed calendar access needs **no** entitlement for a non-sandboxed app ("TCC-only"). **That is wrong under hardened runtime.** With hardened runtime enabled (which we ship with — see R5/R6), `calaccessd` denies calendar access at runtime with: `Prompting policy for hardened runtime; service: kTCCServiceCalendar requires entitlement com.apple.security.personal-information.calendars but it is missing`. The `com.apple.security.personal-information.calendars` entitlement is **both** a sandbox entitlement **and** a hardened-runtime resource-access entitlement (Xcode surfaces it under the "Resource Access" list of *both* the App Sandbox and Hardened Runtime capabilities). Hardened runtime enforces it independently of the sandbox. **`Biscotti.entitlements` must include it.** The same is expected to apply to other `com.apple.security.personal-information.*` TCC resources (contacts, photos) if we ever use them under hardened runtime.
 
 **Note on `NSScreenCaptureUsageDescription`:** There is no officially documented Apple Info.plist key for ScreenCaptureKit screen capture on macOS. The key `NSScreenCaptureUsageDescription` appears in some community references and in visionOS/ReplayKit contexts, but Apple's macOS developer documentation does not list it as a recognized macOS Info.plist key. ScreenCaptureKit access on macOS is purely TCC-gated, triggered by calling ScreenCaptureKit APIs or `CGRequestScreenCaptureAccess()`. See [CGRequestScreenCaptureAccess -- Apple Developer Documentation](https://developer.apple.com/documentation/coregraphics/cgrequestscreencaptureaccess()).
 
@@ -103,7 +105,7 @@ Sources:
 | **Microphone entitlement** | `com.apple.security.device.audio-input` | `com.apple.security.device.microphone` (sandbox version) **plus** `com.apple.security.device.audio-input` (hardened runtime version) if both sandbox + hardened runtime are active |
 | **System audio (Core Audio taps)** | `com.apple.security.device.audio-input` + `NSAudioCaptureUsageDescription` | Same, but Core Audio taps may have additional friction under sandbox (file-system restrictions on aggregate device creation). Not well-tested in sandbox. |
 | **System audio (ScreenCaptureKit)** | No entitlement needed (TCC-only) | No entitlement needed (TCC-only) |
-| **Calendar** | No entitlement needed (TCC-only; `NSCalendarsFullAccessUsageDescription` in Info.plist) | `com.apple.security.personal-information.calendars` + `NSCalendarsFullAccessUsageDescription` |
+| **Calendar** | **`com.apple.security.personal-information.calendars` + `NSCalendarsFullAccessUsageDescription`** — hardened runtime requires the entitlement (see ⚠️ correction under R1). It is *not* TCC-only. | `com.apple.security.personal-information.calendars` + `NSCalendarsFullAccessUsageDescription` |
 | **File system** | Full access. Can write audio files anywhere the user allows. | Restricted to app container + user-selected files via NSOpenPanel. Audio file storage must use the app's container or a user-granted directory. |
 | **Notarization** | Requires hardened runtime (`--options runtime` on codesign). Can still use entitlements to opt out of specific hardened-runtime restrictions (e.g., `com.apple.security.cs.disable-library-validation` if loading unsigned dylibs). | Same codesign requirements, plus App Store review. |
 
@@ -131,10 +133,12 @@ Sources:
    <dict>
        <key>com.apple.security.device.audio-input</key>
        <true/>
+       <key>com.apple.security.personal-information.calendars</key>
+       <true/>
    </dict>
    </plist>
    ```
-   This single entitlement covers both microphone and system audio capture under hardened runtime. Calendar requires no entitlement (non-sandboxed).
+   `com.apple.security.device.audio-input` covers both microphone and system audio capture under hardened runtime. `com.apple.security.personal-information.calendars` is **required** for EventKit calendar access under hardened runtime (validated on-hardware — see ⚠️ correction under R1; the earlier "calendar needs no entitlement" claim was wrong).
 4. **Info.plist usage descriptions.** Must include all three:
    ```xml
    <key>NSMicrophoneUsageDescription</key>
@@ -197,9 +201,13 @@ Sources:
 <dict>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
 </dict>
 </plist>
 ```
+
+> **⚠️ `com.apple.security.personal-information.calendars` is mandatory under hardened runtime** — see the correction under R1. The originally-recommended entitlements file omitted it and calendar access failed at runtime (`kTCCServiceCalendar requires entitlement ...`).
 
 **Info.plist keys:**
 ```xml

@@ -5,5 +5,12 @@
 <dict>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Required under hardened runtime for EventKit calendar access.
+         Verified on-hardware: without it, calaccessd denies with
+         "kTCCServiceCalendar requires entitlement
+         com.apple.security.personal-information.calendars". Hardened
+         runtime enforces this even for a non-sandboxed app. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
 </dict>
 </plist>

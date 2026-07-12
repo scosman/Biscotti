@@ -64,8 +64,8 @@ Every step happens on your Mac. Your audio and transcripts never leave your Mac.
 
 ## Install
 
-1. [Download `Biscotti.zip`](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.zip).
-2. Unzip it and move **Biscotti** to your Applications folder.
+1. Download [`Biscotti.dmg`](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg).
+2. Open the dmg, then copy **Biscotti.app** to your Applications folder.
 3. Open Biscotti and follow the quick setup to grant microphone, system‑audio, and calendar access.
 
 ## FAQ

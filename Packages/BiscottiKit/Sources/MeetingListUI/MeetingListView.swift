@@ -18,8 +18,67 @@ public struct MeetingListView: View {
     }
 
     public var body: some View {
-        // Empty states render OUTSIDE the List so ContentUnavailableView
-        // centers vertically in the full pane instead of pinning to a row.
+        // The List is ALWAYS the structural root so the enclosing HSplitView
+        // column keeps a stable width. Empty states render as a full-pane
+        // `.overlay` (not a sibling branch): swapping the List out for a bare
+        // ContentUnavailableView makes HSplitView collapse the column to that
+        // view's tiny intrinsic width. The overlay still centers in the full
+        // pane, so vertical centering is preserved.
+        List(
+            selection: Binding(
+                get: { viewModel.selectedIDs },
+                set: { viewModel.select($0) }
+            )
+        ) {
+            // The suppressor must live INSIDE the List's content so its
+            // backing NSView is a descendant of the NSTableView.  Placing
+            // it on the first Section / row and walking *up* the superview
+            // chain guarantees we target THIS list's table, not a sibling.
+            switch viewModel.mode {
+            case .browse:
+                browseContent
+                    .background(SelectionHighlightSuppressor())
+
+            case .search:
+                searchContent
+                    .background(SelectionHighlightSuppressor())
+            }
+        }
+        .contextMenu(forSelectionType: UUID.self) { ids in
+            Button(MeetingListViewModel.deleteMenuLabel(for: ids.count)) {
+                viewModel.requestDeleteContextMenu(ids)
+            }
+        }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color.listPaneBackground)
+        .overlay { emptyState }
+        .onDeleteCommand {
+            viewModel.requestDeleteSelection()
+        }
+        .confirmationDialog(
+            deleteDialogTitle,
+            isPresented: $viewModel.showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task { await viewModel.confirmDelete() }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelDelete()
+            }
+        } message: {
+            Text(deleteDialogMessage)
+        }
+    }
+
+    // MARK: - Empty states
+
+    /// Full-pane empty states drawn over the (empty) List. `EmptyView` when the
+    /// list has content, so the List shows through unchanged. Opaque background
+    /// so it fully covers the empty list beneath it.
+    @ViewBuilder
+    private var emptyState: some View {
         if viewModel.mode == .browse, viewModel.groups.isEmpty {
             ContentUnavailableView {
                 Label {
@@ -32,58 +91,14 @@ public struct MeetingListView: View {
                 Text("Recorded meetings will appear here.")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.listPaneBackground)
         } else if viewModel.mode == .search,
-                  !viewModel.isSearching, // still in-flight -> fall through to List/spinner
+                  !viewModel.isSearching, // still in-flight -> keep the spinner
                   viewModel.results.isEmpty
         {
             ContentUnavailableView.search(text: viewModel.query)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List(
-                selection: Binding(
-                    get: { viewModel.selectedIDs },
-                    set: { viewModel.select($0) }
-                )
-            ) {
-                // The suppressor must live INSIDE the List's content so its
-                // backing NSView is a descendant of the NSTableView.  Placing
-                // it on the first Section / row and walking *up* the superview
-                // chain guarantees we target THIS list's table, not a sibling.
-                switch viewModel.mode {
-                case .browse:
-                    browseContent
-                        .background(SelectionHighlightSuppressor())
-
-                case .search:
-                    searchContent
-                        .background(SelectionHighlightSuppressor())
-                }
-            }
-            .contextMenu(forSelectionType: UUID.self) { ids in
-                Button(MeetingListViewModel.deleteMenuLabel(for: ids.count)) {
-                    viewModel.requestDeleteContextMenu(ids)
-                }
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            .background(Color.listPaneBackground)
-            .onDeleteCommand {
-                viewModel.requestDeleteSelection()
-            }
-            .confirmationDialog(
-                deleteDialogTitle,
-                isPresented: $viewModel.showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    Task { await viewModel.confirmDelete() }
-                }
-                Button("Cancel", role: .cancel) {
-                    viewModel.cancelDelete()
-                }
-            } message: {
-                Text(deleteDialogMessage)
-            }
+                .background(Color.listPaneBackground)
         }
     }
 

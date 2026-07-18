@@ -36,6 +36,12 @@ public struct MeetingListView: View {
                   !viewModel.isSearching, // still in-flight -> fall through to List/spinner
                   viewModel.results.isEmpty
         {
+            // TODO: The no-results state renders in a very narrow column — text
+            // wraps below the word level — instead of filling the pane like the
+            // normal results/list view. `.frame(maxWidth: .infinity)` isn't
+            // expanding the enclosing split-view column when the `List` is
+            // absent (the List is what normally drives the column width). Fix so
+            // this is no narrower than the regular results view.
             ContentUnavailableView.search(text: viewModel.query)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

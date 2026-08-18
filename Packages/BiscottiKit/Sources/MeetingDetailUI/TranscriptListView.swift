@@ -24,7 +24,12 @@ import SwiftUI
 /// **Performance:** Unlike the previous single-`Text(AttributedString)`
 /// renderer, this view leverages SwiftUI's `List` row recycling so
 /// only visible rows are materialized -- fixing the ~450MB memory
-/// spike on long transcripts.
+/// spike on long transcripts. `ForEach(segments)` stays a *direct*
+/// child of `List`'s own content builder (not nested inside another
+/// custom container) so `List` can identify and recycle each segment
+/// as its own row; only the per-row content is individually wrapped in
+/// `.equatable()` (see `TranscriptSegmentRow` below) -- never a
+/// container that itself produces multiple rows.
 ///
 /// Each row's speaker label shows the assigned person name (when the
 /// segment's `speakerID` is mapped in `speakerNames`) in the speaker's
@@ -35,17 +40,18 @@ import SwiftUI
 /// **`header` is always fresh, never Equatable-gated.** `header` carries
 /// page chrome owned by the parent (title, tags, calendar card, tab bar
 /// -- including the Copy button's transient "Copied" feedback). This
-/// view itself is intentionally *not* `Equatable`: `header` is a fresh
-/// closure capturing whatever local `@State`/`@Observable` values changed
-/// on every re-render, and there is no way to compare closures for
-/// equality. Only the recycled segment rows (`TranscriptRowsView` below)
-/// opt into the row-recycling equality guard, since only their inputs
-/// are meaningfully comparable. Previously this type applied `Equatable`
-/// (and callers wrapped it in `.equatable()`) to the *whole* view
-/// including `header`, which caused SwiftUI to skip re-rendering the
-/// header -- and everything in it, including the Copy button's
-/// "Copied" checkmark -- whenever only chrome-relevant state changed
-/// (see `TranscriptRowsView` below for where that guard now lives).
+/// view itself is intentionally *not* `Equatable`, and nothing wraps the
+/// whole view (or the whole `ForEach`) in `.equatable()` -- only
+/// individual `TranscriptSegmentRow`s opt in, each keyed on its own
+/// (comparable) segment/speaker/canSeek inputs. `header` is a fresh
+/// closure capturing whatever local `@State`/`@Observable` values
+/// changed on every re-render (closures can't be compared for equality
+/// at all), so it must never sit behind an equality guard. Previously
+/// this type applied `Equatable` (and callers wrapped it in
+/// `.equatable()`) to the *whole* view including `header`, which caused
+/// SwiftUI to skip re-rendering the header -- and everything in it,
+/// including the Copy button's "Copied" checkmark -- whenever only
+/// chrome-relevant state changed.
 struct TranscriptListView<Header: View>: View {
     /// Stable identity for the displayed transcript version.
     let transcriptID: UUID
@@ -78,93 +84,60 @@ struct TranscriptListView<Header: View>: View {
 
     var body: some View {
         List {
-            // Non-recycled header row (page chrome). Deliberately NOT
-            // behind the `TranscriptRowsView.equatable()` guard below --
-            // see the type doc comment above.
+            // Non-recycled header row (page chrome). Never behind an
+            // `.equatable()` guard -- see the type doc comment above.
             header
                 .readableRowWidth()
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
 
-            // Recycled transcript segment rows. Guarded by `.equatable()`
-            // so a parent re-render that only touches header-relevant
-            // state (e.g. the Copy button's `didCopy` flag, or the ~4 Hz
-            // playback tick) doesn't re-diff every row.
-            TranscriptRowsView(
-                transcriptID: transcriptID,
-                canSeek: canSeek,
-                segments: segments,
-                speakerNames: speakerNames,
-                speakerColorKeys: speakerColorKeys,
-                onSeek: onSeek,
-                onSpeaker: onSpeaker
-            )
-            .equatable()
+            // Recycled transcript segment rows: `ForEach` stays a direct
+            // child of `List` so each segment is its own recyclable row.
+            // Each row individually opts into `.equatable()` (keyed on
+            // its own segment + resolved speaker name/color + canSeek)
+            // so re-renders that don't change a given row's content skip
+            // re-diffing it -- e.g. the ~4 Hz playback tick, or the Copy
+            // button's `didCopy` flag flipping in `header` above.
+            ForEach(segments) { segment in
+                TranscriptSegmentRow(
+                    segment: segment,
+                    speakerName: TranscriptContent.displayName(
+                        for: segment, names: speakerNames
+                    ),
+                    speakerColor: TranscriptContent.speakerColor(
+                        for: segment, colorKeys: speakerColorKeys
+                    ),
+                    canSeek: canSeek,
+                    onSeek: onSeek,
+                    onSpeaker: onSpeaker
+                )
+                .equatable()
+                .readableRowWidth()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(
+                    top: Tokens.spacingXS,
+                    leading: 0,
+                    bottom: Tokens.spacingXS + 2,
+                    trailing: 0
+                ))
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
     }
 }
 
-/// The recycled transcript segment rows, split out from
-/// `TranscriptListView` so the row-recycling `Equatable` guard can be
-/// scoped to just the rows -- never to `header`, which must always
-/// re-render fresh (see `TranscriptListView`'s doc comment).
-///
-/// Equality keys on `transcriptID` + `canSeek` + `speakerNames` +
-/// `speakerColorKeys` so SwiftUI skips re-diffing rows when the
-/// transcript hasn't changed (e.g. on the ~4 Hz playback tick the parent
-/// re-renders on), but re-renders when a speaker is renamed or merged
-/// (the segments and closures are excluded from the comparison --
-/// segments are keyed to the version via `transcriptID`, and closures
-/// are never equal).
-struct TranscriptRowsView: View, Equatable {
-    let transcriptID: UUID
-    let canSeek: Bool
-    let segments: [SegmentData]
-    var speakerNames: [Int: String] = [:]
-    var speakerColorKeys: [Int: String] = [:]
-    let onSeek: (TimeInterval) -> Void
-    var onSpeaker: (Int) -> Void = { _ in }
-
-    nonisolated static func == (lhs: TranscriptRowsView, rhs: TranscriptRowsView) -> Bool {
-        lhs.transcriptID == rhs.transcriptID
-            && lhs.canSeek == rhs.canSeek
-            && lhs.speakerNames == rhs.speakerNames
-            && lhs.speakerColorKeys == rhs.speakerColorKeys
-    }
-
-    var body: some View {
-        ForEach(segments) { segment in
-            TranscriptSegmentRow(
-                segment: segment,
-                speakerName: TranscriptContent.displayName(
-                    for: segment, names: speakerNames
-                ),
-                speakerColor: TranscriptContent.speakerColor(
-                    for: segment, colorKeys: speakerColorKeys
-                ),
-                canSeek: canSeek,
-                onSeek: onSeek,
-                onSpeaker: onSpeaker
-            )
-            .readableRowWidth()
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(
-                top: Tokens.spacingXS,
-                leading: 0,
-                bottom: Tokens.spacingXS + 2,
-                trailing: 0
-            ))
-        }
-    }
-}
-
 /// A single transcript segment row: speaker chip, label, timestamp,
 /// and utterance text.
-private struct TranscriptSegmentRow: View {
+///
+/// Conforms to `Equatable` (compared on `segment`, `speakerName`,
+/// `speakerColor`, and `canSeek` -- the only things this row actually
+/// renders) so each row can be wrapped in `.equatable()` independently,
+/// letting SwiftUI skip re-diffing a row whose content hasn't changed
+/// without affecting sibling rows or `TranscriptListView`'s `header`.
+struct TranscriptSegmentRow: View, Equatable {
     let segment: SegmentData
     /// The resolved speaker display name (assigned person or label).
     let speakerName: String
@@ -173,6 +146,13 @@ private struct TranscriptSegmentRow: View {
     let onSeek: (TimeInterval) -> Void
     /// Tapped with the segment's speaker ID to open the mapping sheet.
     let onSpeaker: (Int) -> Void
+
+    nonisolated static func == (lhs: TranscriptSegmentRow, rhs: TranscriptSegmentRow) -> Bool {
+        lhs.segment == rhs.segment
+            && lhs.speakerName == rhs.speakerName
+            && lhs.speakerColor == rhs.speakerColor
+            && lhs.canSeek == rhs.canSeek
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {

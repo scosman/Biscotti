@@ -4,153 +4,119 @@ import SwiftUI
 import Testing
 @testable import MeetingDetailUI
 
-/// Tests for `TranscriptRowsView.Equatable` conformance.
+/// Tests for `TranscriptSegmentRow.Equatable` conformance.
 ///
-/// The recycled-rows view conforms to `Equatable` comparing `transcriptID`,
-/// `canSeek`, `speakerNames`, and `speakerColorKeys` so that SwiftUI (via
-/// `.equatable()`) can skip re-diffing rows when the parent re-evaluates
-/// on playback ticks (~4 Hz), while still re-rendering when a speaker is
-/// renamed or merged.
+/// Each transcript row conforms to `Equatable`, comparing `segment`,
+/// `speakerName`, `speakerColor`, and `canSeek` -- the only things a row
+/// actually renders -- so that SwiftUI (via `.equatable()` applied to
+/// each row individually inside `TranscriptListView`'s `ForEach`) can
+/// skip re-diffing a row whose content hasn't changed, e.g. on the
+/// parent's ~4 Hz playback-tick re-render, while still re-rendering a
+/// specific row when its resolved speaker name/color changes.
 ///
-/// This guard is scoped to just the rows -- never to `TranscriptListView`'s
-/// `header` -- because `header` carries page chrome (including the Copy
-/// button's transient "Copied" feedback) that must always re-render fresh.
-/// See `TranscriptListView`'s doc comment for the bug this split fixes.
-@Suite("TranscriptRowsView -- Equatable guard")
+/// This guard is scoped to individual rows -- never to
+/// `TranscriptListView`'s `header` -- because `header` carries page
+/// chrome (including the Copy button's transient "Copied" feedback)
+/// that must always re-render fresh. `ForEach` also stays a direct
+/// child of `List`'s content builder (rather than being wrapped, as a
+/// whole, in a container that itself produces multiple rows) so `List`
+/// can identify and recycle each segment as its own row.
+@Suite("TranscriptSegmentRow -- Equatable guard")
 struct TranscriptListViewTests {
-    private static let sampleSegments = [
-        SegmentData(
-            id: UUID(),
-            speakerID: 0,
-            speakerLabel: "Speaker 0",
-            startTime: 14,
-            endTime: 25,
-            text: "Hello"
-        )
-    ]
+    private static let sampleSegment = SegmentData(
+        id: UUID(),
+        speakerID: 0,
+        speakerLabel: "Speaker 0",
+        startTime: 14,
+        endTime: 25,
+        text: "Hello"
+    )
 
-    /// Convenience factory: builds a `TranscriptRowsView`.
+    /// Convenience factory: builds a `TranscriptSegmentRow`.
     @MainActor
-    private static func makeView(
-        transcriptID: UUID = UUID(),
-        canSeek: Bool = true,
-        segments: [SegmentData] = sampleSegments,
-        speakerNames: [Int: String] = [:],
-        speakerColorKeys: [Int: String] = [:]
-    ) -> TranscriptRowsView {
-        TranscriptRowsView(
-            transcriptID: transcriptID,
+    private static func makeRow(
+        segment: SegmentData = sampleSegment,
+        speakerName: String = "Speaker 0",
+        speakerColor: Color = .blue,
+        canSeek: Bool = true
+    ) -> TranscriptSegmentRow {
+        TranscriptSegmentRow(
+            segment: segment,
+            speakerName: speakerName,
+            speakerColor: speakerColor,
             canSeek: canSeek,
-            segments: segments,
-            speakerNames: speakerNames,
-            speakerColorKeys: speakerColorKeys,
-            onSeek: { _ in }
+            onSeek: { _ in },
+            onSpeaker: { _ in }
         )
     }
 
     // MARK: - Equatable semantics
 
-    @Test("same transcriptID and canSeek with different closures compares equal")
+    @Test("same segment/name/color/canSeek with different closures compares equal")
     @MainActor
-    func sameIDDifferentClosuresAreEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(transcriptID: id, canSeek: true)
-        let view2 = Self.makeView(transcriptID: id, canSeek: true)
+    func sameContentDifferentClosuresAreEqual() {
+        let row1 = Self.makeRow()
+        let row2 = Self.makeRow()
 
-        #expect(view1 == view2, """
-        Views with the same transcriptID and canSeek must compare equal \
-        regardless of closure identity -- this is the property that \
-        prevents per-tick re-evaluation during playback.
+        #expect(row1 == row2, """
+        Rows with identical segment/name/color/canSeek must compare \
+        equal regardless of closure identity -- this is the property \
+        that prevents per-tick re-evaluation during playback.
         """)
     }
 
-    @Test("same transcriptID with different segments compares equal")
+    @Test("different segment compares not equal")
     @MainActor
-    func sameIDDifferentSegmentsAreEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(transcriptID: id, segments: Self.sampleSegments)
-        let view2 = Self.makeView(transcriptID: id, segments: [])
+    func differentSegmentIsNotEqual() {
+        let row1 = Self.makeRow()
+        let row2 = Self.makeRow(segment: SegmentData(
+            id: UUID(),
+            speakerID: 1,
+            speakerLabel: "Speaker 1",
+            startTime: 40,
+            endTime: 45,
+            text: "Different"
+        ))
 
-        #expect(view1 == view2, """
-        Equality depends only on transcriptID and canSeek. The segments \
-        are keyed to the version via the VM, so the same ID + canSeek \
-        implies the same content.
+        #expect(row1 != row2, """
+        A different segment (different id/content) must trigger a \
+        body re-evaluation.
         """)
     }
 
-    @Test("different transcriptID compares not equal")
+    @Test("different speakerName compares not equal")
     @MainActor
-    func differentIDsAreNotEqual() {
-        let view1 = Self.makeView(transcriptID: UUID())
-        let view2 = Self.makeView(transcriptID: UUID())
+    func differentSpeakerNameIsNotEqual() {
+        let row1 = Self.makeRow(speakerName: "Speaker 0")
+        let row2 = Self.makeRow(speakerName: "Daniel")
 
-        #expect(view1 != view2, """
-        Views with different transcriptIDs must compare not-equal so \
-        SwiftUI re-evaluates the body when the transcript version changes.
+        #expect(row1 != row2, """
+        Assigning a speaker name changes the rendered label, so the \
+        row must compare not-equal to trigger a re-render.
         """)
     }
 
-    @Test("same transcriptID but different canSeek compares not equal")
+    @Test("different speakerColor compares not equal")
     @MainActor
-    func differentCanSeekAreNotEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(transcriptID: id, canSeek: true)
-        let view2 = Self.makeView(transcriptID: id, canSeek: false)
+    func differentSpeakerColorIsNotEqual() {
+        let row1 = Self.makeRow(speakerColor: .blue)
+        let row2 = Self.makeRow(speakerColor: .red)
 
-        #expect(view1 != view2, """
-        A canSeek flip changes whether timestamps are tappable, \
-        so it must trigger a body re-evaluation.
+        #expect(row1 != row2, """
+        Merging speakers onto one person changes the shared color, so \
+        the row must compare not-equal to trigger a re-render.
         """)
     }
 
-    @Test("different speakerNames compares not equal")
+    @Test("different canSeek compares not equal")
     @MainActor
-    func differentSpeakerNamesAreNotEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(transcriptID: id, speakerNames: [:])
-        let view2 = Self.makeView(
-            transcriptID: id, speakerNames: [0: "Daniel"]
-        )
+    func differentCanSeekIsNotEqual() {
+        let row1 = Self.makeRow(canSeek: true)
+        let row2 = Self.makeRow(canSeek: false)
 
-        #expect(view1 != view2, """
-        Assigning a speaker name changes the rendered label, so the view \
-        must compare not-equal to trigger a re-render.
-        """)
-    }
-
-    @Test("different speakerColorKeys compares not equal")
-    @MainActor
-    func differentSpeakerColorKeysAreNotEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(transcriptID: id, speakerColorKeys: [:])
-        let view2 = Self.makeView(
-            transcriptID: id, speakerColorKeys: [0: "person-A"]
-        )
-
-        #expect(view1 != view2, """
-        Merging speakers onto one person changes the shared color, so the \
-        view must compare not-equal to trigger a re-render.
-        """)
-    }
-
-    @Test("same speakerNames and colorKeys compares equal")
-    @MainActor
-    func sameSpeakerStateIsEqual() {
-        let id = UUID()
-        let view1 = Self.makeView(
-            transcriptID: id,
-            speakerNames: [0: "Daniel"],
-            speakerColorKeys: [0: "person-A"]
-        )
-        let view2 = Self.makeView(
-            transcriptID: id,
-            speakerNames: [0: "Daniel"],
-            speakerColorKeys: [0: "person-A"]
-        )
-
-        #expect(view1 == view2, """
-        Identical speaker state with different closures must compare equal \
-        so playback ticks don't force a re-render.
+        #expect(row1 != row2, """
+        A canSeek flip changes whether the timestamp is tappable, so \
+        it must trigger a body re-evaluation.
         """)
     }
 }

@@ -604,6 +604,15 @@ private extension MeetingDetailView {
                 case .notes:
                     viewModel.copyNotes()
                 }
+                // Release focus from the Notes/Summary MarkdownEditor's
+                // NSTextView (if it currently holds first responder) so
+                // this button's own "Copied" feedback below is guaranteed
+                // to redraw immediately. Without this, clicking Copy
+                // while actively editing Notes silently copies the text
+                // but leaves the button showing "Copy" -- AppKit defers
+                // the button's redraw while an NSTextView elsewhere in
+                // the window still owns keyboard focus.
+                NSApp.keyWindow?.makeFirstResponder(nil)
                 didCopy = true
                 copyResetTask?.cancel()
                 copyResetTask = Task {

@@ -4,14 +4,19 @@ import SwiftUI
 import Testing
 @testable import MeetingDetailUI
 
-/// Tests for `TranscriptListView.Equatable` conformance.
+/// Tests for `TranscriptRowsView.Equatable` conformance.
 ///
-/// The view conforms to `Equatable` comparing `transcriptID`, `canSeek`,
-/// `speakerNames`, and `speakerColorKeys` so that SwiftUI (via
-/// `.equatable()`) can skip body re-evaluation when the parent
-/// re-evaluates on playback ticks (~4 Hz), while still re-rendering when a
-/// speaker is renamed or merged.
-@Suite("TranscriptListView -- Equatable guard")
+/// The recycled-rows view conforms to `Equatable` comparing `transcriptID`,
+/// `canSeek`, `speakerNames`, and `speakerColorKeys` so that SwiftUI (via
+/// `.equatable()`) can skip re-diffing rows when the parent re-evaluates
+/// on playback ticks (~4 Hz), while still re-rendering when a speaker is
+/// renamed or merged.
+///
+/// This guard is scoped to just the rows -- never to `TranscriptListView`'s
+/// `header` -- because `header` carries page chrome (including the Copy
+/// button's transient "Copied" feedback) that must always re-render fresh.
+/// See `TranscriptListView`'s doc comment for the bug this split fixes.
+@Suite("TranscriptRowsView -- Equatable guard")
 struct TranscriptListViewTests {
     private static let sampleSegments = [
         SegmentData(
@@ -24,8 +29,7 @@ struct TranscriptListViewTests {
         )
     ]
 
-    /// Convenience factory: builds a `TranscriptListView` with an
-    /// `EmptyView` header (tests don't need page chrome).
+    /// Convenience factory: builds a `TranscriptRowsView`.
     @MainActor
     private static func makeView(
         transcriptID: UUID = UUID(),
@@ -33,15 +37,14 @@ struct TranscriptListViewTests {
         segments: [SegmentData] = sampleSegments,
         speakerNames: [Int: String] = [:],
         speakerColorKeys: [Int: String] = [:]
-    ) -> TranscriptListView<EmptyView> {
-        TranscriptListView(
+    ) -> TranscriptRowsView {
+        TranscriptRowsView(
             transcriptID: transcriptID,
             canSeek: canSeek,
             segments: segments,
             speakerNames: speakerNames,
             speakerColorKeys: speakerColorKeys,
-            onSeek: { _ in },
-            header: EmptyView()
+            onSeek: { _ in }
         )
     }
 

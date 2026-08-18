@@ -998,7 +998,6 @@ private extension MeetingDetailView {
                 },
                 header: transcriptListHeader
             )
-            .equatable()
         }
     }
 

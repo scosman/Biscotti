@@ -32,15 +32,21 @@ import SwiftUI
 /// `onSpeaker`. Speakers assigned to the same person share a color via
 /// `speakerColorKeys`.
 ///
-/// **Equatable guard:** the parent re-evaluates its body on every
-/// playback tick (~4 Hz) because it reads `playbackCurrentTime` for
-/// the transport bar. Equality keys on `transcriptID` + `canSeek` +
-/// `speakerNames` + `speakerColorKeys` so SwiftUI skips body
-/// re-evaluation when the transcript hasn't changed, but re-renders when
-/// a speaker is renamed or merged (the segments and closures are
-/// excluded — segments are keyed to the version via `transcriptID`, and
-/// closures are never equal).
-struct TranscriptListView<Header: View>: View, Equatable {
+/// **`header` is always fresh, never Equatable-gated.** `header` carries
+/// page chrome owned by the parent (title, tags, calendar card, tab bar
+/// -- including the Copy button's transient "Copied" feedback). This
+/// view itself is intentionally *not* `Equatable`: `header` is a fresh
+/// closure capturing whatever local `@State`/`@Observable` values changed
+/// on every re-render, and there is no way to compare closures for
+/// equality. Only the recycled segment rows (`TranscriptRowsView` below)
+/// opt into the row-recycling equality guard, since only their inputs
+/// are meaningfully comparable. Previously this type applied `Equatable`
+/// (and callers wrapped it in `.equatable()`) to the *whole* view
+/// including `header`, which caused SwiftUI to skip re-rendering the
+/// header -- and everything in it, including the Copy button's
+/// "Copied" checkmark -- whenever only chrome-relevant state changed
+/// (see `TranscriptRowsView` below for where that guard now lives).
+struct TranscriptListView<Header: View>: View {
     /// Stable identity for the displayed transcript version.
     let transcriptID: UUID
 
@@ -70,7 +76,59 @@ struct TranscriptListView<Header: View>: View, Equatable {
     /// is needed.
     let header: Header
 
-    nonisolated static func == (lhs: TranscriptListView, rhs: TranscriptListView) -> Bool {
+    var body: some View {
+        List {
+            // Non-recycled header row (page chrome). Deliberately NOT
+            // behind the `TranscriptRowsView.equatable()` guard below --
+            // see the type doc comment above.
+            header
+                .readableRowWidth()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+
+            // Recycled transcript segment rows. Guarded by `.equatable()`
+            // so a parent re-render that only touches header-relevant
+            // state (e.g. the Copy button's `didCopy` flag, or the ~4 Hz
+            // playback tick) doesn't re-diff every row.
+            TranscriptRowsView(
+                transcriptID: transcriptID,
+                canSeek: canSeek,
+                segments: segments,
+                speakerNames: speakerNames,
+                speakerColorKeys: speakerColorKeys,
+                onSeek: onSeek,
+                onSpeaker: onSpeaker
+            )
+            .equatable()
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+}
+
+/// The recycled transcript segment rows, split out from
+/// `TranscriptListView` so the row-recycling `Equatable` guard can be
+/// scoped to just the rows -- never to `header`, which must always
+/// re-render fresh (see `TranscriptListView`'s doc comment).
+///
+/// Equality keys on `transcriptID` + `canSeek` + `speakerNames` +
+/// `speakerColorKeys` so SwiftUI skips re-diffing rows when the
+/// transcript hasn't changed (e.g. on the ~4 Hz playback tick the parent
+/// re-renders on), but re-renders when a speaker is renamed or merged
+/// (the segments and closures are excluded from the comparison --
+/// segments are keyed to the version via `transcriptID`, and closures
+/// are never equal).
+struct TranscriptRowsView: View, Equatable {
+    let transcriptID: UUID
+    let canSeek: Bool
+    let segments: [SegmentData]
+    var speakerNames: [Int: String] = [:]
+    var speakerColorKeys: [Int: String] = [:]
+    let onSeek: (TimeInterval) -> Void
+    var onSpeaker: (Int) -> Void = { _ in }
+
+    nonisolated static func == (lhs: TranscriptRowsView, rhs: TranscriptRowsView) -> Bool {
         lhs.transcriptID == rhs.transcriptID
             && lhs.canSeek == rhs.canSeek
             && lhs.speakerNames == rhs.speakerNames
@@ -78,41 +136,29 @@ struct TranscriptListView<Header: View>: View, Equatable {
     }
 
     var body: some View {
-        List {
-            // Non-recycled header row (page chrome).
-            header
-                .readableRowWidth()
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
-
-            // Recycled transcript segment rows.
-            ForEach(segments) { segment in
-                TranscriptSegmentRow(
-                    segment: segment,
-                    speakerName: TranscriptContent.displayName(
-                        for: segment, names: speakerNames
-                    ),
-                    speakerColor: TranscriptContent.speakerColor(
-                        for: segment, colorKeys: speakerColorKeys
-                    ),
-                    canSeek: canSeek,
-                    onSeek: onSeek,
-                    onSpeaker: onSpeaker
-                )
-                .readableRowWidth()
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(
-                    top: Tokens.spacingXS,
-                    leading: 0,
-                    bottom: Tokens.spacingXS + 2,
-                    trailing: 0
-                ))
-            }
+        ForEach(segments) { segment in
+            TranscriptSegmentRow(
+                segment: segment,
+                speakerName: TranscriptContent.displayName(
+                    for: segment, names: speakerNames
+                ),
+                speakerColor: TranscriptContent.speakerColor(
+                    for: segment, colorKeys: speakerColorKeys
+                ),
+                canSeek: canSeek,
+                onSeek: onSeek,
+                onSpeaker: onSpeaker
+            )
+            .readableRowWidth()
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(
+                top: Tokens.spacingXS,
+                leading: 0,
+                bottom: Tokens.spacingXS + 2,
+                trailing: 0
+            ))
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
     }
 }
 

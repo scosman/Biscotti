@@ -13,11 +13,13 @@ public protocol Transcribing: Sendable {
         status: (@Sendable (String) -> Void)?
     ) async throws
 
-    /// Run STT + diarization on mic + system audio files.
+    /// Run STT + diarization on mic + system audio files. `language` pins the
+    /// spoken language; `.auto` leaves it to the model to detect.
     func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult
 
     /// Returns `true` when models are already present on disk (no download
@@ -34,6 +36,7 @@ public protocol Transcribing: Sendable {
 
 // Re-export Transcription types so downstream modules (AppCore, UI) can use
 // `TranscriptResult` without importing Transcription directly.
+@_exported import enum Transcription.TranscriptionLanguage
 @_exported import struct Transcription.TranscriptResult
 @_exported import struct Transcription.TranscriptSegment
 @_exported import struct Transcription.TranscriptWord

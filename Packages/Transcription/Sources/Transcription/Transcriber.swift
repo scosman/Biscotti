@@ -140,11 +140,13 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms for biasing.
+    ///   - language: The spoken language to transcribe, or `.auto` to detect it.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = []
+        customVocabulary: [String] = [],
+        language: TranscriptionLanguage = .auto
     ) async throws -> TranscriptResult {
         Self.log.info("client: processAudio called")
         try checkInterrupted()
@@ -154,7 +156,8 @@ public actor Transcriber {
             let result = try await activeEngine.processAudio(
                 micPath: mic.path,
                 systemPath: system.path,
-                customVocabulary: customVocabulary
+                customVocabulary: customVocabulary,
+                language: language
             )
             emitStatus(.ready)
             return result
@@ -171,13 +174,20 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms.
+    ///   - language: The spoken language to transcribe, or `.auto` to detect it.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = []
+        customVocabulary: [String] = [],
+        language: TranscriptionLanguage = .auto
     ) async throws -> TranscriptResult {
-        try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)
+        try await processAudio(
+            mic: mic,
+            system: system,
+            customVocabulary: customVocabulary,
+            language: language
+        )
     }
 
     /// Explicitly unload all models from memory.
@@ -203,7 +213,7 @@ public actor Transcriber {
     /// For `.inProcess` this is a no-op. For `.hosted` this invalidates
     /// the underlying `NSXPCConnection`, which causes `launchd` to terminate
     /// the idle worker. The next ``ensureModelsDownloaded(status:)`` or
-    /// ``processAudio(mic:system:customVocabulary:)`` call will transparently
+    /// ``processAudio(mic:system:customVocabulary:language:)`` call will transparently
     /// re-establish the connection.
     ///
     /// Callers should call this after a transcription batch completes so the

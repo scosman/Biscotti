@@ -10,14 +10,14 @@ import Foundation
 @objc public protocol TranscriberServiceProtocol {
     /// Process audio files and return a diarized transcript.
     ///
-    /// Audio paths and vocabulary are bundled into a single
+    /// Audio paths, vocabulary and spoken language are bundled into a single
     /// JSON-encoded `Data` parameter (`requestData`) to keep the `@objc`
     /// parameter count manageable. The request shape is defined by
     /// `XPCProcessRequest` (internal to the Transcription package).
     ///
     /// - Parameters:
     ///   - requestData: JSON-encoded `XPCProcessRequest` containing audio
-    ///     paths and custom vocabulary.
+    ///     paths, custom vocabulary and the spoken language.
     ///   - reply: Callback with JSON-encoded `TranscriptResult` data or an error.
     func processAudio(
         requestData: Data,

@@ -41,6 +41,11 @@ import SwiftData
     /// String for SwiftData safety (same pattern as other enum-backed fields).
     public var calendarNotificationModeRaw: String = "allMeetings"
 
+    /// Raw string backing for `TranscriptionLanguage` — the Whisper language
+    /// code, or "auto" to let the model detect it. Same String-backed pattern
+    /// as `calendarNotificationModeRaw`.
+    public var transcriptionLanguageRaw: String = "auto"
+
     /// Whether the user has completed the onboarding wizard.
     public var onboardingComplete: Bool = false
 
@@ -89,6 +94,7 @@ import SwiftData
         monitorForMeetings: Bool = true,
         stopRecordingAutomatically: Bool = true,
         calendarNotificationModeRaw: String = "allMeetings",
+        transcriptionLanguageRaw: String = "auto",
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
@@ -103,6 +109,7 @@ import SwiftData
         self.monitorForMeetings = monitorForMeetings
         self.stopRecordingAutomatically = stopRecordingAutomatically
         self.calendarNotificationModeRaw = calendarNotificationModeRaw
+        self.transcriptionLanguageRaw = transcriptionLanguageRaw
         self.onboardingComplete = onboardingComplete
         if let enabledCalendarIDs {
             enabledCalendarIDsData = (try? JSONEncoder().encode(Array(enabledCalendarIDs).sorted())) ?? Data()

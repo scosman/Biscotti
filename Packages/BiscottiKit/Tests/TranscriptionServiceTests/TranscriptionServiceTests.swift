@@ -76,6 +76,7 @@ struct TranscriptionSuccessTests {
         #expect(fix.fakeEngine.backing.lastMicURL?.path == "/tmp/test/mic.aac")
         #expect(fix.fakeEngine.backing.lastSystemURL?.path == "/tmp/test/system.aac")
         #expect(fix.fakeEngine.backing.lastVocabulary == [])
+        #expect(fix.fakeEngine.backing.lastLanguage == .auto)
 
         // Job status is completed
         #expect(fix.service.jobs[meetingID] == .completed)
@@ -85,6 +86,21 @@ struct TranscriptionSuccessTests {
         #expect(detail?.preferredTranscript != nil)
         #expect(detail?.preferredTranscript?.speakerCount == 2)
         #expect(detail?.preferredTranscript?.segments.count == 2)
+    }
+
+    @Test("Transcribe passes the language from settings to the engine")
+    @MainActor
+    func transcribeUsesSettingsLanguage() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        try await fix.store.updateSettings { settings in
+            settings.transcriptionLanguage = .russian
+        }
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.fakeEngine.backing.lastLanguage == .russian)
     }
 
     @Test("Re-transcribe adds a new version and promotes it")
@@ -551,7 +567,8 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        language _: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
     }
@@ -609,7 +626,8 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        language _: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
         // Poll until unblocked (simulates a long-running operation)
@@ -783,7 +801,8 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        language _: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
     }

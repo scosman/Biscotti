@@ -78,9 +78,10 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     public func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult {
-        Self.log.debug("processAudio: begin")
+        Self.log.debug("processAudio: begin (language=\(language.rawValue))")
         let startTime = CFAbsoluteTimeGetCurrent()
 
         let mergeResult = try loadAndMergeAudio(
@@ -90,7 +91,9 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         await statusMachine.transition(to: .running)
 
         let sttResults = try await runSTT(
-            audioArray: mergeResult.samples, customVocabulary: customVocabulary
+            audioArray: mergeResult.samples,
+            customVocabulary: customVocabulary,
+            language: language
         )
 
         if resolvedSettings.sequentialLoading { await unloadWhisperKit() }
@@ -193,12 +196,21 @@ private extension InProcessTranscriptionEngine {
     }
 
     func runSTT(
-        audioArray: [Float], customVocabulary: [String]
+        audioArray: [Float],
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> [TranscriptionResult] {
         do {
             try await ensureWhisperKitLoaded()
 
+            // `task` and `detectLanguage` are spelled out because their
+            // defaults are the wrong ones for us: WhisperKit leaves detection
+            // off, and with a nil language that prefills `<|en|>`, which
+            // transcribes non-English speech into English.
             var decodingOptions = DecodingOptions(
+                task: .transcribe,
+                language: language.code,
+                detectLanguage: language == .auto,
                 wordTimestamps: resolvedSettings.enableWordTimestamps
             )
 

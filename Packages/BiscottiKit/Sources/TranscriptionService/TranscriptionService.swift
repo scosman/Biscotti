@@ -208,16 +208,29 @@ public final class TranscriptionService {
         paths: (mic: URL, system: URL)
     ) async -> TranscriptResult? {
         jobs[meetingID] = .transcribing
+        let language = await transcriptionLanguage()
         do {
             return try await engine.processAudio(
                 mic: paths.mic,
                 system: paths.system,
-                customVocabulary: []
+                customVocabulary: [],
+                language: language
             )
         } catch {
             let (message, retriable) = mapEngineError(error)
             jobs[meetingID] = .failed(message: message, retriable: retriable)
             return nil
+        }
+    }
+
+    /// The spoken language the user picked in Settings. Falls back to `.auto`
+    /// if the settings read fails -- an unreadable preference should degrade to
+    /// detection, not abort the job.
+    private func transcriptionLanguage() async -> TranscriptionLanguage {
+        do {
+            return try await store.settings().transcriptionLanguage
+        } catch {
+            return .auto
         }
     }
 

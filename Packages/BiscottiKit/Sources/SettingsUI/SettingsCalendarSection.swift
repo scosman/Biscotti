@@ -7,7 +7,7 @@ import SwiftUI
 
 extension SettingsView {
     var calendarSection: some View {
-        Section(Self.sectionTitles[4]) {
+        Section(Self.sectionTitles[5]) {
             if viewModel.calendarState == .authorized {
                 if viewModel.calendarGroups.isEmpty {
                     settingsCalendarEmptyState

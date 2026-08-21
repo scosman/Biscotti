@@ -12,6 +12,7 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     var ensureModelsError: (any Error)?
     var currentStatus: ModelStatus = .ready
     var processAudioCallCount = 0
+    var lastLanguage: TranscriptionLanguage?
     var ensureModelsCallCount = 0
     var unloadCallCount = 0
     var modelsPresentCallCount = 0
@@ -32,9 +33,11 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     func processAudio(
         micPath _: String,
         systemPath _: String,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         processAudioCallCount += 1
+        lastLanguage = language
         if let error = processAudioError { throw error }
         guard let result = processAudioResult else {
             throw TranscriptionError.invalidInput("No result configured in stub")

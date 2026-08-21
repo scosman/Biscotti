@@ -59,7 +59,8 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
                 let result = try await engine.processAudio(
                     micPath: request.micPath,
                     systemPath: request.systemPath,
-                    customVocabulary: request.customVocabulary
+                    customVocabulary: request.customVocabulary,
+                    language: request.language
                 )
                 let data = try JSONEncoder().encode(result)
                 reply(data, nil)

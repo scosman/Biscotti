@@ -16,6 +16,7 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         public var lastMicURL: URL?
         public var lastSystemURL: URL?
         public var lastVocabulary: [String]?
+        public var lastLanguage: TranscriptionLanguage?
 
         /// Number of times `ensureModelsDownloaded` has been called.
         public var ensureModelsCallCount = 0
@@ -87,12 +88,14 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     public func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
         backing.lastMicURL = mic
         backing.lastSystemURL = system
         backing.lastVocabulary = customVocabulary
+        backing.lastLanguage = language
         if let error = backing.processAudioError {
             throw error
         }

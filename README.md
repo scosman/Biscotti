@@ -43,7 +43,7 @@
 | Keeps full audio, not just summaries | ✅ | ❌ |
 | Native Mac app, not Electron/web | ✅ | ❌ |
 | Free, no subscription, no account | ✅ | ❌ |
-| Lose access to your data if you stop paying | **No** | **Yes** |
+| Never have to pay to access your historical data | ✅ | ❌ |
 | Where your data lives | **Your Mac** | **Their Cloud** |
 
 ## How it works

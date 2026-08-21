@@ -43,7 +43,7 @@
 | Keeps full audio, not just summaries | ✅ | ❌ |
 | Native Mac app, not Electron/web | ✅ | ❌ |
 | Free, no subscription, no account | ✅ | ❌ |
-| Never have to pay to access your historical data | ✅ | ❌ |
+| Never have to pay to read old meetings | ✅ | ❌ |
 | Where your data lives | **Your Mac** | **Their Cloud** |
 
 ## How it works

@@ -16,7 +16,16 @@ let package = Package(
         .executable(name: "localllm", targets: ["llm-cli"])
     ],
     dependencies: [
-        .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.9601.0")),
+        // Upper-bounded on purpose: llama.swift version numbers track llama.cpp
+        // build numbers, and the C API is not stable across them. 2.10545.0
+        // (llama.cpp b10545) added an `n_vocab` parameter to
+        // llama_sampler_init_penalties, which fails to compile against
+        // Sampling.swift. `.upToNextMajor` let the app target resolve to it —
+        // Package.resolved keeps `swift build` on a working version, but the
+        // generated Xcode project has no checked-in resolution, so `make
+        // build-app` broke on any fresh checkout. Raise the bound once the
+        // sampler call has been updated for the newer signature.
+        .package(url: "https://github.com/mattt/llama.swift", "2.9601.0" ..< "2.9734.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [

@@ -24,12 +24,17 @@ public protocol TranscriptionEngine: Sendable {
     /// uses ``TranscriptionMethod/current`` internally; the result carries
     /// the method id in ``TranscriptResult/transcriptionMethodId``.
     ///
+    /// `language` pins the STT decoder to a spoken language; pass `.auto` to
+    /// have it detected from the audio. The language actually used lands in
+    /// ``TranscriptResult/language``.
+    ///
     /// - Throws: `TranscriptionError.invalidInput` if audio files are
     ///   empty/unreadable.
     func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult
 
     /// Explicitly unload all models from memory. The engine remains usable;

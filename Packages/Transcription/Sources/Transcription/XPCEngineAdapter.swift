@@ -52,13 +52,15 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         let proxy = try requireProxy()
         let request = XPCProcessRequest(
             micPath: micPath,
             systemPath: systemPath,
-            customVocabulary: customVocabulary
+            customVocabulary: customVocabulary,
+            language: language
         )
         let requestData = try encodeRequest(request)
 

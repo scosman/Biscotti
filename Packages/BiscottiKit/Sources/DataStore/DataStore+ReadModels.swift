@@ -1,6 +1,10 @@
 import Foundation
 import SwiftData
 
+// Re-exported so downstream modules (AppCore, SettingsUI) can read and write
+// the language setting without importing Transcription themselves.
+@_exported import enum Transcription.TranscriptionLanguage
+
 // MARK: - Read-Model DTOs
 
 /// A lightweight summary of a meeting for list views.
@@ -183,6 +187,8 @@ public struct AppSettingsData: Sendable, Equatable {
     public var stopRecordingAutomatically: Bool
     /// Which calendar events trigger pre-meeting notifications.
     public var calendarNotificationMode: CalendarNotificationMode
+    /// The spoken language transcription is pinned to. `.auto` detects it.
+    public var transcriptionLanguage: TranscriptionLanguage
     public var onboardingComplete: Bool
     /// `nil` = all calendars enabled (the default).
     public var enabledCalendarIDs: Set<String>?
@@ -205,6 +211,7 @@ public struct AppSettingsData: Sendable, Equatable {
         monitorForMeetings: Bool = true,
         stopRecordingAutomatically: Bool = true,
         calendarNotificationMode: CalendarNotificationMode = .allMeetings,
+        transcriptionLanguage: TranscriptionLanguage = .auto,
         onboardingComplete: Bool = false,
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
@@ -219,6 +226,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.monitorForMeetings = monitorForMeetings
         self.stopRecordingAutomatically = stopRecordingAutomatically
         self.calendarNotificationMode = calendarNotificationMode
+        self.transcriptionLanguage = transcriptionLanguage
         self.onboardingComplete = onboardingComplete
         self.enabledCalendarIDs = enabledCalendarIDs
         self.aiAnalysisEnabled = aiAnalysisEnabled
@@ -494,6 +502,7 @@ public extension DataStore {
                 monitorForMeetings: existing.monitorForMeetings,
                 stopRecordingAutomatically: existing.stopRecordingAutomatically,
                 calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
+                transcriptionLanguage: TranscriptionLanguage(raw: existing.transcriptionLanguageRaw),
                 onboardingComplete: existing.onboardingComplete,
                 enabledCalendarIDs: existing.enabledCalendarIDs,
                 aiAnalysisEnabled: existing.aiAnalysisEnabled,
@@ -529,6 +538,7 @@ public extension DataStore {
             monitorForMeetings: model.monitorForMeetings,
             stopRecordingAutomatically: model.stopRecordingAutomatically,
             calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
+            transcriptionLanguage: TranscriptionLanguage(raw: model.transcriptionLanguageRaw),
             onboardingComplete: model.onboardingComplete,
             enabledCalendarIDs: model.enabledCalendarIDs,
             aiAnalysisEnabled: model.aiAnalysisEnabled,
@@ -545,6 +555,7 @@ public extension DataStore {
         model.monitorForMeetings = dto.monitorForMeetings
         model.stopRecordingAutomatically = dto.stopRecordingAutomatically
         model.calendarNotificationModeRaw = dto.calendarNotificationMode.rawValue
+        model.transcriptionLanguageRaw = dto.transcriptionLanguage.rawValue
         model.onboardingComplete = dto.onboardingComplete
         model.enabledCalendarIDs = dto.enabledCalendarIDs
         model.aiAnalysisEnabled = dto.aiAnalysisEnabled

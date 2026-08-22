@@ -127,7 +127,8 @@
         func processAudio(
             mic _: URL,
             system _: URL,
-            customVocabulary _: [String]
+            customVocabulary _: [String],
+            language _: TranscriptionLanguage
         ) async throws -> TranscriptResult {
             TranscriptResult(
                 id: UUID(),

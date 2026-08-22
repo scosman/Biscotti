@@ -215,12 +215,14 @@ private struct LiveTranscriberAdapter: Transcribing {
     func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        language: TranscriptionLanguage
     ) async throws -> TranscriptResult {
         try await transcriber.processAudio(
             mic: mic,
             system: system,
-            customVocabulary: customVocabulary
+            customVocabulary: customVocabulary,
+            language: language
         )
     }
 

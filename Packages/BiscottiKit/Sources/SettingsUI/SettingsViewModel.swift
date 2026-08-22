@@ -78,6 +78,12 @@ public final class SettingsViewModel {
     /// and `.none` (notifications disabled entirely).
     public private(set) var showStayVisibleRow = false
 
+    // MARK: - Transcription
+
+    /// The spoken language transcription is pinned to. `.auto` lets the model
+    /// detect it from the audio.
+    public private(set) var transcriptionLanguage: TranscriptionLanguage = .auto
+
     /// Whether the calendar notification picker should be disabled
     /// (calendar access not authorized).
     public var calendarNotificationsDisabled: Bool {
@@ -395,6 +401,7 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            transcriptionLanguage = settings.transcriptionLanguage
             aiAnalysisEnabled = settings.aiAnalysisEnabled
         } catch {
             enabledCalendarIDs = nil
@@ -435,6 +442,27 @@ public final class SettingsViewModel {
                     calendars: calendars.sorted { $0.title < $1.title }
                 )
             }
+    }
+}
+
+// MARK: - Transcription settings actions
+
+public extension SettingsViewModel {
+    /// Updates the spoken language used for transcription and persists it.
+    /// The next transcription (or re-transcription) picks it up; transcripts
+    /// already on disk are untouched.
+    func setTranscriptionLanguage(
+        _ language: TranscriptionLanguage
+    ) async {
+        let previous = transcriptionLanguage
+        transcriptionLanguage = language
+        do {
+            try await core.store.updateSettings { settings in
+                settings.transcriptionLanguage = language
+            }
+        } catch {
+            transcriptionLanguage = previous
+        }
     }
 }
 

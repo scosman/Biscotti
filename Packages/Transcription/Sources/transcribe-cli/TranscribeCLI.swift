@@ -25,6 +25,12 @@ struct TranscribeCLI: AsyncParsableCommand {
     @Option(name: .long, help: "Comma-separated custom vocabulary terms.")
     var vocab: String?
 
+    @Option(
+        name: .long,
+        help: "Spoken language to transcribe. 'auto' detects it from the audio."
+    )
+    var language: TranscriptionLanguage = .auto
+
     @Flag(name: .long, help: "Output TranscriptResult as JSON to stdout.")
     var json: Bool = false
 
@@ -53,7 +59,8 @@ struct TranscribeCLI: AsyncParsableCommand {
         let result = try await transcriber.processAudio(
             mic: micURL,
             system: systemURL,
-            customVocabulary: vocabTerms
+            customVocabulary: vocabTerms,
+            language: language
         )
 
         writer.writeStderr("Done. Elapsed: \(String(format: "%.1f", result.processingDuration))s")
@@ -89,6 +96,7 @@ struct TranscribeCLI: AsyncParsableCommand {
         writer.writeStderr("Mic:        \(mic)")
         writer.writeStderr("System:     \(system)")
         writer.writeStderr("Method:     \(TranscriptionMethod.current.id)")
+        writer.writeStderr("Language:   \(language.rawValue)")
         if !vocabTerms.isEmpty {
             writer.writeStderr("Vocabulary: \(vocabTerms.joined(separator: ", "))")
         }
@@ -97,6 +105,11 @@ struct TranscribeCLI: AsyncParsableCommand {
 }
 
 // MARK: - Argument processing helpers
+
+/// Lets `--language ru` parse straight into the enum. RawRepresentable gives
+/// ArgumentParser the parsing, CaseIterable gives it the list of valid values
+/// for `--help` and for the error on a bad one.
+extension TranscriptionLanguage: ExpressibleByArgument {}
 
 /// Parse the `--vocab` flag value into an array of trimmed terms.
 func parseVocab(_ raw: String?) -> [String] {

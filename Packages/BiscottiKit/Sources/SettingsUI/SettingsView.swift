@@ -35,6 +35,7 @@ public struct SettingsView: View {
         "Permissions",
         "Notifications",
         "AI Enhancements",
+        "Transcription",
         "Calendars"
     ]
 
@@ -60,6 +61,7 @@ public struct SettingsView: View {
                     permissionsSection
                     notificationsSection
                     aiEnhancementsSection
+                    transcriptionSection
                     calendarSection
 
                     #if DEBUG
@@ -406,6 +408,39 @@ private extension SettingsView {
             },
             set: { newValue in
                 Task { await viewModel.setAIAnalysisEnabled(newValue) }
+            }
+        )
+    }
+}
+
+// MARK: - Transcription section
+
+private extension SettingsView {
+    var transcriptionSection: some View {
+        Section(Self.sectionTitles[4]) {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Picker(
+                    "Spoken Language",
+                    selection: transcriptionLanguageBinding
+                ) {
+                    ForEach(TranscriptionLanguage.allCases) { language in
+                        Text(language.displayText).tag(language)
+                    }
+                }
+                Text(
+                    "Pick the language spoken in your meetings. Auto-detect reads it from the first moments of audio."
+                )
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+            }
+        }
+    }
+
+    var transcriptionLanguageBinding: Binding<TranscriptionLanguage> {
+        Binding(
+            get: { viewModel.transcriptionLanguage },
+            set: { newValue in
+                Task { await viewModel.setTranscriptionLanguage(newValue) }
             }
         )
     }

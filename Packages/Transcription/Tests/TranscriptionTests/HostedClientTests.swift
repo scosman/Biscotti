@@ -328,7 +328,8 @@ struct XPCEngineAdapterTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], language: .auto
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -370,7 +371,8 @@ struct XPCEngineAdapterRoundTripTests {
         let result = try await adapter.processAudio(
             micPath: "/tmp/mic.wav",
             systemPath: "/tmp/system.wav",
-            customVocabulary: ["Biscotti", "WhisperKit"]
+            customVocabulary: ["Biscotti", "WhisperKit"],
+            language: .russian
         )
 
         // Verify the result round-tripped correctly
@@ -385,6 +387,7 @@ struct XPCEngineAdapterRoundTripTests {
         #expect(receivedRequest?.micPath == "/tmp/mic.wav")
         #expect(receivedRequest?.systemPath == "/tmp/system.wav")
         #expect(receivedRequest?.customVocabulary == ["Biscotti", "WhisperKit"])
+        #expect(receivedRequest?.language == .russian)
     }
 
     @Test("unloadModels round-trips through mock service")
@@ -407,7 +410,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], language: .auto
             )
             Issue.record("Expected workerInterrupted")
         } catch {
@@ -425,7 +429,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], language: .auto
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -445,7 +450,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], language: .auto
             )
             Issue.record("Expected transcriptionFailed")
         } catch {

@@ -182,19 +182,23 @@
     "timestamp" : "2026-06-23T18:41:29Z"
   },
   "tx_ai_test_passed" : {
-    "status" : "not-run",
-    "stepID" : "tx_ai_test_passed"
+    "status" : "pass",
+    "stepID" : "tx_ai_test_passed",
+    "timestamp" : "2026-07-12T03:13:14Z"
   },
   "tx_clear_cache" : {
-    "status" : "not-run",
-    "stepID" : "tx_clear_cache"
+    "status" : "pass",
+    "stepID" : "tx_clear_cache",
+    "timestamp" : "2026-07-12T03:10:46Z"
   },
   "tx_model_disk" : {
-    "status" : "not-run",
-    "stepID" : "tx_model_disk"
+    "status" : "pass",
+    "stepID" : "tx_model_disk",
+    "timestamp" : "2026-07-12T03:11:08Z"
   },
   "tx_model_download" : {
-    "status" : "not-run",
-    "stepID" : "tx_model_download"
+    "status" : "pass",
+    "stepID" : "tx_model_download",
+    "timestamp" : "2026-07-12T03:11:12Z"
   }
 }

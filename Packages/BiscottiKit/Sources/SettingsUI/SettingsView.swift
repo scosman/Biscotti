@@ -116,56 +116,8 @@ public struct SettingsView: View {
                     Text(option.displayText).tag(option)
                 }
             }
+            appUpdatesRow
         }
-    }
-
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.launchAtLogin },
-            set: { newValue in
-                Task { await viewModel.setLaunchAtLogin(newValue) }
-            }
-        )
-    }
-
-    /// Inverted binding: "Keep running in tray" is the logical
-    /// opposite of the stored "exit on window close" setting.
-    private var keepRunningInTrayBinding: Binding<Bool> {
-        Binding(
-            get: { !viewModel.exitOnWindowClose },
-            set: { newValue in
-                Task { await viewModel.setExitOnWindowClose(!newValue) }
-            }
-        )
-    }
-
-    private var globalRecordShortcutBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.globalRecordShortcutEnabled },
-            set: { newValue in
-                Task { await viewModel.setGlobalRecordShortcut(newValue) }
-            }
-        )
-    }
-
-    private var stopRecordingAutomaticallyBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.stopRecordingAutomatically },
-            set: { newValue in
-                Task {
-                    await viewModel.setStopRecordingAutomatically(newValue)
-                }
-            }
-        )
-    }
-
-    private var menuBarLeadTimeBinding: Binding<MenuBarLeadTime> {
-        Binding(
-            get: { viewModel.menuBarLeadTime },
-            set: { newValue in
-                Task { await viewModel.setMenuBarLeadTime(newValue) }
-            }
-        )
     }
 
     // MARK: - Calendar helpers (section body is in SettingsCalendarSection.swift)
@@ -525,6 +477,119 @@ private extension SettingsView {
                 }
             }
         )
+    }
+}
+
+// MARK: - General section bindings & App Updates row
+
+private extension SettingsView {
+    var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.launchAtLogin },
+            set: { newValue in
+                Task { await viewModel.setLaunchAtLogin(newValue) }
+            }
+        )
+    }
+
+    /// Inverted binding: "Keep running in tray" is the logical
+    /// opposite of the stored "exit on window close" setting.
+    var keepRunningInTrayBinding: Binding<Bool> {
+        Binding(
+            get: { !viewModel.exitOnWindowClose },
+            set: { newValue in
+                Task { await viewModel.setExitOnWindowClose(!newValue) }
+            }
+        )
+    }
+
+    var globalRecordShortcutBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.globalRecordShortcutEnabled },
+            set: { newValue in
+                Task { await viewModel.setGlobalRecordShortcut(newValue) }
+            }
+        )
+    }
+
+    var stopRecordingAutomaticallyBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.stopRecordingAutomatically },
+            set: { newValue in
+                Task {
+                    await viewModel.setStopRecordingAutomatically(newValue)
+                }
+            }
+        )
+    }
+
+    var menuBarLeadTimeBinding: Binding<MenuBarLeadTime> {
+        Binding(
+            get: { viewModel.menuBarLeadTime },
+            set: { newValue in
+                Task { await viewModel.setMenuBarLeadTime(newValue) }
+            }
+        )
+    }
+
+    /// Static title for the update row.
+    static let appUpdatesTitle = "App Version"
+
+    var appUpdatesRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text(Self.appUpdatesTitle)
+                Text(updateSubtitle)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            updateActionButton
+        }
+    }
+
+    var updateSubtitle: String {
+        switch viewModel.updateStatus {
+        case .idle, .checking:
+            "Checking\u{2026}"
+        case let .upToDate(version):
+            "You're up to date: \(version)"
+        case let .updateAvailable(version, _):
+            "Update available: \(version)"
+        case let .failed(version):
+            if let version {
+                "Update check failed. Current version: \(version)"
+            } else {
+                "Update check failed."
+            }
+        }
+    }
+
+    @ViewBuilder
+    var updateActionButton: some View {
+        switch viewModel.updateStatus {
+        case .idle, .checking:
+            Button("Check for Update") {}
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(true)
+
+        case .upToDate, .failed:
+            Button("Check for Update") {
+                Task { await viewModel.checkForUpdate() }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+        case .updateAvailable:
+            Button("Update") {
+                viewModel.openUpdate()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
     }
 }
 

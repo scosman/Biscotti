@@ -234,6 +234,9 @@ public final class AppCore {
     /// Model state owner (selection, downloads, suitability).
     public let modelManager: ModelManager
 
+    /// Checks for newer releases on GitHub.
+    public let updateChecker: UpdateChecker
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -307,7 +310,8 @@ public final class AppCore {
         notifications: NotificationService,
         intelligence: Intelligence,
         modelManager: ModelManager,
-        scheduler: any AppScheduler = LiveAppScheduler()
+        scheduler: any AppScheduler = LiveAppScheduler(),
+        updateChecker: UpdateChecker? = nil
     ) {
         self.store = store
         self.permissions = permissions
@@ -319,6 +323,7 @@ public final class AppCore {
         self.intelligence = intelligence
         self.modelManager = modelManager
         self.scheduler = scheduler
+        self.updateChecker = updateChecker ?? UpdateChecker()
     }
 
     // MARK: - Lifecycle
@@ -369,6 +374,8 @@ public final class AppCore {
 
         logger.info("onLaunch: routing to home")
         route = .home
+
+        updateChecker.startPeriodicChecks()
 
         await startBackgroundServices()
 
@@ -550,6 +557,8 @@ public final class AppCore {
 
         route = .home
 
+        updateChecker.startPeriodicChecks()
+
         // Start background services deferred during onboarding
         await startBackgroundServices()
         await reloadSummaries()
@@ -582,18 +591,6 @@ public final class AppCore {
             permissions.noteNotifications(.denied)
         }
         // else: leave as .notDetermined
-    }
-
-    // MARK: - Onboarding support
-
-    /// Runs the system-audio tone-probe and updates the persisted permission
-    /// state. Single entry point for onboarding and Settings.
-    ///
-    /// Delegates to `RecordingController.probeSystemAudioPermission()` which
-    /// handles the probe lifecycle (start tap, play tone, poll, tear down)
-    /// and updates `Permissions` with the result.
-    public func requestSystemAudioPermission() async {
-        await recording.probeSystemAudioPermission()
     }
 
     // MARK: - Data refresh
@@ -651,6 +648,18 @@ public extension AppCore {
     /// Routes to the Home screen.
     func showHome() {
         route = .home
+    }
+
+    // MARK: - Onboarding support
+
+    /// Runs the system-audio tone-probe and updates the persisted permission
+    /// state. Single entry point for onboarding and Settings.
+    ///
+    /// Delegates to `RecordingController.probeSystemAudioPermission()` which
+    /// handles the probe lifecycle (start tap, play tone, poll, tear down)
+    /// and updates `Permissions` with the result.
+    func requestSystemAudioPermission() async {
+        await recording.probeSystemAudioPermission()
     }
 
     /// Routes to in-window Settings.

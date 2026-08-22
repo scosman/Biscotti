@@ -17,9 +17,7 @@
 🔒 <strong>Private</strong> runs locally on your Mac  •  🆓 <strong>Free</strong> no account, no subscription
 </div>
 &nbsp;
-<div align="center">
-  <img width="500" height="340" alt="BiscottiHome-2" src="https://github.com/user-attachments/assets/d252ac15-e2da-41b3-ba20-36ae7de3652d" />
-</div>
+<video src="https://github.com/user-attachments/assets/90de1e69-2cda-4471-88f5-0c3da69b046b" width="400" controls></video>
 
 ## Features
 
@@ -45,7 +43,7 @@
 | Keeps full audio, not just summaries | ✅ | ❌ |
 | Native Mac app, not Electron/web | ✅ | ❌ |
 | Free, no subscription, no account | ✅ | ❌ |
-| Lose access to your data if you stop paying | **No** | **Yes** |
+| Never have to pay to read old meetings | ✅ | ❌ |
 | Where your data lives | **Your Mac** | **Their Cloud** |
 
 ## How it works

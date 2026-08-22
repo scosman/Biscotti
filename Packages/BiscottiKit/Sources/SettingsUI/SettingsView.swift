@@ -533,7 +533,7 @@ private extension SettingsView {
     }
 
     /// Static title for the update row.
-    static let appUpdatesTitle = "App Updates"
+    static let appUpdatesTitle = "App Version"
 
     var appUpdatesRow: some View {
         HStack {
@@ -555,11 +555,15 @@ private extension SettingsView {
         case .idle, .checking:
             "Checking\u{2026}"
         case let .upToDate(version):
-            "You're up to date! \(version)"
+            "You're up to date: \(version)"
         case let .updateAvailable(version, _):
             "Update available: \(version)"
-        case .failed:
-            "Couldn't check for updates"
+        case let .failed(version):
+            if let version {
+                "Update check failed. Current version: \(version)"
+            } else {
+                "Update check failed."
+            }
         }
     }
 

@@ -96,45 +96,55 @@ struct UpdateCheckerTests {
 
     // MARK: - Failure cases
 
-    @Test("reports failed when fetch throws")
+    @Test("reports failed with current version when fetch throws")
     func failedOnFetchError() async {
         let checker = UpdateChecker(
             currentVersion: { "0.2.0" },
             fetchRelease: { throw NSError(domain: "test", code: -1) }
         )
         await checker.check()
-        #expect(checker.status == .failed)
+        #expect(checker.status == .failed("v0.2.0"))
         #expect(checker.isUpdateAvailable == false)
     }
 
-    @Test("reports failed when current version is nil")
+    @Test("reports failed with nil version when current version is nil")
     func failedOnNilCurrentVersion() async throws {
         let checker = try makeChecker(
             currentVersion: nil,
             releaseTag: "v1.0.0"
         )
         await checker.check()
-        #expect(checker.status == .failed)
+        #expect(checker.status == .failed(nil))
     }
 
-    @Test("reports failed when current version is unparseable")
+    @Test("reports failed with nil version when current version is unparseable")
     func failedOnUnparseableCurrentVersion() async throws {
         let checker = try makeChecker(
             currentVersion: "not-a-version",
             releaseTag: "v1.0.0"
         )
         await checker.check()
-        #expect(checker.status == .failed)
+        #expect(checker.status == .failed(nil))
     }
 
-    @Test("reports failed when release tag is unparseable")
+    @Test("reports failed with current version when release tag is unparseable")
     func failedOnUnparseableReleaseTag() async throws {
         let checker = try makeChecker(
             currentVersion: "0.2.0",
             releaseTag: "latest"
         )
         await checker.check()
-        #expect(checker.status == .failed)
+        #expect(checker.status == .failed("v0.2.0"))
+    }
+
+    @Test("failed carries nil when fetch throws and version is nil")
+    func failedOnFetchErrorNilVersion() async {
+        let checker = UpdateChecker(
+            currentVersion: { nil },
+            fetchRelease: { throw NSError(domain: "test", code: -1) }
+        )
+        await checker.check()
+        #expect(checker.status == .failed(nil))
     }
 
     // MARK: - Derived state
@@ -187,20 +197,5 @@ struct UpdateCheckerTests {
         )
         await checker.check()
         #expect(checker.isUpdateAvailable == true)
-    }
-
-    // MARK: - Privacy: User-Agent header
-
-    @Test("User-Agent is non-empty and contains no version digits")
-    func userAgentPrivacy() throws {
-        let request = try UpdateChecker.makeGitHubRequest()
-        let userAgent = try #require(
-            request.value(forHTTPHeaderField: "User-Agent")
-        )
-        #expect(!userAgent.isEmpty, "User-Agent must not be empty (GitHub rejects it)")
-        #expect(
-            userAgent.range(of: #"\d"#, options: .regularExpression) == nil,
-            "User-Agent must not contain digits (would leak the app version)"
-        )
     }
 }

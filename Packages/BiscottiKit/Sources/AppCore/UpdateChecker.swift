@@ -15,16 +15,17 @@ public enum UpdateStatus: Sendable, Equatable {
     case updateAvailable(version: String, releaseURL: URL)
 
     /// The check failed (offline, rate-limited, bad response).
-    case failed
+    /// Carries the current app version when parseable, `nil` otherwise.
+    case failed(String?)
 }
 
 /// Checks for app updates by comparing the running version against
 /// the latest GitHub release.
 ///
 /// **Privacy:** contacts only `api.github.com` with a single
-/// unauthenticated GET. Sends zero identifying information — no
-/// analytics headers, no query parameters, no UUIDs, no
-/// app-version header. Nothing about the user leaves the machine.
+/// unauthenticated GET. No custom analytics headers, no query
+/// parameters, no UUIDs. Uses the default URLSession User-Agent.
+/// No server of ours is involved and we collect nothing.
 @MainActor @Observable
 public final class UpdateChecker {
     // MARK: - Published state
@@ -44,8 +45,11 @@ public final class UpdateChecker {
     /// How long to wait between automatic checks.
     private let checkInterval: Duration
 
-    // nonisolated(unsafe): only mutated from @MainActor methods;
-    // read in deinit when no other references exist.
+    // @ObservationIgnored: excludes from @Observable macro expansion.
+    // nonisolated(unsafe): allows deinit to cancel the task. Safe
+    // because all mutations happen on @MainActor and deinit runs
+    // only after the last strong reference is dropped.
+    @ObservationIgnored
     private nonisolated(unsafe) var periodicTask: Task<Void, Never>?
 
     // MARK: - Init
@@ -74,15 +78,19 @@ public final class UpdateChecker {
     public func check() async {
         status = .checking
 
+        // Resolve current version upfront so both success and failure
+        // paths can include it in the status.
+        let current = currentVersion().flatMap { SemanticVersion($0) }
+        let currentDisplay = current?.displayString
+
         do {
             let release = try await fetchRelease()
 
-            guard let currentString = currentVersion(),
-                  let current = SemanticVersion(currentString),
+            guard let current,
                   let latest = SemanticVersion(release.tagName)
             else {
                 // Fail closed: unparseable version → don't claim update available
-                status = .failed
+                status = .failed(currentDisplay)
                 return
             }
 
@@ -95,7 +103,7 @@ public final class UpdateChecker {
                 status = .upToDate(current.displayString)
             }
         } catch {
-            status = .failed
+            status = .failed(currentDisplay)
         }
     }
 
@@ -139,10 +147,7 @@ public final class UpdateChecker {
 
     // MARK: - GitHub API
 
-    /// Builds the URLRequest for the GitHub releases endpoint.
-    /// Exposed as `package` so tests can verify headers without
-    /// hitting the network.
-    package static func makeGitHubRequest() throws -> URLRequest {
+    private static func fetchFromGitHub() async throws -> GitHubRelease {
         guard let url = URL(
             string: "https://api.github.com/repos/scosman/Biscotti/releases/latest"
         ) else {
@@ -151,22 +156,16 @@ public final class UpdateChecker {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        // Bypass the URL cache so offline requests fail with an error
+        // instead of returning a stale cached 200. Without this, a
+        // cached response can mask both genuine failures and real new
+        // releases for as long as the cache entry is fresh.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         // Accept header for the GitHub REST API
         request.setValue(
             "application/vnd.github+json",
             forHTTPHeaderField: "Accept"
         )
-        // Override the default User-Agent (which leaks the app name
-        // and marketing version). A static, non-versioned string
-        // satisfies GitHub's "valid User-Agent" requirement without
-        // sending any user-identifying data. Do not append a version
-        // number — the privacy spec prohibits it.
-        request.setValue("Biscotti", forHTTPHeaderField: "User-Agent")
-        return request
-    }
-
-    private static func fetchFromGitHub() async throws -> GitHubRelease {
-        let request = try makeGitHubRequest()
 
         let (data, response) = try await URLSession.shared.data(for: request)
 

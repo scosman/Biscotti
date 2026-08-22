@@ -164,6 +164,11 @@ public final class AppShellViewModel {
         core.calendar.auth == .authorized
     }
 
+    /// Whether a newer release is available (drives the settings-row dot).
+    public var isUpdateAvailable: Bool {
+        core.updateChecker.isUpdateAvailable
+    }
+
     // MARK: - Detail routing
 
     /// The current route determining which detail view to show.

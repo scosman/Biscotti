@@ -84,6 +84,13 @@ public final class SettingsViewModel {
         calendarState != .authorized
     }
 
+    // MARK: - Update checker
+
+    /// The update checker status, forwarded from AppCore.
+    public var updateStatus: UpdateStatus {
+        core.updateChecker.status
+    }
+
     // MARK: - AI Enhancements
 
     /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
@@ -549,5 +556,20 @@ public extension SettingsViewModel {
     /// the sheet reopens (via `loadEffectivePrompt`).
     func saveSummaryPrompt(_ text: String) async {
         try? await core.saveSummaryPrompt(text)
+    }
+}
+
+// MARK: - Update actions
+
+public extension SettingsViewModel {
+    /// Triggers a one-off update check.
+    func checkForUpdate() async {
+        await core.updateChecker.check()
+    }
+
+    /// Opens the release page for an available update.
+    func openUpdate() {
+        guard let url = core.updateChecker.releaseURL else { return }
+        NSWorkspace.shared.open(url)
     }
 }

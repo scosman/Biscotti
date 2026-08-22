@@ -224,6 +224,12 @@ public struct AppShellView: View {
                 Text("Settings")
                     .font(.body)
                 Spacer()
+                if viewModel.isUpdateAvailable {
+                    Circle()
+                        .fill(Color.sage)
+                        .frame(width: 8, height: 8)
+                        .accessibilityLabel("Update available")
+                }
             }
             .padding(.vertical, Tokens.spacingXS)
             .contentShape(Rectangle())

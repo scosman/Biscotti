@@ -34,7 +34,7 @@ jobs:
           path: Packages/BiscottiKit/.build
           key: spm-${{ hashFiles('Packages/BiscottiKit/Package.swift', '**/Package.resolved') }}
           restore-keys: spm-
-      - name: Cache pinned tools (SwiftLint)
+      - name: Cache pinned tools (SwiftLint + SwiftFormat)
         uses: actions/cache@v4
         with:
           path: .tools

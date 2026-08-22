@@ -1,5 +1,4 @@
 import AppCore
-import AppKit
 import Calendar
 import DesignSystem
 import HomeUI
@@ -16,9 +15,14 @@ import SwiftUI
 public struct AppShellView: View {
     @Bindable private var viewModel: AppShellViewModel
 
-    /// Bound to the custom search `TextField` in the toolbar. Two-way synced
-    /// with AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
+    /// Bound to the search field in the toolbar. Two-way synced with
+    /// AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
+
+    /// Drives focus of the native `.searchable` field via `.searchFocused`
+    /// (available on macOS 15+). Set when `focusSearch()` bumps
+    /// `searchFocusToken` (⌘F).
+    @FocusState private var searchFieldFocused: Bool
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -33,88 +37,22 @@ public struct AppShellView: View {
                 )
                 .background(Tokens.contentBackground)
             } else {
-                NavigationSplitView {
-                    sidebar
-                } detail: {
-                    detailContent
-                }
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            viewModel.showHome()
-                        } label: {
-                            Image(systemName: "house")
-                        }
-                        .help("Home")
-                        .disabled(viewModel.isHome)
-                    }
-
-                    // Custom trailing group: search field + Record button.
-                    // Native `.searchable` always anchors to the trailing edge,
-                    // making it impossible to place a button to its right. We use
-                    // a custom TextField styled as a search field so the Record
-                    // button can sit to its right at the toolbar's trailing edge.
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.inkSecondary)
-                                .font(.body)
-                            TextField("Search", text: $searchText)
-                                .textFieldStyle(.plain)
-                                .font(.body)
-                                .frame(width: 160)
-                                .background(SearchFieldFocuser(
-                                    token: viewModel.searchFocusToken
-                                ))
-                            if !searchText.isEmpty {
-                                Button {
-                                    searchText = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.inkSecondary)
-                                        .font(.caption)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(Color.neutralChip)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .fixedSize()
-
-                        if viewModel.isRecording {
-                            RecordingToolbarButton(viewModel: viewModel)
-                                .disabled(viewModel.isOnRecordingPage)
-                        } else {
-                            Button {
-                                Task { await viewModel.startRecording() }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "record.circle")
-                                    Text("Record")
-                                }
-                            }
-                            .buttonStyle(
-                                ToolbarRecordButtonStyle(fill: .accentFill)
-                            )
-                            .help("Start recording")
-                        }
-                    }
-                }
-                .onChange(of: searchText) { _, newValue in
-                    if newValue != viewModel.meetingsQuery {
-                        viewModel.setMeetingsQuery(newValue)
-                    }
-                }
-                .onChange(of: viewModel.meetingsQuery) { _, newValue in
-                    if newValue != searchText {
-                        searchText = newValue
-                    }
-                }
+                mainWindow
             }
         }
         .background(Color.wall.ignoresSafeArea())
+        // Two-way sync between the search field and AppCore's query.
+        // Harmless during onboarding (no field is shown).
+        .onChange(of: searchText) { _, newValue in
+            if newValue != viewModel.meetingsQuery {
+                viewModel.setMeetingsQuery(newValue)
+            }
+        }
+        .onChange(of: viewModel.meetingsQuery) { _, newValue in
+            if newValue != searchText {
+                searchText = newValue
+            }
+        }
         .onChange(of: viewModel.showOnboarding) { _, isOnboarding in
             // Only reset when replaying (VM has advanced past welcome);
             // skip on first launch where the VM is already at defaults.
@@ -125,6 +63,35 @@ public struct AppShellView: View {
             }
         }
         .task { await viewModel.onLaunch() }
+    }
+
+    // MARK: - Main window
+
+    /// The single, all-native app window for every supported macOS version.
+    ///
+    /// Uses the system `.searchable` field in the toolbar. macOS anchors that
+    /// field trailing-most and re-sorts it to the edge of its placement region,
+    /// so the Record button sits to its *left* — we accept the platform's native
+    /// ordering rather than fighting it with custom fields or toolbar hacks.
+    /// Programmatic focus (⌘F / `focusSearch()`) drives the native field through
+    /// `.searchFocused`, which is available on macOS 15+.
+    private var mainWindow: some View {
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            detailContent
+        }
+        .searchable(text: $searchText, prompt: "Search")
+        .searchFocused($searchFieldFocused)
+        .toolbar {
+            homeToolbarItem
+            ToolbarItem(placement: .primaryAction) {
+                recordButton
+            }
+        }
+        .onChange(of: viewModel.searchFocusToken) { _, _ in
+            searchFieldFocused = true
+        }
     }
 
     // MARK: - Sidebar
@@ -274,6 +241,45 @@ public struct AppShellView: View {
 
     private var detailContent: some View {
         DetailContentView(viewModel: viewModel)
+    }
+}
+
+// MARK: - Toolbar content
+
+/// Extracted to keep `AppShellView` under the type-body-length limit.
+private extension AppShellView {
+    @ToolbarContentBuilder
+    var homeToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                viewModel.showHome()
+            } label: {
+                Image(systemName: "house")
+            }
+            .help("Home")
+            .disabled(viewModel.isHome)
+        }
+    }
+
+    /// The stateful Record affordance: a live recording indicator while
+    /// recording, otherwise the idle "Record" button.
+    @ViewBuilder
+    var recordButton: some View {
+        if viewModel.isRecording {
+            RecordingToolbarButton(viewModel: viewModel)
+                .disabled(viewModel.isOnRecordingPage)
+        } else {
+            Button {
+                Task { await viewModel.startRecording() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "record.circle")
+                    Text("Record")
+                }
+            }
+            .buttonStyle(ToolbarRecordButtonStyle(fill: .accentFill))
+            .help("Start recording")
+        }
     }
 }
 
@@ -528,75 +534,6 @@ private struct RecordingNowSection: View {
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
-        }
-    }
-}
-
-// MARK: - Search field focus helper (AppKit first-responder)
-
-/// An invisible `NSViewRepresentable` placed as a `.background()` on the
-/// toolbar search `TextField`. When `token` changes (incremented by
-/// `AppCore.focusSearch()`), it walks up from its own `NSView` to find
-/// the hosting `NSTextField` and makes it the window's first responder.
-///
-/// SwiftUI's `@FocusState` is unreliable for `TextField`s hosted inside
-/// `ToolbarItemGroup` on macOS (the toolbar's NSToolbarItemViewer is in
-/// a separate hosting hierarchy). This uses AppKit's `makeFirstResponder`
-/// directly, which always works regardless of hosting context.
-private struct SearchFieldFocuser: NSViewRepresentable {
-    let token: UInt
-
-    func makeNSView(context _: Context) -> FocuserView {
-        FocuserView()
-    }
-
-    func updateNSView(_ nsView: FocuserView, context _: Context) {
-        guard token != nsView.lastToken else { return }
-        nsView.lastToken = token
-        // Skip the initial (token == 0) to avoid stealing focus on appear.
-        guard token > 0 else { return }
-        // Defer to the next run-loop pass so the view hierarchy is settled.
-        DispatchQueue.main.async {
-            nsView.focusNearestTextField()
-        }
-    }
-
-    final class FocuserView: NSView {
-        var lastToken: UInt = 0
-
-        /// Walks up the view hierarchy from this invisible view to find
-        /// the nearest `NSTextField` and makes it the first responder.
-        func focusNearestTextField() {
-            // Walk up a few levels looking for an editable NSTextField
-            // in the subtree. The SwiftUI TextField's backing NSTextField
-            // is typically a sibling or close ancestor-subtree peer.
-            var ancestor: NSView? = superview
-            for _ in 0 ..< 10 {
-                guard let current = ancestor else { break }
-                if let found = firstEditableTextField(in: current) {
-                    found.window?.makeFirstResponder(found)
-                    return
-                }
-                ancestor = current.superview
-            }
-        }
-
-        /// Depth-first search for the first editable `NSTextField` in
-        /// the given view's subtree.
-        private func firstEditableTextField(
-            in view: NSView
-        ) -> NSTextField? {
-            for subview in view.subviews {
-                if let textField = subview as? NSTextField,
-                   textField.isEditable
-                {
-                    return textField
-                }
-                if let found = firstEditableTextField(in: subview) {
-                    return found
-                }
-            }
-            return nil
         }
     }
 }

@@ -9,7 +9,7 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
 
 ## Phases
 
-- [ ] **Phase 1 — Foundation: data deltas + the word list.**
+- [x] **Phase 1 — Foundation: data deltas + the word list.**
   `AppSettings.customVocabularyEnabled` / `.calendarVocabularyEnabled` (+ `AppSettingsData`,
   `settings()`, `updateSettings()`); `TranscriptVersionData.vocabularyUsed`; the `Vocabulary` target
   and test target in `Package.swift`; `Tools/generate_common_words.py` and the generated

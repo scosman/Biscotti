@@ -91,6 +91,32 @@ struct SettingsTests {
         #expect(result.enabledCalendarIDs == Set(["cal1", "cal2"]))
     }
 
+    @Test("customVocabularyEnabled defaults to true")
+    func customVocabularyEnabledDefault() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.customVocabularyEnabled == true)
+    }
+
+    @Test("calendarVocabularyEnabled defaults to true")
+    func calendarVocabularyEnabledDefault() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.calendarVocabularyEnabled == true)
+    }
+
+    @Test("vocabulary toggle fields round-trip through updateSettings")
+    func vocabularyToggleRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { settings in
+            settings.customVocabularyEnabled = false
+            settings.calendarVocabularyEnabled = false
+        }
+        let result = try await store.settings()
+        #expect(result.customVocabularyEnabled == false)
+        #expect(result.calendarVocabularyEnabled == false)
+    }
+
     @Test("updateSettings with nil enabledCalendarIDs means all calendars")
     func updateSettingsNilCalendars() async throws {
         let store = try makeStore()
@@ -254,6 +280,39 @@ struct TranscriptVersionTests {
         let store = try makeStore()
         let transcript = try await store.transcript(id: UUID())
         #expect(transcript == nil)
+    }
+
+    @Test("transcriptVersions populates vocabularyUsed from record")
+    func transcriptVersionVocabularyUsed() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Vocab Test")
+        let vocab = ["Acme", "Kubernetes", "Parakeet"]
+        _ = try await store.addTranscript(
+            makeResult(method: "v1"),
+            vocabularyUsed: vocab,
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+
+        let versions = try await store.transcriptVersions(meetingID: meetingID)
+        #expect(versions.count == 1)
+        #expect(versions[0].vocabularyUsed == vocab)
+    }
+
+    @Test("transcriptVersions defaults vocabularyUsed to empty")
+    func transcriptVersionVocabularyUsedDefault() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "No Vocab")
+        _ = try await store.addTranscript(
+            makeResult(method: "v1"),
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+
+        let versions = try await store.transcriptVersions(meetingID: meetingID)
+        #expect(versions.count == 1)
+        #expect(versions[0].vocabularyUsed.isEmpty)
     }
 }
 

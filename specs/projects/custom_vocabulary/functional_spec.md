@@ -323,8 +323,9 @@ words, 0.20 above), minimum token length (3), max user-list contribution (12), m
   company names are language-agnostic.
 - **Schema:** additive defaulted `AppSettings` fields only. No migration stage, no V2 schema.
 - **Package boundary:** all new logic lives in `Vocabulary` (a BiscottiKit module, per
-  `specs/architecture.md` component 13). `Packages/Transcription` is not modified, so the manual-test
-  staleness rule is not triggered.
+  `specs/architecture.md` component 13). `Packages/Transcription` is not modified by this project's
+  phases (a prerequisite bump landed in its own earlier commit), so the manual-test staleness rule is
+  not triggered by the phases themselves.
 - **Testability:** extraction and assembly are pure functions over plain values, so they are unit
   testable without SwiftData, EventKit, or a model.
 

@@ -152,8 +152,8 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **Depends on:** Project 4 (and the specific components each slice touches).
 - **Risk:** **low-medium.** Likely split into several tiny Projects when the time comes.
 
-### Project 14 — Custom Vocabularies  ·  blocked
- - Implement the planned custom vocabulary project. However it's blocked as the SDK fails whenever you add a custom vocabulary. Fix identified, waiting for ArgMax to merge.
+### Project 14 — Custom Vocabularies  ·  [P2]
+ - Implement the planned custom vocabulary project. Previously blocked by the `promptTokens` blanking bug in argmax-oss-swift v1.0.0 ([#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)); fixed in v1.1.0 ([PR #514](https://github.com/argmaxinc/argmax-oss-swift/pull/514)). Now unblocked.
 
 ---
 
@@ -182,3 +182,4 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 | 11 | Auto-Speaker Identification | library+feature | yes | 1,3,4 | high · P2 |
 | 12 | iCloud Sync | feature/integration | yes | 3,4 | med-high · P2 |
 | 13 | Power-User & Storage Polish | feature/integration | yes | 4 | low-med · P2/P3 |
+| 14 | Custom Vocabularies | feature/integration | yes | 1,4,8 | low · P2 |

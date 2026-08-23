@@ -62,11 +62,22 @@ struct WordMatchTests {
 
     @Test("full vocab terms test")
     func fullVocabTerms() {
-        let transcript = "nasa kubernetes postgres qwen mistral llama croissant gnocci paella facade"
+        let transcript = "NASA Kubernetes Postgres Qwen Mistral Llama Croissant Gnocchi Paella Facade"
         let result = WordMatch.evaluate(
             transcript: transcript, expected: GroundTruth.vocabTerms
         )
         #expect(result.matched.count == 10)
         #expect(result.missed.isEmpty)
+    }
+
+    @Test("near-miss like Llami for Llama is a miss (exact matching only)")
+    func nearMissIsMiss() {
+        let transcript = "Llami"
+        let result = WordMatch.evaluate(
+            transcript: transcript,
+            expected: ["Llama"]
+        )
+        #expect(result.matched.isEmpty)
+        #expect(result.missed == ["Llama"])
     }
 }

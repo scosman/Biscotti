@@ -229,18 +229,29 @@ struct TranscriptAccuracyEvaluatorTests {
 struct VocabEvaluatorTests {
     @Test("passes when all 10 terms are present")
     func allPresent() {
-        let text = "nasa kubernetes postgres qwen mistral llama croissant gnocci paella facade"
+        let text = "NASA Kubernetes Postgres Qwen Mistral Llama Croissant Gnocchi Paella Facade"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
         #expect(eval.matched.count == 10)
         #expect(eval.missed.isEmpty)
-        #expect(eval.detail.contains("All 10"))
+        #expect(eval.detail.contains("10/10"))
     }
 
-    @Test("fails when some terms are missing")
-    func partialMatch() {
-        let text = "gnocci facade"
+    @Test("passes at threshold with 1 term missed (9/10)")
+    func passesAtThreshold() {
+        // 9 of 10 terms — meets the 90% threshold
+        let text = "NASA Kubernetes Postgres Qwen Mistral Croissant Gnocchi Paella Facade"
+        let result = makeVocabResult(text: text)
+        let eval = VocabGroundTruth.evaluate(result)
+        #expect(eval.passed)
+        #expect(eval.matched.count == 9)
+        #expect(eval.missed == ["Llama"])
+    }
+
+    @Test("fails when terms are wholly absent")
+    func missingTermsFail() {
+        let text = "Gnocchi Facade"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(!eval.passed)
@@ -249,7 +260,7 @@ struct VocabEvaluatorTests {
         #expect(eval.detail.contains("Missed:"))
         // Diagnostic: actual transcript text and expected vocab are surfaced
         #expect(eval.detail.contains("Expected vocab:"))
-        #expect(eval.detail.contains("Transcript: \"gnocci facade\""))
+        #expect(eval.detail.contains("Transcript: \"Gnocchi Facade\""))
     }
 
     @Test("fails when no terms are present")
@@ -267,7 +278,7 @@ struct VocabEvaluatorTests {
 
     @Test("matches are case-insensitive")
     func caseInsensitive() {
-        let text = "NASA KUBERNETES POSTGRES QWEN MISTRAL LLAMA CROISSANT GNOCCI PAELLA FACADE"
+        let text = "NASA KUBERNETES POSTGRES QWEN MISTRAL LLAMA CROISSANT GNOCCHI PAELLA FACADE"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
@@ -275,7 +286,7 @@ struct VocabEvaluatorTests {
 
     @Test("handles terms surrounded by punctuation")
     func punctuationHandled() {
-        let text = "nasa, kubernetes; postgres. qwen! mistral? llama: croissant, gnocci; paella. facade!"
+        let text = "nasa, kubernetes; postgres. qwen! mistral? llama: croissant, gnocchi; paella. facade!"
         let result = makeVocabResult(text: text)
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
@@ -291,13 +302,13 @@ struct VocabEvaluatorTests {
                 TranscriptSegment(
                     speakerID: 0, speakerLabel: "Speaker 0",
                     startTime: 0, endTime: 1,
-                    text: "nasa kubernetes postgres qwen mistral",
+                    text: "NASA Kubernetes Postgres Qwen Mistral",
                     confidence: 0, noSpeechProbability: 0, words: nil
                 ),
                 TranscriptSegment(
                     speakerID: 0, speakerLabel: "Speaker 0",
                     startTime: 1, endTime: 2,
-                    text: "llama croissant gnocci paella facade",
+                    text: "Llama Croissant Gnocchi Paella Facade",
                     confidence: 0, noSpeechProbability: 0, words: nil
                 )
             ],
@@ -306,6 +317,52 @@ struct VocabEvaluatorTests {
         )
         let eval = VocabGroundTruth.evaluate(result)
         #expect(eval.passed)
+    }
+}
+
+// MARK: - Regression fixtures (from on-hardware diagnostic runs)
+
+@Suite("Vocab regression fixtures (from on-hardware diagnostic runs)")
+struct VocabRegressionTests {
+    /// Negative control: the actual transcript from a lowercase-vocab diagnostic
+    /// run where "nasa" was systematically dropped due to a first-token decoder
+    /// interaction. Asserts only that NASA is in the missed set — does not pin
+    /// the full missed set or exact counts, so the fixture survives unrelated
+    /// ground-truth edits.
+    ///
+    /// Provenance: this transcript was captured from a real `transcribe-cli` run
+    /// with lowercased vocab terms. The lowercasing defect drops only the first
+    /// prompt term; a future regression would produce one miss (NASA). This
+    /// historical transcript also has a second miss ("gnocci" vs ground-truth
+    /// "Gnocchi") because the old fixture contained a typo that the model
+    /// mirrored — that typo is now fixed, so a recurrence would not repeat it.
+    @Test("lowercase-vocab transcript reports NASA as missed")
+    func lowercaseVocabDropsFirstTerm() {
+        // Real transcript from diagnostic C (lowercase vocab, nasa first).
+        // The "gnocci" misspelling is part of the historical artifact — do not
+        // "fix" it; the model produced this verbatim from the old misspelled prompt.
+        let text = " kubernetes,  postgres,  qwen, mistral,  llama,  croissant,  gnocci,  paella, facade."
+        let (_, missed) = WordMatch.evaluate(
+            transcript: text,
+            expected: GroundTruth.vocabTerms
+        )
+        #expect(missed.contains("NASA"), "NASA should be missed, got: \(missed)")
+    }
+
+    /// Documents the exact non-determinism the threshold absorbs: in diagnostic
+    /// D (5 consistency runs, proper casing), 2/5 produced "Llami" instead of
+    /// "Llama". With exact matching, "Llami" is a miss — Llama lands in the
+    /// missed set. The 9/10 threshold allows this, so the overall evaluation
+    /// still passes.
+    @Test("Llami non-determinism: Llama missed but evaluation passes on threshold")
+    func llamiNonDeterminismPassesOnThreshold() {
+        let text = "NASA Kubernetes Postgres Qwen Mistral Llami Croissant Gnocchi Paella Facade"
+        let result = makeVocabResult(text: text)
+        let eval = VocabGroundTruth.evaluate(result)
+        // Llama is genuinely missed (exact matching, no fuzzy tolerance)
+        #expect(eval.missed.contains("Llama"), "Llama should be missed, got: \(eval.missed)")
+        // But the evaluation passes on the 9/10 threshold
+        #expect(eval.passed, "9/10 should pass the threshold: \(eval.detail)")
     }
 }
 

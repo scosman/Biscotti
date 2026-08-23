@@ -1,5 +1,4 @@
 // swift-tools-version: 6.0
-// Using 6.0 (not 6.2) because argmax-oss-swift v1.0.0 requires swift-tools-version 6.0.
 // Strict concurrency is enabled by default with Swift 6 language mode.
 
 import PackageDescription
@@ -14,7 +13,7 @@ let package = Package(
         .executable(name: "transcribe-cli", targets: ["transcribe-cli"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0"),
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.1.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [

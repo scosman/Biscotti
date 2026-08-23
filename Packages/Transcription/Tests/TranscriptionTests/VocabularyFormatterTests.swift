@@ -29,13 +29,13 @@ struct VocabularyFormatterTests {
     @Test("Whitespace is trimmed from terms")
     func whitespaceIsTrimmed() {
         let result = VocabularyFormatter.formatPrompt(from: ["  Biscotti  ", " Acme "])
-        #expect(result == "Transcript mentioning: biscotti, acme.")
+        #expect(result == "Transcript mentioning: Biscotti, Acme.")
     }
 
-    @Test("Mixed-case terms are lowercased in output")
-    func mixedCaseTermsAreLowercased() {
+    @Test("Original casing is preserved")
+    func originalCasingPreserved() {
         let result = VocabularyFormatter.formatPrompt(from: ["NASA", "Kubernetes", "Acme Corp"])
-        #expect(result == "Transcript mentioning: nasa, kubernetes, acme corp.")
+        #expect(result == "Transcript mentioning: NASA, Kubernetes, Acme Corp.")
     }
 
     @Test("Very long vocabulary list is truncated to fit budget")
@@ -61,7 +61,7 @@ struct VocabularyFormatterTests {
     @Test("Empty strings are filtered out")
     func emptyStringsFiltered() {
         let result = VocabularyFormatter.formatPrompt(from: ["", "Biscotti", "", "App"])
-        #expect(result == "Transcript mentioning: biscotti, app.")
+        #expect(result == "Transcript mentioning: Biscotti, App.")
     }
 
     @Test("Budget limits are respected")

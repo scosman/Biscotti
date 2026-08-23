@@ -74,11 +74,10 @@ enum GroundTruth {
         .init(speakerLabel: "C", script: "And what would you like me to say? Anything at all. I would like more food please."),
     ]   // Pattern [A,B,A,B,C] — 5 chunks, 3 distinct speakers
     static let chunkLevenshteinTolerance = 0.05
-    // Full 10-term list. Custom-vocab AI test is disabled pending upstream
-    // SDK fix (promptTokens blanks transcript for certain combinations).
-    // https://github.com/argmaxinc/argmax-oss-swift/issues/489
-    static let vocabTerms = ["nasa", "kubernetes", "postgres", "qwen", "mistral",
-                              "llama", "croissant", "gnocci", "paella", "facade"]
+    // Full 10-term list with natural casing. Blanking bug fixed in
+    // argmax-oss-swift v1.1.0 (PR #514); test re-enabled.
+    static let vocabTerms = ["NASA", "Kubernetes", "Postgres", "Qwen", "Mistral",
+                              "Llama", "Croissant", "Gnocchi", "Paella", "Facade"]
 }
 
 struct ChunkEvaluation { let chunkCount, distinctSpeakers: Int; let perChunkRatios: [Double]

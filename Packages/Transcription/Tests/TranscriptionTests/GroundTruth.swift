@@ -42,15 +42,19 @@ enum GroundTruth {
 
     /// Custom vocabulary terms for the vocab-bias test clip.
     ///
-    /// The full 10-term list from the reference audio. The AI test that uses
-    /// these is currently **disabled** because WhisperKit's `promptTokens`
-    /// API silently blanks the entire transcript for certain term combinations
-    /// — even all-lowercase, even with the non-turbo model. Tracked upstream:
-    /// https://github.com/argmaxinc/argmax-oss-swift/issues/489
-    /// https://github.com/argmaxinc/argmax-oss-swift/pull/428
+    /// The full 10-term list from the reference audio, used by the
+    /// `customVocabWordMatch` AI test to verify promptTokens biasing.
+    /// The blanking bug that previously disabled this test was fixed in
+    /// argmax-oss-swift v1.1.0 (PR #514).
+    ///
+    /// Terms use natural casing. The v1.0.0 blanking bug required
+    /// lowercasing as a workaround; with the v1.1.0 fix, preserving
+    /// case improves recognition accuracy and avoids a residual
+    /// first-token interaction where lowercase "nasa" as the first
+    /// prompt term was systematically dropped.
     static let vocabTerms = [
-        "nasa", "kubernetes", "postgres", "qwen", "mistral",
-        "llama", "croissant", "gnocci", "paella", "facade"
+        "NASA", "Kubernetes", "Postgres", "Qwen", "Mistral",
+        "Llama", "Croissant", "Gnocchi", "Paella", "Facade"
     ]
 }
 
@@ -229,19 +233,59 @@ struct VocabEvaluation {
     let detail: String
 }
 
-/// Evaluates a `TranscriptResult` against the custom-vocabulary
-/// ground truth using exact word matching.
+/// Evaluates a `TranscriptResult` against the custom-vocabulary ground truth.
+///
+/// Uses exact word matching (after `TextNormalize` lowercasing + punctuation
+/// stripping) with a 90% match threshold (`vocabMatchMinProportion`).
+///
+/// **This AI test is the coarse end-to-end signal, not the regression
+/// guard.** Without vocab biasing, the clip yields 4–5 recognized terms;
+/// with biasing, it yields 9–10. The threshold separates those cleanly.
+///
+/// **This threshold does NOT guard against a lowercasing regression.**
+/// The original failure scored exactly 9/10 (only "nasa" dropped). A
+/// recurrence today would also score 9/10: the lowercasing defect drops
+/// only the first prompt term, and the other nine — including "gnocchi",
+/// now correctly spelled — all match after normalization. 9/10 meets
+/// this threshold and passes.
+///
+/// The designed guards against a lowercasing regression are the fast
+/// deterministic tests, which run at `make test` speed:
+/// - `VocabularyFormatterTests.originalCasingPreserved` (plus two
+///   incidental guards: `whitespaceIsTrimmed`, `emptyStringsFiltered`)
+///   — fail if lowercasing is reintroduced in `VocabularyFormatter`
+/// - `VocabRegressionTests.lowercaseVocabDropsFirstTerm` — asserts that
+///   the real lowercase-vocab transcript reports NASA as missed
+///
+/// The threshold is set against 5 on-hardware diagnostic runs
+/// (scores: 10, 10, 10, 9, 9 — the two 9s being "Llama" → "Llami",
+/// which under exact matching is a real miss). `make test-ai` passed
+/// on hardware (2026-08-23). If the test proves flaky in practice,
+/// revisit the threshold with fresh data rather than pre-emptively
+/// loosening it.
 enum VocabGroundTruth {
+    /// Minimum proportion of vocab terms that must match (exact, after
+    /// normalization) for the AI test to pass. Expressed as a proportion
+    /// of `vocabTerms.count` so it stays correct if terms are added or
+    /// removed. At 10 terms, 0.9 requires 9 exact matches.
+    static let vocabMatchMinProportion = 0.9
+
     static func evaluate(_ result: TranscriptResult) -> VocabEvaluation {
         let fullText = result.segments.map(\.text).joined(separator: " ")
         let (matched, missed) = WordMatch.evaluate(
-            transcript: fullText, expected: GroundTruth.vocabTerms
+            transcript: fullText,
+            expected: GroundTruth.vocabTerms
         )
-        let passed = missed.isEmpty
+        let required = Int(
+            (Double(GroundTruth.vocabTerms.count) * vocabMatchMinProportion).rounded(.up)
+        )
+        let passed = matched.count >= required
         let detail = if passed {
-            "All \(matched.count) vocab terms matched"
+            "\(matched.count)/\(GroundTruth.vocabTerms.count) vocab terms matched"
+                + " (required \(required))"
         } else {
-            "\(matched.count)/\(GroundTruth.vocabTerms.count) matched. "
+            "\(matched.count)/\(GroundTruth.vocabTerms.count) matched"
+                + " (required \(required)). "
                 + "Missed: \(missed.joined(separator: ", ")). "
                 + "Expected vocab: \(GroundTruth.vocabTerms.joined(separator: ", ")). "
                 + "Transcript: \"\(fullText)\""

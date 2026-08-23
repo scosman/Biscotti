@@ -11,6 +11,7 @@ import Permissions
 import Recording
 import Transcription
 import TranscriptionService
+import Vocabulary
 
 // MARK: - Production factory
 
@@ -51,9 +52,9 @@ public extension AppCore {
             }
         )
 
-        logger.info("AppCore.live: TranscriptionService init")
-        let transcriber = Transcriber(backend: .hosted(serviceName: transcriberServiceName))
-        let transcription = TranscriptionService(store: store, engine: LiveTranscriberAdapter(transcriber: transcriber))
+        let transcription = buildTranscription(
+            store: store, serviceName: transcriberServiceName, logger: logger
+        )
 
         logger.info("AppCore.live: CalendarService init")
         let catalog = BundledMeetingCatalog()
@@ -64,11 +65,7 @@ public extension AppCore {
 
         logger.info("AppCore.live: NotificationService init")
         let notifications = NotificationService()
-
-        // Wire live notification authorizer so requestNotifications() works.
-        let notifAuth = LiveNotificationAuthorizerAdapter(
-            service: notifications
-        )
+        let notifAuth = LiveNotificationAuthorizerAdapter(service: notifications)
         permissions.setNotificationAuthorizer(notifAuth)
 
         logger.info("AppCore.live: ModelManager + Intelligence init")
@@ -123,6 +120,22 @@ public extension AppCore {
             }
         )
         return (modelManager, intelligence)
+    }
+
+    /// Builds the live `TranscriptionService` with XPC engine and vocabulary.
+    /// Extracted to keep `live(storageRoot:…)` under the function body
+    /// length lint limit.
+    @MainActor
+    private static func buildTranscription(
+        store: DataStore, serviceName: String, logger: Logger
+    ) -> TranscriptionService {
+        logger.info("AppCore.live: TranscriptionService init")
+        let transcriber = Transcriber(backend: .hosted(serviceName: serviceName))
+        return TranscriptionService(
+            store: store,
+            engine: LiveTranscriberAdapter(transcriber: transcriber),
+            vocabulary: VocabularyService(store: store)
+        )
     }
 }
 

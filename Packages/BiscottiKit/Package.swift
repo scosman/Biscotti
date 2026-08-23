@@ -105,6 +105,7 @@ let package = Package(
             name: "TranscriptionService",
             dependencies: [
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -115,6 +116,7 @@ let package = Package(
                 "TranscriptionService",
                 "BiscottiTestSupport",
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -127,6 +129,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 "Calendar",
                 "MeetingCatalog",
                 "MeetingDetection",
@@ -154,6 +157,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -379,6 +383,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],

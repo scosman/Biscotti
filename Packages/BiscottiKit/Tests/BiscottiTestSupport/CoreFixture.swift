@@ -12,6 +12,7 @@ import Permissions
 import Recording
 import TranscriptionService
 import UserNotifications
+import Vocabulary
 
 /// Bundles all test dependencies for AppCore-based tests.
 ///
@@ -507,7 +508,8 @@ public func makeCoreFixture(
 
     let fakeEngine = FakeTranscriber()
     let transcription = TranscriptionService(
-        store: store, engine: fakeEngine
+        store: store, engine: fakeEngine,
+        vocabulary: VocabularyService(store: store)
     )
 
     let fakeEventStore = FakeEventStore(

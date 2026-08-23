@@ -26,7 +26,7 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
   event description; escalate per arch §3.10 only if the target is missed. *(functional §3; arch
   §3.3–3.9, §7, §8. Depends on Phase 1.)*
 
-- [ ] **Phase 3 — Transcription wiring.**
+- [x] **Phase 3 — Transcription wiring.**
   `TranscriptionService.init(store:engine:vocabulary:)`; compute the vocabulary once in `runJob` and
   thread it into both `runEngine` and `persistAndPromote`; update all 8 call sites including
   `AppCore.live`, `PreviewAppCore`, and `CoreFixture`. Assert the persisted `vocabularyUsed` matches

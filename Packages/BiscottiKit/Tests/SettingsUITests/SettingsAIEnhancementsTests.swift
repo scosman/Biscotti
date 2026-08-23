@@ -11,6 +11,7 @@ import Permissions
 import Recording
 import Testing
 import TranscriptionService
+import Vocabulary
 @testable import DataStore
 @testable import SettingsUI
 
@@ -255,7 +256,7 @@ private func buildAppCore(
     return AppCore(
         store: store, permissions: permissions,
         recording: recording,
-        transcription: TranscriptionService(store: store, engine: FakeTranscriber()),
+        transcription: TranscriptionService(store: store, engine: FakeTranscriber(), vocabulary: VocabularyService(store: store)),
         calendar: CalendarService(store: store, catalog: catalog, provider: FakeEventStore()),
         detector: MeetingDetector(catalog: catalog, source: FakeActivitySource()),
         notifications: NotificationService(provider: FakeTestNotificationCenter()),

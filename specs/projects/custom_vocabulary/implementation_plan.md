@@ -19,7 +19,7 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
   (arch §4) — if it is present, update the worked example in `functional_spec.md` §3.4.3, not the 3.0
   threshold. *(arch §2, §3.1–3.2, §3.10, §4)*
 
-- [ ] **Phase 2 — Extraction and assembly.**
+- [x] **Phase 2 — Extraction and assembly.**
   `CasingNormalizer`, `NameExtractor`, `CompanyExtractor`, `UncommonWordExtractor`,
   `VocabularyInputs`, `VocabularyAssembler`, `VocabularyService`. Full unit coverage. **Measure and
   record** the word-list file size, word count, and assembly time against a realistic full-length

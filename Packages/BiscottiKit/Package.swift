@@ -252,7 +252,8 @@ let package = Package(
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
-                "TranscriptionService"
+                "TranscriptionService",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -269,6 +270,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")

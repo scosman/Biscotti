@@ -7,6 +7,7 @@ import Foundation
 import Intelligence
 import SummaryPromptUI
 import TranscriptionService
+import Vocabulary
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
@@ -34,6 +35,7 @@ public enum MeetingDetailState: Sendable, Equatable {
 public final class MeetingDetailViewModel {
     private let core: AppCore
     public let meetingID: UUID
+    private let vocabulary: VocabularyService
     private let makePlayer: () -> any AudioPlaybackProviding
 
     /// Injectable "now" for deterministic testing of time-gated UI.
@@ -55,12 +57,9 @@ public final class MeetingDetailViewModel {
     /// Whether to show the event picker sheet for association correction.
     public var showEventPicker: Bool = false
 
-    // TODO(re-transcribe-prompt): restore the "calendar changed -- re-transcribe"
-    // prompt once vocab support (Phase 9) lands. The underlying flag and plumbing
-    // remain; only the UI is suppressed.
-
-    /// Whether to show a re-transcribe prompt after association correction.
-    /// Currently always false -- suppressed until vocabulary support lands.
+    /// Whether to show the re-transcribe alert after association correction.
+    /// Set to true when attaching/changing a calendar event and the recomputed
+    /// effective vocabulary differs from the newest transcript's vocabularyUsed.
     public private(set) var showReTranscribeAfterCorrection: Bool = false
 
     // MARK: - Phase 8: Audio playback
@@ -231,6 +230,7 @@ public final class MeetingDetailViewModel {
     ) {
         self.core = core
         self.meetingID = meetingID
+        vocabulary = VocabularyService(store: core.store)
         self.makePlayer = makePlayer
         self.currentDate = currentDate
         self.urlOpener = urlOpener
@@ -948,10 +948,9 @@ public extension MeetingDetailViewModel {
         await load()
         await core.reloadSummaries()
         showEventPicker = false
-        // TODO(re-transcribe-prompt): restore setting
-        // showReTranscribeAfterCorrection = true when vocab support
-        // (Phase 9) lands. Suppressed because re-transcription without
-        // vocabulary changes has no user-visible benefit.
+        if eventKey != nil {
+            showReTranscribeAfterCorrection = await shouldOfferReTranscribe()
+        }
     }
 
     /// Removes the calendar association.
@@ -1044,6 +1043,28 @@ public extension MeetingDetailViewModel {
         } catch {
             // Non-fatal; title will be retried on next edit.
         }
+    }
+}
+
+// MARK: - Re-transcribe vocabulary check
+
+extension MeetingDetailViewModel {
+    /// Checks whether the recomputed effective vocabulary differs from
+    /// the newest transcript's recorded vocabulary. All preconditions
+    /// must hold: at least one transcript, audio present, both the
+    /// custom-vocabulary and calendar-vocabulary toggles on. Ordered
+    /// comparison -- prompt order matters.
+    func shouldOfferReTranscribe() async -> Bool {
+        guard let newest = versions.first else { return false }
+        guard detail?.hasAudio == true else { return false }
+        guard let settings = try? await core.store.settings(),
+              settings.customVocabularyEnabled,
+              settings.calendarVocabularyEnabled
+        else { return false }
+        let recomputed = await vocabulary.effectiveVocabulary(
+            meetingID: meetingID
+        )
+        return recomputed != newest.vocabularyUsed
     }
 }
 

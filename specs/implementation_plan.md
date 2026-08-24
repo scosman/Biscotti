@@ -104,7 +104,7 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **In scope:** `OnboardingUI` (full wizard: permissions w/ denial-fix guidance, calendar selection, model download w/ progress + disk check, optional demo); `SettingsUI` (custom-vocab editing, launch-on-startup, consolidated calendar selection); `Vocabulary` module (app-wide list + per-meeting merge); `TranscriptionService` additions (consume the merged vocab).
 - **Depends on:** Projects 4, 5, 1 (model status/download).
 - **Risk:** **medium.**
-- **Blocker (custom vocab only):** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations. This affects both turbo and non-turbo models. Product-side custom-vocab work should not start until the SDK issue is resolved. Tracked upstream: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428). The AI test for custom vocab is disabled pending this fix.
+- **Custom vocab resolved:** the `promptTokens` blanking bug ([argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)) was fixed in v1.1.0. Custom vocabulary is now fully built (Project 14).
 
 > End of Project 8 = **feature-complete V1**: onboarding → detect/record → diarized transcript (with custom vocab) → home/library/search, all on-device.
 
@@ -152,8 +152,8 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **Depends on:** Project 4 (and the specific components each slice touches).
 - **Risk:** **low-medium.** Likely split into several tiny Projects when the time comes.
 
-### Project 14 — Custom Vocabularies  ·  [P2]
- - Implement the planned custom vocabulary project. Previously blocked by the `promptTokens` blanking bug in argmax-oss-swift v1.0.0 ([#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)); fixed in v1.1.0 ([PR #514](https://github.com/argmaxinc/argmax-oss-swift/pull/514)). Now unblocked.
+### Project 14 — Custom Vocabularies  ·  **built**
+ - **Delivered:** the `Vocabulary` module (assembly, extraction, limits, bundled word list), `TranscriptionService` wiring (`effectiveVocabulary` computed per job, recorded on each transcript), Settings section (master toggle, calendar toggle, term editor sheet), and the re-transcribe alert (offered when attaching/changing a calendar event changes the effective vocabulary). Built via the `custom_vocabulary` spec project. Previously blocked by the `promptTokens` blanking bug in argmax-oss-swift v1.0.0 ([#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)); fixed in v1.1.0 ([PR #514](https://github.com/argmaxinc/argmax-oss-swift/pull/514)).
 
 ---
 
@@ -182,4 +182,4 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 | 11 | Auto-Speaker Identification | library+feature | yes | 1,3,4 | high · P2 |
 | 12 | iCloud Sync | feature/integration | yes | 3,4 | med-high · P2 |
 | 13 | Power-User & Storage Polish | feature/integration | yes | 4 | low-med · P2/P3 |
-| 14 | Custom Vocabularies | feature/integration | yes | 1,4,8 | low · P2 |
+| 14 | Custom Vocabularies | feature/integration | yes | 1,4,8 | **built** |

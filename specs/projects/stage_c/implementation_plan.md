@@ -70,10 +70,7 @@ unit-tested (gating). UI/app-target phases also rely on `build_app` (non-gating)
   association-correction full flow (+ offer re-transcribe). *(functional §3.5; ui_design §3;
   components/ui_modules.md. Depends on Phases 3, 7.)*
 
-- [ ] **Phase 9 — Vocabulary + TranscriptionService.** **Important -- deferred for now, The SDK can't use vocabulary as discovered in main. Skip this phase. A fix is planned to SDK, but this is blocked for now.** `VocabularyService` (app-wide read/write,
-  per-meeting merge, dedup/cap); `TranscriptionService` init `(store:engine:vocabulary:)`, consume
-  effective vocab in `runEngine`, `ensureModelsReady`/`modelsReady`. Update all callers
-  (`AppCore.live`, previews, tests). Unit tests. *(functional §4.4; arch §10. Depends on Phase 1.)*
+- [x] **Phase 9 — Vocabulary + TranscriptionService.** Delivered by the `custom_vocabulary` spec project (Project 14). The `Vocabulary` module, `TranscriptionService` wiring, Settings section, and re-transcribe alert are all built and green. The SDK blocker (`promptTokens` blanking bug) was fixed in argmax-oss-swift v1.1.0. *(functional §4.4; arch §10.)*
 
 - [x] **Phase 10 — Onboarding & Settings (completes Project 8 = feature-complete V1).** `OnboardingUI`
   wizard (Welcome → Microphone → System Audio → Calendar+selection → Notifications → Model download

@@ -772,9 +772,7 @@ private func makeMeetingEventDTO(suffix: String) -> EKEventDTO {
 
 @Suite("MeetingDetailViewModel -- association correction re-transcribe")
 struct MeetingDetailCorrectionReTranscribeTests {
-    // TODO(re-transcribe-prompt): restore this test once vocab support
-    // (Phase 9) lands. The prompt is currently suppressed.
-    @Test("association correction does NOT show re-transcribe prompt (vocab deferred)")
+    @Test("no re-transcribe alert when meeting has no transcript")
     @MainActor
     func associationCorrectionSuppressesPrompt() async throws {
         let dto = makeMeetingEventDTO(suffix: "retx")
@@ -806,7 +804,7 @@ struct MeetingDetailCorrectionReTranscribeTests {
         }
 
         await viewModel.correctAssociation(eventKey: eventKey)
-        // Prompt suppressed until vocab support lands
+        // No transcript versions exist, so no re-transcribe alert
         #expect(viewModel.showReTranscribeAfterCorrection == false)
     }
 

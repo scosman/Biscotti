@@ -201,12 +201,12 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 - **Deep-dive risk:** **low-medium.**
 - **From:** none (new).
 
-#### 13. Vocabulary  ·  *module in BiscottiKit*  ·  [V1]
-- **Owns:** custom-vocabulary source-of-truth and merge logic.
-- **Must provide:** store/edit the app-wide vocab list (in settings); merge it with per-meeting terms (participant/company names) into an effective list for a transcription job. **[P3]** per-recording manual additions.
-- **Out of scope:** how the list biases the model (Transcription), settings UI.
+#### 13. Vocabulary  ·  *module in BiscottiKit*  ·  [V1]  ·  **built**
+- **Owns:** vocabulary assembly, extraction (names, companies, uncommon words), limits/caps, and the bundled common-word list. Does **not** own storage -- the user's term list and toggle states live in `AppSettings`, and `SettingsUI` reads/writes them like any other setting.
+- **Must provide:** assemble the effective vocabulary for a transcription job by merging the user's app-wide list with per-meeting calendar-derived terms (attendee names, company names from email domains, uncommon words from title/description); apply caps, de-duplication, and character limits. **[P3]** per-recording manual additions.
+- **Out of scope:** how the list biases the model (Transcription), settings UI, storage.
 - **Depends on:** DataStore.
-- **Tested by:** unit tests over merge logic.
+- **Tested by:** unit tests over extraction and assembly logic (pure functions over plain values).
 - **Deep-dive risk:** **low.**
 - **From:** none (new).
 

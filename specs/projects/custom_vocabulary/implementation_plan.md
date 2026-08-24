@@ -37,7 +37,7 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
   `VocabularyTermError` validation; `sectionTitles` insertion at index 1 and the re-index of every
   downstream reference and test. *(functional §5; ui_design §1–2; arch §5.2. Depends on Phase 1.)*
 
-- [ ] **Phase 5 — Re-transcribe alert, plus doc reconciliation.**
+- [x] **Phase 5 — Re-transcribe alert, plus doc reconciliation.**
   `MeetingDetailViewModel` gains the `Vocabulary` dependency and `shouldOfferReTranscribe()`; both
   `TODO(re-transcribe-prompt)` markers deleted; the view's alert un-suppressed. Then update the
   durable docs: `specs/architecture.md` component 13 (reword per arch §1), `specs/implementation_plan.md`

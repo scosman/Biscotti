@@ -106,7 +106,7 @@ enum UncommonWordExtractor {
         )
 
         // Remove any whitespace-delimited token that contains a digit.
-        let words = result.split(separator: " ", omittingEmptySubsequences: true)
+        let words = result.split(whereSeparator: \.isWhitespace)
         let filtered = words.filter { token in
             !token.unicodeScalars.contains(where: \.properties.numericType.isDigit)
         }

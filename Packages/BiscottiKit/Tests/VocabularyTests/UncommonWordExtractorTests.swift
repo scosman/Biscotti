@@ -194,6 +194,20 @@ struct UncommonWordExtractorTests {
         }
     }
 
+    @Test("Newline-joined title survives when notes start with digit token")
+    func newlineJoinedTitleSurvivesDigitNotes() {
+        // Regression: scrub() previously split on spaces only, so
+        // "Parakeet\n123-456-7890" was a single token that got dropped
+        // as digit-bearing — taking the title word with it.
+        // Extra common words keep the hit rate under the 20% ceiling.
+        let result = UncommonWordExtractor.terms(
+            title: "Parakeet",
+            notes: "123-456-7890 for the team meeting project update report status review agenda",
+            uncommon: Self.fakeUncommon
+        )
+        #expect(result.contains("Parakeet"))
+    }
+
     @Test("www. URLs are scrubbed")
     func wwwUrlsScrubbed() {
         let result = UncommonWordExtractor.terms(

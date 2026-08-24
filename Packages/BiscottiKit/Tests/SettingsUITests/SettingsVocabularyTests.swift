@@ -244,6 +244,48 @@ struct SettingsVocabularyTests {
         #expect(viewModel.vocabularyTerms == ["Alpha"])
     }
 
+    // MARK: - Delete during edit (regression for stale-index crash)
+
+    @Test("updateVocabularyTerm with stale index after delete is safe")
+    func updateAfterDeleteIsSafe() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+
+        _ = await viewModel.addVocabularyTerm("Alpha")
+        _ = await viewModel.addVocabularyTerm("Beta")
+        #expect(viewModel.vocabularyTerms == ["Alpha", "Beta"])
+
+        // Simulate the old crash path: user is editing index 1 ("Beta"),
+        // then deletes a row so the array shrinks. Calling update at the
+        // now-out-of-bounds index must not crash.
+        await viewModel.removeVocabularyTerm(at: 0)
+        #expect(viewModel.vocabularyTerms == ["Beta"])
+
+        // Index 1 is now out of bounds — the view model guard returns nil.
+        let result = await viewModel.updateVocabularyTerm(at: 1, to: "Gamma")
+        #expect(result == nil)
+        #expect(viewModel.vocabularyTerms == ["Beta"])
+    }
+
+    @Test("removeVocabularyTerm with out-of-bounds index is safe")
+    func removeOutOfBoundsIsSafe() async throws {
+        let fixture = try makeCoreFixture()
+        defer { fixture.cleanup() }
+
+        let viewModel = SettingsViewModel(core: fixture.core)
+        await viewModel.load()
+
+        _ = await viewModel.addVocabularyTerm("Alpha")
+        #expect(viewModel.vocabularyTerms == ["Alpha"])
+
+        // Out-of-bounds removal must not crash.
+        await viewModel.removeVocabularyTerm(at: 5)
+        #expect(viewModel.vocabularyTerms == ["Alpha"])
+    }
+
     // MARK: - Revert on failure
 
     @Test("setCustomVocabularyEnabled reverts on store failure")

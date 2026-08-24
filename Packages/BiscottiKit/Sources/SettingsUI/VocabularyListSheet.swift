@@ -12,9 +12,10 @@ struct VocabularyListSheet: View {
     @State private var validationError: VocabularyTermError?
     @FocusState private var addFieldFocused: Bool
 
-    /// Tracks an in-progress inline edit so validation errors can
-    /// revert the text field to the previous value.
-    @State private var editingIndex: Int?
+    /// Tracks an in-progress inline edit by the *original* term
+    /// value (a stable identity — the view model rejects duplicates).
+    /// Avoids stale-index crashes when rows are deleted mid-edit.
+    @State private var editingTerm: String?
     @State private var editingText: String = ""
 
     var body: some View {
@@ -108,12 +109,9 @@ struct VocabularyListSheet: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(
-                        Array(viewModel.vocabularyTerms.enumerated()),
-                        id: \.offset
-                    ) { index, term in
-                        termRow(index: index, term: term)
-                        if index < viewModel.vocabularyTerms.count - 1 {
+                    ForEach(viewModel.vocabularyTerms, id: \.self) { term in
+                        termRow(term: term)
+                        if term != viewModel.vocabularyTerms.last {
                             Divider()
                         }
                     }
@@ -123,21 +121,24 @@ struct VocabularyListSheet: View {
         }
     }
 
-    private func termRow(index: Int, term: String) -> some View {
+    private func termRow(term: String) -> some View {
         HStack {
-            if editingIndex == index {
+            if editingTerm == term {
                 TextField("", text: $editingText)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { commitEdit(at: index) }
+                    .onSubmit { commitEdit(for: term) }
             } else {
                 Text(term)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture { beginEdit(at: index, term: term) }
+                    .onTapGesture { beginEdit(term: term) }
             }
 
             Button {
-                Task { await viewModel.removeVocabularyTerm(at: index) }
+                if editingTerm == term { editingTerm = nil }
+                if let idx = viewModel.vocabularyTerms.firstIndex(of: term) {
+                    Task { await viewModel.removeVocabularyTerm(at: idx) }
+                }
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.signalRedText)
@@ -160,15 +161,20 @@ struct VocabularyListSheet: View {
 
     // MARK: - Inline editing
 
-    private func beginEdit(at index: Int, term: String) {
-        editingIndex = index
+    private func beginEdit(term: String) {
+        editingTerm = term
         editingText = term
     }
 
-    private func commitEdit(at index: Int) {
+    private func commitEdit(for originalTerm: String) {
+        guard let index = viewModel.vocabularyTerms.firstIndex(of: originalTerm) else {
+            // Term was deleted while being edited — nothing to commit.
+            editingTerm = nil
+            return
+        }
         let trimmed = editingText.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty || trimmed == viewModel.vocabularyTerms[index] {
-            editingIndex = nil
+            editingTerm = nil
             return
         }
         Task {
@@ -176,10 +182,10 @@ struct VocabularyListSheet: View {
                 at: index, to: editingText
             )
             if result == nil {
-                editingIndex = nil
+                editingTerm = nil
             }
             // On validation error the field stays open so the user
-            // can correct. No inline message for edits -- the revert
+            // can correct. No inline message for edits — the revert
             // is the feedback.
         }
     }
@@ -191,8 +197,8 @@ struct VocabularyListSheet: View {
             Spacer()
             Button("Done") {
                 // Commit any in-progress edit before closing
-                if let index = editingIndex {
-                    commitEdit(at: index)
+                if let term = editingTerm {
+                    commitEdit(for: term)
                 }
                 dismiss()
             }

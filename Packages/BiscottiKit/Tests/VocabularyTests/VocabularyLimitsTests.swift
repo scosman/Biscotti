@@ -11,11 +11,10 @@ struct VocabularyLimitsTests {
         #expect(VocabularyLimits.maxSingleTermLength == 60)
         #expect(VocabularyLimits.maxInvitees == 20)
         #expect(VocabularyLimits.maxUniqueDomains == 5)
-        #expect(VocabularyLimits.maxUncommonWords == 15)
         #expect(VocabularyLimits.minTokenLength == 3)
         #expect(VocabularyLimits.minNameLength == 2)
         #expect(VocabularyLimits.shortTextHitRateCeiling == 0.34)
         #expect(VocabularyLimits.shortTextWordCount == 5)
-        #expect(VocabularyLimits.longTextHitRateCeiling == 0.20)
+        #expect(VocabularyLimits.longTextHitRateCeiling == 0.25)
     }
 }

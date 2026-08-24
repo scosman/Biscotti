@@ -53,10 +53,12 @@ with open('en_zipf.txt', 'w') as f:
 ```
 
 Note: need a hit-rate threshold. If meeting text is in another language, we'll get high hit rate and
-this will make actively transcription worse. If hit rate > 20% of checked words, drop this method all
+this will make actively transcription worse. If hit rate > 25% of checked words, drop this method all
 together.
 
-If list of uncommon words > 15, drop this method all together. This is a "few outliers" not "other
+~~If list of uncommon words > 15, drop this method all together.~~ *(Superseded: the absolute cap was
+removed — see `functional_spec.md` §3.4.3. The hit-rate ceilings alone decide, and downstream caps
+truncate.)* The original intent was a "few outliers" not "other
 language" or "flood context".
 
 Do not keep this long list in memory long term. Extra few MS to load, but don't want a 1MB long term

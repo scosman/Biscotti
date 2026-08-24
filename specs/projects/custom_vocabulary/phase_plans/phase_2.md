@@ -79,8 +79,8 @@ reading from `DataStore` and threading results through the pure assembler.
 - `UncommonWordExtractorTests.testUrlsAndEmailsScrubbed` — URLs and email addresses removed.
 - `UncommonWordExtractorTests.testDigitTokensScrubbed` — tokens with digits removed.
 - `UncommonWordExtractorTests.testParakeetExample` — "Project Parakeet Team Meeting" yields `Parakeet`.
-- `UncommonWordExtractorTests.testLongTextHighHitRate` — >5 words with >20% uncommon drops all.
-- `UncommonWordExtractorTests.testAbsoluteCap` — >15 uncommon words drops all.
+- `UncommonWordExtractorTests.testLongTextHighHitRate` — >5 words with >25% uncommon drops all.
+- `UncommonWordExtractorTests.testNoAbsoluteCap` — a 16-uncommon-word description returns all 16.
 - `UncommonWordExtractorTests.testEmptyInput` — returns empty.
 - `VocabularyAssemblerTests.testPriorityOrder` — user terms first, then names, companies, uncommon.
 - `VocabularyAssemblerTests.testCaseInsensitiveDedupe` — higher-priority casing wins.

@@ -22,9 +22,6 @@ public enum VocabularyLimits {
     /// no company names are contributed.
     public static let maxUniqueDomains = 5
 
-    /// Maximum number of uncommon words the extraction method may contribute.
-    public static let maxUncommonWords = 15
-
     /// Minimum character length for a tokenized word to be kept.
     public static let minTokenLength = 3
 
@@ -38,5 +35,5 @@ public enum VocabularyLimits {
     public static let shortTextWordCount = 5
 
     /// Hit-rate ceiling above `shortTextWordCount` checked words.
-    public static let longTextHitRateCeiling = 0.20
+    public static let longTextHitRateCeiling = 0.25
 }

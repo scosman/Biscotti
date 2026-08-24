@@ -130,12 +130,12 @@ struct VocabularyAssemblerTests {
         let emails = (1 ... 5).map { "a@company\($0).com" }
 
         // Targeted uncommon closure: only "xylophone" and "quokka" are uncommon.
-        // The title has enough common words to stay under the 20% hit-rate guard.
+        // The title has enough common words to stay under the 25% hit-rate guard.
         let targetUncommon: Set = ["xylophone", "quokka"]
         let inputs = VocabularyInputs(
             userTerms: userTerms,
             calendarEnabled: true,
-            // 10 checked words, 2 uncommon = 20% — at the boundary (≤ 0.20 passes)
+            // 10 checked words, 2 uncommon = 20%, under the 0.25 ceiling
             eventTitle: "Xylophone Quokka project team meeting report status update review plan",
             attendeeNames: names,
             attendeeEmails: emails,

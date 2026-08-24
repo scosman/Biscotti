@@ -120,9 +120,15 @@ any of these hold:
 
 | Guard | Rule | Why |
 |---|---|---|
-| Absolute cap | more than **15** uncommon words | "A few outliers", not a flood of context. |
 | Hit rate, short text | **checked words ≤ 5** and uncommon ÷ checked **> 0.34** | A foreign-language short title reads as almost all-uncommon. |
-| Hit rate, longer text | **checked words > 5** and uncommon ÷ checked **> 0.20** | A non-English description misses the English list almost entirely and would actively damage transcription. |
+| Hit rate, longer text | **checked words > 5** and uncommon ÷ checked **> 0.25** | A non-English description misses the English list almost entirely and would actively damage transcription. |
+
+There is deliberately **no absolute cap** on how many uncommon words one event may contribute. An
+earlier revision dropped the whole method above 15 words, which meant a long, legitimately term-dense
+description yielded *fewer* words than a short one — a rich four-paragraph agenda produced zero. The
+hit-rate ceilings are what detect garbage and non-English text, and being ratio-based they do not
+penalize length. Budget is enforced downstream by the 40-term and 700-character caps, which truncate
+rather than discard.
 
 Zero checked words contributes nothing and is not an error.
 
@@ -309,9 +315,9 @@ existing transcript was produced without that event's words. Offer a re-run.
 | User term list | `AppSettings.customVocabulary` (exists) | empty |
 
 Tunable constants, all owned by the `Vocabulary` module and named rather than inlined: max invitees
-(20), max unique domains (5), max uncommon words (15), hit-rate thresholds (0.34 at ≤ 5 checked
-words, 0.20 above), minimum token length (3), max user-list contribution (12), max effective terms
-(40), max joined characters (700), max single-term length (60).
+(20), max unique domains (5), hit-rate thresholds (0.34 at ≤ 5 checked words, 0.25 above), minimum
+token length (3), max user-list contribution (12), max effective terms (40), max joined characters
+(700), max single-term length (60).
 
 ## 10. Constraints
 

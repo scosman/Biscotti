@@ -4,9 +4,9 @@ import Foundation
 ///
 /// Text is scrubbed of URLs, email addresses, and digit-bearing tokens before
 /// tokenizing. Candidates are checked against the common-word list via an
-/// injected closure. Three guards prevent garbage from reaching the vocabulary:
-/// an absolute cap on uncommon words, and two hit-rate ceilings that catch
-/// non-English text.
+/// injected closure. Two hit-rate ceilings prevent garbage from reaching the
+/// vocabulary by catching non-English text. There is no cap on how many words
+/// a single event may contribute — downstream truncation handles budget.
 enum UncommonWordExtractor {
     // Pre-compiled patterns for scrubbing conferencing boilerplate.
     // Force-unwrap is safe for known-valid literal patterns.
@@ -75,9 +75,14 @@ enum UncommonWordExtractor {
         return groups
     }
 
-    /// Returns whether the uncommon-word count and hit rate pass all three guards.
+    /// Returns whether the uncommon-word hit rate passes both ceilings.
+    ///
+    /// Deliberately has no absolute cap on `missCount`. The hit-rate ceilings
+    /// are what detect garbage/non-English text, and being ratio-based they do
+    /// not penalize a long, legitimately term-dense description. Budget is
+    /// enforced downstream by `maxEffectiveTerms` and `maxJoinedCharacters`,
+    /// which truncate rather than discard.
     private static func passesGuards(missCount: Int, checkedCount: Int) -> Bool {
-        if missCount > VocabularyLimits.maxUncommonWords { return false }
         let ratio = Double(missCount) / Double(checkedCount)
         if checkedCount <= VocabularyLimits.shortTextWordCount {
             return ratio <= VocabularyLimits.shortTextHitRateCeiling

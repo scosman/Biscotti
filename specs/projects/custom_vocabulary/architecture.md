@@ -115,14 +115,13 @@ public enum VocabularyLimits {
     public static let maxSingleTermLength = 60
     public static let maxInvitees = 20
     public static let maxUniqueDomains = 5
-    public static let maxUncommonWords = 15
     public static let minTokenLength = 3
     public static let minNameLength = 2
     /// Hit-rate ceiling when there are `shortTextWordCount` or fewer checked words.
     public static let shortTextHitRateCeiling = 0.34
     public static let shortTextWordCount = 5
     /// Hit-rate ceiling above `shortTextWordCount` checked words.
-    public static let longTextHitRateCeiling = 0.20
+    public static let longTextHitRateCeiling = 0.25
 }
 ```
 
@@ -262,8 +261,8 @@ enum UncommonWordExtractor {
 4. **Group** by `lowercased()` key, preserving every observed surface form in encounter order.
 5. `let checked = Set(keys)`; return `[]` if empty.
 6. `let miss = uncommon(checked)`.
-7. **Guards** — return `[]` when any holds:
-   - `miss.count > maxUncommonWords`
+7. **Guards** — return `[]` when either holds. There is no absolute cap on `miss.count`; see
+   `functional_spec.md` §3.4.3 for why.
    - `checked.count <= shortTextWordCount && Double(miss.count) / Double(checked.count) > shortTextHitRateCeiling`
    - `checked.count > shortTextWordCount && Double(miss.count) / Double(checked.count) > longTextHitRateCeiling`
 8. Emit the missing keys in first-encounter order, each passed through `CasingNormalizer` with
@@ -467,9 +466,9 @@ malformed addresses ignored.
 
 **`UncommonWordExtractorTests`** — URLs, emails, and digit-bearing tokens scrubbed before tokenizing;
 tokens under 3 letters dropped; case-insensitive grouping; the "Project Parakeet Team Meeting" case
-passing under the 34% ceiling; a >5-word case failing at 21%; a French description dropping
-everything; more than 15 uncommon words dropping everything; empty input returning `[]`. Uses an
-injected `uncommon` closure — no bundle.
+passing under the 34% ceiling; a >5-word case failing at 33%; a French description dropping
+everything; a 16-uncommon-word description returning all 16 (no absolute cap); empty input returning
+`[]`. Uses an injected `uncommon` closure — no bundle.
 
 **`CommonWordListTests`** — exercises the **real** bundled resource, so the asset itself is under
 test: known-common words are absent from the result (`meeting`, `project`, `team`, `report`); at

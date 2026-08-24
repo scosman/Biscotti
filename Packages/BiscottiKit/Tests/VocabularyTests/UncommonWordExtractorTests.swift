@@ -61,13 +61,13 @@ struct UncommonWordExtractorTests {
 
     @Test("Long text with high hit rate drops all uncommon words")
     func longTextHighHitRate() {
-        // 6 checked words, need >20% = more than 1.2 uncommon → 2 uncommon = 33%
+        // 6 checked words, need >25% = more than 1.5 uncommon → 2 uncommon = 33%
         let result = UncommonWordExtractor.terms(
             title: "Xylophone Quokka project team meeting report",
             notes: nil,
             uncommon: Self.fakeUncommon
         )
-        // xylophone and quokka are uncommon → 2/6 = 33% > 20% → dropped
+        // xylophone and quokka are uncommon → 2/6 = 33% > 25% → dropped
         #expect(result.isEmpty)
     }
 
@@ -93,10 +93,11 @@ struct UncommonWordExtractorTests {
         #expect(result.isEmpty)
     }
 
-    @Test("More than 15 uncommon words drops all (absolute cap, not hit-rate)")
-    func absoluteCap() {
+    @Test("No absolute cap: a term-dense description returns every uncommon word")
+    func noAbsoluteCap() {
         // 16 designated "uncommon" words — all alpha-only (no digits, since
-        // the scrubber strips digit-bearing tokens).
+        // the scrubber strips digit-bearing tokens). Under the old absolute
+        // cap (> 15 drops everything) this returned []; now all 16 survive.
         let rareWords = [
             "Xylophona", "Quokkara", "Zephyrix", "Wombatine",
             "Platypara", "Narwhalia", "Axolotli", "Pangolith",
@@ -106,8 +107,7 @@ struct UncommonWordExtractorTests {
 
         // Generate 64 alpha-only filler tokens that the uncommon closure
         // treats as common. Total checked = 16 + 64 = 80, hit rate =
-        // 16/80 = 20%, which passes the long-text guard (≤ 0.20).
-        // That isolates the absolute cap (> 15) as the only rejection path.
+        // 16/80 = 20%, which passes the long-text guard (≤ 0.25).
         let letters = Array("abcdefghijklmnopqrstuvwxyz")
         var fillerWords: [String] = []
         for first in letters {
@@ -127,7 +127,8 @@ struct UncommonWordExtractorTests {
                 candidates.intersection(rareSet)
             }
         )
-        #expect(result.isEmpty)
+        // Emitted in first-encounter order, casing preserved (each form seen once).
+        #expect(result == rareWords)
     }
 
     @Test("Empty input returns empty")
@@ -199,7 +200,7 @@ struct UncommonWordExtractorTests {
         // Regression: scrub() previously split on spaces only, so
         // "Parakeet\n123-456-7890" was a single token that got dropped
         // as digit-bearing — taking the title word with it.
-        // Extra common words keep the hit rate under the 20% ceiling.
+        // Extra common words keep the hit rate under the 25% ceiling.
         let result = UncommonWordExtractor.terms(
             title: "Parakeet",
             notes: "123-456-7890 for the team meeting project update report status review agenda",

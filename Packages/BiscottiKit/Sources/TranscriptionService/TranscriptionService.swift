@@ -1,5 +1,6 @@
 import DataStore
 import Foundation
+import os
 import Transcription
 import Vocabulary
 
@@ -27,6 +28,17 @@ public final class TranscriptionService {
     private let store: DataStore
     private let engine: any Transcribing
     private let vocabulary: VocabularyService
+
+    #if DEBUG
+        /// DEBUG-only diagnostics logger. Logs the effective vocabulary handed to
+        /// the engine. Lives here rather than in the engine so the lines land in
+        /// the app process — the engine runs inside `BiscottiTranscriber.xpc`,
+        /// whose logs are awkward to follow from the app. Not compiled into
+        /// release builds.
+        private static let vocabDebugLog = Logger(
+            subsystem: "net.scosman.biscotti", category: "TranscriptionService"
+        )
+    #endif
 
     // MARK: - In-flight guard
 
@@ -145,6 +157,12 @@ public final class TranscriptionService {
         // to what the engine received. Re-transcription goes through the same
         // path and naturally recomputes.
         let vocab = await vocabulary.effectiveVocabulary(meetingID: meetingID)
+
+        #if DEBUG
+            Self.vocabDebugLog.debug(
+                "Vocabulary for \(meetingID, privacy: .public) (\(vocab.count, privacy: .public) terms): \(vocab.joined(separator: ", "), privacy: .public)"
+            )
+        #endif
 
         guard let result = await runEngine(meetingID: meetingID, paths: paths, vocabulary: vocab) else { return }
 

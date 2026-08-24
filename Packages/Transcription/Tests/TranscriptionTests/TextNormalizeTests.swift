@@ -67,4 +67,23 @@ struct TextNormalizeTests {
     func wordsWithPunctuation() {
         #expect(TextNormalize.words("NASA, Kubernetes; Postgres!") == ["nasa", "kubernetes", "postgres"])
     }
+
+    @Test("words splits on slash separators")
+    func wordsWithSlash() {
+        // The model emits "NASA/Kubernetes" when asked to say the two as a
+        // list. Both terms must stay visible to the word matcher.
+        #expect(TextNormalize.words("NASA/Kubernetes, Postgres.") == ["nasa", "kubernetes", "postgres"])
+    }
+
+    @Test("words does not split on hyphens")
+    func wordsKeepsHyphens() {
+        // Splitting here would let a mis-transcribed "Llama-ish" count as a
+        // match for "Llama", masking the failure this evaluator exists to catch.
+        #expect(TextNormalize.words("Llama-ish") == ["llama-ish"])
+    }
+
+    @Test("words collapses repeated slash separators")
+    func wordsRepeatedSlashes() {
+        #expect(TextNormalize.words("NASA//Kubernetes") == ["nasa", "kubernetes"])
+    }
 }

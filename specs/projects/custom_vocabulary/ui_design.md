@@ -9,10 +9,10 @@ Three surfaces: a Settings section, a term-editor sheet, and an alert. All follo
 
 ## 1. Settings section
 
-Placed directly after **General**, before **Permissions**.
+Placed directly after **AI Enhancements**, before **Calendars**.
 
 ```
-┌─ General ──────────────────────────────────────────────────────┐
+┌─ AI Enhancements ─────────────────────────────────────────────┐
 │ … existing rows …                                               │
 └─────────────────────────────────────────────────────────────────┘
 ┌─ Custom Vocabulary ────────────────────────────────────────────┐
@@ -27,7 +27,7 @@ Placed directly after **General**, before **Permissions**.
 │   Pull uncommon words from the event's title, description,      │
 │   and attendee names. English only.                             │
 └─────────────────────────────────────────────────────────────────┘
-┌─ Permissions ──────────────────────────────────────────────────┐
+┌─ Calendars ────────────────────────────────────────────────────┐
 ```
 
 **Structure.** A `Section("Custom Vocabulary")` in the existing grouped `Form`, with three rows.
@@ -47,9 +47,9 @@ section compact when the feature is off; disabling would keep the feature's capa
 The section collapses to a single row when off, so the header still advertises the feature.
 
 **Implementation gotcha.** `SettingsView.sectionTitles` is a positional array and section headers are
-read as `sectionTitles[N]`. Inserting "Custom Vocabulary" at index 1 shifts Permissions, Notifications,
-AI Enhancements, and Calendars by one. Every `sectionTitles[N]` reference must be re-indexed, and the
-existing `SettingsUI` tests that assert on titles must be updated.
+read as `sectionTitles[N]`. "Custom Vocabulary" sits at index 4, between AI Enhancements (3) and
+Calendars (5). Every `sectionTitles[N]` reference must match these indices, and the existing
+`SettingsUI` tests that assert on titles must be updated.
 
 ## 2. Vocabulary list editor (sheet)
 

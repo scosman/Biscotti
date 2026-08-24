@@ -383,9 +383,9 @@ Re-transcription goes through the same path, so it naturally recomputes.
   section as an extension on `SettingsView`.
 - New file `VocabularyListSheet.swift` in `SettingsUI`. It stays in `SettingsUI` rather than becoming
   its own module — unlike `SummaryPromptUI`, it has exactly one presentation site.
-- **`sectionTitles` re-index.** Inserting `"Custom Vocabulary"` at index 1 shifts Permissions (1→2),
-  Notifications (2→3), AI Enhancements (3→4), and Calendars (4→5). Every `sectionTitles[N]` reference
-  and every settings test asserting on titles must be updated together.
+- **`sectionTitles` placement.** `"Custom Vocabulary"` sits at index 4, between AI Enhancements (3)
+  and Calendars (5). Every `sectionTitles[N]` reference and every settings test asserting on titles
+  must match these indices.
 
 ### 5.3 `MeetingDetailUI`
 

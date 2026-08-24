@@ -199,7 +199,7 @@ are nowhere near the cap. The 700-character limit binds before the term count fo
 
 ## 5. Settings
 
-A new **Custom Vocabulary** section, placed directly after **General** in `SettingsView`.
+A new **Custom Vocabulary** section, placed directly after **AI Enhancements** in `SettingsView`.
 
 **Header row**
 - Title: `Custom Vocabulary`

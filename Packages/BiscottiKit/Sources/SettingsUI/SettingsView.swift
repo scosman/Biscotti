@@ -33,10 +33,10 @@ public struct SettingsView: View {
     /// reorders the rendered headers. Debug is appended in debug builds.
     static let sectionTitles = [
         "General",
-        "Custom Vocabulary",
         "Permissions",
         "Notifications",
         "AI Enhancements",
+        "Custom Vocabulary",
         "Calendars"
     ]
 
@@ -59,10 +59,10 @@ public struct SettingsView: View {
 
                 Form {
                     generalSection
-                    customVocabularySection
                     permissionsSection
                     notificationsSection
                     aiEnhancementsSection
+                    customVocabularySection
                     calendarSection
 
                     #if DEBUG
@@ -146,7 +146,7 @@ public struct SettingsView: View {
     // MARK: - Permissions section
 
     private var permissionsSection: some View {
-        Section(Self.sectionTitles[2]) {
+        Section(Self.sectionTitles[1]) {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
@@ -262,7 +262,7 @@ private extension SettingsView {
             aiLanguageModelRow
         } header: {
             HStack {
-                Text(Self.sectionTitles[4])
+                Text(Self.sectionTitles[3])
                 Spacer()
                 Text(Self.aiEnhancementsHeaderCaption)
                     .font(Tokens.metadataFont)
@@ -370,7 +370,7 @@ private extension SettingsView {
 
 private extension SettingsView {
     var notificationsSection: some View {
-        Section(Self.sectionTitles[3]) {
+        Section(Self.sectionTitles[2]) {
             // Row 1: Monitor for Meetings
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

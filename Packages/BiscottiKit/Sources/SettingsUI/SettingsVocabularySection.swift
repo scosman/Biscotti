@@ -5,7 +5,7 @@ import SwiftUI
 
 extension SettingsView {
     var customVocabularySection: some View {
-        Section(Self.sectionTitles[1]) {
+        Section(Self.sectionTitles[4]) {
             // Row 1: Master toggle
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

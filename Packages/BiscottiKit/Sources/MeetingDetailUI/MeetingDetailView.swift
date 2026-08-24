@@ -129,6 +129,31 @@ public struct MeetingDetailView: View {
                 }
             )
         }
+        .alert(
+            "Re-transcribe with keywords from this event?",
+            isPresented: Binding(
+                get: { viewModel.showReTranscribeAfterCorrection },
+                set: { newValue in
+                    if !newValue {
+                        viewModel.dismissReTranscribePrompt()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                Task {
+                    await viewModel.reTranscribeAfterCorrection()
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                viewModel.dismissReTranscribePrompt()
+            }
+        } message: {
+            Text(
+                "We\u{2019}ll use this event\u{2019}s title, description and attendee list to improve transcription accuracy."
+            )
+        }
         .confirmationDialog(
             "Delete this meeting?",
             isPresented: $viewModel.showDeleteConfirmation,
@@ -301,10 +326,14 @@ public struct MeetingDetailView: View {
             + Self.transportSpacing // gap between content and transport bar
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
+}
 
+// MARK: - Chrome sub-views
+
+private extension MeetingDetailView {
     // MARK: - Header
 
-    private var header: some View {
+    var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             HStack(alignment: .top) {
                 EditableMeetingTitle(
@@ -325,7 +354,7 @@ public struct MeetingDetailView: View {
         }
     }
 
-    private static let versionDateFormatter: DateFormatter = {
+    static let versionDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
@@ -335,7 +364,7 @@ public struct MeetingDetailView: View {
     /// Whether copy is possible for the active tab. Non-mutating: uses
     /// `hasDisplayableTranscript` instead of calling the cache-building
     /// method, so it is safe during `body` evaluation.
-    private var canCopy: Bool {
+    var canCopy: Bool {
         switch viewModel.selectedTab {
         case .summary:
             !viewModel.summaryText.isEmpty
@@ -345,11 +374,7 @@ public struct MeetingDetailView: View {
             !viewModel.notes.isEmpty
         }
     }
-}
 
-// MARK: - Chrome sub-views
-
-private extension MeetingDetailView {
     /// Audio transport pinned to the bottom of the panel. Full-width
     /// background (Liquid Glass on macOS 26+, vibrancy material on older);
     /// inner content capped to the readable column width and left-aligned
@@ -399,10 +424,6 @@ private extension MeetingDetailView {
             header
 
             tagsRow
-
-            if viewModel.showReTranscribeAfterCorrection {
-                reTranscribePrompt
-            }
 
             if let card = viewModel.calendarCard {
                 CalendarInfoCard(
@@ -644,39 +665,6 @@ private extension MeetingDetailView {
             onSelect: { id in
                 Task { await viewModel.selectVersion(id) }
             }
-        )
-    }
-
-    var reTranscribePrompt: some View {
-        HStack {
-            Text(
-                "Calendar event changed. Re-transcribe for updated vocabulary?"
-            )
-            .font(.caption)
-            .foregroundStyle(.inkSecondary)
-
-            Spacer()
-
-            if viewModel.canReTranscribe {
-                Button("Re-transcribe") {
-                    Task {
-                        await viewModel.reTranscribeAfterCorrection()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-            }
-
-            Button("Dismiss") {
-                viewModel.dismissReTranscribePrompt()
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.mini)
-        }
-        .padding(Tokens.spacingSM)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentWashSoft)
         )
     }
 }

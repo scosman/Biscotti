@@ -40,13 +40,12 @@ private enum AudioDurationError: Error, CustomStringConvertible {
 
 // MARK: - AI model tests
 
-// TODO: These tests rely on WhisperKit's inline auto-download during processAudio,
-// which doesn't cleanly recover from a partial/.incomplete download (caused a
-// first-run failure on hardware). Ideally the test should ensure a clean model
-// download itself (e.g. via ensureModelsDownloaded or clearing partials) before
-// running inference.
-
-@Suite("AI model tests")
+/// Serialized: both tests drive a WhisperKit model download into the same
+/// `ModelStorage.downloadBase`. Running them in parallel races two writers on the
+/// same `<file>.<sha>.incomplete` path in the Hub cache, which strands a stale
+/// `.metadata` entry with no payload and wedges every later run ("… couldn't be
+/// moved to whisper-large-v3").
+@Suite("AI model tests", .serialized)
 struct AIModelTestSuite {
     @Test(
         "Diarization + transcript accuracy (3-speaker clip)",
@@ -82,18 +81,14 @@ struct AIModelTestSuite {
         )
     }
 
-    /// Custom-vocab test disabled — WhisperKit's promptTokens API silently
-    /// blanks the entire transcript for certain term combinations, even
-    /// all-lowercase, even with the non-turbo v20240930_626MB model (Gotcha #16).
-    /// Blocked on upstream fix:
-    ///   https://github.com/argmaxinc/argmax-oss-swift/issues/489
-    ///   https://github.com/argmaxinc/argmax-oss-swift/pull/428
-    /// Re-enable once the SDK issue is resolved or a workaround is in place.
+    /// Custom-vocab test — verifies promptTokens vocabulary biasing produces a
+    /// transcript that contains the expected domain terms. Previously disabled
+    /// because WhisperKit's promptTokens blanked the transcript (Gotcha #16);
+    /// fixed in argmax-oss-swift v1.1.0 (PR #514).
     @Test(
         "Custom-vocab word match",
         .tags(.aiModel),
-        .enabled(if: AITestGate.isEnabled),
-        .disabled("WhisperKit promptTokens blanks transcript — blocked on SDK fix")
+        .enabled(if: AITestGate.isEnabled)
     )
     func customVocabWordMatch() async throws {
         let clip = try #require(Bundle.module.url(

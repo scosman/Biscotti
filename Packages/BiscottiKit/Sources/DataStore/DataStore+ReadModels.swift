@@ -195,6 +195,26 @@ public struct AppSettingsData: Sendable, Equatable {
     /// User's custom meeting-summary instruction prompt. Empty means "use the
     /// built-in default" (so the shipped default can evolve for non-customizers).
     public var summaryPrompt: String
+    /// Master switch for custom vocabulary, as stored. `nil` means the user has
+    /// never touched the toggle. Carried through unresolved so a full
+    /// read-modify-write of settings (see `updateSettings`) cannot silently
+    /// bake in today's default. Read `customVocabularyResolved` instead.
+    public var customVocabularyEnabled: Bool?
+    /// Whether per-meeting terms are derived from the associated calendar event.
+    public var calendarVocabularyEnabled: Bool
+
+    /// The shipped default for `customVocabularyEnabled` when the user has made
+    /// no choice. Custom vocabulary is in beta, so it starts off. Flipping this
+    /// to `true` turns the feature on for everyone who never touched the
+    /// toggle, without a data migration and without overriding anyone who
+    /// deliberately turned it off.
+    public static let customVocabularyDefault = false
+
+    /// Whether custom vocabulary is on, resolving "never chosen" to the
+    /// shipped default. This is the only value callers should branch on.
+    public var customVocabularyResolved: Bool {
+        customVocabularyEnabled ?? Self.customVocabularyDefault
+    }
 
     public init(
         customVocabulary: [String] = [],
@@ -209,7 +229,9 @@ public struct AppSettingsData: Sendable, Equatable {
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
         selectedModelID: String = "",
-        summaryPrompt: String = ""
+        summaryPrompt: String = "",
+        customVocabularyEnabled: Bool? = nil,
+        calendarVocabularyEnabled: Bool = true
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -224,6 +246,8 @@ public struct AppSettingsData: Sendable, Equatable {
         self.aiAnalysisEnabled = aiAnalysisEnabled
         self.selectedModelID = selectedModelID
         self.summaryPrompt = summaryPrompt
+        self.customVocabularyEnabled = customVocabularyEnabled
+        self.calendarVocabularyEnabled = calendarVocabularyEnabled
     }
 }
 
@@ -296,12 +320,21 @@ public struct TranscriptVersionData: Sendable, Identifiable, Equatable {
     public let createdAt: Date
     public let methodId: String
     public let isPreferred: Bool
+    /// The vocabulary terms that were active when this transcript was produced.
+    public let vocabularyUsed: [String]
 
-    public init(id: UUID, createdAt: Date, methodId: String, isPreferred: Bool) {
+    public init(
+        id: UUID,
+        createdAt: Date,
+        methodId: String,
+        isPreferred: Bool,
+        vocabularyUsed: [String] = []
+    ) {
         self.id = id
         self.createdAt = createdAt
         self.methodId = methodId
         self.isPreferred = isPreferred
+        self.vocabularyUsed = vocabularyUsed
     }
 }
 
@@ -498,7 +531,9 @@ public extension DataStore {
                 enabledCalendarIDs: existing.enabledCalendarIDs,
                 aiAnalysisEnabled: existing.aiAnalysisEnabled,
                 selectedModelID: existing.selectedModelID,
-                summaryPrompt: existing.summaryPrompt
+                summaryPrompt: existing.summaryPrompt,
+                customVocabularyEnabled: existing.customVocabularyEnabled,
+                calendarVocabularyEnabled: existing.calendarVocabularyEnabled
             )
         }
         // Create the singleton with defaults
@@ -533,7 +568,9 @@ public extension DataStore {
             enabledCalendarIDs: model.enabledCalendarIDs,
             aiAnalysisEnabled: model.aiAnalysisEnabled,
             selectedModelID: model.selectedModelID,
-            summaryPrompt: model.summaryPrompt
+            summaryPrompt: model.summaryPrompt,
+            customVocabularyEnabled: model.customVocabularyEnabled,
+            calendarVocabularyEnabled: model.calendarVocabularyEnabled
         )
         mutate(&dto)
 
@@ -550,6 +587,8 @@ public extension DataStore {
         model.aiAnalysisEnabled = dto.aiAnalysisEnabled
         model.selectedModelID = dto.selectedModelID
         model.summaryPrompt = dto.summaryPrompt
+        model.customVocabularyEnabled = dto.customVocabularyEnabled
+        model.calendarVocabularyEnabled = dto.calendarVocabularyEnabled
         try save()
     }
 
@@ -600,7 +639,8 @@ public extension DataStore {
                     id: record.id,
                     createdAt: record.createdAt,
                     methodId: record.transcriptionMethodId,
-                    isPreferred: record.id == preferredID
+                    isPreferred: record.id == preferredID,
+                    vocabularyUsed: record.vocabularyUsed
                 )
             }
     }

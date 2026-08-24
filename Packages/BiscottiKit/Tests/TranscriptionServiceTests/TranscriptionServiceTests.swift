@@ -4,6 +4,7 @@ import Foundation
 import Testing
 import Transcription
 import TranscriptionService
+import Vocabulary
 
 // MARK: - Test fixture
 
@@ -54,7 +55,7 @@ private func makeFixture(
         processAudioError: processAudioError,
         statusMessages: statusMessages
     )
-    let service = TranscriptionService(store: store, engine: fakeEngine)
+    let service = TranscriptionService(store: store, engine: fakeEngine, vocabulary: VocabularyService(store: store))
     return TranscriptionTestFixture(service: service, store: store, fakeEngine: fakeEngine)
 }
 
@@ -357,7 +358,7 @@ struct TranscriptionConcurrencyTests {
         // Use an engine that blocks on processAudio to simulate an in-flight job.
         let blockingEngine = BlockingFakeTranscriber()
         let store = try DataStore(storage: .inMemory)
-        let service = TranscriptionService(store: store, engine: blockingEngine)
+        let service = TranscriptionService(store: store, engine: blockingEngine, vocabulary: VocabularyService(store: store))
 
         // Create two meetings with audio
         let meetingID1 = try await store.createMeeting(title: "Meeting 1")
@@ -467,7 +468,7 @@ struct TranscriptionShutdownReentrancyTests {
         // exactly once (the original job) rather than twice.
         let store = try DataStore(storage: .inMemory)
         let reentrantEngine = ReentrantShutdownFakeTranscriber()
-        let service = TranscriptionService(store: store, engine: reentrantEngine)
+        let service = TranscriptionService(store: store, engine: reentrantEngine, vocabulary: VocabularyService(store: store))
 
         // Wire the service reference into the engine so shutdown() can
         // attempt a re-entrant transcribe().
@@ -725,7 +726,7 @@ struct TranscriptionDownloadPhaseGateTests {
         // Use a blocking engine so we can observe the initial status.
         let blockingEngine = BlockingOnDownloadFakeTranscriber()
         let store = try DataStore(storage: .inMemory)
-        let service = TranscriptionService(store: store, engine: blockingEngine)
+        let service = TranscriptionService(store: store, engine: blockingEngine, vocabulary: VocabularyService(store: store))
 
         let meetingID = try await store.createMeeting(title: "Gate Test")
         let mic = AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 100, isPresent: true)
@@ -750,6 +751,136 @@ struct TranscriptionDownloadPhaseGateTests {
         // Unblock and clean up.
         blockingEngine.backing.unblock()
         await task.value
+    }
+}
+
+// MARK: - Vocabulary wiring tests
+
+@Suite("TranscriptionService -- vocabulary wiring")
+struct TranscriptionVocabularyTests {
+    @Test("Custom vocabulary terms are passed to the engine")
+    @MainActor
+    func vocabularyPassedToEngine() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // Add custom vocabulary terms. The master toggle is off by default
+        // while the feature is in beta, so opt in explicitly.
+        try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
+            settings.customVocabulary = ["Parakeet", "Biscotti"]
+        }
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        let vocab = try #require(fix.fakeEngine.backing.lastVocabulary)
+        #expect(vocab.contains("Parakeet"))
+        #expect(vocab.contains("Biscotti"))
+    }
+
+    @Test("Persisted vocabularyUsed is byte-identical to what the engine received")
+    @MainActor
+    func persistedVocabularyMatchesEngine() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // Add custom vocabulary terms. The master toggle is off by default
+        // while the feature is in beta, so opt in explicitly.
+        try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
+            settings.customVocabulary = ["Alpha", "Bravo", "Charlie"]
+        }
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+
+        // What the engine received
+        let engineVocab = try #require(fix.fakeEngine.backing.lastVocabulary)
+
+        // What was persisted
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let persistedVocab = detail?.versions.first?.vocabularyUsed
+
+        // Byte-identical: same order, same content
+        #expect(persistedVocab == engineVocab)
+        #expect(persistedVocab == ["Alpha", "Bravo", "Charlie"])
+    }
+
+    @Test("Vocabulary disabled sends empty and persists empty")
+    @MainActor
+    func vocabularyDisabledSendsEmpty() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // Disable vocabulary and add terms (should be ignored)
+        try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = false
+            settings.customVocabulary = ["ShouldNotAppear"]
+        }
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        #expect(fix.fakeEngine.backing.lastVocabulary == [])
+
+        let disabledDetail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(disabledDetail?.versions.first?.vocabularyUsed == [])
+    }
+
+    @Test("Default settings produce empty vocabulary (no terms, no calendar)")
+    @MainActor
+    func defaultSettingsEmptyVocabulary() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        #expect(fix.fakeEngine.backing.lastVocabulary == [])
+
+        let defaultDetail = try await fix.store.meetingDetail(id: meetingID)
+        #expect(defaultDetail?.versions.first?.vocabularyUsed == [])
+    }
+
+    @Test("Re-transcription recomputes vocabulary from current settings")
+    @MainActor
+    func reTranscribeRecomputesVocabulary() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // First transcription with no vocabulary
+        await fix.service.transcribe(meetingID: meetingID)
+        #expect(fix.fakeEngine.backing.lastVocabulary == [])
+
+        // Add terms and set a distinct canned result for the re-transcribe
+        // (different ID avoids SwiftData primary-key collision).
+        try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
+            settings.customVocabulary = ["NewTerm"]
+        }
+        fix.fakeEngine.backing.cannedResult = try TranscriptResult(
+            id: #require(UUID(uuidString: "00000000-0000-0000-0000-000000000099")),
+            createdAt: Date(timeIntervalSince1970: 1_700_001_000),
+            transcriptionMethodId: "v1",
+            language: "en",
+            speakerCount: 1,
+            segments: [],
+            speakerEmbeddings: [:],
+            processingDuration: 1.0
+        )
+
+        await fix.service.reTranscribe(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == .completed)
+        let vocab = try #require(fix.fakeEngine.backing.lastVocabulary)
+        #expect(vocab == ["NewTerm"])
+
+        // The preferred (newest) transcript should have the updated vocabulary
+        let reDetail = try await fix.store.meetingDetail(id: meetingID)
+        let preferred = reDetail?.versions.first(where: \.isPreferred)
+        #expect(preferred?.vocabularyUsed == ["NewTerm"])
     }
 }
 

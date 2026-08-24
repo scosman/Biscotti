@@ -56,6 +56,18 @@ import SwiftData
     /// built-in default" (so the shipped default can evolve for non-customizers).
     public var summaryPrompt: String = ""
 
+    /// Master switch for custom vocabulary. When false no prompt is sent at all.
+    ///
+    /// `nil` means the user has never touched the toggle, so the shipped
+    /// default still applies. Resolve through
+    /// `AppSettingsData.customVocabularyResolved` rather than reading this
+    /// directly — that keeps the default in one place, so it can be flipped
+    /// for every non-customizer without a migration. Off while in beta.
+    public var customVocabularyEnabled: Bool?
+
+    /// Whether per-meeting terms are derived from the associated calendar event.
+    public var calendarVocabularyEnabled: Bool = true
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -93,7 +105,9 @@ import SwiftData
         enabledCalendarIDs: Set<String>? = nil,
         aiAnalysisEnabled: Bool = true,
         selectedModelID: String = "",
-        summaryPrompt: String = ""
+        summaryPrompt: String = "",
+        customVocabularyEnabled: Bool? = nil,
+        calendarVocabularyEnabled: Bool = true
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -110,5 +124,7 @@ import SwiftData
         self.aiAnalysisEnabled = aiAnalysisEnabled
         self.selectedModelID = selectedModelID
         self.summaryPrompt = summaryPrompt
+        self.customVocabularyEnabled = customVocabularyEnabled
+        self.calendarVocabularyEnabled = calendarVocabularyEnabled
     }
 }

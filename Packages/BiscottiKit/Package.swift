@@ -28,7 +28,8 @@ let package = Package(
         .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
         .library(name: "Intelligence", targets: ["Intelligence"]),
         .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
-        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"])
+        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"]),
+        .library(name: "Vocabulary", targets: ["Vocabulary"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
@@ -104,6 +105,7 @@ let package = Package(
             name: "TranscriptionService",
             dependencies: [
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -114,6 +116,7 @@ let package = Package(
                 "TranscriptionService",
                 "BiscottiTestSupport",
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -126,6 +129,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 "Calendar",
                 "MeetingCatalog",
                 "MeetingDetection",
@@ -153,6 +157,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -247,7 +252,8 @@ let package = Package(
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
-                "TranscriptionService"
+                "TranscriptionService",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -264,6 +270,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -359,7 +366,8 @@ let package = Package(
                 "LocalLLM",
                 "ModelManagementUI",
                 "Permissions",
-                "SummaryPromptUI"
+                "SummaryPromptUI",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -378,6 +386,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -555,6 +564,17 @@ let package = Package(
             dependencies: [
                 "SummaryPromptUI"
             ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "Vocabulary",
+            dependencies: ["DataStore"],
+            resources: [.process("Resources")],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "VocabularyTests",
+            dependencies: ["Vocabulary", "DataStore"],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

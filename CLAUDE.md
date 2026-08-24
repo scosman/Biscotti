@@ -63,6 +63,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 - **`specs/projects/manual_test_app/`** — a **planned** future project: a manual-test harness app (one tab per library, interactive pass/fail scripts saved to the repo) for hardware/system things unit tests can't cover. Overview only so far; not built.
 - **`specs/projects/graduate_llm_package/`** — the spec project that graduated `experiments/llm` → `Packages/LocalLLM`, replaced the pipe transport with real NSXPC (`BiscottiLLM.xpc`), and added the `Local LLM` ManualTestApp tab.
 - **`specs/projects/llm_features/`** — the spec project that built the app-level AI features: `Intelligence` module (summarization + speaker-name inference), wired into `AppCore`, `MeetingDetailUI` (Summary tab, speaker names, mapping sheet), and `SettingsUI` (AI Enhancements section with model download).
+- **`specs/projects/custom_vocabulary/`** — the spec project that built custom vocabulary (Project 14): the `Vocabulary` module (assembly, extraction, bundled common-word list), `TranscriptionService` wiring, Settings section (toggles + term editor sheet), and the re-transcribe alert on association change.
 - **`.specs_skill_state/current_project.md`** — which spec project is active (git-ignored, per-worktree).
 
 ---
@@ -76,7 +77,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
 - **Bundle ID is locked:** `net.scosman.biscotti`. Do not change it (TCC grants persist against it). Signing/notarization are deferred to Project 9.
-- **Custom vocabulary is blocked on an upstream SDK bug.** WhisperKit's `promptTokens` API silently blanks the entire transcript for certain term combinations (both turbo and non-turbo models). The AI test for custom vocab is disabled. Do not start product-side custom-vocab work (Project 8's `Vocabulary` module) until the SDK issue is resolved. Tracked: [argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489), [argmax-oss-swift#428](https://github.com/argmaxinc/argmax-oss-swift/pull/428).
+- **Custom vocabulary is built.** Project 14 (Custom Vocabularies) is complete: the `Vocabulary` module (assembly, extraction, bundled word list), `TranscriptionService` wiring, Settings section (toggles + term editor), and the re-transcribe alert are all delivered. The `promptTokens` blanking bug ([argmax-oss-swift#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)) was fixed in argmax-oss-swift v1.1.0 ([PR #514](https://github.com/argmaxinc/argmax-oss-swift/pull/514)). The `customVocabWordMatch` AI test is re-enabled and passes on hardware (2026-08-23). `VocabularyFormatter` preserves original term casing (the v1.0.0 lowercasing workaround was removed -- on-hardware testing confirmed it degraded accuracy).
 
 ---
 

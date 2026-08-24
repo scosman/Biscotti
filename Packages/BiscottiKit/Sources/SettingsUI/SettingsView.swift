@@ -22,6 +22,7 @@ public struct SettingsView: View {
     /// can present the sheet.
     @State var showConnectCalendar = false
     @State private var summaryPromptModel: SummaryPromptModel?
+    @State var showVocabularyListSheet = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -32,6 +33,7 @@ public struct SettingsView: View {
     /// reorders the rendered headers. Debug is appended in debug builds.
     static let sectionTitles = [
         "General",
+        "Custom Vocabulary",
         "Permissions",
         "Notifications",
         "AI Enhancements",
@@ -57,6 +59,7 @@ public struct SettingsView: View {
 
                 Form {
                     generalSection
+                    customVocabularySection
                     permissionsSection
                     notificationsSection
                     aiEnhancementsSection
@@ -143,7 +146,7 @@ public struct SettingsView: View {
     // MARK: - Permissions section
 
     private var permissionsSection: some View {
-        Section(Self.sectionTitles[1]) {
+        Section(Self.sectionTitles[2]) {
             permissionRow(
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
@@ -259,7 +262,7 @@ private extension SettingsView {
             aiLanguageModelRow
         } header: {
             HStack {
-                Text(Self.sectionTitles[3])
+                Text(Self.sectionTitles[4])
                 Spacer()
                 Text(Self.aiEnhancementsHeaderCaption)
                     .font(Tokens.metadataFont)
@@ -367,7 +370,7 @@ private extension SettingsView {
 
 private extension SettingsView {
     var notificationsSection: some View {
-        Section(Self.sectionTitles[2]) {
+        Section(Self.sectionTitles[3]) {
             // Row 1: Monitor for Meetings
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(

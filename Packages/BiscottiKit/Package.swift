@@ -364,7 +364,8 @@ let package = Package(
                 "LocalLLM",
                 "ModelManagementUI",
                 "Permissions",
-                "SummaryPromptUI"
+                "SummaryPromptUI",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),

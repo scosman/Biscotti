@@ -32,7 +32,7 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
   `AppCore.live`, `PreviewAppCore`, and `CoreFixture`. Assert the persisted `vocabularyUsed` matches
   what the engine received. *(functional §4; arch §5.1, §5.4. Depends on Phase 2.)*
 
-- [ ] **Phase 4 — Settings section and editor sheet.**
+- [x] **Phase 4 — Settings section and editor sheet.**
   `SettingsVocabularySection.swift`, `VocabularyListSheet.swift`, the view-model state, actions, and
   `VocabularyTermError` validation; `sectionTitles` insertion at index 1 and the re-index of every
   downstream reference and test. *(functional §5; ui_design §1–2; arch §5.2. Depends on Phase 1.)*

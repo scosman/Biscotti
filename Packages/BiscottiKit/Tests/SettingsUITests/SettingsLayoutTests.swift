@@ -30,4 +30,12 @@ struct SettingsLayoutTests {
                 == "AI runs locally on your Mac."
         )
     }
+
+    /// customVocabularyHeaderCaption is used directly in the header HStack,
+    /// so this assertion verifies the rendered caption text. Remove the
+    /// caption (and this test) when the feature leaves beta.
+    @Test("Custom Vocabulary header caption marks the feature as beta")
+    func customVocabularyHeaderCaption() {
+        #expect(SettingsView.customVocabularyHeaderCaption == "Beta")
+    }
 }

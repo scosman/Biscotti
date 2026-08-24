@@ -764,8 +764,10 @@ struct TranscriptionVocabularyTests {
         let fix = try makeFixture()
         let meetingID = try await fix.createMeetingWithAudio()
 
-        // Add custom vocabulary terms
+        // Add custom vocabulary terms. The master toggle is off by default
+        // while the feature is in beta, so opt in explicitly.
         try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
             settings.customVocabulary = ["Parakeet", "Biscotti"]
         }
 
@@ -783,8 +785,10 @@ struct TranscriptionVocabularyTests {
         let fix = try makeFixture()
         let meetingID = try await fix.createMeetingWithAudio()
 
-        // Add custom vocabulary terms
+        // Add custom vocabulary terms. The master toggle is off by default
+        // while the feature is in beta, so opt in explicitly.
         try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
             settings.customVocabulary = ["Alpha", "Bravo", "Charlie"]
         }
 
@@ -853,6 +857,7 @@ struct TranscriptionVocabularyTests {
         // Add terms and set a distinct canned result for the re-transcribe
         // (different ID avoids SwiftData primary-key collision).
         try await fix.store.updateSettings { settings in
+            settings.customVocabularyEnabled = true
             settings.customVocabulary = ["NewTerm"]
         }
         fix.fakeEngine.backing.cannedResult = try TranscriptResult(

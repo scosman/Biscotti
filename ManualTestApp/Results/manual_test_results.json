@@ -186,8 +186,9 @@
     "stepID" : "tx_ai_test_passed"
   },
   "tx_clear_cache" : {
-    "status" : "not-run",
-    "stepID" : "tx_clear_cache"
+    "status" : "pass",
+    "stepID" : "tx_clear_cache",
+    "timestamp" : "2026-08-24T14:45:27Z"
   },
   "tx_model_disk" : {
     "status" : "not-run",

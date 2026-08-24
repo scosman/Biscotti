@@ -195,10 +195,26 @@ public struct AppSettingsData: Sendable, Equatable {
     /// User's custom meeting-summary instruction prompt. Empty means "use the
     /// built-in default" (so the shipped default can evolve for non-customizers).
     public var summaryPrompt: String
-    /// Master switch for custom vocabulary. When false no prompt is sent at all.
-    public var customVocabularyEnabled: Bool
+    /// Master switch for custom vocabulary, as stored. `nil` means the user has
+    /// never touched the toggle. Carried through unresolved so a full
+    /// read-modify-write of settings (see `updateSettings`) cannot silently
+    /// bake in today's default. Read `customVocabularyResolved` instead.
+    public var customVocabularyEnabled: Bool?
     /// Whether per-meeting terms are derived from the associated calendar event.
     public var calendarVocabularyEnabled: Bool
+
+    /// The shipped default for `customVocabularyEnabled` when the user has made
+    /// no choice. Custom vocabulary is in beta, so it starts off. Flipping this
+    /// to `true` turns the feature on for everyone who never touched the
+    /// toggle, without a data migration and without overriding anyone who
+    /// deliberately turned it off.
+    public static let customVocabularyDefault = false
+
+    /// Whether custom vocabulary is on, resolving "never chosen" to the
+    /// shipped default. This is the only value callers should branch on.
+    public var customVocabularyResolved: Bool {
+        customVocabularyEnabled ?? Self.customVocabularyDefault
+    }
 
     public init(
         customVocabulary: [String] = [],
@@ -214,7 +230,7 @@ public struct AppSettingsData: Sendable, Equatable {
         aiAnalysisEnabled: Bool = true,
         selectedModelID: String = "",
         summaryPrompt: String = "",
-        customVocabularyEnabled: Bool = true,
+        customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true
     ) {
         self.customVocabulary = customVocabulary

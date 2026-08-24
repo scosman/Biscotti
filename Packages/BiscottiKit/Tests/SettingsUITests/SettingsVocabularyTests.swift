@@ -20,26 +20,26 @@ import Vocabulary
 struct SettingsVocabularyTests {
     // MARK: - Toggle persistence
 
-    @Test("customVocabularyEnabled defaults to true and persists toggle")
+    @Test("customVocabularyEnabled defaults to off (beta) and persists toggle")
     func customVocabularyEnabledDefaultAndPersist() async throws {
         let fixture = try makeCoreFixture()
         defer { fixture.cleanup() }
 
         let viewModel = SettingsViewModel(core: fixture.core)
         await viewModel.load()
-        #expect(viewModel.customVocabularyEnabled == true)
-
-        await viewModel.setCustomVocabularyEnabled(false)
         #expect(viewModel.customVocabularyEnabled == false)
-
-        let settings = try await fixture.store.settings()
-        #expect(settings.customVocabularyEnabled == false)
 
         await viewModel.setCustomVocabularyEnabled(true)
         #expect(viewModel.customVocabularyEnabled == true)
 
+        let settings = try await fixture.store.settings()
+        #expect(settings.customVocabularyEnabled == true)
+
+        await viewModel.setCustomVocabularyEnabled(false)
+        #expect(viewModel.customVocabularyEnabled == false)
+
         let settings2 = try await fixture.store.settings()
-        #expect(settings2.customVocabularyEnabled == true)
+        #expect(settings2.customVocabularyEnabled == false)
     }
 
     @Test("calendarVocabularyEnabled defaults to true and persists toggle")
@@ -295,12 +295,12 @@ struct SettingsVocabularyTests {
 
         let viewModel = SettingsViewModel(core: core)
         await viewModel.load()
-        #expect(viewModel.customVocabularyEnabled == true)
+        #expect(viewModel.customVocabularyEnabled == false)
 
         corruptVocabStore(storeDir)
 
-        await viewModel.setCustomVocabularyEnabled(false)
-        #expect(viewModel.customVocabularyEnabled == true)
+        await viewModel.setCustomVocabularyEnabled(true)
+        #expect(viewModel.customVocabularyEnabled == false)
     }
 
     @Test("setCalendarVocabularyEnabled reverts on store failure")

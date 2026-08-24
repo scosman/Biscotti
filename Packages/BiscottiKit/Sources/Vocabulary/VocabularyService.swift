@@ -25,7 +25,7 @@ public final class VocabularyService: Sendable {
             return []
         }
 
-        guard settings.customVocabularyEnabled else { return [] }
+        guard settings.customVocabularyResolved else { return [] }
 
         let calendarContext: CalendarContextData? = if settings.calendarVocabularyEnabled {
             try? await store.calendarContext(meetingID: meetingID)

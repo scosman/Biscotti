@@ -57,7 +57,13 @@ import SwiftData
     public var summaryPrompt: String = ""
 
     /// Master switch for custom vocabulary. When false no prompt is sent at all.
-    public var customVocabularyEnabled: Bool = true
+    ///
+    /// `nil` means the user has never touched the toggle, so the shipped
+    /// default still applies. Resolve through
+    /// `AppSettingsData.customVocabularyResolved` rather than reading this
+    /// directly — that keeps the default in one place, so it can be flipped
+    /// for every non-customizer without a migration. Off while in beta.
+    public var customVocabularyEnabled: Bool?
 
     /// Whether per-meeting terms are derived from the associated calendar event.
     public var calendarVocabularyEnabled: Bool = true
@@ -100,7 +106,7 @@ import SwiftData
         aiAnalysisEnabled: Bool = true,
         selectedModelID: String = "",
         summaryPrompt: String = "",
-        customVocabularyEnabled: Bool = true,
+        customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()

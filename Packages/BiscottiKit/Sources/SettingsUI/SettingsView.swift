@@ -43,6 +43,10 @@ public struct SettingsView: View {
     /// Muted caption trailing the AI Enhancements header.
     static let aiEnhancementsHeaderCaption = "AI runs locally on your Mac."
 
+    /// Muted caption trailing the Custom Vocabulary header, marking the
+    /// feature as in beta. Same treatment as `aiEnhancementsHeaderCaption`.
+    static let customVocabularyHeaderCaption = "Beta"
+
     /// Page-level heading, styled like content-page serif titles
     /// (EventPreview, MeetingDetail).
     static let pageTitle = "Settings"

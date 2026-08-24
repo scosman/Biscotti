@@ -43,7 +43,9 @@ the vocabulary fields would make them the one inconsistent setting. So:
 
 ```swift
 /// Master switch for custom vocabulary. When false no prompt is sent at all.
-public var customVocabularyEnabled: Bool = true
+/// `nil` means the user has never chosen; resolve via
+/// `AppSettingsData.customVocabularyResolved`. See functional_spec.md §5.0.
+public var customVocabularyEnabled: Bool?
 /// Whether per-meeting terms are derived from the associated calendar event.
 public var calendarVocabularyEnabled: Bool = true
 ```
@@ -154,7 +156,7 @@ public final class VocabularyService: Sendable {
 Body:
 
 1. `guard let settings = try? await store.settings() else { return [] }`
-2. `guard settings.customVocabularyEnabled else { return [] }` — short-circuits before any I/O.
+2. `guard settings.customVocabularyResolved else { return [] }` — short-circuits before any I/O.
 3. `let context = settings.calendarVocabularyEnabled ? try? await store.calendarContext(meetingID:) : nil`
 4. Build `VocabularyInputs` from `settings` + `context`.
 5. `return VocabularyAssembler.assemble(inputs, uncommon: CommonWordList.uncommonFilter(logger:))`
@@ -404,7 +406,7 @@ private func shouldOfferReTranscribe() async -> Bool {
     guard let newest = transcriptVersions.first else { return false }   // sorted desc
     guard audioIsPresent else { return false }
     guard let settings = try? await core.settings(),
-          settings.customVocabularyEnabled,
+          settings.customVocabularyResolved,
           settings.calendarVocabularyEnabled else { return false }
     let recomputed = await vocabulary.effectiveVocabulary(meetingID: meetingID)
     return recomputed != newest.vocabularyUsed

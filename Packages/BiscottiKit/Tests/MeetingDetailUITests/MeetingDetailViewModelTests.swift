@@ -768,8 +768,11 @@ struct MeetingDetailReTranscribeAlertTests {
         )
         try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
 
-        // Turn off calendar vocabulary
+        // Turn off calendar vocabulary. The master toggle must be explicitly
+        // on, or the guard short-circuits there and this stops testing the
+        // calendar-toggle path at all.
         try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
             $0.calendarVocabularyEnabled = false
         }
 
@@ -788,8 +791,11 @@ struct MeetingDetailReTranscribeAlertTests {
 
         let meetingID = try await fix.createMeetingWithAudio()
 
-        // Add custom vocab terms to settings
+        // Add custom vocab terms to settings. The master toggle must be
+        // explicitly on, or the guard short-circuits and the unchanged-
+        // vocabulary comparison below is never reached.
         try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
             $0.customVocabulary = ["Acme"]
         }
 
@@ -819,8 +825,10 @@ struct MeetingDetailReTranscribeAlertTests {
 
         let meetingID = try await fix.createMeetingWithAudio()
 
-        // Settings have custom vocab enabled with terms
+        // Settings have custom vocab enabled with terms. The master toggle is
+        // off by default while the feature is in beta, so opt in explicitly.
         try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
             $0.customVocabulary = ["Kubernetes"]
         }
 

@@ -208,9 +208,10 @@ are nowhere near the cap. The 700-character limit binds before the term count fo
 A new **Custom Vocabulary** section, placed directly after **AI Enhancements** in `SettingsView`.
 
 **Header row**
-- Title: `Custom Vocabulary`
+- Title: `Custom Vocabulary`, with a muted `Beta` caption pinned to the trailing edge of the section
+  header — same treatment as `AI runs locally on your Mac.` on the section above.
 - Subtitle: `Help Biscotti recognize uncommon words you use, like names or technical terms.`
-- Toggle, default **on**. When off, the two rows below are hidden.
+- Toggle, default **off** while the feature is in beta. When off, the two rows below are hidden.
 
 **Row — Vocabulary List** (visible only when the master toggle is on)
 - Title: `Vocabulary List`
@@ -222,8 +223,33 @@ A new **Custom Vocabulary** section, placed directly after **AI Enhancements** i
 - Subtitle: `Pull uncommon words from the event's title, description, and attendee names. English only.`
 - Toggle, default **on**.
 
-Both toggles are new `Bool` fields on `AppSettings` with defaults of `true`. They are additive
-defaulted properties, so SwiftData handles them without a migration stage
+### 5.0 Beta gating and the default
+
+Custom vocabulary ships as **beta, off by default**.
+
+`AppSettings.customVocabularyEnabled` is `Bool?`, not `Bool`. `nil` means *the user has never touched
+the toggle*, and is resolved to the shipped default through
+`AppSettingsData.customVocabularyResolved` — the single place any caller may branch on. The stored
+default is `AppSettingsData.customVocabularyDefault`, currently `false`.
+
+This tri-state exists so the default can be flipped later. With a plain `Bool = false`, the value is
+written into every store on first launch, so changing the default to `true` afterwards would only
+reach fresh installs — everyone who ran the beta would stay opted out. With `nil` preserved, flipping
+`customVocabularyDefault` to `true` turns the feature on for every user who never expressed a
+preference, while still honouring anyone who deliberately switched it off.
+
+Two consequences follow, and both are load-bearing:
+
+- `AppSettingsData` carries the **unresolved** `Bool?`. `DataStore.updateSettings` does a full
+  read-modify-write of every settings field, so a resolved DTO would bake today's default into the
+  store on any unrelated settings change and silently defeat the mechanism.
+- Callers must not read `customVocabularyEnabled` directly to decide behaviour. Making the field
+  optional is what forces this at the type level.
+
+`calendarVocabularyEnabled` stays a plain `Bool` defaulting to `true` — it is a sub-toggle only
+reachable once the master switch is on, so it needs no tri-state.
+
+Both are additive properties, so SwiftData handles them without a migration stage
 (`DataStoreMigrationPlan` stays V1-only).
 
 ### 5.1 Vocabulary list editor (sheet)
@@ -310,7 +336,7 @@ existing transcript was produced without that event's words. Offer a re-run.
 
 | Setting | Storage | Default |
 |---|---|---|
-| Custom Vocabulary enabled | `AppSettings` (new `Bool`) | `true` |
+| Custom Vocabulary enabled | `AppSettings` (new `Bool?`) | `nil` → resolves to `false` (beta, §5.0) |
 | Add Words from Calendar Events | `AppSettings` (new `Bool`) | `true` |
 | User term list | `AppSettings.customVocabulary` (exists) | empty |
 
@@ -327,7 +353,8 @@ token length (3), max user-list contribution (12), max effective terms (40), max
   requirement, not a preference.
 - **Language:** the uncommon-word method is English-only, and the Settings copy says so. Names and
   company names are language-agnostic.
-- **Schema:** additive defaulted `AppSettings` fields only. No migration stage, no V2 schema.
+- **Schema:** additive `AppSettings` fields only. No migration stage, no V2 schema.
+  `customVocabularyEnabled` is deliberately optional — see §5.0.
 - **Package boundary:** all new logic lives in `Vocabulary` (a BiscottiKit module, per
   `specs/architecture.md` component 13). `Packages/Transcription` is not modified by this project's
   phases (a prerequisite bump landed in its own earlier commit), so the manual-test staleness rule is

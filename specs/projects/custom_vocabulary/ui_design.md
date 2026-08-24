@@ -15,8 +15,8 @@ Placed directly after **AI Enhancements**, before **Calendars**.
 ┌─ AI Enhancements ─────────────────────────────────────────────┐
 │ … existing rows …                                               │
 └─────────────────────────────────────────────────────────────────┘
-┌─ Custom Vocabulary ────────────────────────────────────────────┐
-│ ☑ Custom Vocabulary                                             │
+┌─ Custom Vocabulary ────────────────────────────────────  Beta ─┐
+│ ☐ Custom Vocabulary                                             │
 │   Help Biscotti recognize uncommon words you use, like names    │
 │   or technical terms.                                           │
 │                                                                 │
@@ -30,7 +30,11 @@ Placed directly after **AI Enhancements**, before **Calendars**.
 ┌─ Calendars ────────────────────────────────────────────────────┐
 ```
 
-**Structure.** A `Section("Custom Vocabulary")` in the existing grouped `Form`, with three rows.
+**Structure.** A `Section` in the existing grouped `Form`, with three rows and a custom `header:`
+closure — an `HStack` of the title, a `Spacer`, and a muted `Beta` caption, mirroring the
+`AI runs locally on your Mac.` caption on the AI Enhancements header. The master toggle is off by
+default while the feature is in beta (see `functional_spec.md` §5.0), so the two rows below it are
+hidden until the user opts in.
 
 - **Row 1 — master toggle.** `Toggle` + a `Tokens.metadataFont` / `Tokens.secondaryText` subtitle
   beneath, wrapped in a `VStack(alignment: .leading, spacing: Tokens.spacingXS)`. This is exactly the

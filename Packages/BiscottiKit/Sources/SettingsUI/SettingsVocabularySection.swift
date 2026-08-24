@@ -5,7 +5,7 @@ import SwiftUI
 
 extension SettingsView {
     var customVocabularySection: some View {
-        Section(Self.sectionTitles[4]) {
+        Section {
             // Row 1: Master toggle
             VStack(alignment: .leading, spacing: Tokens.spacingXS) {
                 Toggle(
@@ -36,6 +36,14 @@ extension SettingsView {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
                 }
+            }
+        } header: {
+            HStack {
+                Text(Self.sectionTitles[4])
+                Spacer()
+                Text(Self.customVocabularyHeaderCaption)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
             }
         }
         .sheet(isPresented: $showVocabularyListSheet) {

@@ -93,8 +93,10 @@ public final class SettingsViewModel {
 
     // MARK: - Custom Vocabulary
 
-    /// Master switch for custom vocabulary biasing.
-    public private(set) var customVocabularyEnabled: Bool = true
+    /// Master switch for custom vocabulary biasing. Seeded from the shipped
+    /// default so the toggle does not flash "on" before `load()` resolves it.
+    public private(set) var customVocabularyEnabled: Bool =
+        AppSettingsData.customVocabularyDefault
 
     /// Whether calendar-derived terms are included.
     public private(set) var calendarVocabularyEnabled: Bool = true
@@ -381,7 +383,7 @@ public final class SettingsViewModel {
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
             aiAnalysisEnabled = settings.aiAnalysisEnabled
-            customVocabularyEnabled = settings.customVocabularyEnabled
+            customVocabularyEnabled = settings.customVocabularyResolved
             calendarVocabularyEnabled = settings.calendarVocabularyEnabled
             vocabularyTerms = settings.customVocabulary
         } catch {

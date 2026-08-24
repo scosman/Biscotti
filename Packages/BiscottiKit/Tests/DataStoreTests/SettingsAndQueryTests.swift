@@ -91,11 +91,38 @@ struct SettingsTests {
         #expect(result.enabledCalendarIDs == Set(["cal1", "cal2"]))
     }
 
-    @Test("customVocabularyEnabled defaults to true")
+    @Test("customVocabularyEnabled starts unset and resolves to off (beta)")
     func customVocabularyEnabledDefault() async throws {
         let store = try makeStore()
         let result = try await store.settings()
-        #expect(result.customVocabularyEnabled == true)
+        // Unset, not false: the stored tri-state must stay distinguishable
+        // from a deliberate opt-out so the shipped default can be flipped.
+        #expect(result.customVocabularyEnabled == nil)
+        #expect(result.customVocabularyResolved == false)
+    }
+
+    @Test("An unrelated settings write preserves the unset vocabulary toggle")
+    func customVocabularyEnabledSurvivesUnrelatedWrite() async throws {
+        let store = try makeStore()
+
+        // updateSettings does a full read-modify-write of every field. If the
+        // DTO carried a resolved Bool, this would bake today's default into
+        // the store and make the eventual default flip a no-op.
+        try await store.updateSettings { $0.launchAtLogin = true }
+
+        let result = try await store.settings()
+        #expect(result.launchAtLogin == true)
+        #expect(result.customVocabularyEnabled == nil)
+    }
+
+    @Test("Explicitly choosing off is distinguishable from never choosing")
+    func customVocabularyEnabledExplicitOffIsRecorded() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.customVocabularyEnabled = false }
+
+        let result = try await store.settings()
+        #expect(result.customVocabularyEnabled == false)
+        #expect(result.customVocabularyResolved == false)
     }
 
     @Test("calendarVocabularyEnabled defaults to true")

@@ -1058,7 +1058,7 @@ extension MeetingDetailViewModel {
         guard let newest = versions.first else { return false }
         guard detail?.hasAudio == true else { return false }
         guard let settings = try? await core.store.settings(),
-              settings.customVocabularyEnabled,
+              settings.customVocabularyResolved,
               settings.calendarVocabularyEnabled
         else { return false }
         let recomputed = await vocabulary.effectiveVocabulary(

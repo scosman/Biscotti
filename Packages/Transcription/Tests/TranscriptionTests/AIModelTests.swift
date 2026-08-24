@@ -40,13 +40,12 @@ private enum AudioDurationError: Error, CustomStringConvertible {
 
 // MARK: - AI model tests
 
-// TODO: These tests rely on WhisperKit's inline auto-download during processAudio,
-// which doesn't cleanly recover from a partial/.incomplete download (caused a
-// first-run failure on hardware). Ideally the test should ensure a clean model
-// download itself (e.g. via ensureModelsDownloaded or clearing partials) before
-// running inference.
-
-@Suite("AI model tests")
+/// Serialized: both tests drive a WhisperKit model download into the same
+/// `ModelStorage.downloadBase`. Running them in parallel races two writers on the
+/// same `<file>.<sha>.incomplete` path in the Hub cache, which strands a stale
+/// `.metadata` entry with no payload and wedges every later run ("… couldn't be
+/// moved to whisper-large-v3").
+@Suite("AI model tests", .serialized)
 struct AIModelTestSuite {
     @Test(
         "Diarization + transcript accuracy (3-speaker clip)",

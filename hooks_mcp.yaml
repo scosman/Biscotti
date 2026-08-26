@@ -61,6 +61,11 @@ actions:
   # package. Output is tailed to stay within the agent context window (the first
   # build downloads the verbose LlamaSwift XCFramework); `pipefail` preserves the
   # exit code so failures still surface as errors.
+  - name: "bench"
+    description: "Non-gating: search benchmarks + raw-SQL comparison (SLOW ~12 min; prints report to stdout)"
+    command: "bash -c 'set -o pipefail; make bench 2>&1 | tail -n 400'"
+    timeout: 900
+
   - name: "build_llm"
     description: "Build the LocalLLM SPM package (Packages/LocalLLM)"
     command: "bash -c 'set -o pipefail; swift build --package-path Packages/LocalLLM 2>&1 | tail -n 400'"

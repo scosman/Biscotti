@@ -75,12 +75,32 @@ The broad-query bottleneck was an **N+1 assembly pattern**: `assembleHits`
 called `meeting(id:)` once per scored meeting -- 5000 separate SQLite queries
 plus 5000 object materializations (~1,482 ms of the 1,912 ms total).
 
-### After assembleHits optimization (date-projection path)
+### Shipped: date-projection assembly (commit `bc2372c`)
 
-Post-optimization numbers pending -- run `make bench` to measure. The
-date-projection path eliminates the N+1 assembly pattern for broad queries;
-the ~406 ms transcript SQL scan is the expected floor (no further gain without
-FTS5). The rare-term path is unchanged (it takes the direct-fetch branch).
+Measured at 5000 meetings, median of 3 warm runs:
+
+| Query | Cold ms | **Warm ms** | Hits |
+|---|---|---|---|
+| common "the" | 1,992.7 | **450.0** | 100 |
+| rare "xyzorphan" | 133.8 | **130.2** | 2 |
+| multi "meeting project" | 951.9 | **944.5** | 100 |
+| multi + rare | 590.6 | **595.9** | 100 |
+| fetch+fault baseline (no scoring) | 38,858.8 | 38,765.0 | — |
+
+Broad queries went from ~1,912 ms to **450 ms** (4.2x); the rare-term path is
+unchanged at ~130 ms, as expected since it takes the direct-fetch branch.
+Against the full fetch+fault baseline the rare term is **298x faster**.
+
+**Multi-term queries are now the worst case** (944 ms for two common terms).
+Each term runs its own independent `LIKE '%term%'` pass over all 500,000
+segments, so scan cost is additive in the number of terms. "multi + rare" is
+cheaper (596 ms) because the rare term scans just as hard but returns 2 rows
+instead of thousands — the difference is row marshalling, not scanning.
+*(That last sentence is an interpretation of the shape, not a separately
+measured quantity.)*
+
+The transcript `LIKE` scan is the floor — roughly 400 ms per term at this tier.
+No further gain is available without a real index (FTS5), which is deferred.
 
 ### Raw SQL reference (segment scan only)
 
@@ -169,8 +189,11 @@ WHERE  s.ZTEXT LIKE '%term%'
 
 Both were the original candidates for a "proper" index. Deferred because:
 
-- At 5000 meetings the SQL path is **137 ms warm**, comfortably inside the
-  existing 300 ms search debounce (`AppCore.setMeetingsQuery`).
+- At 5000 meetings a single-term search is **130--450 ms warm**, which is fast
+  enough to feel responsive. Note that only the rare-term case fits inside the
+  300 ms search debounce (`AppCore.setMeetingsQuery`); broad and multi-term
+  queries exceed it, so a search can still be in flight when the next one is
+  scheduled. That argues for serializing searches, not for adding an index.
 - Both are **token-based**, so they match whole words and prefixes but not
   infixes — adopting either **changes what search finds** relative to today's
   substring matching. That is a product decision, not just a performance one.

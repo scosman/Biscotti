@@ -156,7 +156,13 @@ struct SearchNotesTests {
 
     @Test("Notes and transcript can both match, scoring additively")
     func notesAndTranscriptBothMatch() async throws {
-        let store = try makeStore()
+        // Transcript search uses raw SQL, which requires an on-disk store.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SearchTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
         let meetingID = try await store.createMeeting(title: "Planning")
         try await store.setNotes("roadmap planning for Q3", for: meetingID)
 

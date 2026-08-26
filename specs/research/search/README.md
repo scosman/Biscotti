@@ -106,12 +106,19 @@ WHERE  s.ZTEXT LIKE '%term%'
 
 ## Risks and mitigations
 
-1. **Entity numbers in FK column names.** The `7` and `4` in `Z7SEGMENTS` /
-   `Z4TRANSCRIPTS` are Core Data entity indices and **can shift when the model
-   changes** (adding or removing entities). Failure is **silent** — zero results,
-   no error. *Mitigate:* resolve column names at runtime via `PRAGMA table_info`,
-   assert the expected schema shape in a test, and keep a differential test
-   comparing SQL results against the Swift implementation.
+1. **Entity numbers in FK column names.** The numeric prefixes in FK column names
+   like `Z7SEGMENTS` / `Z4TRANSCRIPTS` are Core Data entity indices (`Z_ENT`)
+   that **can shift when the model changes** (adding or removing entities).
+   *Resolved:* FK column names are now derived at runtime from Core Data's own
+   `Z_PRIMARYKEY` registry and verified against `pragma_table_info` before use
+   (`ResolvedSearchSchema` in `SQLiteSegmentSearch.swift`). The naming rule is:
+   FK on child = `Z` + parent's `Z_ENT` + parent's relationship name uppercased.
+   If resolution fails — missing entity, unexpected inheritance, or a derived
+   column absent from the store — the segment contribution is dropped and the
+   error is logged (graceful degradation). A gating CI test
+   (`SchemaAssertionTests`) asserts that resolution succeeds on a freshly
+   generated store, and a differential test compares SQL results against the
+   Swift implementation.
 2. **The store format is private and undocumented.** Apple does not support
    reading it directly. In practice it is stable, but treat it as read-only —
    never write through this path.

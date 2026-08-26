@@ -452,7 +452,13 @@ struct SearchHitsTests {
 
     @Test("searchHits matches transcript text with score 1")
     func searchHitsTranscript() async throws {
-        let store = try makeStore()
+        // Transcript search uses raw SQL, which requires an on-disk store.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SearchHitsTranscript-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
         let meetingID = try await store.createMeeting(title: "Meeting")
 
         let seg = TranscriptSegment(

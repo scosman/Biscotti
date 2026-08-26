@@ -354,6 +354,7 @@ public struct TagData: Sendable, Identifiable, Equatable, Hashable {
 /// Which field a search term matched in.
 public enum SearchField: Sendable, Equatable {
     case title
+    case summary
     case people
     case transcript
     case notes
@@ -689,10 +690,13 @@ public extension DataStore {
         try save()
     }
 
-    // MARK: - Search (with transcript text)
+    // MARK: - Search (hybrid: SwiftData predicates + raw SQL for segments)
 
-    /// Weighted search across meeting titles, participant names, and transcript text.
-    /// Title matches score 3 per term, people matches score 2, transcript matches score 1.
+    /// Weighted search across meeting fields. Uses SwiftData `#Predicate` for
+    /// title, summary, notes, people, and tags; uses raw SQL against the store
+    /// file for transcript segments (288x faster than faulting segment objects).
+    ///
+    /// Weights per term: title 3, tags 3, summary 2, people 2, transcript 1, notes 1.
     /// Results sorted by score descending (ties broken by effective date descending).
     func searchHits(_ query: String, limit: Int) throws -> [SearchHit] {
         let terms = query.lowercased()
@@ -702,10 +706,149 @@ public extension DataStore {
 
         guard !terms.isEmpty else { return [] }
 
-        let descriptor = FetchDescriptor<Meeting>()
-        let all = try context.fetch(descriptor)
+        // Per-meeting accumulators, keyed by meeting ID.
+        var scores: [UUID: Int] = [:]
+        var fields: [UUID: Set<SearchField>] = [:]
 
-        var hits: [SearchHit] = all.compactMap { scoreMeeting($0, terms: terms) }
+        // Open transcript search connection once for all terms.
+        let txConnection = openTranscriptSearchConnection(storeFileURL: storeFileURL)
+
+        for term in terms {
+            try accumulateScalarMatches(term: term, scores: &scores, fields: &fields)
+            try accumulateRelationshipMatches(term: term, scores: &scores, fields: &fields)
+            accumulateTranscriptMatches(
+                term: term, scores: &scores, fields: &fields,
+                database: txConnection?.database, schema: txConnection?.schema
+            )
+        }
+
+        guard !scores.isEmpty else { return [] }
+        return try assembleHits(scores: scores, fields: fields, limit: limit)
+    }
+
+    // MARK: - Search helpers (per-field accumulation)
+
+    /// Accumulates title, summary, and notes matches for a single term.
+    private func accumulateScalarMatches(
+        term: String,
+        scores: inout [UUID: Int],
+        fields: inout [UUID: Set<SearchField>]
+    ) throws {
+        // Title (weight 3) — predicate pushes the filter into SQLite.
+        let titleDescriptor = FetchDescriptor<Meeting>(
+            predicate: #Predicate { $0.title.localizedStandardContains(term) }
+        )
+        for match in try context.fetch(titleDescriptor) {
+            scores[match.id, default: 0] += 3
+            fields[match.id, default: []].insert(.title)
+        }
+
+        // Summary (weight 2)
+        let summaryDescriptor = FetchDescriptor<Meeting>(
+            predicate: #Predicate { $0.summary.localizedStandardContains(term) }
+        )
+        for match in try context.fetch(summaryDescriptor) {
+            scores[match.id, default: 0] += 2
+            fields[match.id, default: []].insert(.summary)
+        }
+
+        // Notes (weight 1)
+        let notesDescriptor = FetchDescriptor<Meeting>(
+            predicate: #Predicate { $0.notes.localizedStandardContains(term) }
+        )
+        for match in try context.fetch(notesDescriptor) {
+            scores[match.id, default: 0] += 1
+            fields[match.id, default: []].insert(.notes)
+        }
+    }
+
+    /// Accumulates people and tag matches for a single term via relationship inverses.
+    private func accumulateRelationshipMatches(
+        term: String,
+        scores: inout [UUID: Int],
+        fields: inout [UUID: Set<SearchField>]
+    ) throws {
+        // People (weight 2) — search Person, traverse declared inverse.
+        // Deduplicates per meeting: a meeting gets +2 once per term even
+        // if multiple people match.
+        let peopleDescriptor = FetchDescriptor<Person>(
+            predicate: #Predicate { $0.name.localizedStandardContains(term) }
+        )
+        var peopleMeetingIDs: Set<UUID> = []
+        for person in try context.fetch(peopleDescriptor) {
+            for mtg in person.meetings {
+                peopleMeetingIDs.insert(mtg.id)
+            }
+            for mtg in person.organizedMeetings {
+                peopleMeetingIDs.insert(mtg.id)
+            }
+        }
+        for meetingID in peopleMeetingIDs {
+            scores[meetingID, default: 0] += 2
+            fields[meetingID, default: []].insert(.people)
+        }
+
+        // Tags (weight 3) — search Tag, traverse declared inverse.
+        let tagsDescriptor = FetchDescriptor<Tag>(
+            predicate: #Predicate { $0.name.localizedStandardContains(term) }
+        )
+        var tagMeetingIDs: Set<UUID> = []
+        for tag in try context.fetch(tagsDescriptor) {
+            for mtg in tag.meetings {
+                tagMeetingIDs.insert(mtg.id)
+            }
+        }
+        for meetingID in tagMeetingIDs {
+            scores[meetingID, default: 0] += 3
+            fields[meetingID, default: []].insert(.tags)
+        }
+    }
+
+    /// Accumulates transcript-segment matches for a single term via raw SQL.
+    /// Uses a pre-opened connection (nil for in-memory stores or resolution failure).
+    private func accumulateTranscriptMatches(
+        term: String,
+        scores: inout [UUID: Int],
+        fields: inout [UUID: Set<SearchField>],
+        database: ReadOnlySQLiteDB?,
+        schema: ResolvedSearchSchema?
+    ) {
+        guard let database, let schema,
+              let txIDs = try? database.searchSegments(term: term, schema: schema)
+        else { return }
+        for meetingID in txIDs {
+            scores[meetingID, default: 0] += 1
+            fields[meetingID, default: []].insert(.transcript)
+        }
+    }
+
+    /// Fetches full Meeting rows for all scorers, sorts by (score desc, date desc),
+    /// and returns the top `limit`. The scored set is already small (only matches).
+    private func assembleHits(
+        scores: [UUID: Int],
+        fields: [UUID: Set<SearchField>],
+        limit: Int
+    ) throws -> [SearchHit] {
+        var meetingsByID: [UUID: Meeting] = [:]
+        for meetingID in scores.keys {
+            if let found = try meeting(id: meetingID) {
+                meetingsByID[meetingID] = found
+            }
+        }
+
+        var hits: [SearchHit] = scores.keys.compactMap { meetingID in
+            guard let mtg = meetingsByID[meetingID],
+                  let score = scores[meetingID],
+                  let matchedFields = fields[meetingID]
+            else { return nil }
+            return SearchHit(
+                id: mtg.id,
+                title: mtg.title,
+                date: mtg.startDate ?? mtg.createdAt,
+                score: score,
+                matchedFields: matchedFields.sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+            )
+        }
 
         hits.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
@@ -713,60 +856,6 @@ public extension DataStore {
         }
 
         return Array(hits.prefix(limit))
-    }
-
-    /// Scores a single meeting against the search terms. Returns nil if no match.
-    private func scoreMeeting(_ meeting: Meeting, terms: [String]) -> SearchHit? {
-        var score = 0
-        var fields: Set<SearchField> = []
-        let titleLower = meeting.title.lowercased()
-        let notesLower = meeting.notes.lowercased()
-
-        for term in terms {
-            if titleLower.localizedStandardContains(term) {
-                score += 3
-                fields.insert(.title)
-            }
-            let participantMatch = meeting.participants.contains {
-                $0.name.lowercased().localizedStandardContains(term)
-            }
-            let organizerMatch = meeting.organizer.map {
-                $0.name.lowercased().localizedStandardContains(term)
-            } ?? false
-            // Score people once per term (organizer is often also a participant).
-            if participantMatch || organizerMatch {
-                score += 2
-                fields.insert(.people)
-            }
-            if let prefID = meeting.preferredTranscriptID,
-               let txRecord = meeting.transcripts.first(where: { $0.id == prefID }),
-               txRecord.segments.contains(where: { $0.text.lowercased().localizedStandardContains(term) })
-            {
-                score += 1
-                fields.insert(.transcript)
-            }
-            // Notes scored at the same weight as transcript (1).
-            if !notesLower.isEmpty, notesLower.localizedStandardContains(term) {
-                score += 1
-                fields.insert(.notes)
-            }
-            // Tags scored at the same weight as title (3).
-            if meeting.tags.contains(where: {
-                $0.name.lowercased().localizedStandardContains(term)
-            }) {
-                score += 3
-                fields.insert(.tags)
-            }
-        }
-
-        guard score > 0 else { return nil }
-        return SearchHit(
-            id: meeting.id,
-            title: meeting.title,
-            date: meeting.startDate ?? meeting.createdAt,
-            score: score,
-            matchedFields: Array(fields).sorted { fieldSortOrder($0) < fieldSortOrder($1) }
-        )
     }
 
     // MARK: - Private Mappers
@@ -818,9 +907,10 @@ public extension DataStore {
         switch field {
         case .title: 0
         case .tags: 1
-        case .people: 2
-        case .transcript: 3
-        case .notes: 4
+        case .summary: 2
+        case .people: 3
+        case .transcript: 4
+        case .notes: 5
         }
     }
 }

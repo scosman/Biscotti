@@ -24,6 +24,10 @@ public actor DataStore {
     private let container: ModelContainer
     let context: ModelContext
 
+    /// The on-disk SQLite file URL, or `nil` for in-memory stores.
+    /// Used by the SQL transcript-segment search path.
+    let storeFileURL: URL?
+
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
     ///   - storage: Where to persist data.
@@ -31,16 +35,20 @@ public actor DataStore {
     public init(storage: Storage, cloudKit: Bool = false) throws {
         let schema = Schema(DataStoreSchemaV1.models)
 
-        let config = switch storage {
+        let config: ModelConfiguration
+        switch storage {
         case let .onDisk(url):
-            ModelConfiguration(
+            let fileURL = url.appending(path: "Biscotti.store")
+            storeFileURL = fileURL
+            config = ModelConfiguration(
                 "Biscotti",
                 schema: schema,
-                url: url.appending(path: "Biscotti.store"),
+                url: fileURL,
                 cloudKitDatabase: cloudKit ? .automatic : .none
             )
         case .inMemory:
-            ModelConfiguration(
+            storeFileURL = nil
+            config = ModelConfiguration(
                 "Biscotti",
                 schema: schema,
                 isStoredInMemoryOnly: true,

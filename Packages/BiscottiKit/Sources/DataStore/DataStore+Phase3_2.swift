@@ -363,7 +363,7 @@ public extension DataStore {
     }
 }
 
-// MARK: - Search
+// MARK: - Search (legacy)
 
 public extension DataStore {
     /// Case-insensitive search across meeting titles and participant names.

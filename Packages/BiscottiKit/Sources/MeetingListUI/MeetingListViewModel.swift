@@ -310,6 +310,7 @@ public final class MeetingListViewModel {
         fields.map { field in
             switch field {
             case .title: "title"
+            case .summary: "summary"
             case .people: "people"
             case .transcript: "transcript"
             case .notes: "notes"

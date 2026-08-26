@@ -1,40 +1,62 @@
 # Search Performance — Validated Findings
 
-**Date:** 2026-08-25 · **Hardware:** Mac16,8 (M4 family), 48 GB RAM, macOS 15.6.1
+**Date:** 2026-08-25 (updated 2026-08-26) · **Hardware:** Mac16,8 (M4 family),
+48 GB RAM, macOS 15.6.1
 
 Answers the question "does Biscotti need a real full-text index (Core Spotlight or
 FTS5), or can the existing store be made fast enough?"
 
-**Answer: no index needed for the foreseeable future.** Querying the SwiftData
-SQLite file directly with SQL is **288× faster** than the current search at 5000
-meetings, with no schema change, no migration, and no data duplication.
+**Answer: no index needed for the foreseeable future.** The hybrid search
+(SwiftData predicates for scalar/relationship fields, raw SQL for transcript
+segments, date-projection sort+truncate for broad queries) handles both rare and
+common terms well at 5000 meetings with no schema change, migration, or data
+duplication.
 
 ---
 
-## The problem with the current search
+## Architecture (shipped)
 
-`DataStore.searchHits(_:limit:)` (`DataStore+ReadModels.swift`) fetches **every**
-`Meeting`, then walks relationships in memory — participants, tags, transcripts,
-and every transcript segment — running `localizedStandardContains` per term.
+`DataStore.searchHits(_:limit:)` uses a three-phase hybrid approach:
 
-The cost is **SwiftData/Core Data faulting**, not string matching. At 5000
-meetings it materializes ~500,000 segment objects, each allocated, registered in
-the context, and enrolled in change tracking. Isolating the two (see
-`fetch+fault` row below) shows string matching is only **2–3%** of the total.
+1. **Scalar predicates** (SwiftData `#Predicate`): title, summary, notes.
+2. **Relationship traversal** (SwiftData): people and tags via declared inverses.
+3. **Transcript SQL** (read-only `sqlite3` connection): `LIKE '%term%'` scan
+   over segment text, joined to preferred transcript + meeting via dynamically
+   resolved FK columns. 288x faster than SwiftData faulting at 5000 meetings.
 
-A **rare** term is the realistic user query (a name, a project) and the worst
-case: it cannot short-circuit, because proving "not present" requires reading
-every segment. A **common** term looks deceptively fast only because
-`contains(where:)` stops at the first match.
+After scoring, **assembly** takes one of two paths:
+
+- **Few matches** (`<= limit`): fetch each `Meeting` individually through
+  SwiftData. Fast because N is small (~30 ms for 100 fetches).
+- **Many matches** (`> limit`): SQL-project `(startDate, createdAt)` for all
+  meetings, sort by (score desc, effective date desc), truncate to `limit`, then
+  fetch only the surviving rows via SwiftData. Titles are **not** projected from
+  SQL -- they come from SwiftData after truncation so displayed data is always
+  fresh and never stale from a second connection.
+
+Result limit: **100** (set in `AppCore.setMeetingsQuery`).
+
+---
+
+## The problem with the original search
+
+The pre-`22fe8ac` implementation fetched **every** `Meeting`, then walked
+relationships in memory -- participants, tags, transcripts, and every transcript
+segment -- running `localizedStandardContains` per term.
+
+The cost was **SwiftData/Core Data faulting**, not string matching. At 5000
+meetings it materialized ~500,000 segment objects, each allocated, registered in
+the context, and enrolled in change tracking. String matching was only **2--3%**
+of the total.
 
 ---
 
 ## Benchmark results
 
-Synthetic data: 5000 words of transcript per meeting (100 segments × 50 words),
+Synthetic data: 5000 words of transcript per meeting (100 segments x 50 words),
 generated on-disk SwiftData stores. Median of 3 warm runs.
 
-### Current implementation (`searchHits`)
+### Original implementation (pre-`22fe8ac`)
 
 | Tier | common "the" | **rare term** | multi-term | fetch+fault only |
 |---|---|---|---|---|
@@ -42,10 +64,25 @@ generated on-disk SwiftData stores. Median of 3 warm runs.
 | 500 | 203.9 ms | **3,829 ms** | 390.2 ms | 3,732 ms |
 | 5000 | 2,267 ms | **39,479 ms** | 3,990 ms | 38,101 ms |
 
-Scaling is linear. Cold ≈ warm at every tier, so caching does not rescue repeat
-searches. Store size at 5000 meetings: **284 MB**, 500,000 segment rows.
+### Hybrid search (commit `22fe8ac`)
 
-### Raw SQL against the same stores
+| Query | 5000 meetings (warm) |
+|---|---|
+| rare term | **137 ms** (288x faster) |
+| common "the" (broad) | ~1,912 ms |
+
+The broad-query bottleneck was an **N+1 assembly pattern**: `assembleHits`
+called `meeting(id:)` once per scored meeting -- 5000 separate SQLite queries
+plus 5000 object materializations (~1,482 ms of the 1,912 ms total).
+
+### After assembleHits optimization (date-projection path)
+
+Post-optimization numbers pending -- run `make bench` to measure. The
+date-projection path eliminates the N+1 assembly pattern for broad queries;
+the ~406 ms transcript SQL scan is the expected floor (no further gain without
+FTS5). The rare-term path is unchanged (it takes the direct-fetch branch).
+
+### Raw SQL reference (segment scan only)
 
 | Tier | rare (warm) | rare (cold) | common "the" (warm) |
 |---|---|---|---|
@@ -53,16 +90,10 @@ searches. Store size at 5000 meetings: **284 MB**, 500,000 segment rows.
 | 500 | **14.3 ms** | 14.6 ms | 39.3 ms |
 | 5000 | **137 ms** | 1,607 ms | 418 ms |
 
-| Tier | rare speedup | common speedup |
-|---|---|---|
-| 50 | 428× | 7.8× |
-| 500 | 268× | 5.2× |
-| 5000 | **288×** | 5.4× |
-
 Correctness was verified against the Swift implementation at every tier
 (`swift=2 sql=2` for the rare term, including the preferred-transcript filter).
 
-A scan-only variant (no joins) covers 500,000 rows / 284 MB in **257 ms** —
+A scan-only variant (no joins) covers 500,000 rows / 284 MB in **257 ms** --
 roughly 1.1 GB/s. The joins are nearly free (137 ms vs 142 ms scan-only). The
 bottleneck was never I/O or string comparison; it was object materialization.
 

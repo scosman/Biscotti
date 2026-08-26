@@ -1,8 +1,8 @@
-import DataStore
 import Foundation
 import SQLite3
 import Testing
 import Transcription
+@testable import DataStore
 
 // MARK: - Schema Assertion (gating — runs in `make test`)
 
@@ -74,6 +74,73 @@ struct SchemaAssertionTests {
         #expect(meetingCols.contains("ZPREFERREDTRANSCRIPTID"), "Meeting table must have ZPREFERREDTRANSCRIPTID")
         #expect(meetingCols.contains("ZSUMMARY"), "Meeting table must have ZSUMMARY")
         #expect(meetingCols.contains("ZNOTES"), "Meeting table must have ZNOTES")
+
+        // Date columns used by meetingDateProjections() for sort+truncate.
+        #expect(meetingCols.contains("ZSTARTDATE"), "Meeting table must have ZSTARTDATE")
+        #expect(meetingCols.contains("ZCREATEDAT"), "Meeting table must have ZCREATEDAT")
+    }
+}
+
+// MARK: - Date Projection Precision (gating — runs in `make test`)
+
+/// Verifies that SQL-projected dates (Core Data's `Double` seconds since
+/// reference date) sort identically to SwiftData's `Date` values.
+/// The projected path uses these dates to sort+truncate before fetching full
+/// rows; a precision mismatch would silently return the wrong top-N.
+@Suite("Date projection precision")
+struct DateProjectionPrecisionTests {
+    @Test("SQL-projected dates produce the same sort order as SwiftData dates")
+    func dateSortOrderMatches() async throws {
+        let dir = makeTempDir()
+        defer { cleanupDir(dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
+
+        // Create meetings with dates spanning sub-second precision.
+        let baseDate = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let meetingCount = 20
+        var expectedOrder: [(id: UUID, date: Date)] = []
+        for idx in 0 ..< meetingCount {
+            // Vary by fractional seconds to test precision.
+            let offset = Double(idx) * 0.123_456_789
+            let startDate = baseDate.addingTimeInterval(offset)
+            let meetingID = try await store.createMeeting(
+                title: "Date test \(idx)", start: startDate
+            )
+            expectedOrder.append((id: meetingID, date: startDate))
+        }
+
+        // SwiftData order: sort by startDate descending.
+        let swiftDataOrder = try await store.read { dataStore in
+            let all = try dataStore.fetchAllMeetings()
+            return all
+                .sorted { ($0.startDate ?? $0.createdAt) > ($1.startDate ?? $1.createdAt) }
+                .map(\.id)
+        }
+
+        // SQL projection order: sort by effectiveDate descending.
+        let dbPath = dir.appending(path: "Biscotti.store").path
+        let database = try TestReadOnlyDB(path: dbPath)
+        let projections = try database.meetingDateProjections()
+
+        var sqlOrder = projections.map { (id: $0.key, date: $0.value.effectiveDate) }
+        sqlOrder.sort { $0.date > $1.date }
+        let sqlIDs = sqlOrder.map(\.id)
+
+        #expect(
+            swiftDataOrder == sqlIDs,
+            "SQL-projected date sort must match SwiftData date sort"
+        )
+
+        // Verify sub-second precision is preserved.
+        for (id, date) in expectedOrder {
+            guard let proj = projections[id] else {
+                Issue.record("Missing projection for meeting \(id)")
+                continue
+            }
+            let diff = abs(proj.effectiveDate.timeIntervalSince(date))
+            #expect(diff < 0.000_001, "Date precision lost for meeting \(id): diff=\(diff)s")
+        }
     }
 }
 
@@ -490,6 +557,83 @@ struct SearchLimitBoundaryTests {
     }
 }
 
+// MARK: - Projected Assembly Path (gating — runs in `make test`)
+
+/// End-to-end test for the SQL date-projection assembly path. This path fires
+/// when `scores.count > limit` on an on-disk store. It sorts+truncates using
+/// SQL-projected dates, then fetches only the surviving meetings via SwiftData.
+@Suite("Projected assembly path")
+struct ProjectedAssemblyPathTests {
+    @Test("Projected path returns byte-identical results to direct path")
+    func projectedMatchesDirect() async throws {
+        let dir = makeTempDir()
+        defer { cleanupDir(dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
+
+        // Create 20 meetings with varying dates. All titles contain "alpha"
+        // so they all match a title search, guaranteeing scores.count = 20.
+        let totalCount = 20
+        let smallLimit = 5
+        var allIDs: [UUID] = []
+        for idx in 0 ..< totalCount {
+            let meetingID = try await store.createMeeting(
+                title: "Alpha meeting \(idx)",
+                start: Date(timeIntervalSince1970: Double(idx) * 86400)
+            )
+            allIDs.append(meetingID)
+        }
+
+        // Also give some meetings higher scores so the test covers mixed
+        // score+date sorting.
+        try await store.setNotes("alpha notes", for: allIDs[15])
+        try await store.setNotes("alpha notes", for: allIDs[10])
+
+        // Run with smallLimit < totalCount → projected path.
+        let projectedHits = try await store.read { dataStore in
+            let hits = try dataStore.searchHits("alpha", limit: smallLimit)
+            return (hits: hits, usedProjection: dataStore.lastSearchUsedProjection)
+        }
+
+        #expect(
+            projectedHits.usedProjection == true,
+            "Must take the projected path when scores.count (\(totalCount)) > limit (\(smallLimit))"
+        )
+        #expect(projectedHits.hits.count == smallLimit)
+
+        // Run with a limit above the match count → direct path.
+        let directHits = try await store.read { dataStore in
+            let hits = try dataStore.searchHits("alpha", limit: totalCount + 10)
+            return (hits: hits, usedProjection: dataStore.lastSearchUsedProjection)
+        }
+
+        #expect(
+            directHits.usedProjection == false,
+            "Must take the direct path when scores.count (\(totalCount)) <= limit (\(totalCount + 10))"
+        )
+
+        // The projected result must be byte-identical to the first `smallLimit`
+        // elements of the direct result. This is the core correctness claim:
+        // the projected path differs only in performance, never in results.
+        let directPrefix = Array(directHits.hits.prefix(smallLimit))
+        #expect(
+            projectedHits.hits == directPrefix,
+            "Projected top-\(smallLimit) must match direct path's top-\(smallLimit)"
+        )
+
+        // Verify sort order: score descending, then date descending.
+        for idx in 0 ..< projectedHits.hits.count - 1 {
+            let lhs = projectedHits.hits[idx]
+            let rhs = projectedHits.hits[idx + 1]
+            if lhs.score == rhs.score {
+                #expect(lhs.date >= rhs.date, "Tied scores must sort by date descending")
+            } else {
+                #expect(lhs.score > rhs.score, "Results must sort by score descending")
+            }
+        }
+    }
+}
+
 // MARK: - Oracle (test-only reference)
 
 /// The original full-fetch scoring implementation, preserved for differential
@@ -650,6 +794,41 @@ private final class TestReadOnlyDB {
         return names
     }
 
+    /// Returns date-only projections of all meetings: ID -> (startDate, createdAt).
+    /// Mirrors `ReadOnlySQLiteDB.meetingDateProjections()` for test assertions.
+    func meetingDateProjections() throws -> [UUID: TestMeetingDateProjection] {
+        let sql = "SELECT hex(ZID), ZSTARTDATE, ZCREATEDAT FROM ZMEETING"
+        var stmt: OpaquePointer?
+        let prepareResult = sqlite3_prepare_v2(handle, sql, -1, &stmt, nil)
+        guard prepareResult == SQLITE_OK, let prepared = stmt else {
+            let msg = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
+            throw TestSQLiteError(message: "prepare failed: \(msg)")
+        }
+        defer { sqlite3_finalize(prepared) }
+
+        var result: [UUID: TestMeetingDateProjection] = [:]
+        while sqlite3_step(prepared) == SQLITE_ROW {
+            guard let hexCStr = sqlite3_column_text(prepared, 0) else { continue }
+            let hex = String(cString: hexCStr)
+            guard let id = testUUID(fromHex: hex) else { continue }
+
+            let startDate: Date? = if sqlite3_column_type(prepared, 1) != SQLITE_NULL {
+                Date(timeIntervalSinceReferenceDate: sqlite3_column_double(prepared, 1))
+            } else {
+                nil
+            }
+
+            let createdAt = if sqlite3_column_type(prepared, 2) != SQLITE_NULL {
+                Date(timeIntervalSinceReferenceDate: sqlite3_column_double(prepared, 2))
+            } else {
+                Date.distantPast
+            }
+
+            result[id] = TestMeetingDateProjection(startDate: startDate, createdAt: createdAt)
+        }
+        return result
+    }
+
     /// Reads Core Data's entity registry from Z_PRIMARYKEY.
     func entityRegistry() throws -> [String: TestEntityEntry] {
         let sql = "SELECT Z_ENT, Z_NAME, Z_SUPER FROM Z_PRIMARYKEY"
@@ -680,8 +859,30 @@ private struct TestEntityEntry {
     let superEntity: Int32
 }
 
+private struct TestMeetingDateProjection {
+    let startDate: Date?
+    let createdAt: Date
+    var effectiveDate: Date {
+        startDate ?? createdAt
+    }
+}
+
 private struct TestSQLiteError: Error {
     let message: String
+}
+
+/// Parses a 32-character uppercase hex string into a UUID. Test-only mirror
+/// of the production `uuid(fromHex:)` in `SQLiteSegmentSearch.swift`.
+private func testUUID(fromHex hex: String) -> UUID? {
+    guard hex.count == 32 else { return nil }
+    let chars = hex
+    let start = chars.startIndex
+    let formatted = "\(chars[start ..< chars.index(start, offsetBy: 8)])"
+        + "-\(chars[chars.index(start, offsetBy: 8) ..< chars.index(start, offsetBy: 12)])"
+        + "-\(chars[chars.index(start, offsetBy: 12) ..< chars.index(start, offsetBy: 16)])"
+        + "-\(chars[chars.index(start, offsetBy: 16) ..< chars.index(start, offsetBy: 20)])"
+        + "-\(chars[chars.index(start, offsetBy: 20) ..< chars.index(start, offsetBy: 32)])"
+    return UUID(uuidString: formatted)
 }
 
 // MARK: - Deterministic data generation for differential test

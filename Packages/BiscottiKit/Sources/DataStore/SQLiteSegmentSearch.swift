@@ -189,6 +189,56 @@ final class ReadOnlySQLiteDB {
         }
         return catalog
     }
+
+    // MARK: - Meeting date projection
+
+    /// Returns date-only projections of all meetings: ID -> (startDate, createdAt).
+    /// Used by `assembleHits` to sort+truncate broad queries without materializing
+    /// SwiftData objects. Titles are deliberately excluded — they come from SwiftData
+    /// after truncation so displayed data is always fresh (not stale from a second
+    /// connection that misses unsaved changes).
+    ///
+    /// Core Data stores dates as `Double` seconds since the Foundation reference
+    /// date (2001-01-01 00:00:00 UTC).
+    func meetingDateProjections() throws -> [UUID: MeetingDateProjection] {
+        // These are entity/attribute column names, not entity-number-prefixed FK
+        // columns -- they are stable across model changes. SchemaAssertionTests
+        // guards their presence on every CI run.
+        let sql = "SELECT hex(ZID), ZSTARTDATE, ZCREATEDAT FROM ZMEETING"
+        var stmt: OpaquePointer?
+        let prepareRC = sqlite3_prepare_v2(handle, sql, -1, &stmt, nil)
+        guard prepareRC == SQLITE_OK, let prepared = stmt else {
+            let msg = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
+            throw SQLiteSegmentSearchError.prepareFailed(message: msg)
+        }
+        defer { sqlite3_finalize(prepared) }
+
+        var result: [UUID: MeetingDateProjection] = [:]
+        // Pre-size for a typical library; harmless if smaller.
+        result.reserveCapacity(5000)
+        while sqlite3_step(prepared) == SQLITE_ROW {
+            guard let hexCStr = sqlite3_column_text(prepared, 0) else { continue }
+            let hex = String(cString: hexCStr)
+            guard let id = uuid(fromHex: hex) else { continue }
+
+            let startDate: Date? = if sqlite3_column_type(prepared, 1) != SQLITE_NULL {
+                Date(timeIntervalSinceReferenceDate: sqlite3_column_double(prepared, 1))
+            } else {
+                nil
+            }
+
+            // createdAt is non-optional in the model, so NULL is unlikely. Use
+            // distantPast as a deterministic fallback that sorts broken rows last.
+            let createdAt = if sqlite3_column_type(prepared, 2) != SQLITE_NULL {
+                Date(timeIntervalSinceReferenceDate: sqlite3_column_double(prepared, 2))
+            } else {
+                Date.distantPast
+            }
+
+            result[id] = MeetingDateProjection(startDate: startDate, createdAt: createdAt)
+        }
+        return result
+    }
 }
 
 // MARK: - Entity Registry Entry
@@ -276,6 +326,18 @@ struct ResolvedSearchSchema {
     /// Derives the Core Data table name from an entity name.
     private static func tableName(for entityName: String) -> String {
         "Z" + entityName.uppercased()
+    }
+}
+
+// MARK: - Meeting Date Projection
+
+/// Date-only row returned by `meetingDateProjections()`.
+/// Titles are excluded — see the method's doc comment for rationale.
+struct MeetingDateProjection {
+    let startDate: Date?
+    let createdAt: Date
+    var effectiveDate: Date {
+        startDate ?? createdAt
     }
 }
 

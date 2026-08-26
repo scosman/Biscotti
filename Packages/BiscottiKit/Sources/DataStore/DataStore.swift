@@ -28,6 +28,10 @@ public actor DataStore {
     /// Used by the SQL transcript-segment search path.
     let storeFileURL: URL?
 
+    /// Whether the most recent `searchHits` call used the SQL date-projection
+    /// assembly path. Set internally; readable via `@testable import` for tests.
+    var lastSearchUsedProjection: Bool?
+
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
     ///   - storage: Where to persist data.

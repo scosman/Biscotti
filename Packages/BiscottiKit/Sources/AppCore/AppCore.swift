@@ -984,7 +984,7 @@ extension AppCore {
                   meetingsQuery == query
             else { return }
             let hits = await (try? currentStore.searchHits(
-                query, limit: 50
+                query, limit: 100
             )) ?? []
             guard !Task.isCancelled, meetingsQuery == query
             else { return }
@@ -1017,7 +1017,7 @@ extension AppCore {
         let currentQuery = meetingsQuery
         guard !currentQuery.isEmpty else { return }
         let hits = await (try? store.searchHits(
-            currentQuery, limit: 50
+            currentQuery, limit: 100
         )) ?? []
         guard meetingsQuery == currentQuery else { return }
         meetingsResults = hits

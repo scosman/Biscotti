@@ -723,7 +723,10 @@ public extension DataStore {
         }
 
         guard !scores.isEmpty else { return [] }
-        return try assembleHits(scores: scores, fields: fields, limit: limit)
+        return try assembleHits(
+            scores: scores, fields: fields, limit: limit,
+            database: txConnection?.database
+        )
     }
 
     // MARK: - Search helpers (per-field accumulation)
@@ -822,9 +825,41 @@ public extension DataStore {
         }
     }
 
-    /// Fetches full Meeting rows for all scorers, sorts by (score desc, date desc),
-    /// and returns the top `limit`. The scored set is already small (only matches).
+    // TODO: The projection reads *all* meeting rows (cost scales with library
+    // size, not match count). At ~50k meetings it would add ~300 ms to broad
+    // searches. Acceptable now; revisit if the library grows past ~20k.
+
+    /// Sorts scored meetings by (score desc, date desc), truncates to `limit`,
+    /// and returns full `SearchHit`s.
+    ///
+    /// Two paths depending on how many meetings scored:
+    /// - **Few** (`<= limit`): fetch each `Meeting` via SwiftData (the N+1 is
+    ///   cheap because N is small -- ~30 ms for 100).
+    /// - **Many** (`> limit`): SQL-project dates from the read-only connection
+    ///   to sort+truncate first, then fetch only the surviving ~`limit` meetings
+    ///   through SwiftData. Avoids materializing thousands of objects.
     private func assembleHits(
+        scores: [UUID: Int],
+        fields: [UUID: Set<SearchField>],
+        limit: Int,
+        database: ReadOnlySQLiteDB?
+    ) throws -> [SearchHit] {
+        if scores.count > limit, let database,
+           let projections = try? database.meetingDateProjections()
+        {
+            lastSearchUsedProjection = true
+            return try assembleHitsProjected(
+                scores: scores, fields: fields, limit: limit,
+                dateProjections: projections
+            )
+        }
+        lastSearchUsedProjection = false
+        return try assembleHitsDirect(scores: scores, fields: fields, limit: limit)
+    }
+
+    /// Direct-fetch path: fetches every scored meeting individually.
+    /// Optimal when the scored set is small (rare/specific queries).
+    private func assembleHitsDirect(
         scores: [UUID: Int],
         fields: [UUID: Set<SearchField>],
         limit: Int
@@ -856,6 +891,68 @@ public extension DataStore {
         }
 
         return Array(hits.prefix(limit))
+    }
+
+    /// Projected path: uses SQL date projections to sort+truncate, then fetches
+    /// only the surviving meetings through SwiftData for titles and display data.
+    private func assembleHitsProjected(
+        scores: [UUID: Int],
+        fields: [UUID: Set<SearchField>],
+        limit: Int,
+        dateProjections: [UUID: MeetingDateProjection]
+    ) throws -> [SearchHit] {
+        // Build lightweight sort keys from date projections. Scored IDs missing
+        // from the SQL projection (e.g. unsaved rows visible to SwiftData but
+        // not yet flushed to disk) fall back to a SwiftData fetch for their
+        // date -- at most a handful, so no N+1 concern.
+        struct SortEntry {
+            let id: UUID
+            let score: Int
+            let effectiveDate: Date
+        }
+
+        var entries: [SortEntry] = scores.compactMap { meetingID, score in
+            if let proj = dateProjections[meetingID] {
+                return SortEntry(id: meetingID, score: score, effectiveDate: proj.effectiveDate)
+            }
+            // Fallback: meeting exists in SwiftData but not in the SQL snapshot.
+            if let mtg = try? meeting(id: meetingID) {
+                return SortEntry(
+                    id: meetingID, score: score,
+                    effectiveDate: mtg.startDate ?? mtg.createdAt
+                )
+            }
+            return nil
+        }
+
+        entries.sort { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.effectiveDate > rhs.effectiveDate
+        }
+
+        let truncated = entries.prefix(limit)
+
+        // Fetch full Meeting rows only for the survivors.
+        var hits: [SearchHit] = truncated.compactMap { entry in
+            guard let mtg = try? meeting(id: entry.id),
+                  let matchedFields = fields[entry.id]
+            else { return nil }
+            return SearchHit(
+                id: mtg.id,
+                title: mtg.title,
+                date: mtg.startDate ?? mtg.createdAt,
+                score: entry.score,
+                matchedFields: matchedFields.sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+            )
+        }
+
+        // Re-sort after fetch (order is preserved, but compactMap may drop entries).
+        hits.sort { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return lhs.date > rhs.date
+        }
+
+        return hits
     }
 
     // MARK: - Private Mappers

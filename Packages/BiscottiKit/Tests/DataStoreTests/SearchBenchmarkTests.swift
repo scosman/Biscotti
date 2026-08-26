@@ -20,8 +20,8 @@ private let rareToken = "xyzorphan"
 /// Number of warm iterations per query (median is reported).
 private let warmRuns = 3
 
-/// The `limit` parameter passed to `searchHits`.
-private let searchLimit = 50
+/// The `limit` parameter passed to `searchHits`. Matches AppCore's call sites.
+private let searchLimit = 100
 
 // MARK: - Deterministic RNG
 
@@ -300,29 +300,31 @@ private func printReport(tiers: [TierReport]) {
     print("")
 }
 
-/// Prints the fetch-vs-score breakdown, comparing rare search (worst case,
-/// no short-circuit) against fetch+fault to isolate string-matching cost.
+/// Prints the architecture comparison: hybrid search (SwiftData predicates +
+/// raw SQL) versus full-fetch faulting (the pre-22fe8ac baseline).
 private func printBreakdown(
     fetchWarm: Double?,
     rareWarm: Double?,
     commonWarm: Double?
 ) {
     guard let fetch = fetchWarm, let rare = rareWarm else { return }
-    let scoringMs = max(rare - fetch, 0)
-    let scorePct = rare > 0 ? Int((scoringMs / rare) * 100) : 0
+    let speedup = fetch > 0 ? fetch / rare : 0
 
     print("")
-    print("  Fetch vs Score (warm, rare term = worst case, no short-circuit):")
+    print("  Architecture comparison (warm):")
     print(String(
-        format: "    fetch+fault: %7.1f ms   scoring: %7.1f ms (%d%%)",
-        fetch, scoringMs, scorePct
+        format: "    full fetch+fault (baseline):  %7.1f ms",
+        fetch
+    ))
+    print(String(
+        format: "    hybrid search (rare term):    %7.1f ms  (%.0fx faster)",
+        rare, speedup
     ))
     if let common = commonWarm {
         print(String(
-            format: "    common-term search: %.1f ms (much faster -- contains(where:)",
+            format: "    hybrid search (common term):  %7.1f ms",
             common
         ))
-        print("    short-circuits on the first matching segment)")
     }
 }
 

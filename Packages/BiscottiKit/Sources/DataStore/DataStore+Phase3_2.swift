@@ -319,6 +319,48 @@ public extension DataStore {
         context.insert(settings)
         try save()
     }
+
+    /// Fetches all `Meeting` rows in the store (for benchmarking).
+    func fetchAllMeetings() throws -> [Meeting] {
+        try context.fetch(FetchDescriptor<Meeting>())
+    }
+
+    /// Bulk-inserts meetings with transcripts. Each meeting gets a 2-speaker
+    /// transcript whose segments contain the provided texts and a
+    /// `preferredTranscriptID` pointing at it. Performs a single save at
+    /// the end for efficiency.
+    func bulkInsertMeetingsWithTranscripts(titles: [String], segmentTexts: [[String]]) throws {
+        precondition(titles.count == segmentTexts.count)
+        for idx in titles.indices {
+            let meeting = Meeting(title: titles[idx])
+            context.insert(meeting)
+
+            let record = TranscriptRecord(
+                transcriptionMethodId: "bench",
+                language: "en",
+                speakerCount: 2
+            )
+            context.insert(record)
+
+            for (segIndex, text) in segmentTexts[idx].enumerated() {
+                let segRecord = TranscriptSegmentRecord(
+                    index: segIndex,
+                    speakerID: segIndex % 2,
+                    speakerLabel: "Speaker \(segIndex % 2)",
+                    startTime: Double(segIndex) * 30.0,
+                    endTime: Double(segIndex + 1) * 30.0,
+                    text: text,
+                    noSpeechProbability: 0.01
+                )
+                context.insert(segRecord)
+                record.segments.append(segRecord)
+            }
+
+            meeting.transcripts.append(record)
+            meeting.preferredTranscriptID = record.id
+        }
+        try save()
+    }
 }
 
 // MARK: - Search

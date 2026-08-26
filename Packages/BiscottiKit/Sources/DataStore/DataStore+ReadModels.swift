@@ -354,6 +354,7 @@ public struct TagData: Sendable, Identifiable, Equatable, Hashable {
 /// Which field a search term matched in.
 public enum SearchField: Sendable, Equatable {
     case title
+    case summary
     case people
     case transcript
     case notes
@@ -689,84 +690,286 @@ public extension DataStore {
         try save()
     }
 
-    // MARK: - Search (with transcript text)
+    // MARK: - FTS5 Search
 
-    /// Weighted search across meeting titles, participant names, and transcript text.
-    /// Title matches score 3 per term, people matches score 2, transcript matches score 1.
-    /// Results sorted by score descending (ties broken by effective date descending).
+    /// Weighted search across meeting fields via the FTS5 search index.
+    ///
+    /// Semantics: prefix per term, AND across terms. `"proj plan"` matches
+    /// only meetings containing words starting with "proj" AND words starting
+    /// with "plan" (in any combination of fields).
+    ///
+    /// Weights: title 3, tags 3, summary 2, people 2, notes 1, transcript 1.
+    /// Results sorted by score descending, ties broken by date descending.
     func searchHits(_ query: String, limit: Int) throws -> [SearchHit] {
-        let terms = query.lowercased()
-            .split(separator: " ")
-            .map(String.init)
-            .filter { !$0.isEmpty }
+        try syncSearchIndex()
 
-        guard !terms.isEmpty else { return [] }
+        let rawHits = try searchIndex.search(query: query, limit: limit)
+        guard !rawHits.isEmpty else { return [] }
 
-        let descriptor = FetchDescriptor<Meeting>()
-        let all = try context.fetch(descriptor)
+        // Resolve titles and dates by fetching each matched meeting
+        // individually. Avoids loading every meeting to resolve the
+        // (typically ≤50) hits.
+        var hits: [SearchHit] = rawHits.compactMap { raw in
+            guard let meeting = try? meeting(id: raw.meetingUUID) else { return nil }
+            return SearchHit(
+                id: meeting.id,
+                title: meeting.title,
+                date: meeting.startDate ?? meeting.createdAt,
+                score: raw.score,
+                matchedFields: Array(raw.fields)
+                    .sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+            )
+        }
 
-        var hits: [SearchHit] = all.compactMap { scoreMeeting($0, terms: terms) }
-
+        // Re-sort: score desc, date desc for ties.
         hits.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
             return lhs.date > rhs.date
         }
 
-        return Array(hits.prefix(limit))
+        return hits
     }
 
-    /// Scores a single meeting against the search terms. Returns nil if no match.
-    private func scoreMeeting(_ meeting: Meeting, terms: [String]) -> SearchHit? {
-        var score = 0
-        var fields: Set<SearchField> = []
-        let titleLower = meeting.title.lowercased()
-        let notesLower = meeting.notes.lowercased()
+    // MARK: - Index Sync
 
-        for term in terms {
-            if titleLower.localizedStandardContains(term) {
-                score += 3
-                fields.insert(.title)
-            }
-            let participantMatch = meeting.participants.contains {
-                $0.name.lowercased().localizedStandardContains(term)
-            }
-            let organizerMatch = meeting.organizer.map {
-                $0.name.lowercased().localizedStandardContains(term)
-            } ?? false
-            // Score people once per term (organizer is often also a participant).
-            if participantMatch || organizerMatch {
-                score += 2
-                fields.insert(.people)
-            }
-            if let prefID = meeting.preferredTranscriptID,
-               let txRecord = meeting.transcripts.first(where: { $0.id == prefID }),
-               txRecord.segments.contains(where: { $0.text.lowercased().localizedStandardContains(term) })
-            {
-                score += 1
-                fields.insert(.transcript)
-            }
-            // Notes scored at the same weight as transcript (1).
-            if !notesLower.isEmpty, notesLower.localizedStandardContains(term) {
-                score += 1
-                fields.insert(.notes)
-            }
-            // Tags scored at the same weight as title (3).
-            if meeting.tags.contains(where: {
-                $0.name.lowercased().localizedStandardContains(term)
-            }) {
-                score += 3
-                fields.insert(.tags)
+    /// Synchronizes the FTS5 search index with the current SwiftData
+    /// state.
+    ///
+    /// Uses the SwiftData History API for incremental updates when a
+    /// history token is available. Falls back to a full reconcile on
+    /// first run, schema version change, or when the history token is
+    /// expired (including in-memory test stores, which do not support
+    /// history tracking).
+    func syncSearchIndex() throws {
+        // Use in-memory token if present (fast path after first sync).
+        var token = lastSyncToken
+
+        // On first search after launch, try the persisted token from
+        // the side DB so an app restart avoids a full reconcile.
+        if token == nil,
+           let data = try? searchIndex.historyToken(),
+           let restored = try? JSONDecoder().decode(
+               DefaultHistoryToken.self, from: data
+           )
+        {
+            token = restored
+        }
+
+        if let token {
+            do {
+                try incrementalSync(since: token)
+                return
+            } catch {
+                // Token expired, history unavailable, or other failure.
+                lastSyncToken = nil
             }
         }
 
-        guard score > 0 else { return nil }
-        return SearchHit(
-            id: meeting.id,
-            title: meeting.title,
-            date: meeting.startDate ?? meeting.createdAt,
-            score: score,
-            matchedFields: Array(fields).sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+        // No usable token — full reconcile.
+        try fullReconcile()
+    }
+
+    /// Processes SwiftData history transactions since `token`, updating
+    /// only the affected index entries. Throws on failure so the caller
+    /// can fall back to `fullReconcile`.
+    private func incrementalSync(
+        since token: DefaultHistoryToken
+    ) throws {
+        let descriptor = HistoryDescriptor<DefaultHistoryTransaction>(
+            predicate: #Predicate { transaction in
+                transaction.token > token
+            }
         )
+        let transactions = try context.fetchHistory(descriptor)
+
+        // No changes since last sync — index is up to date.
+        guard !transactions.isEmpty else { return }
+
+        let (meetingsToReindex, hadDeletes) = changedMeetings(
+            in: transactions
+        )
+
+        // Reindex affected meetings.
+        for uuid in meetingsToReindex {
+            if let mtg = try meeting(id: uuid) {
+                try indexSingleMeeting(mtg)
+            }
+        }
+
+        // Purge stale entries when any deletes occurred. Check each
+        // indexed UUID individually instead of fetching all Meetings.
+        if hadDeletes {
+            let indexedUUIDs = try searchIndex.allIndexedUUIDs()
+            let staleUUIDs = try indexedUUIDs.filter { try !meetingExists(id: $0) }
+            for uuid in staleUUIDs {
+                try searchIndex.removeMeeting(uuid: uuid)
+            }
+        }
+
+        saveHistoryToken(transactions.last?.token)
+    }
+
+    /// Walks a list of history transactions and returns the set of
+    /// meeting UUIDs that need reindexing plus a flag indicating
+    /// whether any model deletions occurred.
+    private func changedMeetings(
+        in transactions: [DefaultHistoryTransaction]
+    ) -> (reindex: Set<UUID>, hadDeletes: Bool) {
+        var meetingsToReindex: Set<UUID> = []
+        var hadDeletes = false
+
+        for transaction in transactions {
+            for change in transaction.changes {
+                switch change {
+                case .insert, .update:
+                    collectAffectedMeetings(
+                        pid: change.changedPersistentIdentifier,
+                        into: &meetingsToReindex
+                    )
+                case .delete:
+                    hadDeletes = true
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        return (meetingsToReindex, hadDeletes)
+    }
+
+    /// Persists a history token both in memory (for fast access) and
+    /// to the side DB (for across-restart recovery). Best-effort: a
+    /// serialization failure is silently ignored.
+    private func saveHistoryToken(_ token: DefaultHistoryToken?) {
+        guard let token else { return }
+        lastSyncToken = token
+        if let data = try? JSONEncoder().encode(token) {
+            try? searchIndex.setHistoryToken(data)
+        }
+    }
+
+    /// Determines which meetings need reindexing for a changed object.
+    ///
+    /// Tries to resolve the `PersistentIdentifier` as a `Meeting`
+    /// first (the common case), then as a `Tag` or `Person` (whose
+    /// property changes — e.g. rename — affect the search text of
+    /// their associated meetings). Other model types are covered by
+    /// the relationship-level update SwiftData records on Meeting.
+    private func collectAffectedMeetings(
+        pid: PersistentIdentifier,
+        into set: inout Set<UUID>
+    ) {
+        // Meeting insert or update.
+        if let mtg = try? context.fetch(
+            FetchDescriptor<Meeting>(
+                predicate: #Predicate { $0.persistentModelID == pid }
+            )
+        ).first {
+            set.insert(mtg.id)
+            return
+        }
+
+        // Tag rename — reindex every meeting that carries this tag.
+        if let tag = try? context.fetch(
+            FetchDescriptor<Tag>(
+                predicate: #Predicate { $0.persistentModelID == pid }
+            )
+        ).first {
+            for mtg in tag.meetings {
+                set.insert(mtg.id)
+            }
+            return
+        }
+
+        // Person rename — reindex meetings where this person appears.
+        if let person = try? context.fetch(
+            FetchDescriptor<Person>(
+                predicate: #Predicate { $0.persistentModelID == pid }
+            )
+        ).first {
+            for mtg in person.meetings {
+                set.insert(mtg.id)
+            }
+            for mtg in person.organizedMeetings {
+                set.insert(mtg.id)
+            }
+        }
+    }
+
+    // TODO: Wrap the indexSingleMeeting loop + removeStaleEntries in a
+    // single SQLite transaction (BEGIN/COMMIT) if profiling shows
+    // full-reconcile latency is a bottleneck on large libraries.
+
+    /// Re-indexes every meeting and purges stale entries. Runs on first
+    /// launch, schema version change, or when incremental sync fails.
+    private func fullReconcile() throws {
+        let meetings = try context.fetch(FetchDescriptor<Meeting>())
+        let liveUUIDs = Set(meetings.map(\.id))
+
+        for meeting in meetings {
+            try indexSingleMeeting(meeting)
+        }
+
+        try searchIndex.removeStaleEntries(liveUUIDs: liveUUIDs)
+
+        // Capture the current history position so future syncs are
+        // incremental. Best-effort — silently fails for in-memory
+        // stores that do not support history tracking.
+        saveHistoryToken(currentHistoryToken())
+    }
+
+    // TODO: SwiftData's HistoryDescriptor does not currently support
+    // reverse-order or limit-1 queries, so we fetch all transactions
+    // to get the latest token. Replace with a bounded query if the
+    // API adds sort/limit support, or if profiling shows this is
+    // slow on stores with many transactions.
+
+    /// Returns the latest history token, or `nil` when history is
+    /// unavailable (in-memory stores, empty history).
+    private func currentHistoryToken() -> DefaultHistoryToken? {
+        let descriptor = HistoryDescriptor<DefaultHistoryTransaction>()
+        guard let transactions = try? context.fetchHistory(descriptor)
+        else { return nil }
+        return transactions.last?.token
+    }
+
+    /// Extracts searchable text from a meeting and feeds it to the
+    /// search index. Internal so callers can reindex a single meeting
+    /// after targeted mutations.
+    func indexSingleMeeting(_ meeting: Meeting) throws {
+        // Transcript: flatten preferred transcript segments.
+        var transcriptText = ""
+        if let prefID = meeting.preferredTranscriptID,
+           let txRecord = meeting.transcripts.first(where: { $0.id == prefID })
+        {
+            transcriptText = txRecord.segments
+                .sorted { $0.index < $1.index }
+                .map(\.text)
+                .joined(separator: "\n")
+        }
+
+        // People: organizer + participants, deduplicated.
+        var seenPersonIDs: Set<UUID> = []
+        var peopleNames: [String] = []
+        if let org = meeting.organizer, seenPersonIDs.insert(org.id).inserted {
+            peopleNames.append(org.name)
+        }
+        for person in meeting.participants where seenPersonIDs.insert(person.id).inserted {
+            peopleNames.append(person.name)
+        }
+
+        // Tags: all tag names.
+        let tagNames = meeting.tags.map(\.name)
+
+        try searchIndex.indexMeeting(SearchIndex.MeetingContent(
+            uuid: meeting.id,
+            title: meeting.title,
+            summary: meeting.summary,
+            notes: meeting.notes,
+            transcript: transcriptText,
+            people: peopleNames.joined(separator: " "),
+            tags: tagNames.joined(separator: " ")
+        ))
     }
 
     // MARK: - Private Mappers
@@ -818,9 +1021,10 @@ public extension DataStore {
         switch field {
         case .title: 0
         case .tags: 1
-        case .people: 2
-        case .transcript: 3
-        case .notes: 4
+        case .summary: 2
+        case .people: 3
+        case .transcript: 4
+        case .notes: 5
         }
     }
 }

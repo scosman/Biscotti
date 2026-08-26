@@ -23,6 +23,10 @@ public actor DataStore {
 
     private let container: ModelContainer
     let context: ModelContext
+    let searchIndex: SearchIndex
+    /// Last-known SwiftData history token for incremental FTS5 index
+    /// sync. `nil` on launch; the first search triggers a full reconcile.
+    var lastSyncToken: DefaultHistoryToken?
 
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
@@ -62,6 +66,15 @@ public actor DataStore {
 
         context = ModelContext(container)
         context.autosaveEnabled = true
+
+        // FTS5 search index: separate SQLite file alongside the SwiftData store.
+        let indexStorage: SearchIndex.Storage = switch storage {
+        case let .onDisk(url):
+            .onDisk(url.appending(path: "SearchIndex.sqlite"))
+        case .inMemory:
+            .inMemory
+        }
+        searchIndex = try SearchIndex(storage: indexStorage)
     }
 
     // MARK: - Meeting CRUD
@@ -139,6 +152,9 @@ public actor DataStore {
         guard let meeting = try meeting(id: meetingID) else {
             throw DataStoreError.notFound(meetingID)
         }
+        // Eagerly remove from FTS5 index so it stays consistent even
+        // before the next search-triggered sync.
+        try? searchIndex.removeMeeting(uuid: meetingID)
         context.delete(meeting)
         try save()
     }

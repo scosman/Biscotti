@@ -77,19 +77,39 @@ plus 5000 object materializations (~1,482 ms of the 1,912 ms total).
 
 ### Shipped: date-projection assembly (commit `bc2372c`)
 
-Measured at 5000 meetings, median of 3 warm runs:
+Median of 3 warm runs, all three tiers.
 
-| Query | Cold ms | **Warm ms** | Hits |
-|---|---|---|---|
-| common "the" | 1,992.7 | **450.0** | 100 |
-| rare "xyzorphan" | 133.8 | **130.2** | 2 |
-| multi "meeting project" | 951.9 | **944.5** | 100 |
-| multi + rare | 590.6 | **595.9** | 100 |
-| fetch+fault baseline (no scoring) | 38,858.8 | 38,765.0 | — |
+**Warm (the number that matters for typing):**
 
-Broad queries went from ~1,912 ms to **450 ms** (4.2x); the rare-term path is
-unchanged at ~130 ms, as expected since it takes the direct-fetch branch.
-Against the full fetch+fault baseline the rare term is **298x faster**.
+| Tier | common "the" | rare term | multi "meeting project" | multi + rare | fetch+fault baseline |
+|---|---|---|---|---|---|
+| 50 | 10.7 ms | **2.3 ms** | 16.4 ms | 11.5 ms | 373.5 ms |
+| 500 | 55.1 ms | **15.2 ms** | 125.4 ms | 69.8 ms | 3,862 ms |
+| 5000 | 450.0 ms | **130.2 ms** | 944.5 ms | 595.9 ms | 38,765 ms |
+
+**Cold (first search after launch, page-cache misses):**
+
+| Tier | common "the" | rare term | multi "meeting project" | multi + rare |
+|---|---|---|---|---|
+| 50 | 10.9 ms | 2.5 ms | 16.1 ms | 11.8 ms |
+| 500 | 56.3 ms | 15.8 ms | 105.9 ms | 80.5 ms |
+| 5000 | 1,992.7 ms | 133.8 ms | 951.9 ms | 590.6 ms |
+
+Speedup versus the fetch+fault baseline, rare term: 160x at 50, 254x at 500,
+**298x at 5000** — the advantage grows with library size, because the baseline
+is dominated by materializing objects that scale with the store while the SQL
+path only scans bytes.
+
+Broad queries went from ~1,912 ms to **450 ms** (4.2x) at 5000; the rare-term
+path is unchanged at ~130 ms, as expected since it takes the direct-fetch
+branch.
+
+Scaling is roughly linear in library size across all query shapes (50 → 500 →
+5000 is about 10x per step, and the timings track it).
+
+Cold ≈ warm at 50 and 500. Only the 5000 tier shows a real cold penalty, and
+only for the broad query (1,993 ms vs 450 ms) — that is the one case where the
+working set outgrows the page cache.
 
 **Multi-term queries are now the worst case** (944 ms for two common terms).
 Each term runs its own independent `LIKE '%term%'` pass over all 500,000
@@ -197,8 +217,9 @@ Both were the original candidates for a "proper" index. Deferred because:
 - Both are **token-based**, so they match whole words and prefixes but not
   infixes — adopting either **changes what search finds** relative to today's
   substring matching. That is a product decision, not just a performance one.
-- Revisit when a user plausibly has ~50k meetings, where the SQL path drifts
-  toward ~1.4 s.
+- Revisit when a user plausibly has ~50k meetings. Extrapolating the linear
+  scaling above, a rare term drifts toward ~1.3 s, a broad term toward ~4.5 s,
+  and a two-term query toward ~9 s. Multi-term is what breaks first.
 
 If Core Spotlight is revisited, requirements captured so far: not exposed to the
 system Spotlight UI, `protectionClass: .complete`, and

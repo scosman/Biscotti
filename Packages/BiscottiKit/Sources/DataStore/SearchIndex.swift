@@ -34,7 +34,7 @@ final class SearchIndex {
     private var database: OpaquePointer?
 
     /// Bump to force a full rebuild on the next sync.
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     /// Storage configuration.
     enum Storage {
@@ -72,6 +72,8 @@ final class SearchIndex {
     /// All field data for a single meeting, ready to be indexed.
     struct MeetingContent {
         let uuid: UUID
+        /// Effective date: `startDate ?? createdAt`.
+        let effectiveDate: Date
         let title: String
         let summary: String
         let notes: String
@@ -85,6 +87,8 @@ final class SearchIndex {
         let meetingUUID: UUID
         let score: Int
         let fields: Set<SearchField>
+        /// Effective date stored in the side DB at index time.
+        let effectiveDate: Date
     }
 
     init(storage: Storage) throws {
@@ -133,6 +137,7 @@ final class SearchIndex {
         // Schema mismatch or first run -- drop and recreate.
         try dropDataTables()
         try createDataTables()
+        try deleteMeta("history_token")
         try setMeta("schema_version", int: Self.schemaVersion)
     }
 
@@ -140,7 +145,8 @@ final class SearchIndex {
         try execSQL("""
             CREATE TABLE IF NOT EXISTS meeting_map (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                meeting_uuid TEXT NOT NULL UNIQUE
+                meeting_uuid TEXT NOT NULL UNIQUE,
+                effective_date REAL NOT NULL DEFAULT 0
             )
         """)
 
@@ -163,35 +169,53 @@ final class SearchIndex {
 
     /// Indexes a single meeting. Uses INSERT OR REPLACE so calling this
     /// repeatedly with the same UUID is safe and self-correcting.
+    ///
+    /// Wrapped in a transaction so a throw or crash mid-write cannot
+    /// leave the meeting half-indexed (e.g. title present but transcript
+    /// missing). Without the transaction, a crash leaves a transient
+    /// inconsistency until the next sync revisits the meeting.
     func indexMeeting(_ content: MeetingContent) throws {
         let uuidStr = content.uuid.uuidString
+        let dateValue = content.effectiveDate.timeIntervalSinceReferenceDate
 
-        // Ensure the meeting has a row in meeting_map.
-        try execSQL(
-            "INSERT OR IGNORE INTO meeting_map(meeting_uuid) VALUES (?)",
-            params: [.text(uuidStr)]
-        )
-
-        guard let rowid = try queryInt64(
-            "SELECT id FROM meeting_map WHERE meeting_uuid = ?",
-            params: [.text(uuidStr)]
-        ) else {
-            throw SearchIndexError.internalError(
-                "Failed to get rowid for meeting \(uuidStr)"
-            )
-        }
-
-        let fieldValues: [(Field, String)] = [
-            (.title, content.title), (.summary, content.summary),
-            (.notes, content.notes), (.transcript, content.transcript),
-            (.people, content.people), (.tags, content.tags)
-        ]
-
-        for (field, text) in fieldValues {
+        try execSQL("BEGIN IMMEDIATE")
+        do {
+            // Ensure the meeting has a row in meeting_map.
             try execSQL(
-                "INSERT OR REPLACE INTO fts_\(field.rawValue)(rowid, text) VALUES (?, ?)",
-                params: [.int64(rowid), .text(text)]
+                """
+                INSERT INTO meeting_map(meeting_uuid, effective_date)
+                VALUES (?, ?)
+                ON CONFLICT(meeting_uuid) DO UPDATE SET effective_date = excluded.effective_date
+                """,
+                params: [.text(uuidStr), .double(dateValue)]
             )
+
+            guard let rowid = try queryInt64(
+                "SELECT id FROM meeting_map WHERE meeting_uuid = ?",
+                params: [.text(uuidStr)]
+            ) else {
+                throw SearchIndexError.internalError(
+                    "Failed to get rowid for meeting \(uuidStr)"
+                )
+            }
+
+            let fieldValues: [(Field, String)] = [
+                (.title, content.title), (.summary, content.summary),
+                (.notes, content.notes), (.transcript, content.transcript),
+                (.people, content.people), (.tags, content.tags)
+            ]
+
+            for (field, text) in fieldValues {
+                try execSQL(
+                    "INSERT OR REPLACE INTO fts_\(field.rawValue)(rowid, text) VALUES (?, ?)",
+                    params: [.int64(rowid), .text(text)]
+                )
+            }
+
+            try execSQL("COMMIT")
+        } catch {
+            try? execSQL("ROLLBACK")
+            throw error
         }
     }
 
@@ -295,17 +319,25 @@ extension SearchIndex {
         let termCount = terms.count
         let passing = accumulators.filter { $0.value.termsMatched.count == termCount }
 
-        // Resolve rowids to UUIDs.
+        // Resolve rowids to UUIDs and effective dates.
         var results: [RawHit] = []
         for (rowid, acc) in passing {
-            if let uuid = try lookupUUID(rowid: rowid) {
+            if let (uuid, date) = try lookupUUIDAndDate(rowid: rowid) {
                 results.append(RawHit(
-                    meetingUUID: uuid, score: acc.score, fields: acc.fields
+                    meetingUUID: uuid, score: acc.score,
+                    fields: acc.fields, effectiveDate: date
                 ))
             }
         }
 
-        results.sort { $0.score > $1.score }
+        // Total ordering: score desc, date desc, UUID for determinism.
+        results.sort { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            if lhs.effectiveDate != rhs.effectiveDate {
+                return lhs.effectiveDate > rhs.effectiveDate
+            }
+            return lhs.meetingUUID.uuidString < rhs.meetingUUID.uuidString
+        }
         return Array(results.prefix(limit))
     }
 }
@@ -328,6 +360,7 @@ extension SearchIndex {
     private enum Param {
         case text(String)
         case int64(Int64)
+        case double(Double)
         case blob(Data)
     }
 
@@ -406,21 +439,24 @@ extension SearchIndex {
         return uuids
     }
 
-    private func lookupUUID(rowid: Int64) throws -> UUID? {
+    private func lookupUUIDAndDate(rowid: Int64) throws -> (UUID, Date)? {
         var stmt: OpaquePointer?
-        let sql = "SELECT meeting_uuid FROM meeting_map WHERE id = ?"
+        let sql = "SELECT meeting_uuid, effective_date FROM meeting_map WHERE id = ?"
         guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
-            throw sqliteError("prepare lookupUUID")
+            throw sqliteError("prepare lookupUUIDAndDate")
         }
         defer { sqlite3_finalize(stmt) }
 
         guard sqlite3_bind_int64(stmt, 1, rowid) == SQLITE_OK else {
-            throw sqliteError("bind lookupUUID")
+            throw sqliteError("bind lookupUUIDAndDate")
         }
         guard sqlite3_step(stmt) == SQLITE_ROW,
               let cStr = sqlite3_column_text(stmt, 0)
         else { return nil }
-        return UUID(uuidString: String(cString: cStr))
+        guard let uuid = UUID(uuidString: String(cString: cStr)) else { return nil }
+        let dateInterval = sqlite3_column_double(stmt, 1)
+        let date = Date(timeIntervalSinceReferenceDate: dateInterval)
+        return (uuid, date)
     }
 
     private func bindParams(
@@ -435,6 +471,8 @@ extension SearchIndex {
                 }
             case let .int64(val):
                 sqlite3_bind_int64(stmt, col, val)
+            case let .double(val):
+                sqlite3_bind_double(stmt, col, val)
             case let .blob(data):
                 data.withUnsafeBytes { raw in
                     sqlite3_bind_blob(
@@ -506,5 +544,33 @@ extension SearchIndex {
 
     private func deleteMeta(_ key: String) throws {
         try execSQL("DELETE FROM meta WHERE key = ?", params: [.text(key)])
+    }
+}
+
+// MARK: - Test Helpers
+
+extension SearchIndex {
+    /// Deletes the persisted history token from the meta table.
+    /// Exposed for tests that need to force a full reconcile.
+    func testDeleteHistoryToken() throws {
+        try deleteMeta("history_token")
+    }
+
+    /// Returns the internal rowid for a meeting UUID, or nil if absent.
+    /// Exposed for tests that simulate partial-index corruption.
+    func testRowID(for meetingUUID: UUID) throws -> Int64? {
+        try queryInt64(
+            "SELECT id FROM meeting_map WHERE meeting_uuid = ?",
+            params: [.text(meetingUUID.uuidString)]
+        )
+    }
+
+    /// Deletes a single FTS row for a field, simulating a crash
+    /// mid-indexMeeting. Exposed for tests only.
+    func testDeleteFTSRow(field: Field, rowid: Int64) throws {
+        try execSQL(
+            "DELETE FROM fts_\(field.rawValue) WHERE rowid = ?",
+            params: [.int64(rowid)]
+        )
     }
 }

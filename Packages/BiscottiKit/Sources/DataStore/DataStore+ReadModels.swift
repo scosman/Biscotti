@@ -699,35 +699,30 @@ public extension DataStore {
     /// with "plan" (in any combination of fields).
     ///
     /// Weights: title 3, tags 3, summary 2, people 2, notes 1, transcript 1.
-    /// Results sorted by score descending, ties broken by date descending.
+    /// Results sorted by (score desc, date desc, UUID) -- a total ordering
+    /// applied before truncation so results are deterministic at tie
+    /// boundaries.
     func searchHits(_ query: String, limit: Int) throws -> [SearchHit] {
         try syncSearchIndex()
 
         let rawHits = try searchIndex.search(query: query, limit: limit)
         guard !rawHits.isEmpty else { return [] }
 
-        // Resolve titles and dates by fetching each matched meeting
-        // individually. Avoids loading every meeting to resolve the
-        // (typically ≤50) hits.
-        var hits: [SearchHit] = rawHits.compactMap { raw in
+        // Resolve titles by fetching each matched meeting individually.
+        // The effective date used for ordering comes from the side DB
+        // (already on RawHit), not from SwiftData, so truncation is
+        // deterministic without faulting every candidate.
+        return rawHits.compactMap { raw in
             guard let meeting = try? meeting(id: raw.meetingUUID) else { return nil }
             return SearchHit(
                 id: meeting.id,
                 title: meeting.title,
-                date: meeting.startDate ?? meeting.createdAt,
+                date: raw.effectiveDate,
                 score: raw.score,
                 matchedFields: Array(raw.fields)
                     .sorted { fieldSortOrder($0) < fieldSortOrder($1) }
             )
         }
-
-        // Re-sort: score desc, date desc for ties.
-        hits.sort { lhs, rhs in
-            if lhs.score != rhs.score { return lhs.score > rhs.score }
-            return lhs.date > rhs.date
-        }
-
-        return hits
     }
 
     // MARK: - Index Sync
@@ -758,6 +753,21 @@ public extension DataStore {
         if let token {
             do {
                 try incrementalSync(since: token)
+
+                // Detect meetings present in the store but absent from
+                // the index (e.g. store restored from a different backup,
+                // or any gap not covered by history). Two cheap counts.
+                // Note: this does NOT catch partially-indexed meetings --
+                // a half-written meeting_map row still counts. Transaction
+                // wrapping in indexMeeting addresses that case separately.
+                let indexedCount = searchIndex.indexedMeetingCount
+                let storeCount = try context.fetchCount(
+                    FetchDescriptor<Meeting>()
+                )
+                if indexedCount != storeCount {
+                    try fullReconcile()
+                }
+
                 return
             } catch {
                 // Token expired, history unavailable, or other failure.
@@ -785,7 +795,7 @@ public extension DataStore {
         // No changes since last sync — index is up to date.
         guard !transactions.isEmpty else { return }
 
-        let (meetingsToReindex, hadDeletes) = changedMeetings(
+        let (meetingsToReindex, hadMeetingDeletes) = changedMeetings(
             in: transactions
         )
 
@@ -796,9 +806,11 @@ public extension DataStore {
             }
         }
 
-        // Purge stale entries when any deletes occurred. Check each
-        // indexed UUID individually instead of fetching all Meetings.
-        if hadDeletes {
+        // Purge stale entries when a Meeting was deleted. Only Meeting
+        // deletes trigger this scan; non-Meeting deletes (Tag, Person,
+        // Segment) are handled via the relationship-level update that
+        // SwiftData records on the affected Meeting.
+        if hadMeetingDeletes {
             let indexedUUIDs = try searchIndex.allIndexedUUIDs()
             let staleUUIDs = try indexedUUIDs.filter { try !meetingExists(id: $0) }
             for uuid in staleUUIDs {
@@ -809,14 +821,37 @@ public extension DataStore {
         saveHistoryToken(transactions.last?.token)
     }
 
+    /// The entity name SwiftData assigns to the `Meeting` model.
+    /// Used to narrow delete handling to Meeting deletes only.
+    private static let meetingEntityName = String(describing: Meeting.self)
+
     /// Walks a list of history transactions and returns the set of
     /// meeting UUIDs that need reindexing plus a flag indicating
-    /// whether any model deletions occurred.
+    /// whether any Meeting deletions occurred.
+    ///
+    /// Non-Meeting deletes are not flagged here. Tag and Person
+    /// deletes are covered: SwiftData records a relationship-level
+    /// update on the affected Meeting, so those meetings are picked
+    /// up by the insert/update path (verified by tests).
+    ///
+    /// **Known gap (pre-existing, not introduced by narrowing the
+    /// flag):** TranscriptRecord/TranscriptSegmentRecord deletes do
+    /// NOT trigger a Meeting update in SwiftData history. The
+    /// previous code set `hadDeletes` for any model type, but that
+    /// flag only triggered a stale-entry *purge* (remove index rows
+    /// for deleted meetings) -- it never re-indexed anything. So
+    /// transcript deletes failed to refresh the index before and
+    /// after this narrowing. Not a shipping concern -- no production
+    /// path deletes a TranscriptRecord individually (re-transcription
+    /// is additive via `addTranscript` + `setPreferredTranscript`;
+    /// the only transcript deletion is the cascade from Meeting
+    /// deletion, which `hadMeetingDeletes` already covers).
+    /// Pinned by `transcriptDeletionLeavesStaleText` test.
     private func changedMeetings(
         in transactions: [DefaultHistoryTransaction]
-    ) -> (reindex: Set<UUID>, hadDeletes: Bool) {
+    ) -> (reindex: Set<UUID>, hadMeetingDeletes: Bool) {
         var meetingsToReindex: Set<UUID> = []
-        var hadDeletes = false
+        var hadMeetingDeletes = false
 
         for transaction in transactions {
             for change in transaction.changes {
@@ -827,14 +862,17 @@ public extension DataStore {
                         into: &meetingsToReindex
                     )
                 case .delete:
-                    hadDeletes = true
+                    let pid = change.changedPersistentIdentifier
+                    if pid.entityName == Self.meetingEntityName {
+                        hadMeetingDeletes = true
+                    }
                 @unknown default:
                     break
                 }
             }
         }
 
-        return (meetingsToReindex, hadDeletes)
+        return (meetingsToReindex, hadMeetingDeletes)
     }
 
     /// Persists a history token both in memory (for fast access) and
@@ -896,9 +934,11 @@ public extension DataStore {
         }
     }
 
-    // TODO: Wrap the indexSingleMeeting loop + removeStaleEntries in a
-    // single SQLite transaction (BEGIN/COMMIT) if profiling shows
-    // full-reconcile latency is a bottleneck on large libraries.
+    // Per-meeting atomicity is handled inside indexMeeting (BEGIN
+    // IMMEDIATE / COMMIT). A batch transaction around the full loop
+    // would reduce fsync count but hold a write lock for the entire
+    // reconcile, blocking any concurrent reader. Not worth it until
+    // profiling shows full-reconcile latency is a real bottleneck.
 
     /// Re-indexes every meeting and purges stale entries. Runs on first
     /// launch, schema version change, or when incremental sync fails.
@@ -963,6 +1003,7 @@ public extension DataStore {
 
         try searchIndex.indexMeeting(SearchIndex.MeetingContent(
             uuid: meeting.id,
+            effectiveDate: meeting.startDate ?? meeting.createdAt,
             title: meeting.title,
             summary: meeting.summary,
             notes: meeting.notes,

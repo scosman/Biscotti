@@ -8,6 +8,7 @@ import Transcription
 /// Builds a `MeetingContent` with only the specified fields populated.
 private func content(
     uuid: UUID = UUID(),
+    effectiveDate: Date = Date(),
     title: String = "",
     summary: String = "",
     notes: String = "",
@@ -16,8 +17,9 @@ private func content(
     tags: String = ""
 ) -> SearchIndex.MeetingContent {
     SearchIndex.MeetingContent(
-        uuid: uuid, title: title, summary: summary,
-        notes: notes, transcript: transcript, people: people, tags: tags
+        uuid: uuid, effectiveDate: effectiveDate, title: title,
+        summary: summary, notes: notes, transcript: transcript,
+        people: people, tags: tags
     )
 }
 
@@ -688,5 +690,426 @@ struct IncrementalSyncTests {
 
         // Token should be restored in memory.
         #expect(await store.lastSyncToken != nil)
+    }
+
+    @Test("startDate edit updates the effective date in the index")
+    func startDateEditUpdatesEffectiveDate() async throws {
+        let (store, dir) = try makeOnDiskStore()
+        defer { cleanup(dir) }
+
+        let oldDate = Date(timeIntervalSinceReferenceDate: 1000)
+        let newDate = Date(timeIntervalSinceReferenceDate: 9000)
+
+        let meetingID = try await store.createMeeting(
+            title: "Dated Meeting", start: oldDate
+        )
+
+        // Full reconcile indexes the meeting with oldDate.
+        let before = try await store.searchHits("Dated", limit: 50)
+        #expect(before.count == 1)
+        #expect(before.first?.date == oldDate)
+
+        // Change startDate via direct model mutation.
+        try await store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            meeting.startDate = newDate
+            try store.save()
+        }
+
+        // Incremental sync picks up the update and refreshes the date.
+        let after = try await store.searchHits("Dated", limit: 50)
+        #expect(after.count == 1)
+        #expect(after.first?.date == newDate)
+    }
+}
+
+// MARK: - Deterministic truncation tests (Fix 1)
+
+@Suite("Deterministic truncation at score ties")
+struct DeterministicTruncationTests {
+    private func makeIndex() throws -> SearchIndex {
+        try SearchIndex(storage: .inMemory)
+    }
+
+    @Test("Truncation returns N most recent when all scores tie")
+    func truncationReturnsMostRecent() throws {
+        let index = try makeIndex()
+
+        // Create 20 meetings with distinct dates, all matching the same
+        // title-only term so they have identical scores.
+        let baseDate = Date(timeIntervalSinceReferenceDate: 0)
+        var uuidsAndDates: [(UUID, Date)] = []
+        for offset in 0 ..< 20 {
+            let uuid = UUID()
+            let date = baseDate.addingTimeInterval(
+                Double(offset) * 3600
+            )
+            uuidsAndDates.append((uuid, date))
+            try index.indexMeeting(content(
+                uuid: uuid, effectiveDate: date, title: "Alpha"
+            ))
+        }
+
+        // Ask for 10 of 20. The 10 most recent should survive.
+        let hits = try index.search(query: "Alpha", limit: 10)
+        #expect(hits.count == 10)
+
+        // All scores are identical (title weight = 3).
+        for hit in hits {
+            #expect(hit.score == 3)
+        }
+
+        // Verify the returned meetings are the 10 most recent by date.
+        let expectedUUIDs = Set(
+            uuidsAndDates
+                .sorted { $0.1 > $1.1 }
+                .prefix(10)
+                .map(\.0)
+        )
+        let returnedUUIDs = Set(hits.map(\.meetingUUID))
+        #expect(returnedUUIDs == expectedUUIDs)
+
+        // Verify ordering within results: date descending.
+        for pair in hits.indices.dropLast() {
+            #expect(hits[pair].effectiveDate >= hits[pair + 1].effectiveDate)
+        }
+    }
+
+    @Test("Repeated calls with identical data return identical results")
+    func deterministicRepeatedCalls() throws {
+        let index = try makeIndex()
+
+        let baseDate = Date(timeIntervalSinceReferenceDate: 0)
+        for offset in 0 ..< 15 {
+            try index.indexMeeting(content(
+                uuid: UUID(),
+                effectiveDate: baseDate.addingTimeInterval(
+                    Double(offset) * 3600
+                ),
+                title: "Beta"
+            ))
+        }
+
+        // Run the same query 5 times; all results must be identical.
+        let first = try index.search(query: "Beta", limit: 5)
+        for _ in 1 ..< 5 {
+            let again = try index.search(query: "Beta", limit: 5)
+            #expect(again.map(\.meetingUUID) == first.map(\.meetingUUID))
+        }
+    }
+}
+
+// MARK: - Transaction atomicity tests (Fix 2)
+
+@Suite("Transaction wrapping -- indexMeeting atomicity")
+struct TransactionAtomicityTests {
+    private func makeIndex() throws -> SearchIndex {
+        try SearchIndex(storage: .inMemory)
+    }
+
+    @Test("Partial index state is repaired by fullReconcile")
+    func partialIndexRepairedByReconcile() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "TxAtomicity-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
+        let meetingID = try await store.createMeeting(title: "Full Meeting")
+
+        // Full reconcile to build index.
+        _ = try await store.searchHits("Full", limit: 50)
+        #expect(await store.lastSyncToken != nil)
+
+        // Simulate partial index: remove the meeting from one FTS
+        // table but leave meeting_map intact. This mimics the state
+        // a crash mid-indexMeeting would leave WITHOUT transaction
+        // wrapping.
+        try await store.read { store in
+            // Delete the title entry for this meeting's rowid.
+            let rowid = try #require(
+                try store.searchIndex.testRowID(
+                    for: meetingID
+                )
+            )
+            try store.searchIndex.testDeleteFTSRow(
+                field: .title, rowid: rowid
+            )
+        }
+
+        // Verify the title term is now missing.
+        let broken = try await store.searchHits("Full", limit: 50)
+        #expect(broken.isEmpty, "Title entry was manually removed")
+
+        // Force a full reconcile by clearing the token.
+        await store.read { store in
+            store.lastSyncToken = nil
+            try? store.searchIndex.clear()
+        }
+
+        // Next search triggers fullReconcile, which repairs the entry.
+        let repaired = try await store.searchHits("Full", limit: 50)
+        #expect(repaired.count == 1)
+        #expect(repaired.first?.id == meetingID)
+    }
+}
+
+// MARK: - Staleness detection tests (Fix 3)
+
+@Suite("Staleness detection -- count mismatch triggers reconcile")
+struct StalenessDetectionTests {
+    @Test("Meeting in store but absent from index is detected and reindexed")
+    func missingMeetingDetected() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "Staleness-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
+
+        // Create two meetings and build the index.
+        let id1 = try await store.createMeeting(title: "Present Meeting")
+        _ = try await store.createMeeting(title: "Ghost Meeting")
+        _ = try await store.searchHits("Meeting", limit: 50)
+        #expect(await store.lastSyncToken != nil)
+
+        // Manually remove one meeting from the index (simulates the
+        // index and store diverging, e.g. from a backup restore).
+        try await store.read { store in
+            try store.searchIndex.removeMeeting(uuid: id1)
+        }
+
+        // Index now has 1 entry, store has 2 meetings. The count
+        // mismatch in syncSearchIndex should trigger fullReconcile.
+        let hits = try await store.searchHits("Present", limit: 50)
+        #expect(hits.count == 1, "Missing meeting should be reindexed")
+        #expect(hits.first?.id == id1)
+    }
+}
+
+// MARK: - fullReconcile direct tests
+
+@Suite("fullReconcile -- direct verification")
+struct FullReconcileTests {
+    @Test("fullReconcile indexes all meetings and purges stale entries")
+    func fullReconcileDirectly() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "FullReconcile-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = try DataStore(storage: .onDisk(dir))
+
+        // Create meetings and build the index via a search.
+        _ = try await store.createMeeting(title: "Alpha Meeting")
+        _ = try await store.createMeeting(title: "Beta Meeting")
+        _ = try await store.searchHits("Meeting", limit: 50)
+
+        // Inject a stale entry directly into the index.
+        let staleUUID = UUID()
+        try await store.read { store in
+            try store.searchIndex.indexMeeting(content(
+                uuid: staleUUID, title: "Stale Ghost"
+            ))
+        }
+
+        // Verify the stale entry is present before reconcile.
+        let staleCount = await store.read { store in
+            store.searchIndex.indexedMeetingCount
+        }
+        #expect(staleCount == 3) // 2 real + 1 stale
+
+        // Clear token to force fullReconcile on next search.
+        await store.read { store in
+            store.lastSyncToken = nil
+            try? store.searchIndex.testDeleteHistoryToken()
+        }
+
+        // Search triggers fullReconcile.
+        let hits = try await store.searchHits("Meeting", limit: 50)
+        #expect(hits.count == 2) // Only the two real meetings
+
+        // Stale entry should be purged.
+        let afterCount = await store.read { store in
+            store.searchIndex.indexedMeetingCount
+        }
+        #expect(afterCount == 2)
+
+        // The ghost term should be gone.
+        let ghostHits = try await store.searchHits("Stale", limit: 50)
+        #expect(ghostHits.isEmpty)
+    }
+}
+
+// MARK: - Delete-coverage tests (Fix 4)
+
+@Suite("Delete coverage -- non-Meeting deletes reindex via relationship updates")
+struct DeleteCoverageTests {
+    private func makeOnDiskStore() throws -> (DataStore, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "DeleteCov-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        let store = try DataStore(storage: .onDisk(dir))
+        return (store, dir)
+    }
+
+    private func cleanup(_ dir: URL) {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    @Test("Tag deletion refreshes affected meeting's index entry")
+    func tagDeletionRefreshes() async throws {
+        let (store, dir) = try makeOnDiskStore()
+        defer { cleanup(dir) }
+
+        let meetingID = try await store.createMeeting(title: "Tagged Meeting")
+        _ = try await store.createTagAndApply(
+            name: "UniqueTag", to: meetingID
+        )
+
+        // Build index; tag term should be searchable.
+        let before = try await store.searchHits("UniqueTag", limit: 50)
+        #expect(before.count == 1)
+        #expect(await store.lastSyncToken != nil)
+
+        // Delete the tag via context.
+        try await store.read { store in
+            let tags = try store.fetchAllTags()
+            let tag = try #require(
+                tags.first(where: { $0.name == "UniqueTag" })
+            )
+            store.context.delete(tag)
+            try store.save()
+        }
+
+        // After sync, the tag term should no longer match.
+        let after = try await store.searchHits("UniqueTag", limit: 50)
+        #expect(after.isEmpty, "Deleted tag's term should be removed from index")
+
+        // The meeting itself should still be searchable by title.
+        let titleHits = try await store.searchHits("Tagged", limit: 50)
+        #expect(titleHits.count == 1)
+    }
+
+    @Test("Person deletion refreshes affected meeting's index entry")
+    func personDeletionRefreshes() async throws {
+        let (store, dir) = try makeOnDiskStore()
+        defer { cleanup(dir) }
+
+        let meetingID = try await store.createMeeting(title: "Staffed Meeting")
+        let personID = try await store.findOrCreatePerson(
+            name: "Xylophone Person", email: nil
+        )
+        try await store.setParticipants(
+            [personID], organizer: nil, for: meetingID
+        )
+
+        // Build index.
+        let before = try await store.searchHits("Xylophone", limit: 50)
+        #expect(before.count == 1)
+        #expect(await store.lastSyncToken != nil)
+
+        // Delete the person via context.
+        try await store.read { store in
+            let persons = try store.fetchAllPersons()
+            let person = try #require(
+                persons.first(where: { $0.name == "Xylophone Person" })
+            )
+            store.context.delete(person)
+            try store.save()
+        }
+
+        // After sync, the person's name should no longer match.
+        let after = try await store.searchHits("Xylophone", limit: 50)
+        #expect(after.isEmpty, "Deleted person's name should be removed from index")
+
+        // Meeting still searchable by title.
+        let titleHits = try await store.searchHits("Staffed", limit: 50)
+        #expect(titleHits.count == 1)
+    }
+
+    /// Adds a transcript with a single segment and returns its ID.
+    private func addTranscript(
+        text: String, method: String, to meetingID: UUID,
+        store: DataStore
+    ) async throws -> UUID {
+        let seg = TranscriptSegment(
+            speakerID: 0, speakerLabel: "Speaker 0",
+            startTime: 0, endTime: 5,
+            text: text,
+            confidence: 0.9, noSpeechProbability: 0.1, words: nil
+        )
+        let result = TranscriptResult(
+            transcriptionMethodId: method, language: "en",
+            speakerCount: 1, segments: [seg],
+            speakerEmbeddings: [:], processingDuration: 1.0
+        )
+        return try await store.addTranscript(
+            result, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+    }
+
+    /// Characterization test: pins the current SwiftData behaviour
+    /// where deleting a TranscriptRecord does NOT cause SwiftData to
+    /// record a relationship-level update on the parent Meeting.
+    /// The transcript text stays in the index because incremental
+    /// sync never re-indexes the meeting.
+    ///
+    /// Not a shipping bug -- no production path deletes a
+    /// TranscriptRecord individually (re-transcription is additive;
+    /// the only transcript deletion is the cascade from Meeting
+    /// deletion, which hadMeetingDeletes already covers).
+    ///
+    /// If this test starts FAILING, SwiftData now records the
+    /// relationship update and the gap has closed. Invert the
+    /// assertion (expect isEmpty) and update the doc comment on
+    /// changedMeetings in DataStore+ReadModels.swift.
+    @Test("TranscriptRecord delete leaves stale text (SwiftData gap)")
+    func transcriptDeletionLeavesStaleText() async throws {
+        let (store, dir) = try makeOnDiskStore()
+        defer { cleanup(dir) }
+
+        let meetingID = try await store.createMeeting(
+            title: "Transcribed Meeting"
+        )
+
+        let txID = try await addTranscript(
+            text: "Discussing zeppelin blueprints",
+            method: "v1", to: meetingID, store: store
+        )
+        try await store.setPreferredTranscript(txID, for: meetingID)
+
+        // Build index -- "zeppelin" (preferred) is present.
+        let before = try await store.searchHits("zeppelin", limit: 50)
+        #expect(before.count == 1)
+        #expect(await store.lastSyncToken != nil)
+
+        // Delete the preferred TranscriptRecord directly.
+        try await store.read { store in
+            let transcripts = try store.fetchAllTranscripts()
+            let record = try #require(
+                transcripts.first(where: { $0.id == txID })
+            )
+            store.context.delete(record)
+            try store.save()
+        }
+
+        // SwiftData does not record a Meeting update for this
+        // delete, so incremental sync does not re-index the
+        // meeting. The old transcript text remains findable.
+        let after = try await store.searchHits("zeppelin", limit: 50)
+        #expect(
+            !after.isEmpty,
+            "Stale text persists -- SwiftData gap (see comment above)"
+        )
     }
 }

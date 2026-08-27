@@ -199,6 +199,7 @@ private extension InProcessTranscriptionEngine {
             try await ensureWhisperKitLoaded()
 
             var decodingOptions = DecodingOptions(
+                detectLanguage: true,
                 wordTimestamps: resolvedSettings.enableWordTimestamps
             )
 

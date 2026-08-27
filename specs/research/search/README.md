@@ -70,9 +70,13 @@ Results will be recorded here after a human runs the suite on hardware.
   after update.
 - **Warm:** Index up to date, history token current. The common path. The
   measurement runs the full production `searchHits()` call: a SwiftData
-  history check (no-op when current), 6 FTS5 MATCH queries per term (one per
-  indexed field), rowid-to-UUID resolution, then a SwiftData fetch per hit
-  (up to 50) for title/date display data.
+  history check (no-op when current), a count-based staleness check
+  (`indexedMeetingCount` vs SwiftData `fetchCount` -- two cheap counts,
+  triggers a full reconcile on mismatch), 6 FTS5 MATCH queries per term
+  (one per indexed field), rowid-to-UUID resolution, then a SwiftData
+  fetch per hit (up to 50) for title display data. The effective date
+  used for ordering comes from the side DB (carried on `RawHit`), not
+  from the SwiftData fetch.
 - **Incremental:** Sync + search after +1 / +10 / +50 meetings were added.
 
 ### Raw SQL cost profiles

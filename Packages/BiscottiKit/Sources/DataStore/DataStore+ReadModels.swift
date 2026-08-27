@@ -934,11 +934,12 @@ public extension DataStore {
         }
     }
 
-    // Per-meeting atomicity is handled inside indexMeeting (BEGIN
-    // IMMEDIATE / COMMIT). A batch transaction around the full loop
-    // would reduce fsync count but hold a write lock for the entire
-    // reconcile, blocking any concurrent reader. Not worth it until
-    // profiling shows full-reconcile latency is a real bottleneck.
+    // Per-meeting atomicity is handled inside indexMeeting and
+    // removeMeeting (each uses BEGIN IMMEDIATE / COMMIT). A batch
+    // transaction around the full loop would reduce fsync count but
+    // hold a write lock for the entire reconcile, blocking any
+    // concurrent reader. Not worth it until profiling shows
+    // full-reconcile latency is a real bottleneck.
 
     /// Re-indexes every meeting and purges stale entries. Runs on first
     /// launch, schema version change, or when incremental sync fails.

@@ -220,21 +220,35 @@ final class SearchIndex {
     }
 
     /// Removes a meeting from the index.
+    ///
+    /// Wrapped in a transaction for consistency with `indexMeeting` (the
+    /// same atomicity argument applies) and to collapse 7 WAL commits
+    /// into 1 -- relevant when a reconcile purges many stale entries.
     func removeMeeting(uuid: UUID) throws {
         let uuidStr = uuid.uuidString
 
+        // Read-only guard outside the transaction: avoids opening a
+        // write transaction for a meeting that is not in the index.
         guard let rowid = try queryInt64(
             "SELECT id FROM meeting_map WHERE meeting_uuid = ?",
             params: [.text(uuidStr)]
         ) else { return }
 
-        for field in Field.allCases {
-            try execSQL(
-                "DELETE FROM fts_\(field.rawValue) WHERE rowid = ?",
-                params: [.int64(rowid)]
-            )
+        try execSQL("BEGIN IMMEDIATE")
+        do {
+            for field in Field.allCases {
+                try execSQL(
+                    "DELETE FROM fts_\(field.rawValue) WHERE rowid = ?",
+                    params: [.int64(rowid)]
+                )
+            }
+            try execSQL("DELETE FROM meeting_map WHERE id = ?", params: [.int64(rowid)])
+
+            try execSQL("COMMIT")
+        } catch {
+            try? execSQL("ROLLBACK")
+            throw error
         }
-        try execSQL("DELETE FROM meeting_map WHERE id = ?", params: [.int64(rowid)])
     }
 
     /// Removes all index entries whose UUIDs are not in the given live set.

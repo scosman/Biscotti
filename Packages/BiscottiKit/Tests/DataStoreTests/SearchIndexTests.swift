@@ -23,6 +23,54 @@ private func content(
     )
 }
 
+// MARK: - Query tokenization
+
+@Suite("SearchIndex -- query tokenization")
+struct SearchIndexQueryTokenizationTests {
+    private func makeIndex() throws -> SearchIndex {
+        try SearchIndex(storage: .inMemory)
+    }
+
+    /// Terms must split on all whitespace, not just " ". Otherwise a pasted
+    /// or tab-separated query stays a single term, `fts5Escape` wraps the
+    /// embedded whitespace in double quotes, and FTS5 reads that as a
+    /// *phrase* -- silently returning a different result set rather than
+    /// failing. Pinned with a case where phrase and AND semantics disagree.
+    @Test("Terms split on tabs and newlines, not just spaces")
+    func termsSplitOnAllWhitespace() throws {
+        let index = try makeIndex()
+        let separated = UUID()
+        let adjacent = UUID()
+        // "roadmap" and "budget" present but NOT adjacent -- an AND query
+        // matches this, a phrase query does not.
+        try index.indexMeeting(content(
+            uuid: separated, title: "Budget Review",
+            transcript: "we discussed the roadmap at length"
+        ))
+        // Adjacent, so a phrase query matches this one instead.
+        try index.indexMeeting(content(uuid: adjacent, title: "Roadmap Budget"))
+
+        let expected = Set([separated, adjacent])
+        for query in ["roadmap budget", "roadmap\tbudget", "roadmap\nbudget"] {
+            let found = try Set(
+                index.search(query: query, limit: 50).map(\.meetingUUID)
+            )
+            #expect(found == expected, "query \(query.debugDescription)")
+        }
+    }
+
+    @Test("Leading, trailing and repeated whitespace is ignored")
+    func surroundingWhitespaceIgnored() throws {
+        let index = try makeIndex()
+        let meetingID = UUID()
+        try index.indexMeeting(content(uuid: meetingID, title: "Sprint Planning"))
+
+        #expect(try index.search(query: "  sprint   planning \n", limit: 50)
+            .map(\.meetingUUID) == [meetingID])
+        #expect(try index.search(query: "\t\n ", limit: 50).isEmpty)
+    }
+}
+
 // MARK: - SearchIndex unit tests
 
 @Suite("SearchIndex -- core operations")
@@ -917,6 +965,78 @@ struct TransactionAtomicityTests {
         let repaired = try await store.searchHits("Full", limit: 50)
         #expect(repaired.count == 1)
         #expect(repaired.first?.id == meetingID)
+    }
+}
+
+// MARK: - Corrupt index recovery
+
+/// The search index is derived, fully rebuildable data. A damaged
+/// `SearchIndex.sqlite` must never stop the app opening its primary store --
+/// that would take every meeting and recording down with it.
+@Suite("Corrupt search index does not block DataStore init")
+struct CorruptIndexRecoveryTests {
+    private func makeDir() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "CorruptIndex-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        return dir
+    }
+
+    @Test("A garbage index file is discarded and the store still opens")
+    func garbageIndexFileRecovered() async throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Build a real store so the SwiftData side has content to recover.
+        do {
+            let store = try DataStore(storage: .onDisk(dir))
+            _ = try await store.createMeeting(title: "Survivor Meeting")
+            _ = try await store.searchHits("Survivor", limit: 50)
+        }
+
+        // Replace the index with bytes SQLite cannot open.
+        let indexURL = dir.appending(path: "SearchIndex.sqlite")
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: indexURL.path + suffix)
+        }
+        try Data("this is definitely not a SQLite database".utf8)
+            .write(to: indexURL)
+
+        // Init must succeed, and search must rebuild from the store.
+        let reopened = try DataStore(storage: .onDisk(dir))
+        let hits = try await reopened.searchHits("Survivor", limit: 50)
+        #expect(hits.count == 1)
+        #expect(hits.first?.title == "Survivor Meeting")
+    }
+
+    @Test("Index file is replaced with a working database, not left broken")
+    func indexIsRebuiltOnDisk() async throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        do {
+            let store = try DataStore(storage: .onDisk(dir))
+            _ = try await store.createMeeting(title: "Persisted Meeting")
+            _ = try await store.searchHits("Persisted", limit: 50)
+        }
+
+        let indexURL = dir.appending(path: "SearchIndex.sqlite")
+        for suffix in ["-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: indexURL.path + suffix)
+        }
+        try Data(repeating: 0, count: 4096).write(to: indexURL)
+
+        do {
+            let recovered = try DataStore(storage: .onDisk(dir))
+            _ = try await recovered.searchHits("Persisted", limit: 50)
+        }
+
+        // A third open sees a healthy on-disk index, not the zero bytes.
+        let final = try DataStore(storage: .onDisk(dir))
+        let hits = try await final.searchHits("Persisted", limit: 50)
+        #expect(hits.count == 1)
     }
 }
 

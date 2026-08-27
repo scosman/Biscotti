@@ -367,8 +367,14 @@ public extension DataStore {
 
 public extension DataStore {
     /// Case-insensitive search across meeting titles and participant names.
-    /// This is the original linear-scan implementation. Retained for
-    /// benchmark comparison against the FTS5 and raw-SQL approaches.
+    ///
+    /// The original linear-scan implementation, superseded in production by
+    /// the FTS5-backed `searchHits`. No shipping code calls this; it is kept
+    /// as the benchmark baseline (`make bench` reports its fetch+fault cost)
+    /// and is covered by tests.
+    ///
+    /// TODO: remove once the benchmark no longer needs a linear-scan
+    /// reference point, together with its tests.
     func search(_ query: String) throws -> [Meeting] {
         let lowered = query.lowercased()
 

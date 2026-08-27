@@ -347,8 +347,13 @@ extension SearchIndex {
     /// applied by SQLite *before* `LIMIT`, so truncation is deterministic at
     /// tie boundaries and the full result set never crosses into Swift.
     func search(query: String, limit: Int) throws -> [RawHit] {
+        // Split on ALL whitespace, not just " ". A pasted or tab-separated
+        // query would otherwise stay one term, and `fts5Escape` would wrap the
+        // embedded whitespace in double quotes -- which FTS5 reads as a
+        // *phrase*, requiring the words to be adjacent. That does not fail
+        // loudly; it silently returns a different, wrong result set.
         let terms = query.lowercased()
-            .split(separator: " ")
+            .split(whereSeparator: \.isWhitespace)
             .map(String.init)
             .filter { !$0.isEmpty }
 
@@ -408,32 +413,40 @@ extension SearchIndex {
         }
 
         var hits: [RawHit] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let uuidCStr = sqlite3_column_text(stmt, 0),
-                  let uuid = UUID(uuidString: String(cString: uuidCStr))
-            else { continue }
-
-            let date = Date(
-                timeIntervalSinceReferenceDate: sqlite3_column_double(stmt, 1)
-            )
-            // bm25() is negative with more-negative meaning a better match.
-            // Negate so `score` reads the way its name implies.
-            let score = -sqlite3_column_double(stmt, 2)
-            let title = sqlite3_column_text(stmt, 3)
-                .map { String(cString: $0) } ?? ""
-            let snippet = Self.flattenWhitespace(
-                sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? ""
-            )
-            let preview = Self.flattenWhitespace(
-                sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? ""
-            )
-
-            hits.append(RawHit(
-                meetingUUID: uuid, score: score, title: title,
-                snippet: snippet, preview: preview, effectiveDate: date
-            ))
+        while true {
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { break }
+            guard status == SQLITE_ROW else {
+                throw sqliteError("step queryHits")
+            }
+            if let hit = Self.readHit(stmt) { hits.append(hit) }
         }
         return hits
+    }
+
+    /// Reads one result row. Returns `nil` for a row whose UUID cannot be
+    /// parsed -- that entry is unusable, but it is not a query failure.
+    private static func readHit(_ stmt: OpaquePointer?) -> RawHit? {
+        guard let uuidCStr = sqlite3_column_text(stmt, 0),
+              let uuid = UUID(uuidString: String(cString: uuidCStr))
+        else { return nil }
+
+        let text: (Int32) -> String = { column in
+            sqlite3_column_text(stmt, column).map { String(cString: $0) } ?? ""
+        }
+
+        return RawHit(
+            meetingUUID: uuid,
+            // bm25() is negative with more-negative meaning a better match.
+            // Negate so `score` reads the way its name implies.
+            score: -sqlite3_column_double(stmt, 2),
+            title: text(3),
+            snippet: flattenWhitespace(text(4)),
+            preview: flattenWhitespace(text(5)),
+            effectiveDate: Date(
+                timeIntervalSinceReferenceDate: sqlite3_column_double(stmt, 1)
+            )
+        )
     }
 
     /// Collapses every run of whitespace into a single space and trims the
@@ -514,8 +527,17 @@ extension SearchIndex {
         }
         defer { sqlite3_finalize(stmt) }
 
+        // Distinguish DONE from an error. A silent break on error would return
+        // a truncated list as success -- and `removeStaleEntries` treats this
+        // list as the complete set of indexed meetings, so truncation there
+        // leaves stale entries behind with no signal that anything went wrong.
         var uuids: [UUID] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while true {
+            let status = sqlite3_step(stmt)
+            if status == SQLITE_DONE { break }
+            guard status == SQLITE_ROW else {
+                throw sqliteError("step queryUUIDs")
+            }
             if let cStr = sqlite3_column_text(stmt, 0),
                let uuid = UUID(uuidString: String(cString: cStr))
             {

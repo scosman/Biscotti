@@ -295,7 +295,7 @@ private func printReport(tiers: [TierReport]) {
 
     print("")
     print(divider)
-    print("  Search Benchmark — FTS5 vs Raw SQL (head-to-head)")
+    print("  Search Benchmark — FTS5 side-index")
     print("  \(hardwareInfo())")
     print(divider)
 
@@ -503,7 +503,7 @@ private func measureFetchFaultBaseline(store: DataStore) async throws -> Double 
 
 // MARK: - Per-tier benchmark runner
 
-/// Measures both FTS5 and raw-SQL search against the same generated store.
+/// Measures FTS5 search against a freshly generated store.
 private func runTier(meetingCount: Int) async throws -> TierReport {
     let segCount = 100
     let wordsPerSeg = 50
@@ -548,7 +548,7 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
     // --- Baseline (same store, same meeting count) ---
     let fetchFaultMs = try await measureFetchFaultBaseline(store: store)
 
-    // --- FTS5 incremental (adds meetings AFTER raw SQL + baseline) ---
+    // --- FTS5 incremental (adds meetings AFTER the baseline) ---
     let fts5Incremental = try await measureFTS5Incremental(
         store: store, baseCount: meetingCount,
         segCount: segCount, wordsPerSeg: wordsPerSeg
@@ -573,7 +573,7 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
 @Suite("Search benchmark full (BISCOTTI_RUN_BENCH=1)",
        .enabled(if: isBenchEnabled), .serialized)
 struct SearchBenchmarkFullTests {
-    @Test("FTS5 vs raw SQL at 50 / 500 / 5000 meetings",
+    @Test("FTS5 cold / warm / incremental / size at 50 / 500 / 5000 meetings",
           .timeLimit(.minutes(30)))
     func benchmark() async throws {
         var allTiers: [TierReport] = []

@@ -128,9 +128,15 @@ source text was expected to slow the full rebuild. It did not: 51,975 ms
 against 53,051 ms for the contentless build, i.e. marginally faster and within
 noise. Tokenizing dominates; writing the content alongside it is close to free.
 
-52 s at 5000 meetings is still a long time, and it is user-visible on first
-launch after a schema bump. It needs a progress indicator (see risks below).
-Note it is a *one-time* cost per schema version, not per launch.
+52 s is a synthetic worst case: 5000 meetings each carrying a 5000-word
+transcript. At realistic corpus sizes the cost is small -- 4.6 s at 500
+meetings, and well under a second in the low hundreds. It is also **one-time
+per schema version**, not per launch, and it happens behind the existing
+indeterminate spinner on the first search.
+
+No progress-indicator work is warranted now. Revisit if real users reach a few
+thousand meetings, where an indeterminate spinner stops being honest about how
+long the wait is.
 
 **3. Index size is 80-87% of the SwiftData store.** Higher in relative terms
 than expected, though the absolute figure (199 MB at 5000 meetings) matched the
@@ -299,9 +305,11 @@ before the numbers were in.
 ### FTS5 side-index risks
 
 1. **Cold reconcile latency.** The first search after a schema version bump
-   re-indexes every meeting. **Measured at 52 s for 5000 meetings** (4.6 s at
-   500). *Mitigate:* show a progress indicator -- at this magnitude it is not
-   optional. The cost is one-time per schema version, not per launch.
+   re-indexes every meeting. **Measured at 52 s for 5000 meetings, 4.6 s at
+   500**, one-time per schema version rather than per launch. The existing
+   indeterminate spinner is adequate at realistic corpus sizes. *Revisit* --
+   with determinate progress -- only if real users reach thousands of
+   meetings.
 2. **History token expiry.** If SwiftData history transactions expire before the
    next search, incremental sync fails and falls back to full reconcile. Normal
    usage (search at least once per session) keeps the token fresh.

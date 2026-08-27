@@ -53,6 +53,8 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
         // Native meeting apps
         "us.zoom.xos",
         "com.microsoft.teams2",
+        "com.microsoft.teams2.modulehost",
+        "com.microsoft.teams2.helper",
         "Cisco-Systems.Spark",
         "com.cisco.webexmeetingsapp",
         "com.logmein.GoToMeeting",
@@ -81,6 +83,8 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
     public static let meetingAppNames: [String: String] = [
         "us.zoom.xos": "Zoom",
         "com.microsoft.teams2": "Microsoft Teams",
+        "com.microsoft.teams2.modulehost": "Microsoft Teams",
+        "com.microsoft.teams2.helper": "Microsoft Teams",
         "Cisco-Systems.Spark": "Cisco Webex",
         "com.cisco.webexmeetingsapp": "Cisco Webex",
         "com.logmein.GoToMeeting": "GoTo Meeting",

@@ -72,6 +72,8 @@ public struct BundledMeetingCatalog: MeetingCatalog {
         // Native meeting apps
         "us.zoom.xos",
         "com.microsoft.teams2",
+        "com.microsoft.teams2.modulehost",
+        "com.microsoft.teams2.helper",
         "Cisco-Systems.Spark",
         "com.cisco.webexmeetingsapp",
         "com.logmein.GoToMeeting",
@@ -123,7 +125,9 @@ public struct BundledMeetingCatalog: MeetingCatalog {
     private static let helperToParent: [String: String] = [
         "com.apple.WebKit.GPU": "com.apple.Safari",
         "com.apple.avconferenced": "com.apple.FaceTime",
-        "com.tinyspeck.slackmacgap.helper": "com.tinyspeck.slackmacgap"
+        "com.tinyspeck.slackmacgap.helper": "com.tinyspeck.slackmacgap",
+        "com.microsoft.teams2.modulehost": "com.microsoft.teams2",
+        "com.microsoft.teams2.helper": "com.microsoft.teams2"
     ]
 
     // MARK: - Compiled regex patterns (cached)

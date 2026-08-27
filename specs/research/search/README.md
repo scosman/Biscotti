@@ -6,22 +6,38 @@
 |---|---|
 | 2026-08-25 | Benchmark: linear-scan vs raw SQL (measured) |
 | 2026-08-26 | FTS5 side-index implementation; head-to-head benchmark harness added |
+| 2026-08-27 | Rebuilt as a single content-storing FTS5 table with `bm25()` ranking; **decision: FTS5 ships**, raw-SQL harness removed |
 
 **Hardware:** Mac16,8 (M4 family), 48 GB RAM, macOS 15.6.1
 
 ---
 
+## Decision
+
+**FTS5 ships.** Measured 2026-08-27: on the realistic query (a rare term, which
+cannot short-circuit) FTS5 is **0.8 ms at 5000 meetings** against 127 ms for raw
+SQL and 38.9 s for the linear scan it replaced. See
+[Measured results](#measured-results).
+
+The raw-SQL path was a genuine contender and is described below because the
+comparison is the reason FTS5 was chosen. **Its benchmark harness has been
+removed** -- it was never shipped, and it depended on undeclared Core Data
+column names that would break silently. The measurements it produced are kept
+here; the code is not.
+
+---
+
 ## The three approaches
 
-The current shipping code uses a **linear scan** -- fetch every `Meeting`,
+The pre-existing shipping code used a **linear scan** -- fetch every `Meeting`,
 fault all relationships into memory, and run `localizedStandardContains` per
 search term. It is correct and covers every field, but scales badly: **39.5 s
 at 5000 meetings** because SwiftData/Core Data object materialization dominates
 (string matching is <3% of the cost).
 
-This branch compares two replacement candidates:
+Two replacement candidates were compared:
 
-### Approach A: Raw SQL (LIKE queries against the SwiftData store)
+### Approach A: Raw SQL (LIKE queries against the SwiftData store) -- NOT SHIPPED
 
 Query the SwiftData SQLite file directly with a read-only connection, using
 `LIKE '%term%'` on the segment text column. Joins through the existing Core Data
@@ -36,7 +52,7 @@ Data foreign key column names (`Z7SEGMENTS`, `Z4TRANSCRIPTS`) that can shift
 silently when the model changes. Case-insensitive for ASCII only, no diacritic
 folding. Cold cost is real (page-cache misses on first query).
 
-### Approach B: FTS5 side-index
+### Approach B: FTS5 side-index -- SHIPPED
 
 A separate SQLite database (`SearchIndex.sqlite`) holding one FTS5 table
 (`meeting_search_index`) with a column per searchable field (title, summary,
@@ -65,23 +81,79 @@ relative to substring matching.
 
 ---
 
-## Head-to-head benchmark results
+## Measured results
 
-**Not yet run against the current implementation.** A run on 2026-08-26
-measured the earlier contentless six-table design; those numbers are **not**
-comparable and have been removed rather than left to mislead. The index was
-since rebuilt as a single content-storing FTS5 table with `bm25()` ranking,
-which changes the warm path (one query instead of six per term, and no
-SwiftData fetch per hit), the cold path (the text is now written too), and
-adds an index-size figure. Re-run before drawing conclusions.
+Measured **2026-08-27** via `make bench` (`SearchBenchmarkTests.swift`,
+env-gated `BISCOTTI_RUN_BENCH=1`), on the hardware named above. Synthetic data:
+5000 words of transcript per meeting (100 segments x 50 words). Warm figures
+are medians of repeated runs.
 
-The benchmark harness is in place
-(`SearchBenchmarkTests.swift`, env-gated `BISCOTTI_RUN_BENCH=1`) and ready to
-run via `make bench`. Both approaches are measured against the **same generated
-datasets** at the same meeting counts (50 / 500 / 5000), with the same queries
-(including the rare-term query -- the realistic case that cannot short-circuit).
+Raw-SQL figures come from the same run, taken before that harness was removed.
 
-Results will be recorded here after a human runs the suite on hardware.
+| Tier | FTS5 cold | FTS5 warm (rare) | FTS5 warm (common) | FTS5 index | SQL warm (rare) | SQL warm (common) | Linear scan |
+|---|---|---|---|---|---|---|---|
+| 500 | 4,573 ms | **0.7 ms** | 68.4 ms | 21.3 MB | 11.9 ms | 34.1 ms | 3,863 ms |
+| 5000 | 51,975 ms | **0.8 ms** | 154.7 ms | 199.4 MB | 127.1 ms | 378.8 ms | 38,863 ms |
+
+**On the realistic query, FTS5 wins decisively and stops scaling.** A rare term
+costs 0.7 ms at 500 meetings and 0.8 ms at 5000 -- flat, as an index should be.
+Raw SQL is 16x slower at 500 and 163x slower at 5000, because `LIKE` remains a
+linear scan. Against the linear scan it replaced, FTS5 is ~48,000x faster at
+5000 meetings.
+
+### Three results that need care
+
+**1. Common terms regressed against the previous FTS5 design.** The six-table
+contentless build measured 60.5 ms for `"the"` at 5000 meetings; this one
+measures **154.7 ms**, with run-to-run spread rising from 3.0 ms to 78.4 ms.
+That is despite removing 50 per-hit SwiftData fetches, so the underlying
+increase is larger than 2.5x.
+
+The cause is the one flagged in the cost profile below: `bm25()` and `snippet()`
+are auxiliary functions evaluated per *matching* row, and `ORDER BY ... LIMIT`
+forces SQLite to rank every match before truncating. `"the"` matches all 5000
+meetings, so both functions run 5000 times to produce 50 rows. `snippet()` in
+particular has to locate term instances in a 5000-word transcript.
+
+This is a real regression, not measurement noise, and the fix is known: a
+two-stage query -- inner `SELECT rowid ... ORDER BY bm25(...) LIMIT n`, outer
+join computing `snippet()` only for the surviving rowids. **Not yet done.**
+
+It is bounded, though. 154.7 ms is still 15x better than the linear scan's
+2,267 ms for the same query, and a common single word is the least valuable
+search a user can run.
+
+**2. Cold reconcile did not get worse -- prediction was wrong.** Storing the
+source text was expected to slow the full rebuild. It did not: 51,975 ms
+against 53,051 ms for the contentless build, i.e. marginally faster and within
+noise. Tokenizing dominates; writing the content alongside it is close to free.
+
+52 s at 5000 meetings is still a long time, and it is user-visible on first
+launch after a schema bump. It needs a progress indicator (see risks below).
+Note it is a *one-time* cost per schema version, not per launch.
+
+**3. Index size is 80-87% of the SwiftData store.** Higher in relative terms
+than expected, though the absolute figure (199 MB at 5000 meetings) matched the
+estimate. The index holds a second copy of every searchable field, and
+transcripts dominate both databases -- hence the ratio.
+
+This is acceptable for this app specifically: it records meeting audio, and
+5000 meetings of even well-compressed speech is tens of gigabytes. 199 MB is a
+fraction of a percent of that. The ratio would be alarming in an app whose data
+was mostly text.
+
+### Incremental sync
+
+| Meetings added | Sync + search |
+|---|---|
+| +1 | ~20 ms |
+| +10 | ~180 ms |
+| +50 | ~890 ms |
+
+About **18 ms per meeting re-indexed**, flat across both tiers -- it depends on
+the changed set, not the corpus size, which is the property incremental sync
+exists to provide. Bulk operations pay for it: re-transcribing 50 meetings adds
+roughly 0.9 s of index work.
 
 ### FTS5 cost profiles
 
@@ -97,44 +169,25 @@ Results will be recorded here after a human runs the suite on hardware.
   `snippet()`, ordered by `(rank, effective date desc, UUID)` with
   `LIMIT` applied by SQLite. **No SwiftData fetch per hit:** title, date
   and snippet all come from the side DB.
-  - Note `bm25()` and `snippet()` are auxiliary functions evaluated per
-    matching row. `ORDER BY ... LIMIT` forces SQLite to rank every match
-    before truncating, so a common term pays these over the whole match
-    set, not just the 50 survivors. The common-term row below is what
-    shows whether that matters; if it does, the fix is a two-stage query
-    that computes `snippet()` only for the surviving rowids.
+  - `bm25()` and `snippet()` are auxiliary functions evaluated per matching
+    row, and `ORDER BY ... LIMIT` forces SQLite to rank every match before
+    truncating. A common term therefore pays them over the whole match set,
+    not just the 50 survivors. **Measured, and it matters** -- see result 1
+    above.
 - **Incremental:** Sync + search after +1 / +10 / +50 meetings were added.
 - **Index size:** On-disk bytes of `SearchIndex.sqlite` (plus its WAL) after
   the cold reconcile, reported next to the SwiftData store size. This is the
   cost of storing the text.
 
-### Raw SQL cost profiles
-
-- **Cold:** First query against the SwiftData store (page-cache cold).
-- **Warm:** Subsequent queries with pages in cache. The measurement runs a
-  `SELECT DISTINCT hex(m.ZID) ... WHERE LIKE '%term%'` scan with joins,
-  fetching the UUIDs of matching meetings (not just a count). This is the
-  SQL scan + result materialization, but does not include SwiftData object
-  resolution for display data (title/date). FTS5 warm does include that
-  resolution step; for the rare-term query (typically 2 hits) the overhead
-  is negligible, but for common terms (many hits) it adds measurable cost
-  to FTS5's side of the comparison.
-
-### Expected result template (to be filled with real measurements)
-
-| Tier | FTS5 cold | FTS5 warm (rare) | FTS5 warm (common) | FTS5 index MB | SQL cold (rare) | SQL warm (rare) | SQL warm (common) |
-|---|---|---|---|---|---|---|---|
-| 50 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
-| 500 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
-| 5000 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
-
 ---
 
-## Linear-scan measurements (current shipping code, 2026-08-25)
+## Linear-scan measurements (superseded implementation, 2026-08-25)
 
-The current `searchHits` fetches **every** `Meeting`, then walks relationships
-in memory -- participants, tags, transcripts, and every transcript segment --
-running `localizedStandardContains` per term.
+These are the numbers that justified building an index at all. The old
+`searchHits` fetched **every** `Meeting`, then walked relationships in memory --
+participants, tags, transcripts, and every transcript segment -- running
+`localizedStandardContains` per term. Kept as the baseline the current
+implementation is measured against.
 
 The cost was **SwiftData/Core Data faulting**, not string matching. At 5000
 meetings it materialized ~500,000 segment objects. String matching was only
@@ -172,6 +225,13 @@ bottleneck was never I/O or string comparison; it was object materialization.
 
 ## Core Data store schema (validated by dumping a generated store)
 
+> **Reference only -- nothing in the shipping code depends on this.** It was
+> established for the raw-SQL approach, which was not shipped and whose harness
+> has been removed. Kept because it cost real work to derive and is the map
+> anyone would need before reading the SwiftData file directly again. The
+> fragility described under "Raw-SQL risks" is exactly why the FTS5 index owns
+> its own storage instead.
+
 SwiftData is Core Data underneath, and the file is ordinary SQLite in WAL mode.
 **Core Data does not block read queries**; a second read-only connection is fine.
 
@@ -194,7 +254,7 @@ change, but is fragile -- entity numbers can shift when the model changes.
 
 `ZID` is a 16-byte **BLOB**, so use `hex(ZID)` to read UUIDs as text.
 
-### The validated query (used by both RawSQLSanityCheckTests and the benchmark)
+### The validated query (used by the removed raw-SQL harness)
 
 ```sql
 SELECT DISTINCT hex(m.ZID)
@@ -209,14 +269,19 @@ WHERE  s.ZTEXT LIKE '%term%'
 
 ## Risks and mitigations
 
-### Raw-SQL risks
+### Raw-SQL risks (why it was not shipped)
+
+These applied to the raw-SQL approach only. No shipping code carries them --
+they are recorded because risk 1 is the main reason FTS5 was preferred even
+before the numbers were in.
 
 1. **Entity numbers in FK column names.** The `7` and `4` in `Z7SEGMENTS` /
    `Z4TRANSCRIPTS` are Core Data entity indices and **can shift when the model
    changes** (adding or removing entities). Failure is **silent** -- zero results,
-   no error. *Mitigate:* resolve column names at runtime via `PRAGMA table_info`,
-   assert the expected schema shape in a test, and keep a differential test
-   comparing SQL results against the Swift implementation.
+   no error. Mitigating it would have meant resolving column names at runtime via
+   `PRAGMA table_info`, asserting the schema shape in a test, and maintaining a
+   differential test against the Swift implementation -- ongoing cost for a path
+   that lost on speed anyway.
 2. **The store format is private and undocumented.** Apple does not support
    reading it directly. In practice it is stable, but treat it as read-only --
    never write through this path.
@@ -234,23 +299,29 @@ WHERE  s.ZTEXT LIKE '%term%'
 ### FTS5 side-index risks
 
 1. **Cold reconcile latency.** The first search after a schema version bump
-   re-indexes every meeting. At 5000 meetings this will be measurable (seconds,
-   not milliseconds). *Mitigate:* show a progress indicator; the cost is one-time.
+   re-indexes every meeting. **Measured at 52 s for 5000 meetings** (4.6 s at
+   500). *Mitigate:* show a progress indicator -- at this magnitude it is not
+   optional. The cost is one-time per schema version, not per launch.
 2. **History token expiry.** If SwiftData history transactions expire before the
    next search, incremental sync fails and falls back to full reconcile. Normal
    usage (search at least once per session) keeps the token fresh.
 3. **Index size.** The FTS5 table stores the source text (required for
    `snippet()`), so the index holds a second copy of every searchable field --
-   transcripts dominate. Expect it to be a substantial fraction of the
-   SwiftData store rather than a rounding error. *Mitigate:* it is still small
-   next to the recorded audio, which is orders of magnitude larger. Measured
-   by `make bench` (see "Index size" above); the results table records it.
+   transcripts dominate. **Measured at 80-87% of the SwiftData store**
+   (199 MB at 5000 meetings). *Mitigate:* it is still a fraction of a percent
+   of the recorded audio. Re-check this if the app ever stores substantially
+   more text per meeting.
 4. **No infix matching.** FTS5 matches whole words and prefixes, not arbitrary
    substrings. `"roa"` matches "roadmap" but `"oadm"` does not. This is a
    **product-level change** in what search finds relative to substring matching.
 5. **Complexity.** A second SQLite database, a sync engine using the History API,
    schema versioning, and rollback logic -- all machinery that raw SQL does not
    require.
+6. **Common-term latency scales with the match set, not the result set.**
+   `bm25()` and `snippet()` are evaluated per matching row before `LIMIT`
+   applies. **Measured at 154.7 ms for `"the"` at 5000 meetings**, a regression
+   against the earlier contentless design. *Mitigate (not yet done):* a
+   two-stage query computing `snippet()` only for the surviving rowids.
 
 ---
 
@@ -260,15 +331,12 @@ WHERE  s.ZTEXT LIKE '%term%'
 make bench        # NON-GATING, ~12 min, generates multi-GB stores
 ```
 
-Runs all benchmark suites, each env-gated so they never run in `make test` /
-`make ci` / `make precommit-checks`:
-
-- `SearchBenchmarkTests.swift` -- `BISCOTTI_RUN_BENCH=1`, head-to-head FTS5 vs
-  raw SQL (same data, same queries, same run)
-- `RawSQLSanityCheckTests.swift` -- `BISCOTTI_RUN_SQLCHECK=1`, standalone
-  raw-SQL timing + schema dump
+Runs `SearchBenchmarkTests.swift`, env-gated on `BISCOTTI_RUN_BENCH=1` so it
+never runs in `make test` / `make ci` / `make precommit-checks`. Reports FTS5
+cold, warm, incremental and index size, plus the linear-scan fetch+fault
+baseline.
 
 A fast smoke test (5 meetings, ~30 ms) **does** run in `make test` to catch rot
-in both the FTS5 and raw-SQL measurement harnesses.
+in the generator and measurement harness.
 
 All benchmarks use **generated data only** and never touch the real store.

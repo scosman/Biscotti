@@ -1,14 +1,20 @@
 import DataStore
 import Foundation
-import SQLite3
 import Testing
 
-// Head-to-head benchmark: FTS5 side-index vs raw-SQL LIKE queries, both
-// measured against the same generated datasets at the same meeting counts.
+// Benchmark for the FTS5 side-index against generated datasets at several
+// meeting counts.
 //
-// FTS5 costs are split into cold (full reconcile from scratch), warm (index
-// up to date), and incremental (history-delta after adding meetings).
-// Raw SQL is split into cold (first query, no page cache) and warm.
+// Costs are split into cold (full reconcile from scratch), warm (index up to
+// date), incremental (history-delta after adding meetings), and index size on
+// disk. The linear-scan fetch+fault cost is reported as a baseline -- it is
+// what the index replaced.
+//
+// A raw-SQL LIKE path against the SwiftData store file was benchmarked here
+// too, until FTS5 won decisively (see the research doc). It was removed rather
+// than maintained: it depended on undeclared Core Data column names and was
+// never shipped. The measurements that settled it are preserved in
+// `specs/research/search/README.md`.
 //
 // Results and analysis: `specs/research/search/README.md`.
 //
@@ -196,117 +202,6 @@ private func measureFetchFault(store: DataStore) async throws -> Double {
     }
 }
 
-// MARK: - Raw-SQL Measurement
-
-/// Minimal read-only SQLite wrapper for raw-SQL benchmark queries.
-private final class ReadOnlyDB {
-    private var handle: OpaquePointer?
-
-    init(path: String) throws {
-        var pointer: OpaquePointer?
-        let openResult = sqlite3_open_v2(path, &pointer, SQLITE_OPEN_READONLY, nil)
-        guard openResult == SQLITE_OK, let opened = pointer else {
-            throw BenchError(message: "sqlite3_open_v2 failed rc=\(openResult)")
-        }
-        handle = opened
-    }
-
-    deinit {
-        if let handle { sqlite3_close(handle) }
-    }
-
-    /// Returns the UUIDs (as hex strings) of meetings whose segment text
-    /// contains `term`. This is the apples-to-apples counterpart to FTS5's
-    /// warm path, which returns per-hit UUIDs + display data.
-    func fetchMatchingMeetingUUIDs(term: String) throws -> [String] {
-        let sql = """
-            SELECT DISTINCT hex(m.ZID)
-            FROM   ZTRANSCRIPTSEGMENTRECORD s
-            JOIN   ZTRANSCRIPTRECORD t ON s.Z7SEGMENTS    = t.Z_PK
-            JOIN   ZMEETING          m ON t.Z4TRANSCRIPTS = m.Z_PK
-            WHERE  s.ZTEXT LIKE '%' || ? || '%'
-              AND  t.ZID = m.ZPREFERREDTRANSCRIPTID
-        """
-        return try queryWithTerm(sql: sql, term: term)
-    }
-
-    /// Shared bind-and-step loop for queries with a single text parameter
-    /// that return one text column per row.
-    private func queryWithTerm(sql: String, term: String) throws -> [String] {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK else {
-            let msg = String(cString: sqlite3_errmsg(handle))
-            throw BenchError(message: "prepare failed: \(msg)")
-        }
-        defer { sqlite3_finalize(stmt) }
-
-        guard sqlite3_bind_text(
-            stmt, 1, term, -1,
-            unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        ) == SQLITE_OK else {
-            throw BenchError(message: "bind failed")
-        }
-
-        var results: [String] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let cstr = sqlite3_column_text(stmt, 0) {
-                results.append(String(cString: cstr))
-            }
-        }
-        return results
-    }
-}
-
-private struct BenchError: Error { let message: String }
-
-/// Measures a raw-SQL LIKE query against the SwiftData store file.
-/// Fetches distinct meeting UUIDs (not just a count) so the work is
-/// comparable to the FTS5 path, which also resolves per-hit UUIDs.
-private func measureRawSQL(
-    dbPath: String, term: String
-) throws -> TimingResult {
-    let database = try ReadOnlyDB(path: dbPath)
-    let start = ContinuousClock.now
-    let uuids = try database.fetchMatchingMeetingUUIDs(term: term)
-    let elapsed = ContinuousClock.now - start
-    return TimingResult(millis: durationMs(elapsed), hitCount: uuids.count)
-}
-
-/// Result of a cold + warm raw-SQL measurement for a single term.
-private struct RawSQLColdWarmResult {
-    let coldMs: Double
-    let warmMedianMs: Double
-    let hitCount: Int
-}
-
-/// Measures raw-SQL cold + warm for a single term.
-/// Cold uses a fresh connection; warm reuses the same connection.
-/// Both fetch distinct meeting UUIDs (not just a count) so the work
-/// is comparable to the FTS5 path.
-private func measureRawSQLColdWarm(
-    dbPath: String, term: String
-) throws -> RawSQLColdWarmResult {
-    // Cold: fresh connection, first query.
-    let coldDB = try ReadOnlyDB(path: dbPath)
-    let coldStart = ContinuousClock.now
-    let coldUUIDs = try coldDB.fetchMatchingMeetingUUIDs(term: term)
-    let coldMs = durationMs(ContinuousClock.now - coldStart)
-
-    // Warm: reuse connection, median of warmRuns.
-    var warmValues: [Double] = []
-    var warmHits = 0
-    for _ in 0 ..< warmRuns {
-        let start = ContinuousClock.now
-        let uuids = try coldDB.fetchMatchingMeetingUUIDs(term: term)
-        warmHits = uuids.count
-        warmValues.append(durationMs(ContinuousClock.now - start))
-    }
-    return RawSQLColdWarmResult(
-        coldMs: coldMs, warmMedianMs: median(warmValues),
-        hitCount: max(coldUUIDs.count, warmHits)
-    )
-}
-
 // MARK: - Statistics
 
 private func durationMs(_ duration: Duration) -> Double {
@@ -374,13 +269,6 @@ private struct IncrementalResult {
     let hitCount: Int
 }
 
-private struct RawSQLResult {
-    let label: String
-    let coldMs: Double
-    let warmMedianMs: Double
-    let hitCount: Int
-}
-
 private struct TierReport {
     let meetingCount: Int
     let wordsPerMeeting: Int
@@ -390,8 +278,6 @@ private struct TierReport {
     let fts5ColdHits: Int
     let fts5Warm: [QueryResult]
     let fts5Incremental: [IncrementalResult]
-    /// Raw SQL
-    let rawSQL: [RawSQLResult]
     /// Baseline
     let fetchFaultMs: Double
     /// On-disk size of `SearchIndex.sqlite` (+ WAL) after the cold reconcile.
@@ -419,8 +305,7 @@ private func printReport(tiers: [TierReport]) {
         print(String(format: "  Populated in %.1f s", tier.populateMs / 1000.0))
 
         printFTS5Section(tier)
-        printRawSQLSection(tier)
-        printComparisonSection(tier)
+        printBaselineSection(tier)
     }
 
     print("")
@@ -467,46 +352,12 @@ private func printFTS5Section(_ tier: TierReport) {
     }
 }
 
-private func printRawSQLSection(_ tier: TierReport) {
+private func printBaselineSection(_ tier: TierReport) {
     print("")
-    let header = "  \(padRight("RAW SQL Query", 32)) \(padLeft("Cold ms", 8))"
-        + "  \(padLeft("Warm ms", 8))  \(padLeft("Hits", 5))"
-    print(header)
-    print("  \(String(repeating: "-", count: 57))")
-    for result in tier.rawSQL {
-        let line = "  \(padRight(result.label, 32)) "
-            + "\(padLeft(String(format: "%.1f", result.coldMs), 8))  "
-            + "\(padLeft(String(format: "%.1f", result.warmMedianMs), 8))  "
-            + "\(padLeft("\(result.hitCount)", 5))"
-        print(line)
-    }
-}
-
-private func printComparisonSection(_ tier: TierReport) {
-    let rareSQL = tier.rawSQL.first { $0.label.hasPrefix("rare") }
-    let rareFTS5 = tier.fts5Warm.first { $0.label.hasPrefix("rare") }
-
-    print("")
-    print("  COMPARISON (warm, rare term — the realistic query):")
-    if let fts5 = rareFTS5, let sql = rareSQL {
-        print(String(format: "    FTS5:    %8.1f ms", fts5.warmMedianMs))
-        print(String(format: "    Raw SQL: %8.1f ms", sql.warmMedianMs))
-        if sql.warmMedianMs > 0 {
-            let ratio = sql.warmMedianMs / fts5.warmMedianMs
-            if ratio > 1 {
-                print(String(format: "    FTS5 is %.1fx faster", ratio))
-            } else if ratio < 1 {
-                print(String(format: "    Raw SQL is %.1fx faster", 1.0 / ratio))
-            } else {
-                print("    Roughly equal")
-            }
-        }
-    }
-    print(String(format: "    fetch+fault (linear-scan baseline): %.1f ms", tier.fetchFaultMs))
-    print("")
-    print("  Note: Both paths fetch UUIDs. FTS5 also runs a history")
-    print("  check (no-op when current) + per-hit SwiftData fetch")
-    print("  for title/date (up to \(searchLimit)). Raw SQL stops at UUIDs.")
+    print(String(
+        format: "  BASELINE (linear scan, fetch+fault every meeting): %.1f ms",
+        tier.fetchFaultMs
+    ))
 }
 
 // MARK: - Temp-dir helpers
@@ -521,11 +372,6 @@ private func makeTempDir() -> URL {
 
 private func cleanupDir(_ dir: URL) {
     try? FileManager.default.removeItem(at: dir)
-}
-
-/// Returns the path to the SwiftData SQLite file inside a store directory.
-private func swiftDataDBPath(_ dir: URL) -> String {
-    dir.appending(path: "Biscotti.store").path
 }
 
 /// Total bytes of a SQLite database, including its WAL and shared-memory
@@ -575,13 +421,6 @@ struct SearchBenchmarkSmokeTests {
         let timing = try await measureFTS5Search(store: store, query: "meeting")
         #expect(timing.millis > 0, "measurement should produce a positive duration")
         #expect(timing.hitCount == 5)
-
-        // Raw-SQL measurement harness works against the same store.
-        let sqlResult = try measureRawSQL(
-            dbPath: swiftDataDBPath(dir), term: rareToken
-        )
-        #expect(sqlResult.millis > 0, "raw-SQL measurement should produce a positive duration")
-        #expect(sqlResult.hitCount == 1, "raw SQL should find the 1 rare-token meeting")
 
         // Fetch+fault measurement works.
         let fetchMs = try await measureFetchFault(store: store)
@@ -651,26 +490,6 @@ private func measureFTS5Incremental(
     return results
 }
 
-// MARK: - Raw-SQL measurement helpers
-
-/// Measures raw-SQL cold/warm for each query term against the SwiftData store.
-private func measureRawSQLQueries(
-    dbPath: String,
-    queries: [(label: String, term: String)]
-) throws -> [RawSQLResult] {
-    var results: [RawSQLResult] = []
-    for (label, term) in queries {
-        let timing = try measureRawSQLColdWarm(
-            dbPath: dbPath, term: term
-        )
-        results.append(RawSQLResult(
-            label: label, coldMs: timing.coldMs,
-            warmMedianMs: timing.warmMedianMs, hitCount: timing.hitCount
-        ))
-    }
-    return results
-}
-
 // MARK: - Fetch+fault baseline
 
 /// Measures fetch+fault baseline (median of `warmRuns` iterations).
@@ -726,11 +545,6 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
     let indexBytes = sqliteBytes(dir.appending(path: "SearchIndex.sqlite"))
     let storeBytes = sqliteBytes(dir.appending(path: "Biscotti.store"))
 
-    // --- Raw SQL (same store, same meeting count — before incremental adds) ---
-    let dbPath = swiftDataDBPath(dir)
-    let sqlQueries = queries.map { (label: $0.label, term: $0.query) }
-    let rawSQL = try measureRawSQLQueries(dbPath: dbPath, queries: sqlQueries)
-
     // --- Baseline (same store, same meeting count) ---
     let fetchFaultMs = try await measureFetchFaultBaseline(store: store)
 
@@ -748,7 +562,6 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
         fts5ColdHits: fts5Cold.hitCount,
         fts5Warm: fts5Warm,
         fts5Incremental: fts5Incremental,
-        rawSQL: rawSQL,
         fetchFaultMs: fetchFaultMs,
         indexBytes: indexBytes,
         storeBytes: storeBytes

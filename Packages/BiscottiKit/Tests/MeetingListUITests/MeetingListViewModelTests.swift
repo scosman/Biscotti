@@ -301,6 +301,16 @@ struct MeetingListModeTests {
         #expect(viewModel.isSearching == false)
     }
 
+    @Test("showsSearchSpinner reflects core showsMeetingsSearchSpinner")
+    @MainActor
+    func showsSearchSpinnerReflectsCore() throws {
+        let fix = try makeCoreFixture(testName: "MeetingListUITests")
+        defer { fix.cleanup() }
+
+        let viewModel = MeetingListViewModel(core: fix.core)
+        #expect(viewModel.showsSearchSpinner == false)
+    }
+
     @Test("query reflects core meetingsQuery")
     @MainActor
     func queryReflectsCore() throws {

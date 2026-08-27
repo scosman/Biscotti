@@ -148,8 +148,14 @@ public final class AppCore {
     /// The search results (flat, ranked). Empty when in browse mode.
     public private(set) var meetingsResults: [SearchHit] = []
 
-    /// Whether a search query is currently in flight.
+    /// Whether a search query is currently in flight (from dispatch until
+    /// results land). Gates the no-results empty state, not the spinner.
     public private(set) var isSearchingMeetings = false
+
+    /// Whether the search spinner should render. Flips true only when a
+    /// search stays in flight longer than the 150ms grace window, so the
+    /// spinner never flashes for fast searches.
+    public private(set) var showsMeetingsSearchSpinner = false
 
     /// Monotonically increasing token that signals the UI to focus the
     /// search field. Incremented by `focusSearch()`, observed by
@@ -241,6 +247,7 @@ public final class AppCore {
 
     private let scheduler: any AppScheduler
     private var meetingsSearchTask: Task<Void, Never>?
+    private var meetingsSearchSpinnerTask: Task<Void, Never>?
 
     /// The bundle ID of the detected app that triggered the current recording.
     private var activeDetectedBundleID: String?
@@ -592,15 +599,21 @@ public final class AppCore {
         }
         // else: leave as .notDetermined
     }
+}
 
-    // MARK: - Data refresh
+// MARK: - Data refresh
 
+// Extracted to an extension to keep the main class body within the
+// type_body_length lint limit after adding the search-spinner stored
+// property (which must live in the class body for @Observable).
+
+public extension AppCore {
     /// Reloads all meeting summaries from the store (uncapped).
     ///
     /// Increments `summariesVersion` on every call so observers
     /// (e.g. `RecordingViewModel`) detect the refresh even when the
     /// count or content is unchanged.
-    public func reloadSummaries() async {
+    func reloadSummaries() async {
         do {
             summaries = try await store.meetingSummaries()
         } catch {
@@ -958,8 +971,17 @@ package extension AppCore {
 // MARK: - Meetings search
 
 extension AppCore {
+    /// Search debounce: queries arriving within this window collapse into
+    /// one search (skipped when typing fast).
+    private static let meetingsSearchDebounce: Duration = .milliseconds(50)
+
+    /// Grace window before the spinner appears. Searches that finish
+    /// within it never show a spinner.
+    private static let meetingsSearchSpinnerDelay: Duration = .milliseconds(150)
+
     /// Called when the toolbar query changes (bound from AppShellViewModel).
-    /// Debounces 300ms via the `scheduler` seam before running the search.
+    /// Debounces via the `scheduler` seam before running the search. The
+    /// spinner only appears if the search outlasts `meetingsSearchSpinnerDelay`.
     public func setMeetingsQuery(_ query: String) {
         meetingsQuery = query
         cancelMeetingsSearch()
@@ -973,9 +995,22 @@ extension AppCore {
         meetingsResults = []
         let sched = scheduler
         let currentStore = store
+        // Spinner grace: only show the spinner if the search is still
+        // in flight after the delay elapses. Captured in a local so a
+        // stale search task can never cancel a newer query's spinner.
+        let spinnerTask = Task { [weak self] in
+            do {
+                try await sched.sleep(for: Self.meetingsSearchSpinnerDelay)
+            } catch {
+                return // cancelled
+            }
+            guard !Task.isCancelled else { return }
+            self?.showsMeetingsSearchSpinner = true
+        }
+        meetingsSearchSpinnerTask = spinnerTask
         meetingsSearchTask = Task { [weak self] in
             do {
-                try await sched.sleep(for: .milliseconds(300))
+                try await sched.sleep(for: Self.meetingsSearchDebounce)
             } catch {
                 return // cancelled
             }
@@ -986,10 +1021,12 @@ extension AppCore {
             let hits = await (try? currentStore.searchHits(
                 query, limit: 50
             )) ?? []
+            spinnerTask.cancel()
             guard !Task.isCancelled, meetingsQuery == query
             else { return }
             meetingsResults = hits
             isSearchingMeetings = false
+            showsMeetingsSearchSpinner = false
             autoSelectTopResult()
         }
     }
@@ -1008,12 +1045,18 @@ extension AppCore {
     private func cancelMeetingsSearch() {
         meetingsSearchTask?.cancel()
         meetingsSearchTask = nil
+        meetingsSearchSpinnerTask?.cancel()
+        meetingsSearchSpinnerTask = nil
         isSearchingMeetings = false
+        showsMeetingsSearchSpinner = false
     }
 
     /// Non-debounced search for the current query. Used after delete
     /// to refresh results immediately.
     private func rerunMeetingsSearchNow() async {
+        // Cancel any in-flight debounced search (and its spinner task)
+        // so a stale completion cannot land after this refresh.
+        cancelMeetingsSearch()
         let currentQuery = meetingsQuery
         guard !currentQuery.isEmpty else { return }
         let hits = await (try? store.searchHits(
@@ -1022,6 +1065,7 @@ extension AppCore {
         guard meetingsQuery == currentQuery else { return }
         meetingsResults = hits
         isSearchingMeetings = false
+        showsMeetingsSearchSpinner = false
     }
 }
 

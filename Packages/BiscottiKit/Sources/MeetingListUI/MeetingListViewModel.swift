@@ -53,6 +53,12 @@ public final class MeetingListViewModel {
         core.isSearchingMeetings
     }
 
+    /// Whether the search spinner should render (search in flight past
+    /// the grace window; never flashes for fast searches).
+    public var showsSearchSpinner: Bool {
+        core.showsMeetingsSearchSpinner
+    }
+
     /// The current search query text.
     public var query: String {
         core.meetingsQuery

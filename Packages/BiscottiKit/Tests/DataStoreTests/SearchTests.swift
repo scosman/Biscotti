@@ -121,26 +121,25 @@ struct SearchNotesTests {
         let hits = try await store.searchHits("unicorn", limit: 50)
         #expect(hits.count == 1)
         #expect(hits.first?.id == meetingID)
-        #expect(hits.first?.matchedFields.contains(.notes) == true)
-        #expect(hits.first?.matchedFields.contains(.title) == false)
+        // The excerpt is drawn from the notes column, the only match.
+        #expect(hits.first?.snippet.contains("unicorn") == true)
     }
 
     @Test("Notes ranked like transcript, below title")
     func notesRankedBelowTitle() async throws {
         let store = try makeStore()
-        // Meeting A: "budget" in title (score 3)
+        // Meeting A: "budget" in title (column weight 3)
         _ = try await store.createMeeting(title: "Budget review")
-        // Meeting B: "budget" only in notes (score 1, same as transcript weight)
+        // Meeting B: "budget" only in notes (column weight 1)
         let meetingB = try await store.createMeeting(title: "Team sync")
         try await store.setNotes("Discussed next year's budget allocation", for: meetingB)
 
         let hits = try await store.searchHits("budget", limit: 50)
         #expect(hits.count == 2)
-        // Title match (score 3) ranks above notes match (score 1)
+        // Title match outranks notes match.
         #expect(hits[0].title == "Budget review")
-        #expect(hits[0].matchedFields.contains(.title))
         #expect(hits[1].title == "Team sync")
-        #expect(hits[1].matchedFields.contains(.notes))
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("Notes match is case-insensitive")
@@ -151,14 +150,25 @@ struct SearchNotesTests {
 
         let hits = try await store.searchHits("action items", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.notes) == true)
+        #expect(hits.first?.id == meetingID)
     }
 
-    @Test("Notes and transcript can both match, scoring additively")
+    /// A term appearing in two columns of the same meeting yields exactly one
+    /// hit, not one per matching column.
+    ///
+    /// Deliberately does **not** assert that the two-column match outranks the
+    /// one-column match. Notes and transcript both carry column weight 1, and
+    /// BM25's document-length normalization can outweigh the extra
+    /// occurrence -- a shorter single-match document legitimately scores
+    /// higher. The old additive score guaranteed "more columns wins"; BM25
+    /// does not, and that is correct behaviour rather than a regression.
+    /// Ranking by column weight is pinned separately, where the weights
+    /// differ enough to dominate (see `notesRankedBelowTitle`).
+    @Test("A term in notes and transcript yields one hit, not two")
     func notesAndTranscriptBothMatch() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Planning")
-        try await store.setNotes("roadmap planning for Q3", for: meetingID)
+        let both = try await store.createMeeting(title: "Planning")
+        try await store.setNotes("roadmap planning for Q3", for: both)
 
         // Also add transcript with the same term
         let seg = TranscriptSegment(
@@ -172,17 +182,18 @@ struct SearchNotesTests {
             segments: [seg], speakerEmbeddings: [:], processingDuration: 1.0
         )
         let txID = try await store.addTranscript(
-            result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+            result, vocabularyUsed: [], mappedEventIdentifier: nil, to: both
         )
-        try await store.setPreferredTranscript(txID, for: meetingID)
+        try await store.setPreferredTranscript(txID, for: both)
+
+        // A second meeting with the term in notes only.
+        let notesOnly = try await store.createMeeting(title: "Sync")
+        try await store.setNotes("roadmap mentioned once", for: notesOnly)
 
         let hits = try await store.searchHits("roadmap", limit: 50)
-        #expect(hits.count == 1)
-        // Both fields should be reported
-        #expect(hits.first?.matchedFields.contains(.notes) == true)
-        #expect(hits.first?.matchedFields.contains(.transcript) == true)
-        // Score should be 2 (1 for transcript + 1 for notes)
-        #expect(hits.first?.score == 2)
+        // One hit per meeting, not one per matching column.
+        #expect(hits.count == 2)
+        #expect(Set(hits.map(\.id)) == Set([both, notesOnly]))
     }
 
     @Test("Empty notes do not produce false matches")
@@ -204,7 +215,7 @@ struct SearchTagsTests {
         try DataStore(storage: .inMemory)
     }
 
-    @Test("Tag-only term matches meeting with score 3")
+    @Test("Tag-only term matches meeting")
     func tagOnlyMatch() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Generic Meeting")
@@ -213,23 +224,26 @@ struct SearchTagsTests {
         let hits = try await store.searchHits("customer", limit: 50)
         #expect(hits.count == 1)
         #expect(hits.first?.id == meetingID)
-        #expect(hits.first?.score == 3)
-        #expect(hits.first?.matchedFields.contains(.tags) == true)
-        #expect(hits.first?.matchedFields.contains(.title) == false)
+        // The term is absent from the title, so the match came via tags.
+        #expect(hits.first?.title == "Generic Meeting")
     }
 
-    @Test("Tag + title both match, scoring additively")
-    func tagPlusTitleScoring() async throws {
+    /// Tags carry the same column weight as the title, so a meeting matching
+    /// in both outranks one matching in the tag alone.
+    @Test("Tag + title both matching outranks tag alone")
+    func tagPlusTitleOutranksTagAlone() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Customer Review")
-        _ = try await store.createTagAndApply(name: "Customer", to: meetingID)
+        let both = try await store.createMeeting(title: "Customer Review")
+        _ = try await store.createTagAndApply(name: "Customer", to: both)
+
+        let tagOnly = try await store.createMeeting(title: "Weekly Sync")
+        _ = try await store.createTagAndApply(name: "Customer", to: tagOnly)
 
         let hits = try await store.searchHits("customer", limit: 50)
-        #expect(hits.count == 1)
-        // title (3) + tags (3) = 6
-        #expect(hits.first?.score == 6)
-        #expect(hits.first?.matchedFields.contains(.title) == true)
-        #expect(hits.first?.matchedFields.contains(.tags) == true)
+        #expect(hits.count == 2)
+        #expect(hits[0].id == both)
+        #expect(hits[1].id == tagOnly)
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("Tag search is case-insensitive")
@@ -240,7 +254,7 @@ struct SearchTagsTests {
 
         let hits = try await store.searchHits("important", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.tags) == true)
+        #expect(hits.first?.id == meetingID)
     }
 
     @Test("Tag search matches partial name")
@@ -251,7 +265,7 @@ struct SearchTagsTests {
 
         let hits = try await store.searchHits("custom", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.tags) == true)
+        #expect(hits.first?.id == meetingID)
     }
 
     @Test("Untagged meeting not matched by tag search")
@@ -261,19 +275,5 @@ struct SearchTagsTests {
 
         let hits = try await store.searchHits("customer", limit: 50)
         #expect(hits.isEmpty)
-    }
-
-    @Test("Tags field sort order places tags after title")
-    func tagsFieldSortOrder() async throws {
-        let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Review")
-        _ = try await store.createTagAndApply(name: "Review", to: meetingID)
-
-        let hits = try await store.searchHits("review", limit: 50)
-        #expect(hits.count == 1)
-        let fields = try #require(hits.first?.matchedFields)
-        // title should come before tags in sorted order
-        #expect(fields.first == .title)
-        #expect(fields.contains(.tags))
     }
 }

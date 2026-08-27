@@ -226,11 +226,10 @@ public struct MeetingListView: View {
                     .font(.monoMeta)
                     .foregroundStyle(isSelected ? .onAccentMuted : .inkSecondary)
             }
-            Text(
-                "matches: \(MeetingListViewModel.matchedFieldsText(hit.matchedFields))"
-            )
-            .font(.caption)
-            .foregroundStyle(isSelected ? .onAccentMuted : .inkTertiary)
+            Text(MeetingListViewModel.searchSecondLine(for: hit))
+                .font(.caption)
+                .foregroundStyle(isSelected ? .onAccentMuted : .inkTertiary)
+                .lineLimit(2)
         }
         .listRowSeparator(.hidden)
         .listRowBackground(selectionBackground(isSelected))

@@ -394,6 +394,12 @@ private struct TierReport {
     let rawSQL: [RawSQLResult]
     /// Baseline
     let fetchFaultMs: Double
+    /// On-disk size of `SearchIndex.sqlite` (+ WAL) after the cold reconcile.
+    /// The FTS5 table stores the source text, so this is the price paid for
+    /// `bm25()` ranking and `snippet()` excerpts.
+    let indexBytes: Int64
+    /// On-disk size of the SwiftData store, for scale.
+    let storeBytes: Int64
 }
 
 // MARK: - Report printer
@@ -442,6 +448,14 @@ private func printFTS5Section(_ tier: TierReport) {
             + "\(padLeft("\(result.hitCount)", 5))"
         print(line)
     }
+
+    print("")
+    let ratio = tier.storeBytes > 0
+        ? Double(tier.indexBytes) / Double(tier.storeBytes) * 100 : 0
+    print(String(
+        format: "  FTS5 INDEX SIZE: %.1f MB  (SwiftData store %.1f MB, %.0f%% of it)",
+        megabytes(tier.indexBytes), megabytes(tier.storeBytes), ratio
+    ))
 
     print("")
     print("  FTS5 INCREMENTAL (sync + search after adding N meetings):")
@@ -512,6 +526,21 @@ private func cleanupDir(_ dir: URL) {
 /// Returns the path to the SwiftData SQLite file inside a store directory.
 private func swiftDataDBPath(_ dir: URL) -> String {
     dir.appending(path: "Biscotti.store").path
+}
+
+/// Total bytes of a SQLite database, including its WAL and shared-memory
+/// sidecars -- in WAL mode a large share of recent writes can still be in
+/// the `-wal` file, so the main file alone understates the real size.
+private func sqliteBytes(_ base: URL) -> Int64 {
+    ["", "-wal", "-shm"].reduce(into: Int64(0)) { total, suffix in
+        let path = base.path + suffix
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        total += (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+}
+
+private func megabytes(_ bytes: Int64) -> Double {
+    Double(bytes) / (1024 * 1024)
 }
 
 // ===================================================================
@@ -692,6 +721,11 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
     let fts5Cold = try await measureFTS5Search(store: store, query: rareToken)
     let fts5Warm = try await measureFTS5WarmQueries(store: store, queries: queries)
 
+    // Index size after the cold reconcile, before incremental adds, so it
+    // corresponds to exactly `meetingCount` meetings.
+    let indexBytes = sqliteBytes(dir.appending(path: "SearchIndex.sqlite"))
+    let storeBytes = sqliteBytes(dir.appending(path: "Biscotti.store"))
+
     // --- Raw SQL (same store, same meeting count — before incremental adds) ---
     let dbPath = swiftDataDBPath(dir)
     let sqlQueries = queries.map { (label: $0.label, term: $0.query) }
@@ -715,7 +749,9 @@ private func runTier(meetingCount: Int) async throws -> TierReport {
         fts5Warm: fts5Warm,
         fts5Incremental: fts5Incremental,
         rawSQL: rawSQL,
-        fetchFaultMs: fetchFaultMs
+        fetchFaultMs: fetchFaultMs,
+        indexBytes: indexBytes,
+        storeBytes: storeBytes
     )
 }
 

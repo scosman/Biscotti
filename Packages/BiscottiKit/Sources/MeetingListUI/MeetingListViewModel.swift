@@ -309,19 +309,32 @@ public final class MeetingListViewModel {
         )
     }
 
-    /// A human-readable description of which search fields matched.
-    public nonisolated static func matchedFieldsText(
-        _ fields: [SearchField]
-    ) -> String {
-        fields.map { field in
-            switch field {
-            case .title: "title"
-            case .summary: "summary"
-            case .people: "people"
-            case .transcript: "transcript"
-            case .notes: "notes"
-            case .tags: "tags"
-            }
-        }.joined(separator: ", ")
+    /// The second line of a search result row. Never empty, so no result
+    /// row is left with a bare title.
+    ///
+    /// Prefers the match excerpt. FTS5 picks the best-matching column for
+    /// the snippet, so a title-only match yields the title back -- that
+    /// would just repeat the row's own first line, and in that case the
+    /// meeting's content preview is shown instead.
+    ///
+    /// TODO: FTS5 `snippet()` can wrap matched terms in markers so the hit
+    /// can be emphasized in the excerpt. Left plain for now -- rendering it
+    /// needs an `AttributedString` conversion and a marker that cannot
+    /// collide with transcript text.
+    public nonisolated static func searchSecondLine(for hit: SearchHit) -> String {
+        if let excerpt = matchExcerpt(for: hit) { return excerpt }
+        let preview = hit.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        return preview.isEmpty ? "No transcript yet" : preview
+    }
+
+    /// The snippet, or `nil` when it only echoes the title.
+    private nonisolated static func matchExcerpt(for hit: SearchHit) -> String? {
+        let trimmed = hit.snippet
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\u{2026} \n\t"))
+        guard !trimmed.isEmpty else { return nil }
+        guard !hit.title.localizedCaseInsensitiveContains(trimmed) else {
+            return nil
+        }
+        return hit.snippet
     }
 }

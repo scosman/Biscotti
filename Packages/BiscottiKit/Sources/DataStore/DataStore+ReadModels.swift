@@ -351,16 +351,6 @@ public struct TagData: Sendable, Identifiable, Equatable, Hashable {
     }
 }
 
-/// Which field a search term matched in.
-public enum SearchField: Sendable, Equatable {
-    case title
-    case summary
-    case people
-    case transcript
-    case notes
-    case tags
-}
-
 /// Audio file reference result for a meeting.
 public struct AudioFileRefsResult: Sendable, Equatable {
     public let mic: URL?
@@ -374,20 +364,31 @@ public struct AudioFileRefsResult: Sendable, Equatable {
     }
 }
 
-/// A weighted search result pointing to a meeting.
+/// A ranked search result pointing to a meeting.
 public struct SearchHit: Sendable, Identifiable, Equatable {
     public let id: UUID
     public let title: String
     public let date: Date
-    public let score: Int
-    public let matchedFields: [SearchField]
+    /// Relevance, higher is better. Used for ordering only; never displayed.
+    public let score: Double
+    /// A context excerpt around the best-matching field. Equals `title` when
+    /// the match is title-only.
+    public let snippet: String
+    /// The opening of the meeting's own content, used as a second line when
+    /// `snippet` only echoes the title. See
+    /// `MeetingListViewModel.searchSecondLine(for:)`.
+    public let preview: String
 
-    public init(id: UUID, title: String, date: Date, score: Int, matchedFields: [SearchField]) {
+    public init(
+        id: UUID, title: String, date: Date,
+        score: Double, snippet: String, preview: String
+    ) {
         self.id = id
         self.title = title
         self.date = date
         self.score = score
-        self.matchedFields = matchedFields
+        self.snippet = snippet
+        self.preview = preview
     }
 }
 
@@ -692,35 +693,37 @@ public extension DataStore {
 
     // MARK: - FTS5 Search
 
-    /// Weighted search across meeting fields via the FTS5 search index.
+    /// Ranked search across meeting fields via the FTS5 search index.
     ///
     /// Semantics: prefix per term, AND across terms. `"proj plan"` matches
     /// only meetings containing words starting with "proj" AND words starting
     /// with "plan" (in any combination of fields).
     ///
-    /// Weights: title 3, tags 3, summary 2, people 2, notes 1, transcript 1.
-    /// Results sorted by (score desc, date desc, UUID) -- a total ordering
-    /// applied before truncation so results are deterministic at tie
-    /// boundaries.
+    /// Ranking is FTS5 `bm25()` with per-column weights (title 3, tags 3,
+    /// summary 2, people 2, notes 1, transcript 1). Ordering and truncation
+    /// both happen in SQLite, using the total ordering
+    /// `(rank, effective date desc, UUID)`, so results are deterministic at
+    /// tie boundaries.
+    ///
+    /// **No SwiftData access.** Title, date and snippet all come from the
+    /// side index. That is the point -- it removes the per-hit fault that
+    /// dominated the old warm path. The trade-off: an index entry for a
+    /// meeting that no longer exists is no longer filtered out here, so it
+    /// would surface as a result with a stale title. `syncSearchIndex` runs
+    /// first and is responsible for preventing that (eager removal on
+    /// delete, the Meeting-delete purge, and the count-based staleness
+    /// check).
     func searchHits(_ query: String, limit: Int) throws -> [SearchHit] {
         try syncSearchIndex()
 
-        let rawHits = try searchIndex.search(query: query, limit: limit)
-        guard !rawHits.isEmpty else { return [] }
-
-        // Resolve titles by fetching each matched meeting individually.
-        // The effective date used for ordering comes from the side DB
-        // (already on RawHit), not from SwiftData, so truncation is
-        // deterministic without faulting every candidate.
-        return rawHits.compactMap { raw in
-            guard let meeting = try? meeting(id: raw.meetingUUID) else { return nil }
-            return SearchHit(
-                id: meeting.id,
-                title: meeting.title,
+        return try searchIndex.search(query: query, limit: limit).map { raw in
+            SearchHit(
+                id: raw.meetingUUID,
+                title: raw.title,
                 date: raw.effectiveDate,
                 score: raw.score,
-                matchedFields: Array(raw.fields)
-                    .sorted { fieldSortOrder($0) < fieldSortOrder($1) }
+                snippet: raw.snippet,
+                preview: raw.preview
             )
         }
     }
@@ -1057,16 +1060,5 @@ public extension DataStore {
             segments: segments,
             speakerAssignments: resolvedAssignments
         )
-    }
-
-    private func fieldSortOrder(_ field: SearchField) -> Int {
-        switch field {
-        case .title: 0
-        case .tags: 1
-        case .summary: 2
-        case .people: 3
-        case .transcript: 4
-        case .notes: 5
-        }
     }
 }

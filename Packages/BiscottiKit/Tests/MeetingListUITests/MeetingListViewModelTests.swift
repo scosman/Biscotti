@@ -323,48 +323,62 @@ struct MeetingListModeTests {
     }
 }
 
-// MARK: - matchedFieldsText tests
+// MARK: - Search-result second line tests
 
-@Suite("MeetingListViewModel -- matchedFieldsText")
-struct MeetingListMatchedFieldsTests {
-    @Test("formats field names correctly")
-    func matchedFieldsTextFormats() {
-        let text = MeetingListViewModel.matchedFieldsText(
-            [.title, .transcript]
+@Suite("MeetingListViewModel -- searchSecondLine(for:)")
+struct MeetingListSearchSecondLineTests {
+    private func hit(
+        title: String, snippet: String, preview: String = "Preview text"
+    ) -> SearchHit {
+        SearchHit(
+            id: UUID(), title: title, date: Date(),
+            score: 1.0, snippet: snippet, preview: preview
         )
-        #expect(text == "title, transcript")
-
-        let single = MeetingListViewModel.matchedFieldsText([.people])
-        #expect(single == "people")
-
-        let all = MeetingListViewModel.matchedFieldsText(
-            [.title, .people, .transcript]
-        )
-        #expect(all == "title, people, transcript")
-
-        let empty = MeetingListViewModel.matchedFieldsText([])
-        #expect(empty == "")
     }
 
-    @Test("includes notes field")
-    func matchedFieldsTextIncludesNotes() {
-        let text = MeetingListViewModel.matchedFieldsText(
-            [.title, .notes]
+    @Test("prefers the match excerpt")
+    func secondLineKeepsBodyExcerpt() {
+        let line = MeetingListViewModel.searchSecondLine(
+            for: hit(
+                title: "Weekly Sync",
+                snippet: "\u{2026}we should refactor the database layer\u{2026}"
+            )
         )
-        #expect(text == "title, notes")
-
-        let notesOnly = MeetingListViewModel.matchedFieldsText([.notes])
-        #expect(notesOnly == "notes")
+        #expect(line == "\u{2026}we should refactor the database layer\u{2026}")
     }
 
-    @Test("includes tags field")
-    func matchedFieldsTextIncludesTags() {
-        let text = MeetingListViewModel.matchedFieldsText(
-            [.title, .tags]
+    /// FTS5 picks the best-matching column. For a title-only match that is
+    /// the title, which would repeat the row's own first line.
+    @Test("falls back to the preview when the excerpt echoes the title")
+    func secondLineFallsBackOnTitleEcho() {
+        let line = MeetingListViewModel.searchSecondLine(
+            for: hit(
+                title: "Sprint Planning", snippet: "Sprint Planning",
+                preview: "Q3 priorities were agreed."
+            )
         )
-        #expect(text == "title, tags")
+        #expect(line == "Q3 priorities were agreed.")
+    }
 
-        let tagsOnly = MeetingListViewModel.matchedFieldsText([.tags])
-        #expect(tagsOnly == "tags")
+    @Test("falls back when the excerpt is a truncated title echo")
+    func secondLineFallsBackOnTruncatedTitleEcho() {
+        let line = MeetingListViewModel.searchSecondLine(
+            for: hit(
+                title: "Quarterly Roadmap Review With The Platform Team",
+                snippet: "Quarterly Roadmap Review With The\u{2026}",
+                preview: "Owners assigned for each workstream."
+            )
+        )
+        #expect(line == "Owners assigned for each workstream.")
+    }
+
+    @Test("never returns an empty line")
+    func secondLineIsNeverEmpty() {
+        #expect(MeetingListViewModel.searchSecondLine(
+            for: hit(title: "Standup", snippet: "", preview: "")
+        ) == "No transcript yet")
+        #expect(MeetingListViewModel.searchSecondLine(
+            for: hit(title: "Standup", snippet: "\u{2026}", preview: "  ")
+        ) == "No transcript yet")
     }
 }

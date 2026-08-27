@@ -22,11 +22,16 @@ enum SearchIndexError: Error, LocalizedError {
 /// Manages a SQLite FTS5 full-text search index for meetings.
 ///
 /// The index is a separate SQLite database (not part of the SwiftData store).
-/// It uses `content=''` (contentless) with `contentless_delete=1` so no copy
-/// of the source text is stored -- only the reverse index and row IDs.
+/// A single FTS5 table (`meeting_search_index`) holds one column per
+/// searchable field, and **stores the source text** so `bm25()` ranking and
+/// `snippet()` extraction both work. `meeting_map` is an ordinary table that
+/// maps meeting UUIDs to the FTS rowid and carries the effective date used
+/// for tie-breaking.
 ///
-/// Each searchable field gets its own FTS5 table, enabling per-field match
-/// detection and weighted scoring without custom FTS5 auxiliary functions.
+/// Storing the text costs roughly the size of the transcript corpus. That is
+/// a small fraction of the audio this app already keeps, and it buys two
+/// things: real relevance ranking, and search results that need no SwiftData
+/// fetch at all (title and snippet both come from this database).
 ///
 /// **Not `Sendable`** -- only accessed from within the `DataStore` actor.
 final class SearchIndex {
@@ -34,7 +39,16 @@ final class SearchIndex {
     private var database: OpaquePointer?
 
     /// Bump to force a full rebuild on the next sync.
-    static let schemaVersion = 2
+    static let schemaVersion = 3
+
+    /// The FTS5 virtual table holding all searchable text.
+    static let ftsTable = "meeting_search_index"
+
+    /// Maximum tokens in a generated snippet (FTS5 allows 1...64).
+    private static let snippetTokens = 30
+
+    /// Maximum characters of the fallback preview excerpt.
+    private static let previewCharacters = 300
 
     /// Storage configuration.
     enum Storage {
@@ -42,31 +56,38 @@ final class SearchIndex {
         case inMemory
     }
 
-    /// Searchable fields with their weights and `SearchField` mappings.
+    /// Searchable fields, in **column order**.
+    ///
+    /// The declaration order defines both the `CREATE VIRTUAL TABLE` column
+    /// list and the `bm25()` weight argument order, so the two cannot drift.
+    /// Do not reorder without bumping `schemaVersion`.
     enum Field: String, CaseIterable {
         case title, summary, notes, transcript, people, tags
 
-        var weight: Int {
+        /// Relative `bm25()` column weight. Higher means a match in this
+        /// field contributes more to the score.
+        var weight: Double {
             switch self {
-            case .title: 3
-            case .tags: 3
-            case .summary: 2
-            case .people: 2
-            case .notes: 1
-            case .transcript: 1
+            case .title: 3.0
+            case .tags: 3.0
+            case .summary: 2.0
+            case .people: 2.0
+            case .notes: 1.0
+            case .transcript: 1.0
             }
         }
+    }
 
-        var searchField: SearchField {
-            switch self {
-            case .title: .title
-            case .tags: .tags
-            case .summary: .summary
-            case .people: .people
-            case .notes: .notes
-            case .transcript: .transcript
-            }
-        }
+    /// The FTS column list, in declaration order.
+    private static var columnList: String {
+        Field.allCases.map(\.rawValue).joined(separator: ", ")
+    }
+
+    /// The `bm25()` weight arguments, in the same order as `columnList`.
+    /// `Double.description` is locale-independent, so this is always
+    /// `"3.0, 2.0, ..."` and never a comma decimal separator.
+    private static var bm25Weights: String {
+        Field.allCases.map { "\($0.weight)" }.joined(separator: ", ")
     }
 
     /// All field data for a single meeting, ready to be indexed.
@@ -80,13 +101,51 @@ final class SearchIndex {
         let transcript: String
         let people: String
         let tags: String
+
+        /// The text belonging to a given column.
+        ///
+        /// Exhaustive by design: adding a `Field` case fails to compile until
+        /// its text is supplied here.
+        func value(for field: Field) -> String {
+            switch field {
+            case .title: title
+            case .summary: summary
+            case .notes: notes
+            case .transcript: transcript
+            case .people: people
+            case .tags: tags
+            }
+        }
+
+        /// Field values in `Field.allCases` order, for binding.
+        ///
+        /// Derived from `Field.allCases` -- the same source as `columnList`
+        /// and `bm25Weights` -- so a reordering of the enum moves the columns,
+        /// the weights and the values together. A hand-written array here
+        /// would silently bind text into the wrong columns on reorder.
+        var orderedValues: [String] {
+            Field.allCases.map(value(for:))
+        }
     }
 
-    /// Raw search result before meeting metadata (title, date) is resolved.
+    /// A search result. Everything needed to render a result row comes from
+    /// this database -- no SwiftData fetch is required.
     struct RawHit {
         let meetingUUID: UUID
-        let score: Int
-        let fields: Set<SearchField>
+        /// Relevance, higher is better. This is the negated `bm25()` value
+        /// (FTS5 returns a negative number where more-negative is better).
+        let score: Double
+        /// The meeting title, read back from the index.
+        let title: String
+        /// A context excerpt around the best-matching field, from
+        /// `snippet()`. Equals the title when the match is title-only,
+        /// because FTS5 then picks the title as the best column.
+        let snippet: String
+        /// The opening of the meeting's own content (summary, then notes,
+        /// then transcript, then people). Used as the second line when
+        /// `snippet` only echoes the title, so a result row is never blank
+        /// below the title. Empty only for a meeting with no content at all.
+        let preview: String
         /// Effective date stored in the side DB at index time.
         let effectiveDate: Date
     }
@@ -150,30 +209,33 @@ final class SearchIndex {
             )
         """)
 
-        for field in Field.allCases {
-            try execSQL("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS fts_\(field.rawValue) \
-                USING fts5(text, content='', contentless_delete=1)
-            """)
-        }
+        // A plain (content-storing) FTS5 table. Contentless tables cannot
+        // support snippet()/highlight(), and this SQLite (3.43) predates
+        // contentless_unindexed=1, so the text has to live here.
+        try execSQL("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS \(Self.ftsTable) \
+            USING fts5(\(Self.columnList))
+        """)
     }
 
     private func dropDataTables() throws {
+        try execSQL("DROP TABLE IF EXISTS \(Self.ftsTable)")
+        try execSQL("DROP TABLE IF EXISTS meeting_map")
+
+        // Tables from schema version <= 2 (one FTS table per field).
+        // Harmless no-ops on a fresh database.
         for field in Field.allCases {
             try execSQL("DROP TABLE IF EXISTS fts_\(field.rawValue)")
         }
-        try execSQL("DROP TABLE IF EXISTS meeting_map")
     }
 
     // MARK: - Indexing
 
-    /// Indexes a single meeting. Uses INSERT OR REPLACE so calling this
-    /// repeatedly with the same UUID is safe and self-correcting.
+    /// Indexes a single meeting. Safe to call repeatedly with the same UUID:
+    /// the `meeting_map` row is upserted and the FTS row is replaced.
     ///
-    /// Wrapped in a transaction so a throw or crash mid-write cannot
-    /// leave the meeting half-indexed (e.g. title present but transcript
-    /// missing). Without the transaction, a crash leaves a transient
-    /// inconsistency until the next sync revisits the meeting.
+    /// Wrapped in a transaction so a throw or crash between the `meeting_map`
+    /// write and the FTS write cannot leave the two disagreeing.
     func indexMeeting(_ content: MeetingContent) throws {
         let uuidStr = content.uuid.uuidString
         let dateValue = content.effectiveDate.timeIntervalSinceReferenceDate
@@ -199,18 +261,16 @@ final class SearchIndex {
                 )
             }
 
-            let fieldValues: [(Field, String)] = [
-                (.title, content.title), (.summary, content.summary),
-                (.notes, content.notes), (.transcript, content.transcript),
-                (.people, content.people), (.tags, content.tags)
-            ]
-
-            for (field, text) in fieldValues {
-                try execSQL(
-                    "INSERT OR REPLACE INTO fts_\(field.rawValue)(rowid, text) VALUES (?, ?)",
-                    params: [.int64(rowid), .text(text)]
-                )
-            }
+            let placeholders = Array(
+                repeating: "?", count: Field.allCases.count
+            ).joined(separator: ", ")
+            try execSQL(
+                """
+                INSERT OR REPLACE INTO \(Self.ftsTable)(rowid, \(Self.columnList)) \
+                VALUES (?, \(placeholders))
+                """,
+                params: [.int64(rowid)] + content.orderedValues.map { .text($0) }
+            )
 
             try execSQL("COMMIT")
         } catch {
@@ -220,10 +280,6 @@ final class SearchIndex {
     }
 
     /// Removes a meeting from the index.
-    ///
-    /// Wrapped in a transaction for consistency with `indexMeeting` (the
-    /// same atomicity argument applies) and to collapse 7 WAL commits
-    /// into 1 -- relevant when a reconcile purges many stale entries.
     func removeMeeting(uuid: UUID) throws {
         let uuidStr = uuid.uuidString
 
@@ -236,12 +292,10 @@ final class SearchIndex {
 
         try execSQL("BEGIN IMMEDIATE")
         do {
-            for field in Field.allCases {
-                try execSQL(
-                    "DELETE FROM fts_\(field.rawValue) WHERE rowid = ?",
-                    params: [.int64(rowid)]
-                )
-            }
+            try execSQL(
+                "DELETE FROM \(Self.ftsTable) WHERE rowid = ?",
+                params: [.int64(rowid)]
+            )
             try execSQL("DELETE FROM meeting_map WHERE id = ?", params: [.int64(rowid)])
 
             try execSQL("COMMIT")
@@ -281,17 +335,17 @@ final class SearchIndex {
 // MARK: - Search
 
 extension SearchIndex {
-    // TODO: Each term currently runs 6 queries (one per FTS table).
-    // Consider a UNION ALL query across tables per term, or short-
-    // circuiting once top-N results stabilize, if profiling shows
-    // search latency as a bottleneck.
-
     /// Searches the index using prefix + AND semantics.
     ///
     /// `"proj plan"` becomes `"proj"* AND "plan"*` -- a meeting matches only
-    /// when every term appears in at least one field. The score is the sum of
-    /// per-term, per-field weights (title 3, tags 3, summary 2, people 2,
-    /// notes 1, transcript 1).
+    /// when every term appears in at least one field. Ranking is FTS5's
+    /// `bm25()` with per-column weights (title 3, tags 3, summary 2,
+    /// people 2, notes 1, transcript 1), so term frequency, term rarity and
+    /// field length all contribute.
+    ///
+    /// Ordering is total -- `(rank, effective date desc, UUID)` -- and is
+    /// applied by SQLite *before* `LIMIT`, so truncation is deterministic at
+    /// tie boundaries and the full result set never crosses into Swift.
     func search(query: String, limit: Int) throws -> [RawHit] {
         let terms = query.lowercased()
             .split(separator: " ")
@@ -300,59 +354,98 @@ extension SearchIndex {
 
         guard !terms.isEmpty else { return [] }
 
-        // Per-rowid accumulator.
-        struct Accumulator {
-            var score: Int = 0
-            var fields: Set<SearchField> = []
-            var termsMatched: Set<Int> = []
+        let matchExpr = terms
+            .map { "\(fts5Escape($0))*" }
+            .joined(separator: " AND ")
+
+        return try queryHits(matchExpr: matchExpr, limit: limit)
+    }
+
+    /// The fallback second line: the opening of whatever content the
+    /// meeting has, in descending order of usefulness.
+    private static var previewExpression: String {
+        let table = ftsTable
+        let chars = previewCharacters
+        let textual: [Field] = [.summary, .notes, .transcript]
+        let branches = textual.map { field in
+            """
+            WHEN length(trim(\(table).\(field.rawValue))) > 0 \
+            THEN substr(trim(\(table).\(field.rawValue)), 1, \(chars))
+            """
+        }.joined(separator: " ")
+        return """
+            CASE \(branches) \
+            WHEN length(trim(\(table).people)) > 0 THEN trim(\(table).people) \
+            ELSE '' END
+        """
+    }
+
+    private func queryHits(matchExpr: String, limit: Int) throws -> [RawHit] {
+        let table = Self.ftsTable
+        let sql = """
+            SELECT m.meeting_uuid, m.effective_date, \
+            bm25(\(table), \(Self.bm25Weights)) AS rank, \
+            \(table).title, \
+            snippet(\(table), -1, '', '', '\u{2026}', \(Self.snippetTokens)), \
+            \(Self.previewExpression) \
+            FROM \(table) \
+            JOIN meeting_map m ON m.id = \(table).rowid \
+            WHERE \(table) MATCH ? \
+            ORDER BY rank ASC, m.effective_date DESC, m.meeting_uuid ASC \
+            LIMIT ?
+        """
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw sqliteError("prepare queryHits")
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        if let prepared = stmt {
+            try bindParams(
+                prepared, params: [.text(matchExpr), .int64(Int64(limit))]
+            )
         }
 
-        var accumulators: [Int64: Accumulator] = [:]
+        var hits: [RawHit] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let uuidCStr = sqlite3_column_text(stmt, 0),
+                  let uuid = UUID(uuidString: String(cString: uuidCStr))
+            else { continue }
 
-        for (termIndex, term) in terms.enumerated() {
-            let matchExpr = "\(fts5Escape(term))*"
+            let date = Date(
+                timeIntervalSinceReferenceDate: sqlite3_column_double(stmt, 1)
+            )
+            // bm25() is negative with more-negative meaning a better match.
+            // Negate so `score` reads the way its name implies.
+            let score = -sqlite3_column_double(stmt, 2)
+            let title = sqlite3_column_text(stmt, 3)
+                .map { String(cString: $0) } ?? ""
+            let snippet = Self.flattenWhitespace(
+                sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? ""
+            )
+            let preview = Self.flattenWhitespace(
+                sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? ""
+            )
 
-            for field in Field.allCases {
-                let sql = """
-                    SELECT rowid FROM fts_\(field.rawValue) \
-                    WHERE fts_\(field.rawValue) MATCH ?
-                """
-                let rowids = try queryRowIDs(sql: sql, param: matchExpr)
-
-                for rowid in rowids {
-                    var acc = accumulators[rowid, default: Accumulator()]
-                    acc.score += field.weight
-                    acc.fields.insert(field.searchField)
-                    acc.termsMatched.insert(termIndex)
-                    accumulators[rowid] = acc
-                }
-            }
+            hits.append(RawHit(
+                meetingUUID: uuid, score: score, title: title,
+                snippet: snippet, preview: preview, effectiveDate: date
+            ))
         }
+        return hits
+    }
 
-        // AND across terms: keep only meetings matching ALL terms.
-        let termCount = terms.count
-        let passing = accumulators.filter { $0.value.termsMatched.count == termCount }
-
-        // Resolve rowids to UUIDs and effective dates.
-        var results: [RawHit] = []
-        for (rowid, acc) in passing {
-            if let (uuid, date) = try lookupUUIDAndDate(rowid: rowid) {
-                results.append(RawHit(
-                    meetingUUID: uuid, score: acc.score,
-                    fields: acc.fields, effectiveDate: date
-                ))
-            }
-        }
-
-        // Total ordering: score desc, date desc, UUID for determinism.
-        results.sort { lhs, rhs in
-            if lhs.score != rhs.score { return lhs.score > rhs.score }
-            if lhs.effectiveDate != rhs.effectiveDate {
-                return lhs.effectiveDate > rhs.effectiveDate
-            }
-            return lhs.meetingUUID.uuidString < rhs.meetingUUID.uuidString
-        }
-        return Array(results.prefix(limit))
+    /// Collapses every run of whitespace into a single space and trims the
+    /// ends.
+    ///
+    /// The transcript column is segments joined with newlines, so an excerpt
+    /// can straddle a segment boundary and carry hard line breaks. Rendered
+    /// in a line-limited label those break early, which can push the matched
+    /// term out of view entirely -- the excerpt then looks like it does not
+    /// contain the search term at all.
+    private static func flattenWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 
@@ -414,27 +507,6 @@ extension SearchIndex {
         return sqlite3_column_int64(stmt, 0)
     }
 
-    private func queryRowIDs(sql: String, param: String) throws -> [Int64] {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
-            throw sqliteError("prepare: \(sql)")
-        }
-        defer { sqlite3_finalize(stmt) }
-
-        let bindStatus = param.withCString { cStr in
-            sqlite3_bind_text(stmt, 1, cStr, -1, Self.sqliteTransient)
-        }
-        guard bindStatus == SQLITE_OK else {
-            throw sqliteError("bind: \(sql)")
-        }
-
-        var rowids: [Int64] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            rowids.append(sqlite3_column_int64(stmt, 0))
-        }
-        return rowids
-    }
-
     private func queryUUIDs(_ sql: String) throws -> [UUID] {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -451,26 +523,6 @@ extension SearchIndex {
             }
         }
         return uuids
-    }
-
-    private func lookupUUIDAndDate(rowid: Int64) throws -> (UUID, Date)? {
-        var stmt: OpaquePointer?
-        let sql = "SELECT meeting_uuid, effective_date FROM meeting_map WHERE id = ?"
-        guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
-            throw sqliteError("prepare lookupUUIDAndDate")
-        }
-        defer { sqlite3_finalize(stmt) }
-
-        guard sqlite3_bind_int64(stmt, 1, rowid) == SQLITE_OK else {
-            throw sqliteError("bind lookupUUIDAndDate")
-        }
-        guard sqlite3_step(stmt) == SQLITE_ROW,
-              let cStr = sqlite3_column_text(stmt, 0)
-        else { return nil }
-        guard let uuid = UUID(uuidString: String(cString: cStr)) else { return nil }
-        let dateInterval = sqlite3_column_double(stmt, 1)
-        let date = Date(timeIntervalSinceReferenceDate: dateInterval)
-        return (uuid, date)
     }
 
     private func bindParams(
@@ -579,11 +631,12 @@ extension SearchIndex {
         )
     }
 
-    /// Deletes a single FTS row for a field, simulating a crash
-    /// mid-indexMeeting. Exposed for tests only.
-    func testDeleteFTSRow(field: Field, rowid: Int64) throws {
+    /// Deletes the FTS row while leaving the `meeting_map` row in place,
+    /// simulating a crash between the two writes in `indexMeeting`.
+    /// Exposed for tests only.
+    func testDeleteIndexRow(rowid: Int64) throws {
         try execSQL(
-            "DELETE FROM fts_\(field.rawValue) WHERE rowid = ?",
+            "DELETE FROM \(Self.ftsTable) WHERE rowid = ?",
             params: [.int64(rowid)]
         )
     }

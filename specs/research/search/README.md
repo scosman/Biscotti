@@ -38,24 +38,44 @@ folding. Cold cost is real (page-cache misses on first query).
 
 ### Approach B: FTS5 side-index
 
-A separate SQLite database (`SearchIndex.sqlite`) with contentless FTS5 tables
-for each searchable field (title, summary, notes, transcript, people, tags).
-Synced incrementally via the SwiftData History API.
+A separate SQLite database (`SearchIndex.sqlite`) holding one FTS5 table
+(`meeting_search_index`) with a column per searchable field (title, summary,
+notes, transcript, people, tags), plus a `meeting_map` table mapping meeting
+UUIDs to the FTS rowid and carrying the effective date. Synced incrementally
+via the SwiftData History API.
 
-**Strengths:** O(log n) query time instead of O(n). Per-field weighted scoring
-with prefix + AND semantics. No dependency on undeclared Core Data internals.
-Incremental sync means only changed meetings are re-indexed.
+The table **stores the source text** (it is not contentless). That is what
+makes `bm25()` ranking and `snippet()` excerpts possible, and it means a
+search result needs no SwiftData fetch at all -- title, date and snippet all
+come from this database.
+
+**Strengths:** O(log n) query time instead of O(n). Real relevance ranking via
+`bm25()` with per-column weights, so term frequency, term rarity (IDF) and
+field length all contribute. One SQL statement per search, with ordering and
+`LIMIT` both pushed into SQLite. Prefix + AND semantics. No dependency on
+undeclared Core Data internals. Incremental sync re-indexes only changed
+meetings.
 
 **Costs:** Extra infrastructure (a second SQLite database, sync machinery,
-schema versioning). One-time cold reconcile on first launch or schema bump
-(seconds, not milliseconds). No infix matching (prefix only). Token-based
-matching changes what search finds relative to substring matching.
+schema versioning). Stores a second copy of all searchable text, so the index
+is far larger than a contentless one. One-time cold reconcile on first launch
+or schema bump (seconds, not milliseconds), now also writing that text. No
+infix matching (prefix only). Token-based matching changes what search finds
+relative to substring matching.
 
 ---
 
 ## Head-to-head benchmark results
 
-**Not yet run.** The benchmark harness is in place
+**Not yet run against the current implementation.** A run on 2026-08-26
+measured the earlier contentless six-table design; those numbers are **not**
+comparable and have been removed rather than left to mislead. The index was
+since rebuilt as a single content-storing FTS5 table with `bm25()` ranking,
+which changes the warm path (one query instead of six per term, and no
+SwiftData fetch per hit), the cold path (the text is now written too), and
+adds an index-size figure. Re-run before drawing conclusions.
+
+The benchmark harness is in place
 (`SearchBenchmarkTests.swift`, env-gated `BISCOTTI_RUN_BENCH=1`) and ready to
 run via `make bench`. Both approaches are measured against the **same generated
 datasets** at the same meeting counts (50 / 500 / 5000), with the same queries
@@ -72,12 +92,21 @@ Results will be recorded here after a human runs the suite on hardware.
   measurement runs the full production `searchHits()` call: a SwiftData
   history check (no-op when current), a count-based staleness check
   (`indexedMeetingCount` vs SwiftData `fetchCount` -- two cheap counts,
-  triggers a full reconcile on mismatch), 6 FTS5 MATCH queries per term
-  (one per indexed field), rowid-to-UUID resolution, then a SwiftData
-  fetch per hit (up to 50) for title display data. The effective date
-  used for ordering comes from the side DB (carried on `RawHit`), not
-  from the SwiftData fetch.
+  triggers a full reconcile on mismatch), then **one** SQL statement --
+  a single FTS5 MATCH joined to `meeting_map`, computing `bm25()` and
+  `snippet()`, ordered by `(rank, effective date desc, UUID)` with
+  `LIMIT` applied by SQLite. **No SwiftData fetch per hit:** title, date
+  and snippet all come from the side DB.
+  - Note `bm25()` and `snippet()` are auxiliary functions evaluated per
+    matching row. `ORDER BY ... LIMIT` forces SQLite to rank every match
+    before truncating, so a common term pays these over the whole match
+    set, not just the 50 survivors. The common-term row below is what
+    shows whether that matters; if it does, the fix is a two-stage query
+    that computes `snippet()` only for the surviving rowids.
 - **Incremental:** Sync + search after +1 / +10 / +50 meetings were added.
+- **Index size:** On-disk bytes of `SearchIndex.sqlite` (plus its WAL) after
+  the cold reconcile, reported next to the SwiftData store size. This is the
+  cost of storing the text.
 
 ### Raw SQL cost profiles
 
@@ -93,11 +122,11 @@ Results will be recorded here after a human runs the suite on hardware.
 
 ### Expected result template (to be filled with real measurements)
 
-| Tier | FTS5 cold | FTS5 warm (rare) | FTS5 warm (common) | SQL cold (rare) | SQL warm (rare) | SQL warm (common) |
-|---|---|---|---|---|---|---|
-| 50 | ? ms | ? ms | ? ms | ? ms | ? ms | ? ms |
-| 500 | ? ms | ? ms | ? ms | ? ms | ? ms | ? ms |
-| 5000 | ? ms | ? ms | ? ms | ? ms | ? ms | ? ms |
+| Tier | FTS5 cold | FTS5 warm (rare) | FTS5 warm (common) | FTS5 index MB | SQL cold (rare) | SQL warm (rare) | SQL warm (common) |
+|---|---|---|---|---|---|---|---|
+| 50 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
+| 500 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
+| 5000 | ? ms | ? ms | ? ms | ? MB | ? ms | ? ms | ? ms |
 
 ---
 
@@ -210,8 +239,12 @@ WHERE  s.ZTEXT LIKE '%term%'
 2. **History token expiry.** If SwiftData history transactions expire before the
    next search, incremental sync fails and falls back to full reconcile. Normal
    usage (search at least once per session) keeps the token fresh.
-3. **Index size.** Contentless FTS5 stores only the reverse index and row IDs,
-   not the source text. Index size is much smaller than the main store.
+3. **Index size.** The FTS5 table stores the source text (required for
+   `snippet()`), so the index holds a second copy of every searchable field --
+   transcripts dominate. Expect it to be a substantial fraction of the
+   SwiftData store rather than a rounding error. *Mitigate:* it is still small
+   next to the recorded audio, which is orders of magnitude larger. Measured
+   by `make bench` (see "Index size" above); the results table records it.
 4. **No infix matching.** FTS5 matches whole words and prefixes, not arbitrary
    substrings. `"roa"` matches "roadmap" but `"oadm"` does not. This is a
    **product-level change** in what search finds relative to substring matching.

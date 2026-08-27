@@ -424,20 +424,20 @@ struct AudioAndSortTests {
 
 // MARK: - searchHits tests
 
-@Suite("DataStore -- searchHits (weighted transcript text search)")
+@Suite("DataStore -- searchHits (bm25-ranked full-text search)")
 struct SearchHitsTests {
-    @Test("searchHits matches title with score 3")
+    @Test("searchHits matches title")
     func searchHitsTitle() async throws {
         let store = try makeStore()
-        _ = try await store.createMeeting(title: "Sprint Planning")
+        let meetingID = try await store.createMeeting(title: "Sprint Planning")
 
         let hits = try await store.searchHits("Sprint", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].score == 3)
-        #expect(hits[0].matchedFields.contains(.title))
+        #expect(hits[0].id == meetingID)
+        #expect(hits[0].title == "Sprint Planning")
     }
 
-    @Test("searchHits matches participant with score 2")
+    @Test("searchHits matches participant")
     func searchHitsParticipant() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Generic Meeting")
@@ -446,11 +446,10 @@ struct SearchHitsTests {
 
         let hits = try await store.searchHits("Alice", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].score == 2)
-        #expect(hits[0].matchedFields.contains(.people))
+        #expect(hits[0].id == meetingID)
     }
 
-    @Test("searchHits matches transcript text with score 1")
+    @Test("searchHits matches transcript text and returns a snippet")
     func searchHitsTranscript() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Meeting")
@@ -472,23 +471,42 @@ struct SearchHitsTests {
 
         let hits = try await store.searchHits("refactor", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].matchedFields.contains(.transcript))
-        #expect(hits[0].score == 1)
+        #expect(hits[0].id == meetingID)
+        // The snippet comes from the transcript column, not the title.
+        #expect(hits[0].snippet.contains("refactor"))
+        #expect(hits[0].snippet.contains("database layer"))
     }
 
-    @Test("searchHits combines scores across fields")
-    func searchHitsCombinedScore() async throws {
+    /// The per-column bm25 weights are what make a title match outrank a
+    /// transcript match. Asserted as an *ordering*, not an absolute score --
+    /// bm25 values depend on corpus statistics and are not stable constants.
+    @Test("searchHits ranks a title match above a transcript-only match")
+    func searchHitsTitleOutranksTranscript() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Sprint Planning")
-        let sprint = try await store.findOrCreatePerson(name: "Sprint Lead", email: nil)
-        try await store.setParticipants([sprint], organizer: nil, for: meetingID)
+        _ = try await store.createMeeting(title: "Budget Review")
+        let titleMatch = try await store.createMeeting(title: "Sprint Planning")
 
-        // "Sprint" matches title (3) + people (2) = 5
+        let bodyMatch = try await store.createMeeting(title: "Weekly Sync")
+        let seg = TranscriptSegment(
+            speakerID: 0, speakerLabel: "Speaker 0",
+            startTime: 0, endTime: 5,
+            text: "we should talk about the sprint at some point",
+            confidence: 0.9, noSpeechProbability: 0.1, words: nil
+        )
+        let result = TranscriptResult(
+            transcriptionMethodId: "v1", language: "en", speakerCount: 1,
+            segments: [seg], speakerEmbeddings: [:], processingDuration: 1.0
+        )
+        let txID = try await store.addTranscript(
+            result, vocabularyUsed: [], mappedEventIdentifier: nil, to: bodyMatch
+        )
+        try await store.setPreferredTranscript(txID, for: bodyMatch)
+
         let hits = try await store.searchHits("Sprint", limit: 10)
-        #expect(hits.count == 1)
-        #expect(hits[0].score == 5)
-        #expect(hits[0].matchedFields.contains(.title))
-        #expect(hits[0].matchedFields.contains(.people))
+        #expect(hits.count == 2)
+        #expect(hits[0].id == titleMatch)
+        #expect(hits[1].id == bodyMatch)
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("searchHits returns empty for no match")

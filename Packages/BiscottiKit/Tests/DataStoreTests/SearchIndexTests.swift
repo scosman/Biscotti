@@ -40,7 +40,7 @@ struct SearchIndexCoreTests {
         let hits = try index.search(query: "Sprint", limit: 50)
         #expect(hits.count == 1)
         #expect(hits.first?.meetingUUID == meetingID)
-        #expect(hits.first?.fields.contains(.title) == true)
+        #expect(hits.first?.title == "Sprint Planning")
     }
 
     @Test("Prefix matching works")
@@ -79,24 +79,45 @@ struct SearchIndexCoreTests {
         // "Quarterly" in title, "Alice" in people.
         let hits = try index.search(query: "Quarterly Alice", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.fields.contains(.title) == true)
-        #expect(hits.first?.fields.contains(.people) == true)
+        #expect(hits.first?.meetingUUID == meetingID)
     }
 
-    @Test("Score weights: title 3, tags 3, summary 2, people 2, notes 1, transcript 1")
-    func scoreWeights() throws {
+    /// The `bm25()` column weights are asserted as an *ordering* over
+    /// otherwise-identical documents, not as absolute scores -- bm25 values
+    /// depend on corpus statistics and are not stable constants.
+    @Test("Column weights order title/tags above summary/people above notes/transcript")
+    func columnWeightOrdering() throws {
         let index = try makeIndex()
-        let meetingID = UUID()
+        let titleID = UUID()
+        let summaryID = UUID()
+        let transcriptID = UUID()
+        try index.indexMeeting(content(uuid: titleID, title: "budget"))
+        try index.indexMeeting(content(uuid: summaryID, summary: "budget"))
+        try index.indexMeeting(content(uuid: transcriptID, transcript: "budget"))
+
+        let hits = try index.search(query: "budget", limit: 50)
+        #expect(hits.count == 3)
+        #expect(hits.map(\.meetingUUID) == [titleID, summaryID, transcriptID])
+        #expect(hits[0].score > hits[1].score)
+        #expect(hits[1].score > hits[2].score)
+    }
+
+    @Test("A term in many columns outranks the same term in one")
+    func multiColumnMatchOutranksSingle() throws {
+        let index = try makeIndex()
+        let everywhere = UUID()
+        let transcriptOnly = UUID()
         try index.indexMeeting(content(
-            uuid: meetingID, title: "budget", summary: "budget",
+            uuid: everywhere, title: "budget", summary: "budget",
             notes: "budget", transcript: "budget",
             people: "budget", tags: "budget"
         ))
+        try index.indexMeeting(content(uuid: transcriptOnly, transcript: "budget"))
 
         let hits = try index.search(query: "budget", limit: 50)
-        #expect(hits.count == 1)
-        // 3 (title) + 3 (tags) + 2 (summary) + 2 (people) + 1 (notes) + 1 (transcript) = 12
-        #expect(hits.first?.score == 12)
+        #expect(hits.count == 2)
+        #expect(hits[0].meetingUUID == everywhere)
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("Remove a meeting from the index")
@@ -214,21 +235,87 @@ struct SearchIndexCoreTests {
         let hits = try index.search(query: "budget", limit: 50)
         #expect(hits.count == 2)
         #expect(hits[0].meetingUUID == highID)
-        #expect(hits[0].score == 3)
         #expect(hits[1].meetingUUID == lowID)
-        #expect(hits[1].score == 1)
+        #expect(hits[0].score > hits[1].score)
     }
 
-    @Test("Multi-term score accumulates per term per field")
-    func multiTermScoreAccumulates() throws {
-        let index = try makeIndex()
-        let meetingID = UUID()
-        try index.indexMeeting(content(uuid: meetingID, title: "Sprint Planning"))
+    // MARK: - Snippets
 
-        let hits = try index.search(query: "Sprint Planning", limit: 50)
-        #expect(hits.count == 1)
-        // Two terms, each matching title (weight 3): 3 + 3 = 6.
-        #expect(hits.first?.score == 6)
+    @Test("Snippet carries context around the match")
+    func snippetCarriesContext() throws {
+        let index = try makeIndex()
+        try index.indexMeeting(content(
+            uuid: UUID(), title: "Weekly Sync",
+            transcript: "we agreed to refactor the database layer next sprint"
+        ))
+
+        let hit = try #require(try index.search(query: "refactor", limit: 50).first)
+        #expect(hit.snippet.contains("refactor"))
+        #expect(hit.snippet.contains("database layer"))
+    }
+
+    /// The transcript column is segments joined with newlines. An excerpt can
+    /// straddle a boundary, and hard line breaks in a line-limited label can
+    /// push the matched term out of view -- so they are collapsed to spaces.
+    @Test("Snippet contains no newlines")
+    func snippetHasNoNewlines() throws {
+        let index = try makeIndex()
+        try index.indexMeeting(content(
+            uuid: UUID(), title: "Weekly Sync",
+            transcript: "first segment ends here\nthe unicorn appears\nthird segment"
+        ))
+
+        let hit = try #require(try index.search(query: "unicorn", limit: 50).first)
+        #expect(!hit.snippet.contains("\n"))
+        #expect(hit.snippet.contains("unicorn"))
+    }
+
+    /// FTS5 picks the best-matching column, so a title-only match returns the
+    /// title as its snippet. `preview` is what keeps the result row's second
+    /// line populated in that case.
+    @Test("Title-only match yields a title snippet and a content preview")
+    func titleOnlyMatchFallsBackToPreview() throws {
+        let index = try makeIndex()
+        try index.indexMeeting(content(
+            uuid: UUID(), title: "Roadmap Review",
+            summary: "Q3 priorities were agreed and owners assigned",
+            transcript: "unrelated body text"
+        ))
+
+        let hit = try #require(try index.search(query: "roadmap", limit: 50).first)
+        #expect(hit.snippet == "Roadmap Review")
+        #expect(hit.preview == "Q3 priorities were agreed and owners assigned")
+    }
+
+    @Test("Preview falls through summary, notes, transcript, then people")
+    func previewFallbackOrder() throws {
+        let index = try makeIndex()
+        let notesID = UUID()
+        let transcriptID = UUID()
+        let peopleID = UUID()
+        let bareID = UUID()
+
+        try index.indexMeeting(content(
+            uuid: notesID, title: "Roadmap A",
+            notes: "circulate the deck", transcript: "body", people: "Ann"
+        ))
+        try index.indexMeeting(content(
+            uuid: transcriptID, title: "Roadmap B",
+            transcript: "we talked at length", people: "Bob"
+        ))
+        try index.indexMeeting(content(
+            uuid: peopleID, title: "Roadmap C", people: "Cara"
+        ))
+        try index.indexMeeting(content(uuid: bareID, title: "Roadmap D"))
+
+        let byID = try Dictionary(
+            uniqueKeysWithValues: index.search(query: "roadmap", limit: 50)
+                .map { ($0.meetingUUID, $0.preview) }
+        )
+        #expect(byID[notesID] == "circulate the deck")
+        #expect(byID[transcriptID] == "we talked at length")
+        #expect(byID[peopleID] == "Cara")
+        #expect(byID[bareID] == "")
     }
 }
 
@@ -240,7 +327,7 @@ struct DataStoreFTS5Tests {
         try DataStore(storage: .inMemory)
     }
 
-    @Test("Summary field is searchable at weight 2")
+    @Test("Summary field is searchable")
     func summaryFieldSearchable() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Weekly Sync")
@@ -251,24 +338,26 @@ struct DataStoreFTS5Tests {
         let hits = try await store.searchHits("roadmap", limit: 50)
         #expect(hits.count == 1)
         #expect(hits.first?.id == meetingID)
-        #expect(hits.first?.matchedFields.contains(.summary) == true)
-        #expect(hits.first?.score == 2)
+        // The term is absent from the title, so the match came via summary.
+        #expect(hits.first?.snippet.contains("roadmap") == true)
     }
 
-    @Test("Summary + title both contribute to score")
-    func summaryAndTitleScore() async throws {
+    @Test("Summary + title both matching outranks summary alone")
+    func summaryAndTitleOutranksSummaryAlone() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Budget Review")
+        let both = try await store.createMeeting(title: "Budget Review")
         try await store.setSummary(
-            "Reviewed the budget for next quarter", for: meetingID
+            "Reviewed the budget for next quarter", for: both
         )
 
+        let summaryOnly = try await store.createMeeting(title: "Weekly Sync")
+        try await store.setSummary("The budget came up briefly", for: summaryOnly)
+
         let hits = try await store.searchHits("budget", limit: 50)
-        #expect(hits.count == 1)
-        // title (3) + summary (2) = 5
-        #expect(hits.first?.score == 5)
-        #expect(hits.first?.matchedFields.contains(.title) == true)
-        #expect(hits.first?.matchedFields.contains(.summary) == true)
+        #expect(hits.count == 2)
+        #expect(hits[0].id == both)
+        #expect(hits[1].id == summaryOnly)
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("AND semantics: multi-term query requires all terms")
@@ -297,8 +386,6 @@ struct DataStoreFTS5Tests {
         let hits = try await store.searchHits("quarterly alice", limit: 50)
         #expect(hits.count == 1)
         #expect(hits.first?.id == meetingID)
-        #expect(hits.first?.matchedFields.contains(.title) == true)
-        #expect(hits.first?.matchedFields.contains(.people) == true)
     }
 
     @Test("Index self-corrects after title change")
@@ -341,25 +428,6 @@ struct DataStoreFTS5Tests {
         #expect(hits.count == 1)
     }
 
-    @Test("matchedFields includes summary in sort order")
-    func matchedFieldsSortOrder() async throws {
-        let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Review")
-        try await store.setSummary("This review was productive", for: meetingID)
-
-        let hits = try await store.searchHits("review", limit: 50)
-        #expect(hits.count == 1)
-        let fields = try #require(hits.first?.matchedFields)
-        // title should come before summary in sort order.
-        let titleIdx = fields.firstIndex(of: .title)
-        let summaryIdx = fields.firstIndex(of: .summary)
-        #expect(titleIdx != nil)
-        #expect(summaryIdx != nil)
-        if let titlePos = titleIdx, let summaryPos = summaryIdx {
-            #expect(titlePos < summaryPos)
-        }
-    }
-
     @Test("Transcript segments are flattened and searchable")
     func transcriptSearchable() async throws {
         let store = try makeStore()
@@ -383,8 +451,9 @@ struct DataStoreFTS5Tests {
 
         let hits = try await store.searchHits("xylophone", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.transcript) == true)
-        #expect(hits.first?.score == 1) // transcript weight
+        #expect(hits.first?.id == meetingID)
+        // Match is transcript-only, so the excerpt is drawn from it.
+        #expect(hits.first?.snippet.contains("xylophone") == true)
     }
 
     @Test("Tag search still works through FTS5")
@@ -395,8 +464,7 @@ struct DataStoreFTS5Tests {
 
         let hits = try await store.searchHits("customer", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.tags) == true)
-        #expect(hits.first?.score == 3) // tags weight
+        #expect(hits.first?.id == meetingID)
     }
 
     @Test("Notes search still works through FTS5")
@@ -409,8 +477,8 @@ struct DataStoreFTS5Tests {
 
         let hits = try await store.searchHits("zeppelin", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.notes) == true)
-        #expect(hits.first?.score == 1) // notes weight
+        #expect(hits.first?.id == meetingID)
+        #expect(hits.first?.snippet.contains("zeppelin") == true)
     }
 
     @Test("People search includes organizer")
@@ -424,7 +492,7 @@ struct DataStoreFTS5Tests {
 
         let hits = try await store.searchHits("xander", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.people) == true)
+        #expect(hits.first?.id == meetingID)
     }
 }
 
@@ -529,7 +597,7 @@ struct IncrementalSyncTests {
 
         let hits = try await store.searchHits("xylophone", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.notes) == true)
+        #expect(hits.first?.id == meetingID)
     }
 
     @Test("Summary edit reindexes via incremental sync")
@@ -550,7 +618,7 @@ struct IncrementalSyncTests {
 
         let hits = try await store.searchHits("zeppelin", limit: 50)
         #expect(hits.count == 1)
-        #expect(hits.first?.matchedFields.contains(.summary) == true)
+        #expect(hits.first?.id == meetingID)
     }
 
     @Test("Tag rename reindexes affected meetings via incremental sync")
@@ -564,7 +632,7 @@ struct IncrementalSyncTests {
         // Full reconcile — indexes tag "Alpha".
         let before = try await store.searchHits("Alpha", limit: 50)
         #expect(before.count == 1)
-        #expect(before.first?.matchedFields.contains(.tags) == true)
+        #expect(before.first?.id == meetingID)
         #expect(await store.lastSyncToken != nil)
 
         // Rename the tag via direct model mutation.
@@ -579,7 +647,7 @@ struct IncrementalSyncTests {
         // the meeting through collectAffectedMeetings.
         let afterNew = try await store.searchHits("Beta", limit: 50)
         #expect(afterNew.count == 1)
-        #expect(afterNew.first?.matchedFields.contains(.tags) == true)
+        #expect(afterNew.first?.id == meetingID)
         let afterOld = try await store.searchHits("Alpha", limit: 50)
         #expect(afterOld.isEmpty)
     }
@@ -754,10 +822,10 @@ struct DeterministicTruncationTests {
         let hits = try index.search(query: "Alpha", limit: 10)
         #expect(hits.count == 10)
 
-        // All scores are identical (title weight = 3).
-        for hit in hits {
-            #expect(hit.score == 3)
-        }
+        // Every document is identical apart from its date, so bm25 gives
+        // them all the same rank -- the date is the only discriminator.
+        let distinctScores = Set(hits.map(\.score))
+        #expect(distinctScores.count == 1)
 
         // Verify the returned meetings are the 10 most recent by date.
         let expectedUUIDs = Set(
@@ -823,25 +891,21 @@ struct TransactionAtomicityTests {
         _ = try await store.searchHits("Full", limit: 50)
         #expect(await store.lastSyncToken != nil)
 
-        // Simulate partial index: remove the meeting from one FTS
-        // table but leave meeting_map intact. This mimics the state
-        // a crash mid-indexMeeting would leave WITHOUT transaction
-        // wrapping.
+        // Simulate partial index: drop the FTS row but leave meeting_map
+        // intact. This mimics the state a crash between the two writes in
+        // indexMeeting would leave WITHOUT transaction wrapping.
         try await store.read { store in
-            // Delete the title entry for this meeting's rowid.
             let rowid = try #require(
                 try store.searchIndex.testRowID(
                     for: meetingID
                 )
             )
-            try store.searchIndex.testDeleteFTSRow(
-                field: .title, rowid: rowid
-            )
+            try store.searchIndex.testDeleteIndexRow(rowid: rowid)
         }
 
-        // Verify the title term is now missing.
+        // Verify the meeting is now unsearchable.
         let broken = try await store.searchHits("Full", limit: 50)
-        #expect(broken.isEmpty, "Title entry was manually removed")
+        #expect(broken.isEmpty, "FTS row was manually removed")
 
         // Force a full reconcile by clearing the token.
         await store.read { store in

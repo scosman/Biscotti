@@ -93,7 +93,7 @@ public struct MeetingListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.listPaneBackground)
         } else if viewModel.mode == .search,
-                  !viewModel.isSearching, // still in-flight -> keep the spinner
+                  !viewModel.isSearching, // in-flight -> suppress no-results
                   viewModel.results.isEmpty
         {
             ContentUnavailableView.search(text: viewModel.query)
@@ -141,7 +141,7 @@ public struct MeetingListView: View {
 
     @ViewBuilder
     private var searchContent: some View {
-        if viewModel.isSearching {
+        if viewModel.showsSearchSpinner {
             HStack {
                 Spacer()
                 ProgressView()
@@ -226,11 +226,10 @@ public struct MeetingListView: View {
                     .font(.monoMeta)
                     .foregroundStyle(isSelected ? .onAccentMuted : .inkSecondary)
             }
-            Text(
-                "matches: \(MeetingListViewModel.matchedFieldsText(hit.matchedFields))"
-            )
-            .font(.caption)
-            .foregroundStyle(isSelected ? .onAccentMuted : .inkTertiary)
+            Text(MeetingListViewModel.searchSecondLine(for: hit))
+                .font(.caption)
+                .foregroundStyle(isSelected ? .onAccentMuted : .inkTertiary)
+                .lineLimit(2)
         }
         .listRowSeparator(.hidden)
         .listRowBackground(selectionBackground(isSelected))

@@ -268,8 +268,6 @@ public struct MeetingDetailView: View {
     /// `listRowMaxWidth`, matching the ScrollView path's layout.
     private func transcriptListLayout(geo _: GeometryProxy) -> some View {
         transcriptReadyContent
-            .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
-            .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
             .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
                 pinnedTransportBar
             }
@@ -296,8 +294,6 @@ public struct MeetingDetailView: View {
             .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
-        .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
         .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
             pinnedTransportBar
         }
@@ -314,7 +310,7 @@ public struct MeetingDetailView: View {
     /// **Layout coupling:** the `verticalOverhead` constant mirrors the
     /// padding and divider in `scrollViewLayout(geo:)`. If you change
     /// the padding values or divider there, update this calculation to
-    /// match. The `transportHeight` is measured via `TransportHeightKey`
+    /// match. The `transportHeight` is measured via `onGeometryChange`
     /// in `pinnedTransportBar` -- it accounts for the bottom
     /// `safeAreaInset` that the outer `GeometryReader` does not subtract
     /// from its reported size.
@@ -406,19 +402,15 @@ private extension MeetingDetailView {
             .frame(maxWidth: .infinity)
         }
         .pinnedBarBackground()
-        .background(GeometryReader { transportProxy in
-            Color.clear
-                .preference(
-                    key: TransportHeightKey.self,
-                    value: transportProxy.size.height
-                )
-        })
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            transportHeight = $0
+        }
     }
 
-    /// Header + tags row + calendar card + tab bar, measured for the
-    /// chrome-height preference key. AudioTransport is now pinned to
-    /// the bottom of the panel (see `pinnedTransportBar`), outside
-    /// this scroll region.
+    /// Header + tags row + calendar card + tab bar, with its height
+    /// measured via `onGeometryChange` for `contentFill`. AudioTransport
+    /// is pinned to the bottom of the panel (see `pinnedTransportBar`),
+    /// outside this scroll region.
     var chrome: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             header
@@ -434,13 +426,9 @@ private extension MeetingDetailView {
 
             tabBar
         }
-        .background(GeometryReader { chromeProxy in
-            Color.clear
-                .preference(
-                    key: ChromeHeightKey.self,
-                    value: chromeProxy.size.height
-                )
-        })
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            chromeHeight = $0
+        }
     }
 
     /// The tags row: detail-size pills with hover-remove, followed by
@@ -1065,22 +1053,6 @@ private extension MeetingDetailView {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Layout preference keys
-
-private struct ChromeHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-private struct TransportHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 

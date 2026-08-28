@@ -100,6 +100,14 @@ a **definite** height (not `maxHeight: .infinity`), avoiding the greedy-NSScroll
 in-ScrollView infinite-height trap. 760pt reading cap on the inner column; ivory
 fills the rest of the pane.
 
+> **Superseded 2026-08:** the `GeometryReader` → `PreferenceKey` →
+> `.onPreferenceChange` measurement described here caused
+> "AttributeGraph: cycle detected" warnings at runtime (the geometry → state →
+> layout round-trip *is* a feedback loop, contrary to the claim above).
+> `MeetingDetailView` now measures chrome/transport heights with
+> `onGeometryChange(for:action:)`, which writes `@State` directly with no
+> preference propagation. The height-consumption design below is unchanged.
+
 ---
 
 ## Playback rate (P2)

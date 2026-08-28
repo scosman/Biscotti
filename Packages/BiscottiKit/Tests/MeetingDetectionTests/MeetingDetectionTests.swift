@@ -218,9 +218,12 @@ struct MicUserTrackingTests {
         )])
         await collector.settle()
 
-        // Mic user stops
+        // Mic user stops. Wait for the debounce to resolve BEFORE
+        // stopping the detector: stop() cancels a pending debounce, so
+        // a bare settle() races the debounce task under load and can
+        // lose the event entirely.
         source.emit([])
-        await collector.settle()
+        await collector.waitForEvents(count: 1)
 
         detector.stop()
         await collector.settle()
@@ -438,22 +441,15 @@ struct MicStopDebounceTests {
             meetingBundleIDs: ["us.zoom.xos"],
             displayNames: ["us.zoom.xos": "Zoom"]
         )
-        // OneShotImmediateClock: the first sleep (the per-app start
-        // debounce or the first mic-stop debounce that fires) fires
-        // immediately; subsequent ones block. We use this to suppress
-        // the flap's mic debounce while letting the real gap's debounce
-        // resolve after detector.stop() cleanup.
-        //
-        // Actually, for this test we need:
-        // 1. First dropout: mic debounce starts (blocks with NeverClock)
-        //    -> cancelled on reappearance
-        // 2. Second dropout: mic debounce starts (fires with ImmediateClock)
-        //
-        // Use ImmediateClock -- both debounces fire instantly, but the
-        // first one is cancelled before it resolves because the
-        // reappearance snapshot processes before the debounce task runs.
-        let detector = makeImmediateDetector(
-            catalog: catalog, source: source
+        // GateClock: debounce sleeps park until the test opens the
+        // gate. The flap's debounce cannot resolve (and emit) before
+        // the reappearance snapshot cancels it, and the real gap's
+        // debounce resolves only when the test says so. (The previous
+        // ImmediateClock version was flaky: the debounce task could be
+        // scheduled ahead of the observe loop's reappearance snapshot.)
+        let clock = GateClock()
+        let detector = makeGateDetector(
+            clock: clock, catalog: catalog, source: source
         )
         let collector = EventCollector()
         collector.start(from: detector)
@@ -467,8 +463,9 @@ struct MicStopDebounceTests {
         )])
         await collector.settle()
 
-        // Brief dropout + immediate reappearance (flap)
-        // The reappearance snapshot cancels the pending mic debounce
+        // Brief dropout + immediate reappearance (flap). Snapshots are
+        // processed in FIFO order: the drop enters the debounce (which
+        // parks on the closed gate), the reappearance cancels it.
         source.emit([])
         source.emit([makeProcess(
             bundleID: "com.spotify.client",
@@ -477,11 +474,16 @@ struct MicStopDebounceTests {
         )])
         await collector.settle()
 
-        // Verify no event from the flap
+        // Real sustained gap -- mic user stops for good. The new
+        // debounce parks on the closed gate.
+        source.emit([])
+        await collector.settle()
+
+        // Verify no event from the flap before the gate opens
         #expect(collector.events.isEmpty)
 
-        // Real sustained gap -- mic user stops for good
-        source.emit([])
+        // Open the gate: the real gap's debounce resolves and fires
+        clock.open()
         await collector.waitForEvents(count: 1)
 
         detector.stop()
@@ -801,20 +803,21 @@ struct AppleSystemServiceDenylistTests {
 @Suite("MeetingDetection — Mic Stop Self-Verify")
 @MainActor
 struct MicStopSelfVerifyTests {
-    @Test("mic-stop debounce does not emit if non-self mic user reappears at resolve")
+    @Test("mic-stop debounce does not emit if non-self mic user reappears before the debounce fires")
     func micStopSuppressedWhenMicReappears() async {
         let source = FakeActivitySource()
         let catalog = FakeMeetingCatalog(
             meetingBundleIDs: ["us.zoom.xos"],
             displayNames: ["us.zoom.xos": "Zoom"]
         )
-        // ImmediateClock: the debounce fires quickly. The key is that
-        // we re-add a mic user before the debounce resolves. Because
-        // the AsyncStream for-await loop processes buffered snapshots
-        // before yielding to the debounce Task, the hadNonSelfMicUsers
-        // flag is restored to true before resolveMicStopDebounce runs.
-        let detector = makeImmediateDetector(
-            catalog: catalog, source: source
+        // GateClock: the debounce parks on the closed gate, so it
+        // cannot win a scheduling race against the snapshot stream.
+        // (The ImmediateClock version of this test was flaky in CI:
+        // the debounce task could resolve before the observe loop
+        // processed the reappearance snapshot, emitting an event.)
+        let clock = GateClock()
+        let detector = makeGateDetector(
+            clock: clock, catalog: catalog, source: source
         )
         let collector = EventCollector()
         collector.start(from: detector)
@@ -829,15 +832,20 @@ struct MicStopSelfVerifyTests {
         await collector.settle()
 
         // Mic user drops then reappears in rapid succession.
-        // The drop triggers the debounce; the reappearance both cancels
-        // the debounce (primary guard) AND sets hadNonSelfMicUsers=true
-        // (self-verify guard).
+        // Snapshots are processed in FIFO order: the drop enters the
+        // debounce (parked on the closed gate), the reappearance
+        // cancels it and restores hadNonSelfMicUsers = true.
         source.emit([])
         source.emit([makeProcess(
             bundleID: "com.spotify.client",
             isRunningInput: true,
             isRunningOutput: false
         )])
+        await collector.settle()
+
+        // Even with the debounce window fully elapsed, the cancelled
+        // debounce must not emit.
+        clock.open()
         await collector.settle()
 
         // No allMicUsersStopped because the mic user is present

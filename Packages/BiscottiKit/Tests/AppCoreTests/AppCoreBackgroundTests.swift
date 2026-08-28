@@ -96,11 +96,17 @@ struct AppCoreDetectionPipelineTests {
     @Test("ad-hoc detection suppressed within calendar suppression window")
     @MainActor
     func suppressedAfterCalendarPrompt() async throws {
+        // Start the meeting 60s out, NOT ~1s out: AppCore skips events
+        // whose start is already past when the timer is scheduled
+        // (`delay > 0` guard in scheduleCalendarTimers), and under
+        // parallel-test load the fixture setup + onLaunch can consume
+        // real seconds -- which made a now+1s event stale and the
+        // calendar notification never fire (flake). 60s of margin is
+        // safe; the fake scheduler advances past it below.
         let now = Date()
-        // Create a meeting starting in 1 second so the calendar timer fires
         let dto = makeMeetingDTO(
             title: "Imminent Meeting",
-            start: now.addingTimeInterval(1),
+            start: now.addingTimeInterval(60),
             end: now.addingTimeInterval(3600)
         )
 
@@ -123,8 +129,10 @@ struct AppCoreDetectionPipelineTests {
         await fix.core.onLaunch()
 
         // Fire the calendar-start timer and poll until the MainActor
-        // task that posts the calendar notification runs.
-        fakeScheduler.advance(by: .seconds(2))
+        // task that posts the calendar notification runs. The delay
+        // computed at schedule time is < 60s (setup latency shaved off
+        // the now+60s start), so 65 fake seconds always covers it.
+        fakeScheduler.advance(by: .seconds(65))
         try await pollUntil {
             !fix.fakeNotificationCenter.addedRequests.isEmpty
         }

@@ -4,9 +4,10 @@ import Testing
 
 @Suite("Method resolution")
 struct MethodResolutionTests {
-    @Test("current method id is v1")
-    func currentIsV1() {
-        #expect(TranscriptionMethod.current.id == "v1")
+    @Test("current method id is v2")
+    func currentIsV2() {
+        #expect(TranscriptionMethod.current.id == "v2")
+        #expect(TranscriptionMethod.v2.id == "v2")
         #expect(TranscriptionMethod.v1.id == "v1")
     }
 
@@ -22,7 +23,23 @@ struct MethodResolutionTests {
         // Non-RAM-dependent settings are fixed for v1.
         #expect(settings.sttModelRepo == MethodResolver.defaultRepo)
         #expect(settings.enableWordTimestamps == true)
+        #expect(settings.detectLanguage == false)
         #expect(settings.diarizationStrategy == .subsegment)
+    }
+
+    @Test("v2 matches v1 but enables language detection")
+    func v2EnablesLanguageDetection() {
+        let sixteenGB: UInt64 = 16 * 1024 * 1024 * 1024
+        let v1Settings = MethodResolver.resolve(.v1, physicalMemory: sixteenGB)
+        let v2Settings = MethodResolver.resolve(.v2, physicalMemory: sixteenGB)
+
+        #expect(v2Settings.sttModel == v1Settings.sttModel)
+        #expect(v2Settings.sttModelRepo == v1Settings.sttModelRepo)
+        #expect(v2Settings.enableWordTimestamps == v1Settings.enableWordTimestamps)
+        #expect(v2Settings.diarizationStrategy == v1Settings.diarizationStrategy)
+        #expect(v2Settings.sequentialLoading == v1Settings.sequentialLoading)
+        #expect(v1Settings.detectLanguage == false)
+        #expect(v2Settings.detectLanguage == true)
     }
 
     @Test("v1 resolves to the single STT model + sequential loading below 8 GB")

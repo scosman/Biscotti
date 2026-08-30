@@ -29,13 +29,20 @@ let package = Package(
         .library(name: "Intelligence", targets: ["Intelligence"]),
         .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
         .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"]),
-        .library(name: "Vocabulary", targets: ["Vocabulary"])
+        .library(name: "Vocabulary", targets: ["Vocabulary"]),
+        .library(name: "MCPServer", targets: ["MCPServer"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
         .package(name: "LocalLLM", path: "../LocalLLM"),
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1")
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1"),
+        .package(url: "https://github.com/apple/swift-nio", from: "2.65.0"),
+        // MCP swift-sdk — version decided by the Phase 1 spike (architecture §2.1):
+        // 0.12.1 resolved and built cleanly (its swift-docc-plugin `branch: "main"`
+        // dependency did not trip resolution), so the 0.11.0 fallback was not needed.
+        // Pinned exact: pre-1.0 protocol implementation, upgrades are deliberate.
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk", exact: "0.12.1")
     ],
     targets: [
         .target(
@@ -575,6 +582,26 @@ let package = Package(
         .testTarget(
             name: "VocabularyTests",
             dependencies: ["Vocabulary", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MCPServer",
+            dependencies: [
+                "DataStore",
+                .product(name: "MCP", package: "swift-sdk"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MCPServerTests",
+            dependencies: [
+                "MCPServer",
+                "DataStore"
+            ],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

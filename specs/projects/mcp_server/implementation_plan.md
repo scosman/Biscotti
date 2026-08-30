@@ -9,7 +9,7 @@ and is reviewable on its own.
 
 ## Phases
 
-- [ ] **Phase 1 — Dependencies and transport plumbing**
+- [x] **Phase 1 — Dependencies and transport plumbing**
   Resolve the MCP SDK (try `0.12.1`, fall back to `0.11.0` per architecture
   §2.1) and swift-nio into `Packages/BiscottiKit`. Create the `MCPServer`
   target and product: configuration, state types, `HTTPListener`,

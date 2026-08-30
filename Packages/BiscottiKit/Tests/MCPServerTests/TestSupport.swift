@@ -18,7 +18,15 @@ struct MCPServerFixture {
     static func withRunningServer(
         _ body: (MCPServerFixture) async throws -> Void
     ) async throws {
-        let store = try DataStore(storage: .inMemory)
+        try await withRunningServer(store: DataStore(storage: .inMemory), body)
+    }
+
+    /// Same, with a caller-seeded store — for end-to-end tool tests that need
+    /// meetings in the database before the server starts.
+    static func withRunningServer(
+        store: DataStore,
+        _ body: (MCPServerFixture) async throws -> Void
+    ) async throws {
         let controller = MCPServerController(store: store)
         await controller.start(port: 0)
 

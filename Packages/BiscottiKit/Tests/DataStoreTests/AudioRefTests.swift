@@ -117,4 +117,56 @@ struct AudioRefTests {
             #expect(meeting?.audioFiles.count == 2)
         }
     }
+
+    // MARK: - storedAudioFileRefs
+
+    @Test("storedAudioFileRefs keeps deleted files' paths with present false")
+    func storedRefsKeepDeletedPaths() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Stored refs")
+
+        try await store.attachAudio(
+            [AudioFileRef(role: .mic, path: "/gone/mic.aac", byteSize: 0, isPresent: false),
+             AudioFileRef(role: .system, path: "/gone/system.aac", byteSize: 0, isPresent: false)],
+            to: meetingID
+        )
+
+        let stored = try await store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(stored.present == false)
+        #expect(stored.mic?.path == "/gone/mic.aac")
+        #expect(stored.system?.path == "/gone/system.aac")
+
+        // Contrast: the presence-filtered variant drops the deleted files.
+        let playable = try await store.audioFileRefs(meetingID: meetingID)
+        #expect(playable.present == false)
+        #expect(playable.mic == nil)
+        #expect(playable.system == nil)
+    }
+
+    @Test("storedAudioFileRefs reports mixed presence per file")
+    func storedRefsMixedPresence() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Mixed refs")
+        try await store.attachAudio(
+            [AudioFileRef(role: .mic, path: "/kept/mic.aac", byteSize: 100, isPresent: true),
+             AudioFileRef(role: .system, path: "/gone/system.aac", byteSize: 0, isPresent: false)],
+            to: meetingID
+        )
+
+        let stored = try await store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(stored.present == true)
+        #expect(stored.mic?.path == "/kept/mic.aac")
+        #expect(stored.system?.path == "/gone/system.aac")
+    }
+
+    @Test("storedAudioFileRefs returns nils when there are no refs at all")
+    func storedRefsNoRefs() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "No refs")
+
+        let stored = try await store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(stored.present == false)
+        #expect(stored.mic == nil)
+        #expect(stored.system == nil)
+    }
 }

@@ -19,7 +19,7 @@ and is reviewable on its own.
   on an ephemeral port, and the lifecycle cases (idempotent start/stop,
   start→stop→start rebinds, port-in-use → `.failed`).
 
-- [ ] **Phase 2 — The three tools**
+- [x] **Phase 2 — The three tools**
   `DataStore.meetingPeople(id:)` and its read model. `MeetingToolCatalog`
   (names, descriptions, input/output schemas), `MeetingToolPayloads`,
   `TranscriptTextFormatter`, `ToolDateFormatting`, and `MeetingToolProvider`

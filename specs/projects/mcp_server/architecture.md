@@ -71,6 +71,7 @@ Sources/MCPServer/
   HTTPListener.swift            NIO bootstrap: bind, serve, shutdown
   HTTPChannelHandler.swift      NIOHTTP1 ⇄ MCP.HTTPRequest/HTTPResponse bridge
   MeetingToolProvider.swift     the three tools over DataStore (the real logic)
+  ToolArgumentDecoding.swift    centralized argument decoding (invalidParams messages)
   MeetingToolCatalog.swift      Tool definitions: names, descriptions, JSON schemas
   MeetingToolPayloads.swift     Codable response DTOs
   TranscriptTextFormatter.swift segments → "[MM:SS] Name\ntext"
@@ -303,7 +304,11 @@ in progress is handled exactly as it is for in-app search — no extra work here
 
 ```
 detail = try await store.meetingDetail(id: id)      → nil ⇒ tool error
-audio  = try await store.audioFileRefs(meetingID: id)
+audio  = try await store.storedAudioFileRefs(meetingID: id)  → paths reported
+                                                    regardless of presence
+                                                    (functional spec §5.2);
+                                                    only `present` reflects
+                                                    the disk
 people = try await store.meetingPeople(id: id)      → new, §7.2
 
 transcript stats from detail.preferredTranscript:
@@ -318,7 +323,7 @@ transcript_version_count = detail.versions.count
 
 `calendar` is emitted only when `detail.calendar != nil`; each of its fields is
 omitted when nil. `audio_files.present` comes straight from
-`AudioFileRefsResult.present`.
+`StoredAudioFileRefs.present`; deleted files keep their stored paths.
 
 ### 6.3 `biscotti_get_transcript`
 

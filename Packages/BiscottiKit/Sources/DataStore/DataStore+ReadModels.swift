@@ -251,6 +251,20 @@ public struct AppSettingsData: Sendable, Equatable {
     }
 }
 
+/// Uncapped people data for one meeting, for consumers that need every
+/// participant (the MCP tools). `MeetingSummary.participants` is capped at 5
+/// for display and cannot serve them.
+public struct MeetingPeople: Sendable, Equatable {
+    public let organizer: PersonData?
+    /// Every participant, uncapped, deduped by id, organizer excluded.
+    public let participants: [PersonData]
+
+    public init(organizer: PersonData?, participants: [PersonData]) {
+        self.organizer = organizer
+        self.participants = participants
+    }
+}
+
 /// Calendar context derived from a `CalendarSnapshot` for display in Meeting Detail.
 public struct CalendarContextData: Sendable, Equatable {
     public let title: String?
@@ -355,6 +369,22 @@ public struct TagData: Sendable, Identifiable, Equatable, Hashable {
 public struct AudioFileRefsResult: Sendable, Equatable {
     public let mic: URL?
     public let system: URL?
+    public let present: Bool
+
+    public init(mic: URL?, system: URL?, present: Bool) {
+        self.mic = mic
+        self.system = system
+        self.present = present
+    }
+}
+
+/// Audio file refs as stored, for consumers that must report a deleted
+/// file's path alongside `present: false` (the MCP tools, functional spec
+/// §5.2). Unlike ``AudioFileRefsResult``, paths survive file deletion.
+public struct StoredAudioFileRefs: Sendable, Equatable {
+    public let mic: URL?
+    public let system: URL?
+    /// Whether any referenced file is currently on disk.
     public let present: Bool
 
     public init(mic: URL?, system: URL?, present: Bool) {
@@ -493,6 +523,30 @@ public extension DataStore {
         return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
     }
 
+    /// Returns the uncapped people data for a meeting, or nil if the meeting
+    /// is gone. Participants are deduped by id and exclude the organizer,
+    /// who is reported separately.
+    func meetingPeople(id: UUID) throws -> MeetingPeople? {
+        guard let meeting = try meeting(id: id) else { return nil }
+
+        let organizerData = meeting.organizer.map {
+            PersonData(id: $0.id, name: $0.name, email: $0.email)
+        }
+
+        let organizerID = meeting.organizer?.id
+        var participants: [PersonData] = []
+        var seenIDs: Set<UUID> = []
+        for person in meeting.participants where person.id != organizerID {
+            if seenIDs.insert(person.id).inserted {
+                participants.append(
+                    PersonData(id: person.id, name: person.name, email: person.email)
+                )
+            }
+        }
+
+        return MeetingPeople(organizer: organizerData, participants: participants)
+    }
+
     /// Returns audio file ref info for a meeting: individual URLs and an overall presence flag.
     func audioFileRefs(meetingID: UUID) throws -> AudioFileRefsResult {
         guard let meeting = try meeting(id: meetingID) else {
@@ -504,6 +558,26 @@ public extension DataStore {
         let systemURL = systemRef.map { URL(fileURLWithPath: $0.path) }
         let present = micURL != nil || systemURL != nil
         return AudioFileRefsResult(mic: micURL, system: systemURL, present: present)
+    }
+
+    /// Returns the stored audio refs for a meeting with paths reported
+    /// **regardless of on-disk presence**: files deleted from disk keep their
+    /// paths, paired with `present: false` — "refs deleted" stays
+    /// distinguishable from "never recorded" (functional spec §5.2). UI
+    /// callers that need playable files keep ``audioFileRefs(meetingID:)``,
+    /// which drops missing files.
+    func storedAudioFileRefs(meetingID: UUID) throws -> StoredAudioFileRefs {
+        guard let meeting = try meeting(id: meetingID) else {
+            return StoredAudioFileRefs(mic: nil, system: nil, present: false)
+        }
+        let micRef = meeting.audioFiles.first(where: { $0.role == .mic })
+        let systemRef = meeting.audioFiles.first(where: { $0.role == .system })
+        let present = (micRef?.isPresent ?? false) || (systemRef?.isPresent ?? false)
+        return StoredAudioFileRefs(
+            mic: micRef.map { URL(fileURLWithPath: $0.path) },
+            system: systemRef.map { URL(fileURLWithPath: $0.path) },
+            present: present
+        )
     }
 
     /// Returns the stored file paths for all audio refs belonging to a meeting.

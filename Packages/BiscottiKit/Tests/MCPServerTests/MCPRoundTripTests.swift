@@ -3,10 +3,15 @@ import Testing
 @testable import MCPServer
 
 /// The protocol surface a real MCP client uses, driven with `URLSession`
-/// over the real listener: initialize handshake, then the (still empty)
-/// tool catalog.
+/// over the real listener: initialize handshake, then the tool catalog.
 @Suite("MCP JSON-RPC round trip")
 struct MCPRoundTripTests {
+    static let expectedToolNames = [
+        "biscotti_query_meetings",
+        "biscotti_get_meeting",
+        "biscotti_get_transcript"
+    ]
+
     @Test("initialize then tools/list")
     func initializeAndListTools() async throws {
         try await MCPServerFixture.withRunningServer { fixture in
@@ -34,8 +39,14 @@ struct MCPRoundTripTests {
             let listTools = try await JSONRPCClient.post(port: fixture.port, method: "tools/list")
             #expect(listTools.status == 200)
             let toolsResult = listTools.body["result"] as? [String: Any]
-            let tools = toolsResult?["tools"] as? [[String: Any]]
-            #expect(tools?.isEmpty == true)
+            let tools = toolsResult?["tools"] as? [[String: Any]] ?? []
+            let names = tools.compactMap { $0["name"] as? String }
+            #expect(names.sorted() == Self.expectedToolNames.sorted())
+            for tool in tools {
+                #expect((tool["description"] as? String)?.isEmpty == false)
+                #expect((tool["inputSchema"] as? [String: Any])?.isEmpty == false)
+                #expect((tool["outputSchema"] as? [String: Any])?.isEmpty == false)
+            }
         }
     }
 
@@ -46,7 +57,7 @@ struct MCPRoundTripTests {
             #expect(response.status == 200)
             let result = response.body["result"] as? [String: Any]
             let tools = result?["tools"] as? [[String: Any]]
-            #expect(tools?.isEmpty == true)
+            #expect(tools?.count == Self.expectedToolNames.count)
         }
     }
 }

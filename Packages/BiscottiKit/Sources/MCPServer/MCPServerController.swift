@@ -144,10 +144,15 @@ public final class MCPServerController {
             instructions: Self.instructions,
             capabilities: .init(tools: .init(listChanged: false))
         )
-        // Phase 2 replaces the empty catalog with MeetingToolCatalog and
-        // adds the CallTool handler.
+        // Created here, inside start(), and retained by the handler closures:
+        // releasing the server in stop() releases the provider with it, so a
+        // stopped controller still holds no tool objects.
+        let provider = MeetingToolProvider(store: store)
         await server.withMethodHandler(MCP.ListTools.self) { _ in
-            MCP.ListTools.Result(tools: [])
+            MCP.ListTools.Result(tools: MeetingToolCatalog.all)
+        }
+        await server.withMethodHandler(MCP.CallTool.self) { params in
+            try await provider.call(name: params.name, arguments: params.arguments)
         }
         return server
     }

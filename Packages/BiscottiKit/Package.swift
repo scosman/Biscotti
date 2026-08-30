@@ -600,7 +600,8 @@ let package = Package(
             name: "MCPServerTests",
             dependencies: [
                 "MCPServer",
-                "DataStore"
+                "DataStore",
+                .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
         ),

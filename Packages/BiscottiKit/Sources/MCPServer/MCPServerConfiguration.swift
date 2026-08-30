@@ -16,4 +16,11 @@ public enum MCPServerConfiguration {
     static let maxBodyBytes = 1_048_576
     static let maxConcurrentConnections = 16
     static let idleTimeoutSeconds: Int64 = 120
+    /// Ranked candidates drawn from the FTS index before a date filter is
+    /// applied (architecture §6.1). Bounds the known limitation where a date
+    /// range matching only very low-ranked results could miss them.
+    static let searchCandidatePool = 500
+    /// Maximum number of results `biscotti_query_meetings` returns; also the
+    /// default (functional spec §5.1).
+    static let maxResultLimit = 50
 }

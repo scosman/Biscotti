@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Functional Spec: MCP Server
@@ -128,16 +128,18 @@ Shared conventions:
 > each match — use `biscotti_get_meeting` for details and
 > `biscotti_get_transcript` for what was said.
 
-**Parameters** (all optional; at least one of `query`, `before`, `after`, `tags`
-must be present — `limit` alone is an error):
+**Parameters** (all optional; at least one of `query`, `before`, `after` must be
+present — `limit` alone is an error):
 
 | Name | Type | Notes |
 |---|---|---|
 | `query` | string | Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms (the app's own search stack). |
 | `after` | string | Only meetings whose date is ≥ this. |
 | `before` | string | Only meetings whose date is ≤ this. |
-| `tags` | string[] | Tag names, case-insensitive. A meeting must carry **all** listed tags. |
 | `limit` | integer | 1–50, default 50. |
+
+There is no separate tag filter: tags are indexed by the search stack (and
+weighted highly), so `query` already covers them.
 
 **Ordering:** relevance (bm25) when `query` is given; date descending otherwise.
 
@@ -165,11 +167,11 @@ must be present — `limit` alone is an error):
   Unparseable date → invalid params. `before` earlier than `after` → invalid
   params. Unknown tag name is **not** an error — it simply matches nothing.
 
-**Known limitation (documented, not fixed):** when `query` is combined with
-`tags`/date filters, ranked candidates are drawn from the search index in a
-bounded pool (500) before filtering. A filter that matches only very
-low-ranked results could miss them. Acceptable at the scale of one person's
-meeting history.
+**Known limitation (documented, not fixed):** when `query` is combined with a
+date filter, ranked candidates are drawn from the search index in a bounded
+pool (500) before the date filter is applied. A date range that matches only
+very low-ranked results could miss them. Acceptable at the scale of one
+person's meeting history.
 
 ### 5.2 `biscotti_get_meeting`
 
@@ -252,12 +254,22 @@ meeting history.
   "transcript_id": "…",
   "word_count": 6180,
   "character_count": 34117,
-  "text": "[00:04] Ada L.: Let's start with the roadmap.\n\n[00:31] Speaker 2: …"
+  "text": "[00:04] Ada L.\nLet's start with the roadmap.\n\n[00:31] Speaker 2\n…"
 }
 ```
 
-- Format: one block per speaker turn, `[MM:SS] Name: text`, blank line between
-  turns. Consecutive segments from the same speaker are collapsed into one turn.
+- Format: one block per speaker turn — a `[MM:SS] Name` header line, then the
+  spoken text on its own line(s) below it, with a blank line between turns:
+
+  ```
+  [00:04] Ada L.
+  Let's start with the roadmap.
+
+  [00:31] Speaker 2
+  Sure — I pushed the deck last night.
+  ```
+
+  Consecutive segments from the same speaker are collapsed into one turn.
   `HH:MM:SS` is used past the hour mark.
 - Speaker names resolve through the user's speaker→person mapping; unmapped
   speakers keep their diarization label ("Speaker 2").

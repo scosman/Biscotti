@@ -128,42 +128,61 @@ public final class MCPServerController {
 }
 ```
 
-- Owns: the `MCP.Server`, the `StatelessHTTPServerTransport`, the
-  `HTTPListener`. **All three are created inside `start()` and released in
-  `stop()`** — this is what "zero overhead when off" means concretely: a
-  stopped controller holds one enum and a `DataStore` reference, no event loop
-  group, no sockets, no tool objects.
+- Owns: the `HTTPListener` and the request handler it routes to. **Both are
+  created inside `start()` and released in `stop()`** — this is what "zero
+  overhead when off" means concretely: a stopped controller holds one enum and
+  a `DataStore` reference, no event loop group, no sockets, no tool objects.
+- The request handler is **per-request stateless machinery**: every HTTP
+  request gets its own `StatelessHTTPServerTransport` + `MCP.Server` pair,
+  built on arrival and torn down after the response. The SDK `Server` latches
+  `initialized` after its first handshake and rejects every later `initialize`
+  on the same instance, so a server shared across requests would let exactly
+  one client handshake per app launch (fixed after a real-client bug report;
+  the SDK's conformance server does the same per session, and "per session"
+  is "per request" without sessions). The pair exists only between arrival
+  and response — no JSON-RPC state survives a request, so clients can never
+  interfere — and the server keeps the SDK's default non-strict
+  configuration, which serves `tools/list`/`tools/call` without a prior
+  `initialize` on the instance.
 - `start()`/`stop()`/`applyEnabled()` are serialized by an internal
   `Task`-chained queue (`private var work: Task<Void, Never>?`, each call
   awaits the previous) so a rapid on/off/on sequence cannot leave an orphan
   listener. Final state wins.
 - `@MainActor` because its only observer is SwiftUI. All blocking work inside
   `start()`/`stop()` is `await`ed on other executors (NIO's ELG, the
-  `DataStore` actor); nothing blocks the main thread.
+  `DataStore` actor); nothing blocks the main thread. Per-request server
+  construction is static/nonisolated, so it never hops to the main actor.
 
 Start sequence:
 
 1. `state = .starting`
-2. Build `MeetingToolProvider(store:)`.
-3. Build `MCP.Server(name: "Biscotti", version: <CFBundleShortVersionString ?? "0.0.0">, instructions: <one-paragraph orientation>, capabilities: .init(tools: .init(listChanged: false)))`.
-4. `await server.withMethodHandler(ListTools.self) { … }` → `MeetingToolCatalog.all`
-   `await server.withMethodHandler(CallTool.self) { … }` → `provider.call(name:arguments:)`
-5. Build the transport with an explicit pipeline (do not rely on the default,
+2. Bind the `HTTPListener` **first** (bind-before-transport, see §4.1) so the
+   per-request transports' `OriginValidator.localhost(port:)` can be pinned
+   to the actual bound port. On failure the listener tears itself down and
+   `state = .failed(…)` — the errno mapping is §4.1's.
+3. Build the request handler factory: a `@Sendable` closure that, per request,
+   builds the transport with an explicit pipeline (do not rely on the default,
    so the port is pinned):
    ```swift
    StatelessHTTPServerTransport(validationPipeline: StandardValidationPipeline(validators: [
-       OriginValidator.localhost(port: MCPServerConfiguration.port),
+       OriginValidator.localhost(port: <bound port>),
        AcceptHeaderValidator(mode: .jsonOnly),
        ContentTypeValidator(),
        ProtocolVersionValidator(),
    ]))
    ```
-6. `try await server.start(transport: transport)`
-7. `try await listener.start(port:)` — on success `state = .running(endpointURL)`;
-   on failure tear down server + transport and `state = .failed(…)`.
+   …builds `MCP.Server(name: "Biscotti", version: <CFBundleShortVersionString ?? "0.0.0">, instructions: <one-paragraph orientation>, capabilities: .init(tools: .init(listChanged: false)))` with
+   `await server.withMethodHandler(ListTools.self) { … }` → `MeetingToolCatalog.all`
+   and `await server.withMethodHandler(CallTool.self) { … }` → `MeetingToolProvider(store:).call(name:arguments:)`,
+   then `try await server.start(transport: transport)`, serves
+   `await transport.handleRequest(request)`, and finishes with
+   `await server.stop()`.
+4. Install the factory in the `NIOLockedValueBox` the listener's closure
+   reads (503 before it is installed) and set `state = .running(endpointURL)`.
 
-Stop sequence: `await listener.shutdown()` → `await server.stop()` →
-`await transport.disconnect()` → release all three → `state = .stopped`.
+Stop sequence: clear the handler box (new requests 503; in-flight requests
+keep their own per-request pair alive until they finish) →
+`await listener.shutdown()` → release → `state = .stopped`.
 
 ## 4. HTTP listener
 
@@ -507,7 +526,7 @@ changes to this module set `mcp_real_client` back to `not-run`.
 | SDK 0.12.1 resolution failure (docc branch dep) | Spike first; fall back to 0.11.0 (§2.1) |
 | SDK is pre-1.0; API churn between versions | Exact version pin; all SDK contact confined to `MCPServerController` + `MeetingToolProvider` |
 | NIO adds build time to every AppCore-dependent test target | One-time cold cost; measured in the spike phase. If unacceptable, the fallback is moving `MCPServerController` ownership from AppCore to the app target and passing state to SettingsUI explicitly. |
-| A client that insists on the GET SSE stream | 405 is spec-legal; verified in the manual test against a real client. If a major client turns out to require it, `StatefulHTTPServerTransport` is a contained swap inside `start()`. |
+| A client that insists on the GET SSE stream | 405 is spec-legal; verified in the manual test against a real client. If a major client turns out to require it, `StatefulHTTPServerTransport` is a contained swap inside the per-request handler factory (`makeRequestHandler`). |
 | `Host` header without a port → 421 from `OriginValidator` | Documented; the help sheet's snippet always includes the port |
 
 ## 12. Single doc, no component designs

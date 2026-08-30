@@ -28,7 +28,7 @@ and is reviewable on its own.
   payload-encoding list from architecture §10, plus `tools/call` end-to-end
   over the real listener.
 
-- [ ] **Phase 3 — Settings, wiring, and docs**
+- [x] **Phase 3 — Settings, wiring, and docs**
   `mcpServerEnabled` on `AppSettings`/`AppSettingsData`, the
   `.mcpServerEnabledDidChange` notification, AppCore ownership and the
   start-on-launch / observe-changes path, the General settings row with its

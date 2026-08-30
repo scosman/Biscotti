@@ -23,6 +23,9 @@ public struct SettingsView: View {
     @State var showConnectCalendar = false
     @State private var summaryPromptModel: SummaryPromptModel?
     @State var showVocabularyListSheet = false
+    /// Internal (not private) so the cross-file MCP row extension
+    /// (`SettingsMCPRow.swift`) can present the help sheet.
+    @State var showMCPHelp = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -124,6 +127,7 @@ public struct SettingsView: View {
                 }
             }
             appUpdatesRow
+            mcpRow
         }
     }
 

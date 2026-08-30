@@ -202,6 +202,8 @@ public struct AppSettingsData: Sendable, Equatable {
     public var customVocabularyEnabled: Bool?
     /// Whether per-meeting terms are derived from the associated calendar event.
     public var calendarVocabularyEnabled: Bool
+    /// Whether the local MCP server runs. Off by default.
+    public var mcpServerEnabled: Bool
 
     /// The shipped default for `customVocabularyEnabled` when the user has made
     /// no choice. Custom vocabulary is in beta, so it starts off. Flipping this
@@ -231,7 +233,8 @@ public struct AppSettingsData: Sendable, Equatable {
         selectedModelID: String = "",
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
-        calendarVocabularyEnabled: Bool = true
+        calendarVocabularyEnabled: Bool = true,
+        mcpServerEnabled: Bool = false
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -248,6 +251,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.summaryPrompt = summaryPrompt
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
+        self.mcpServerEnabled = mcpServerEnabled
     }
 }
 
@@ -609,7 +613,8 @@ public extension DataStore {
                 selectedModelID: existing.selectedModelID,
                 summaryPrompt: existing.summaryPrompt,
                 customVocabularyEnabled: existing.customVocabularyEnabled,
-                calendarVocabularyEnabled: existing.calendarVocabularyEnabled
+                calendarVocabularyEnabled: existing.calendarVocabularyEnabled,
+                mcpServerEnabled: existing.mcpServerEnabled
             )
         }
         // Create the singleton with defaults
@@ -646,7 +651,8 @@ public extension DataStore {
             selectedModelID: model.selectedModelID,
             summaryPrompt: model.summaryPrompt,
             customVocabularyEnabled: model.customVocabularyEnabled,
-            calendarVocabularyEnabled: model.calendarVocabularyEnabled
+            calendarVocabularyEnabled: model.calendarVocabularyEnabled,
+            mcpServerEnabled: model.mcpServerEnabled
         )
         mutate(&dto)
 
@@ -665,6 +671,7 @@ public extension DataStore {
         model.summaryPrompt = dto.summaryPrompt
         model.customVocabularyEnabled = dto.customVocabularyEnabled
         model.calendarVocabularyEnabled = dto.calendarVocabularyEnabled
+        model.mcpServerEnabled = dto.mcpServerEnabled
         try save()
     }
 

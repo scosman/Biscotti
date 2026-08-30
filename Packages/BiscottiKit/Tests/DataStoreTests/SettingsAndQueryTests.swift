@@ -54,6 +54,21 @@ struct SettingsTests {
         #expect(result.selectedModelID == "")
     }
 
+    @Test("mcpServerEnabled defaults to false")
+    func mcpServerEnabledDefaultsFalse() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.mcpServerEnabled == false)
+    }
+
+    @Test("mcpServerEnabled round-trips through updateSettings")
+    func mcpServerEnabledRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.mcpServerEnabled = true }
+        let result = try await store.settings()
+        #expect(result.mcpServerEnabled == true)
+    }
+
     @Test("selectedModelID round-trips through updateSettings")
     func selectedModelIDRoundTrip() async throws {
         let store = try makeStore()

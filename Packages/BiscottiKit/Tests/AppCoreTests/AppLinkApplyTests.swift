@@ -393,6 +393,23 @@ struct AppLinkRecordTests {
         let summaries = try await fix.store.meetingSummaries()
         #expect(summaries.isEmpty)
     }
+
+    // MARK: - Copy Meeting Link
+
+    @Test("copyMeetingLink hands the canonical Summary link to the writer")
+    @MainActor
+    func copyMeetingLinkWritesCanonicalURL() async throws {
+        let fix = try makeCoreFixture(testName: "AppLinkApply")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(title: "Linked")
+        var written: [String] = []
+        fix.core.copyMeetingLink(meetingID) { written.append($0) }
+
+        // Default (Summary) target, so no query parameters — matching the
+        // MCP `app_url` and the copied menu-item link.
+        #expect(written == ["biscotti://meeting/\(meetingID.uuidString)"])
+    }
 }
 
 // MARK: - Helpers

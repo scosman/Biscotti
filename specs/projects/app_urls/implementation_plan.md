@@ -22,7 +22,7 @@ and the on-hardware proof.
   and the move from `onOpenURL` to `application(_:open:)` with the
   cold-launch pending slot. Rewrites `DeepLinkTests`. Architecture §3–§5.
 
-- [ ] **Phase 3 — Producers, docs, manual test.** The `app_url` field on
+- [x] **Phase 3 — Producers, docs, manual test.** The `app_url` field on
   `biscotti_get_meeting` (+ schema and fixture updates), the **Copy Meeting
   Link** command in the list context menu and detail overflow menu,
   `App/deeplinks.md`, and the `app_urls` ManualTestKit script with its

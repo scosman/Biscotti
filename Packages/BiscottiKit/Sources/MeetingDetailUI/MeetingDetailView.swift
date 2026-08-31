@@ -474,6 +474,15 @@ private extension MeetingDetailView {
 
     var overflowMenu: some View {
         Menu {
+            Button {
+                viewModel.copyMeetingLink()
+            } label: {
+                Label(
+                    "Copy Meeting Link",
+                    systemImage: "link"
+                )
+            }
+
             if viewModel.hasAudioFiles {
                 Button {
                     viewModel.revealInFinder()

@@ -175,12 +175,72 @@ struct ScriptShapeTests {
         }
     }
 
+    @Test("App URLs script has a non-empty id and title")
+    func appURLsIdentity() {
+        let script = TestScript.appURLs
+        #expect(!script.id.isEmpty)
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "app_urls")
+    }
+
+    @Test("App URLs script has exactly 25 steps")
+    func appURLsStepCount() {
+        #expect(TestScript.appURLs.steps.count == 25)
+    }
+
+    @Test("App URLs step IDs match the canonical set")
+    func appURLsStepIDs() {
+        let ids = Set(TestScript.appURLs.steps.map(\.id))
+        let expected: Set = [
+            "au_setup",
+            "au_open_home",
+            "au_home_landed",
+            "au_open_meetings",
+            "au_meetings_landed",
+            "au_open_settings",
+            "au_settings_landed",
+            "au_open_search",
+            "au_search_focused",
+            "au_record_setup",
+            "au_open_record",
+            "au_record_started",
+            "au_copy_link_setup",
+            "au_open_meeting",
+            "au_meeting_summary",
+            "au_open_meeting_notes",
+            "au_meeting_notes_landed",
+            "au_open_meeting_time",
+            "au_meeting_time_seek",
+            "au_cold_launch_setup",
+            "au_cold_launch_check",
+            "au_menubar_setup",
+            "au_menubar_check",
+            "au_background_setup",
+            "au_background_check"
+        ]
+        #expect(ids == expected)
+    }
+
+    @Test("Every step ID in App URLs is non-empty")
+    func appURLsStepIDsNonEmpty() {
+        for step in TestScript.appURLs.steps {
+            #expect(!step.id.isEmpty, "Empty step ID in App URLs script")
+        }
+    }
+
+    @Test("Step IDs within App URLs are unique")
+    func appURLsInternalUniqueness() {
+        let ids = TestScript.appURLs.steps.map(\.id)
+        #expect(ids.count == Set(ids).count)
+    }
+
     @Test("All step IDs across all scripts are unique")
     func allStepIDsUnique() {
         let allSteps = TestScript.audioCapture.steps
             + TestScript.transcription.steps
             + TestScript.localLLM.steps
             + TestScript.mcp.steps
+            + TestScript.appURLs.steps
         let ids = allSteps.map(\.id)
         let uniqueIDs = Set(ids)
         #expect(ids.count == uniqueIDs.count, "Duplicate step IDs found")
@@ -193,7 +253,8 @@ struct ScriptShapeTests {
         #expect(ids.contains("transcription"))
         #expect(ids.contains("local_llm"))
         #expect(ids.contains("mcp_server"))
-        #expect(allScripts.count == 4)
+        #expect(ids.contains("app_urls"))
+        #expect(allScripts.count == 5)
     }
 
     @Test("Step IDs within Audio Capture are unique")

@@ -1,3 +1,4 @@
+import AppLinks
 import DataStore
 import Foundation
 import MCP
@@ -98,6 +99,8 @@ actor MeetingToolProvider {
             id: detail.id.uuidString,
             title: detail.title,
             date: ToolDateFormatting.format(detail.date),
+            appURL: AppLink.meeting(id: id, target: .tab(.summary))
+                .url.absoluteString,
             endDate: detail.endDate.map(ToolDateFormatting.format),
             recordingDurationSeconds: detail.recordingDuration.map { Int($0.rounded()) },
             summary: detail.summary.isEmpty ? nil : detail.summary,

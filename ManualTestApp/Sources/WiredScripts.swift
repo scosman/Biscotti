@@ -1,4 +1,5 @@
 import AppKit
+import AppLinks
 import AudioCapture
 import Foundation
 import LocalLLM
@@ -23,6 +24,8 @@ enum WiredScripts {
                 wireTranscription(script)
             case "local_llm":
                 wireLocalLLM(script)
+            case "app_urls":
+                wireAppURLs(script)
             default:
                 script
             }
@@ -602,5 +605,128 @@ enum WiredScripts {
         }
 
         return TestScript(id: script.id, title: script.title, steps: wiredSteps)
+    }
+
+    // MARK: - App URLs wiring
+
+    /// Maps over the canonical app-URLs script, replacing action closures
+    /// with real system URL opens. ManualTestApp is a separate bundle, so
+    /// `NSWorkspace.open` hands each `biscotti://` URL to LaunchServices,
+    /// which routes it to the real Biscotti app — a genuine end-to-end
+    /// delivery test, not a simulation.
+    private static func wireAppURLs(_ script: TestScript) -> TestScript {
+        let wiredSteps = script.steps.map { step -> TestStep in
+            switch step {
+            case let .action(id, label, _):
+                switch id {
+                case "au_open_home":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(AppLink.home.url, status: status)
+                    }
+                case "au_open_meetings":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(AppLink.meetings.url, status: status)
+                    }
+                case "au_open_settings":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(AppLink.settings.url, status: status)
+                    }
+                case "au_open_search":
+                    return .action(id: id, label: label) { status in
+                        // Empty query is deliberate: the "open search"
+                        // affordance (present-but-empty, not absent).
+                        try await openThroughSystem(
+                            AppLink.search(query: "").url, status: status
+                        )
+                    }
+                case "au_open_record":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(
+                            AppLink.record(title: nil).url, status: status
+                        )
+                    }
+                case "au_open_meeting":
+                    return .action(id: id, label: label) { status in
+                        let meetingID = try await pasteboardMeetingID()
+                        try await openThroughSystem(
+                            AppLink.meeting(id: meetingID, target: .tab(.summary)).url,
+                            status: status
+                        )
+                    }
+                case "au_open_meeting_notes":
+                    return .action(id: id, label: label) { status in
+                        let meetingID = try await pasteboardMeetingID()
+                        try await openThroughSystem(
+                            AppLink.meeting(id: meetingID, target: .tab(.notes)).url,
+                            status: status
+                        )
+                    }
+                case "au_open_meeting_time":
+                    return .action(id: id, label: label) { status in
+                        let meetingID = try await pasteboardMeetingID()
+                        try await openThroughSystem(
+                            AppLink.meeting(id: meetingID, target: .transcriptTime(30)).url,
+                            status: status
+                        )
+                    }
+                default:
+                    return step
+                }
+
+            case .instruction, .humanQuestion, .autoCheck:
+                return step
+            }
+        }
+
+        return TestScript(id: script.id, title: script.title, steps: wiredSteps)
+    }
+
+    /// Opens a `biscotti://` URL through LaunchServices and reports what
+    /// was opened. A `false` return means no app claimed the scheme —
+    /// most likely a stale LaunchServices registration.
+    private static func openThroughSystem(
+        _ url: URL, status: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let opened = await MainActor.run { NSWorkspace.shared.open(url) }
+        guard opened else {
+            throw URLNotOpenedError(url: url)
+        }
+        status("Opened \(url.absoluteString)")
+    }
+
+    /// Surfaced when the system refuses to open the URL — no app is
+    /// registered for `biscotti://`, or the registration is stale.
+    private struct URLNotOpenedError: LocalizedError {
+        let url: URL
+        var errorDescription: String? {
+            "macOS refused to open \(url.absoluteString). Is the current "
+                + "Biscotti build registered with LaunchServices? Launch "
+                + "it from Xcode once, then retry."
+        }
+    }
+
+    /// Reads a `biscotti://meeting/…` link off the general pasteboard and
+    /// returns its meeting UUID. Throws when the pasteboard holds anything
+    /// else — the human must use Copy Meeting Link in the real app first.
+    private static func pasteboardMeetingID() async throws -> UUID {
+        let string = await MainActor.run {
+            NSPasteboard.general.string(forType: .string)
+        }
+        guard let string,
+              let url = URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)),
+              case let .meeting(id, _) = AppLink(url: url)
+        else {
+            throw NoMeetingLinkError()
+        }
+        return id
+    }
+
+    /// Surfaced when the pasteboard holds no valid meeting link.
+    private struct NoMeetingLinkError: LocalizedError {
+        var errorDescription: String? {
+            "The pasteboard does not hold a biscotti:// meeting link. "
+                + "Copy one first: in the real Biscotti app, right-click a "
+                + "meeting in the list and choose Copy Meeting Link."
+        }
     }
 }

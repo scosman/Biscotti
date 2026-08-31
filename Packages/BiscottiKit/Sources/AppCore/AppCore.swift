@@ -1,3 +1,4 @@
+import AppKit
 import AppLinks
 import Calendar
 import DataStore
@@ -1047,6 +1048,25 @@ public extension AppCore {
     /// Dismisses the link-error alert.
     func dismissLinkError() {
         linkError = nil
+    }
+
+    /// Copies a `biscotti://meeting/{uuid}` link for the meeting onto the
+    /// general pasteboard. The link opens the meeting at its default view
+    /// (Summary), matching the MCP `app_url` (functional spec §8).
+    ///
+    /// The write goes through the `writer` seam — the real `NSPasteboard`
+    /// write by default, a capture in tests — so `make test` never
+    /// mutates the developer's pasteboard (architecture §7).
+    func copyMeetingLink(
+        _ id: UUID,
+        writer: @MainActor (String) -> Void = { string in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
+    ) {
+        writer(
+            AppLink.meeting(id: id, target: .tab(.summary)).url.absoluteString
+        )
     }
 
     /// Selects the meeting and stages the open intent, or fails with

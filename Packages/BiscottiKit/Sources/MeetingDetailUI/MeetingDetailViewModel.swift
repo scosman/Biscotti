@@ -1030,6 +1030,12 @@ public extension MeetingDetailViewModel {
         }
     }
 
+    /// Copies a `biscotti://meeting/{uuid}` link for this meeting onto
+    /// the pasteboard (overflow-menu item).
+    func copyMeetingLink() {
+        core.copyMeetingLink(meetingID)
+    }
+
     /// Saves the current `editableTitle` to the store. Called on submit
     /// (Enter key) and on blur (focus loss) to prevent losing edits.
     ///

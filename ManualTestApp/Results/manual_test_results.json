@@ -70,6 +70,82 @@
     "stepID" : "ac_two_dialogs",
     "timestamp" : "2026-06-19T16:18:54Z"
   },
+  "au_background_check" : {
+    "status" : "not-run",
+    "stepID" : "au_background_check"
+  },
+  "au_cold_launch_check" : {
+    "status" : "not-run",
+    "stepID" : "au_cold_launch_check"
+  },
+  "au_home_landed" : {
+    "status" : "not-run",
+    "stepID" : "au_home_landed"
+  },
+  "au_meeting_notes_landed" : {
+    "status" : "not-run",
+    "stepID" : "au_meeting_notes_landed"
+  },
+  "au_meeting_summary" : {
+    "status" : "not-run",
+    "stepID" : "au_meeting_summary"
+  },
+  "au_meeting_time_seek" : {
+    "status" : "not-run",
+    "stepID" : "au_meeting_time_seek"
+  },
+  "au_meetings_landed" : {
+    "status" : "not-run",
+    "stepID" : "au_meetings_landed"
+  },
+  "au_menubar_check" : {
+    "status" : "not-run",
+    "stepID" : "au_menubar_check"
+  },
+  "au_open_home" : {
+    "status" : "not-run",
+    "stepID" : "au_open_home"
+  },
+  "au_open_meeting" : {
+    "status" : "not-run",
+    "stepID" : "au_open_meeting"
+  },
+  "au_open_meeting_notes" : {
+    "status" : "not-run",
+    "stepID" : "au_open_meeting_notes"
+  },
+  "au_open_meeting_time" : {
+    "status" : "not-run",
+    "stepID" : "au_open_meeting_time"
+  },
+  "au_open_meetings" : {
+    "status" : "not-run",
+    "stepID" : "au_open_meetings"
+  },
+  "au_open_record" : {
+    "status" : "not-run",
+    "stepID" : "au_open_record"
+  },
+  "au_open_search" : {
+    "status" : "not-run",
+    "stepID" : "au_open_search"
+  },
+  "au_open_settings" : {
+    "status" : "not-run",
+    "stepID" : "au_open_settings"
+  },
+  "au_record_started" : {
+    "status" : "not-run",
+    "stepID" : "au_record_started"
+  },
+  "au_search_focused" : {
+    "status" : "not-run",
+    "stepID" : "au_search_focused"
+  },
+  "au_settings_landed" : {
+    "status" : "not-run",
+    "stepID" : "au_settings_landed"
+  },
   "llm_action_items_quality" : {
     "status" : "pass",
     "stepID" : "llm_action_items_quality",
@@ -182,9 +258,8 @@
     "timestamp" : "2026-06-23T18:41:29Z"
   },
   "mcp_real_client" : {
-    "status" : "pass",
-    "stepID" : "mcp_real_client",
-    "timestamp" : "2026-08-31T15:37:23Z"
+    "status" : "not-run",
+    "stepID" : "mcp_real_client"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

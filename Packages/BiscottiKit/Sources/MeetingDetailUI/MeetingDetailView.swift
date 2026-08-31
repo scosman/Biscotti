@@ -73,12 +73,12 @@ public struct MeetingDetailView: View {
             alignment: .topLeading
         )
         .task { await viewModel.load() }
-        .task { await viewModel.applyPendingJumpIfNeeded() }
+        .task { await viewModel.applyPendingIntentIfNeeded() }
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
         }
-        .onChange(of: viewModel.pendingJumpToken) { _, _ in
-            Task { await viewModel.applyPendingJumpIfNeeded() }
+        .onChange(of: viewModel.pendingIntentToken) { _, _ in
+            Task { await viewModel.applyPendingIntentIfNeeded() }
         }
         .onChange(of: viewModel.enhancementStatus) { _, newStatus in
             Task {

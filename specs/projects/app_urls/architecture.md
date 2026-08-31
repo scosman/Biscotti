@@ -286,9 +286,11 @@ private var isCoreReady = false
 - `AppCore.onLaunch()` completing flips `isCoreReady` and drains the slot.
   `AppShellViewModel.onLaunch()` already wraps `core.onLaunch()`; it gains a
   completion callback the delegate sets, rather than the delegate polling.
-- Draining runs the same `handleOpenURL` path, including the R6 onboarding
-  check — so a URL that arrives during a cold launch into onboarding is
-  parsed, dropped, and never foregrounds.
+- Draining runs the same `handleOpenURL` path — foreground first (R4:
+  any URL that parses foregrounds, before the route resolves), then
+  `apply`, whose R6 check drops the link. A URL that arrives during a
+  cold launch into onboarding therefore foregrounds the app like any
+  parseable URL, but the onboarding flow stays put; nothing navigates.
 
 ### 5.3 Foregrounding
 

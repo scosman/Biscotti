@@ -16,7 +16,7 @@ and the on-hardware proof.
   build→parse round-trip. Wired into `Package.swift` for `AppCore`,
   `MCPServer` and `MeetingDetailUI`. Nothing calls it yet — architecture §2.
 
-- [ ] **Phase 2 — Make the links work.** `AppCore.apply(_:)` plus
+- [x] **Phase 2 — Make the links work.** `AppCore.apply(_:)` plus
   `MeetingOpenIntent` (replacing `TranscriptJump`), `AppLinkError` and the
   shell alert, `startRecording(title:)`, the `MeetingDetailUI` tab mapping,
   and the move from `onOpenURL` to `application(_:open:)` with the

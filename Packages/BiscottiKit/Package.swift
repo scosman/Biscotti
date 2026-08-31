@@ -189,6 +189,7 @@ let package = Package(
             name: "AppCoreTests",
             dependencies: [
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
@@ -284,6 +285,7 @@ let package = Package(
             dependencies: [
                 "MeetingDetailUI",
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
@@ -347,6 +349,7 @@ let package = Package(
             dependencies: [
                 "AppShellUI",
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",

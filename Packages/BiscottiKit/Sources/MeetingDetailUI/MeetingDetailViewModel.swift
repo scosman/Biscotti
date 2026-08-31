@@ -1,5 +1,6 @@
 import AppCore
 import AppKit
+import AppLinks
 import Calendar
 import DataStore
 import DesignSystem
@@ -138,6 +139,17 @@ public final class MeetingDetailViewModel {
         case summary = "Summary"
         case transcript = "Transcript"
         case notes = "Notes"
+
+        /// Maps the link-level tab (`AppLinks`) onto this display enum.
+        /// The two stay separate: this one carries display strings and is
+        /// a view concern.
+        init(_ tab: MeetingTab) {
+            self = switch tab {
+            case .summary: .summary
+            case .transcript: .transcript
+            case .notes: .notes
+            }
+        }
     }
 
     /// The currently selected tab, bindable from the view.
@@ -839,30 +851,36 @@ public extension MeetingDetailViewModel {
     }
 }
 
-// MARK: - Deep-link jump
+// MARK: - App-link intent
 
 public extension MeetingDetailViewModel {
-    /// Token that changes whenever `core.pendingTranscriptJump` changes.
-    /// The view observes this via `.onChange` to trigger
-    /// `applyPendingJumpIfNeeded`.
-    var pendingJumpToken: TranscriptJump? {
-        core.pendingTranscriptJump
+    /// Token that changes whenever `core.pendingMeetingIntent` changes
+    /// (the intent's monotonic `token` guarantees this even for repeated
+    /// identical links). The view observes it via `.onChange` to trigger
+    /// `applyPendingIntentIfNeeded`.
+    var pendingIntentToken: MeetingOpenIntent? {
+        core.pendingMeetingIntent
     }
 
-    /// Checks for a pending transcript jump targeting this meeting.
-    /// If found, switches to the Transcript tab, seeks to the requested
-    /// time (clamped to duration), and consumes the jump. If audio
-    /// is not yet loaded, stores the seek as `pendingSeek` to be
-    /// applied when `loadAudioPlayer()` completes.
-    func applyPendingJumpIfNeeded() async {
-        guard let jump = core.pendingTranscriptJump,
-              jump.meetingID == meetingID
+    /// Checks for a pending open-meeting intent targeting this meeting.
+    /// Applies the target — a plain tab switch, or the transcript tab plus
+    /// a seek (clamped to duration once audio is loaded) — and consumes
+    /// the intent. If audio is not yet loaded, stores the seek as
+    /// `pendingSeek` to be applied when `loadAudioPlayer()` completes.
+    func applyPendingIntentIfNeeded() async {
+        guard let intent = core.pendingMeetingIntent,
+              intent.meetingID == meetingID
         else { return }
 
-        selectedTab = .transcript
-        pendingSeek = jump.time
-        applySeekIfReady()
-        core.consumeTranscriptJump()
+        switch intent.target {
+        case let .tab(tab):
+            selectedTab = Tab(tab)
+        case let .transcriptTime(time):
+            selectedTab = .transcript
+            pendingSeek = time
+            applySeekIfReady()
+        }
+        core.consumeMeetingIntent()
     }
 
     /// Applies `pendingSeek` if the audio player is loaded and has a

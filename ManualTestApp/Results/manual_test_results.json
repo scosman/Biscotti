@@ -182,9 +182,8 @@
     "timestamp" : "2026-06-23T18:41:29Z"
   },
   "mcp_real_client" : {
-    "status" : "pass",
-    "stepID" : "mcp_real_client",
-    "timestamp" : "2026-08-31T15:37:23Z"
+    "status" : "not-run",
+    "stepID" : "mcp_real_client"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

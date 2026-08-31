@@ -213,13 +213,15 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
         )
 
         loop.execute {
-            channel.write(self.wrapOutboundOut(.head(head)), promise: nil)
+            // Typed `write` (SwiftNIO's Sendable overloads) — no NIOAny
+            // wrapping; the channel wraps the part for the pipeline.
+            channel.write(HTTPServerResponsePart.head(head), promise: nil)
             if let body {
                 var buffer = channel.allocator.buffer(capacity: body.count)
                 buffer.writeBytes(body)
-                channel.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+                channel.write(HTTPServerResponsePart.body(.byteBuffer(buffer)), promise: nil)
             }
-            channel.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
+            channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
             if closeAfterWrite {
                 channel.close(promise: nil)
             }

@@ -40,11 +40,16 @@ struct MCPHelpSheet: View {
                 }
             }
 
-            Button("How to connect to common agents (Claude, Cursor, etc)") {
+            // Colored directly on the label, not via `.tint`: link styling
+            // resolves the system accent and ignores a tint set at this
+            // scope.
+            Button {
                 openURL(Self.guideURL)
+            } label: {
+                Text("How to connect to common agents (Claude, Cursor, etc)")
+                    .foregroundStyle(.sage)
             }
-            .buttonStyle(.link)
-            .tint(.sage)
+            .buttonStyle(.borderless)
 
             Text(
                 "Any app on this Mac can read your meetings while this is on. "

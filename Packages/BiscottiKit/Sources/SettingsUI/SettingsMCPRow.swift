@@ -31,12 +31,17 @@ extension SettingsView {
             case .running:
                 HStack(alignment: .firstTextBaseline, spacing: Tokens.spacingSM) {
                     mcpSubtitleText
-                    Button("How to connect") {
+                    // Colored directly on the label, not via `.tint`: link
+                    // and Form-row styling resolve their own (system blue)
+                    // accent and ignore a tint set at this scope.
+                    Button {
                         showMCPHelp = true
+                    } label: {
+                        Text("How to connect")
+                            .foregroundStyle(.sage)
                     }
-                    .buttonStyle(.link)
+                    .buttonStyle(.borderless)
                     .controlSize(.small)
-                    .tint(.sage)
                 }
 
             case let .failed(error):

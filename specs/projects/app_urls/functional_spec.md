@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Functional Spec: App URLs
@@ -237,16 +237,17 @@ route.
 
 ## 6. URL construction
 
-A single canonical builder is the only place URLs are constructed, so
-emitters cannot drift from the parser. It covers every route in §4 and is
-exercised by round-trip tests (build → parse → same intent).
+A small builder mirrors the parser, so the two can be round-trip tested
+(build → parse → same intent). That test is the cheapest way to keep the
+parser honest against the documented schema in §9.
 
-Its first three consumers:
+Its consumers are the MCP server (§7) and the manual test script (§8).
 
-1. **`Recording/NotesMarkdown.swift`** — today it interpolates the
-   `biscotti://meeting/{id}?time={s}` string by hand. It moves to the builder.
-2. **The MCP server** — §7.
-3. **The manual test script** — §8.
+**`Recording/NotesMarkdown.swift` is deliberately left alone.** It
+hand-interpolates its `biscotti://meeting/{id}?time={s}` links today and
+keeps doing so. This project defines a URL schema for *external* callers;
+internal code that already emits a correct URL does not need to be routed
+through an abstraction to prove it.
 
 ## 7. MCP `biscotti_get_meeting` — `app_url`
 
@@ -310,11 +311,19 @@ Note: this script needs the real Biscotti app installed and registered with
 LaunchServices. If a stale copy of Biscotti is registered, URLs open *that*
 build — the script says so explicitly in its first instruction step.
 
-## 9. Documentation
+## 9. Documentation — `App/deeplinks.md`
 
-The URL vocabulary is user-facing surface, so it gets written down rather
-than living only in the parser. `App/ConnectingMCP.md` is the precedent for
-this kind of doc. Exact location decided in the architecture step.
+The URL vocabulary is a public contract for other applications, so it is
+documented in its own file, `App/deeplinks.md` — not folded into
+`App/ConnectingMCP.md`, which is about a different integration.
+
+It covers: every route in §4 with its parameters and defaults, the
+tab/time resolution order, what a caller should expect from a bad URL
+(nothing happens, deliberately — R3/R4), and a copy-pasteable example per
+route. Written for someone integrating from outside Biscotti, who has no
+access to this repo.
+
+`biscotti_get_meeting`'s `app_url` description (§7) points at this document.
 
 ## 10. Deliberately deferred
 

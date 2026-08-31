@@ -71,7 +71,7 @@ actor MeetingToolProvider {
         // outside the saturated candidate pool even when the post-filter
         // count is under the limit (architecture §6.1).
         let payload = QueryMeetingsPayload(
-            results: Array(outcome.items),
+            results: outcome.items,
             resultsTruncated: outcome.items.count == limit || outcome.poolExhausted
         )
         return try success(payload)

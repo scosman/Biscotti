@@ -85,7 +85,12 @@ struct MCPServerWiringTests {
         #expect(isRunningAtLoopbackEndpoint(fix.core.mcpServer.state))
 
         // AppCore is process-lifetime by design — treat its controller
-        // as never deinited; tests stop it explicitly.
+        // as never deinited; tests stop it explicitly. Reset the persisted
+        // intent first: the onLaunch-installed notification observer is
+        // never cancelled either (same process-lifetime argument), so a
+        // later test's post must find `false` and be a no-op instead of
+        // restarting the server with nothing left to stop it.
+        try await fix.store.updateSettings { $0.mcpServerEnabled = false }
         await fix.core.mcpServer.stop()
     }
 }

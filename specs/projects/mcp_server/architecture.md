@@ -150,7 +150,9 @@ public final class MCPServerController {
   awaits the previous) so a rapid on/off/on sequence cannot leave an orphan
   listener. Final state wins.
 - **Teardown contract:** explicit `stop()` is the primary path; the
-  controller's `deinit` (fire-and-forget listener shutdown) is only a
+  controller's `deinit` (clears the request handler first, so
+  teardown-window requests get a 503 instead of meeting content, then
+  fire-and-forgets the listener shutdown) is only a
   safety net for controllers actually dropped while running — test
   controllers created directly, or short-lived owners. AppCore is
   process-lifetime *by design* (once launched, its consumer/mirror tasks

@@ -131,7 +131,7 @@ public final class MCPServerController {
             guard let handle = handlerBox.withLockedValue({ $0 }) else {
                 return MCP.HTTPResponse.error(
                     statusCode: 503,
-                    .internalError("Server is starting")
+                    .internalError("Server is not available")
                 )
             }
             return await handle(request)

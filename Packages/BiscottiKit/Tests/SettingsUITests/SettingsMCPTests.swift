@@ -71,13 +71,16 @@ struct SettingsMCPTests {
             Issue.record(
                 "expected .running through mcpServerState, got \(viewModel.mcpServerState)"
             )
+            // AppCore is process-lifetime by design — treat its controller
+            // as never deinited; tests stop it explicitly.
+            await fix.core.mcpServer.stop()
             return
         }
 
         // Behavior-asserting stop: the forwarding property must expose the
-        // transition back to .stopped. (No cleanup stop is needed at the
-        // end of these tests — dropping the fixture's controller releases
-        // the listener through deinit.)
+        // transition back to .stopped. AppCore is process-lifetime by
+        // design — treat its controller as never deinited; tests stop it
+        // explicitly.
         await fix.core.mcpServer.stop()
         #expect(viewModel.mcpServerState == .stopped)
     }
@@ -106,6 +109,9 @@ struct SettingsMCPTests {
                 "expected .failed through mcpServerState, got \(viewModel.mcpServerState)"
             )
             await holder.stop()
+            // If the bind unexpectedly succeeded the server is running, and
+            // AppCore is process-lifetime by design — stop explicitly.
+            await fix.core.mcpServer.stop()
             return
         }
         #expect(error == .portInUse(port: heldPort))
@@ -142,6 +148,9 @@ struct SettingsMCPTests {
                 "expected .failed through mcpServerState, got \(viewModel.mcpServerState)"
             )
             await holder.stop()
+            // If the bind unexpectedly succeeded the server is running, and
+            // AppCore is process-lifetime by design — stop explicitly.
+            await fix.core.mcpServer.stop()
             return
         }
         #expect(error == .portInUse(port: heldPort))
@@ -159,5 +168,9 @@ struct SettingsMCPTests {
         #expect(reboundURL.port == heldPort)
         #expect(reboundURL.host == "127.0.0.1")
         #expect(reboundURL.path == "/mcp")
+
+        // AppCore is process-lifetime by design — treat its controller
+        // as never deinited; tests stop it explicitly.
+        await fix.core.mcpServer.stop()
     }
 }

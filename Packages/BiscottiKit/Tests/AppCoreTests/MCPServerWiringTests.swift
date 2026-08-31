@@ -83,5 +83,9 @@ struct MCPServerWiringTests {
             isRunningAtLoopbackEndpoint(fix.core.mcpServer.state)
         }
         #expect(isRunningAtLoopbackEndpoint(fix.core.mcpServer.state))
+
+        // AppCore is process-lifetime by design — treat its controller
+        // as never deinited; tests stop it explicitly.
+        await fix.core.mcpServer.stop()
     }
 }

@@ -149,6 +149,17 @@ public final class MCPServerController {
   `Task`-chained queue (`private var work: Task<Void, Never>?`, each call
   awaits the previous) so a rapid on/off/on sequence cannot leave an orphan
   listener. Final state wins.
+- **Teardown contract:** explicit `stop()` is the primary path; the
+  controller's `deinit` (fire-and-forget listener shutdown) is only a
+  safety net for controllers actually dropped while running — test
+  controllers created directly, or short-lived owners. AppCore is
+  process-lifetime *by design* (once launched, its consumer/mirror tasks
+  never release it), so treat its controller's `deinit` as never
+  running: AppCore must call `stop()`
+  itself (it does, whenever the user disables the server; at app quit the
+  listener dies with the process). Tests that use AppCore's controller
+  must likewise stop it explicitly — dropping the fixture releases
+  nothing.
 - `@MainActor` because its only observer is SwiftUI. All blocking work inside
   `start()`/`stop()` is `await`ed on other executors (NIO's ELG, the
   `DataStore` actor); nothing blocks the main thread. Per-request server

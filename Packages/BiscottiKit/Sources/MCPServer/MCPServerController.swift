@@ -87,9 +87,12 @@ public final class MCPServerController {
 
     /// Stops the listener and closes open connections. Idempotent. The
     /// graceful path: awaited, with the state transition to `.stopped`.
-    /// Callers use it for orderly teardown (AppCore does, when the user
-    /// disables the server); they never *must* call it merely to avoid a
-    /// leak — `deinit` is the safety net for a dropped running controller.
+    /// This is the primary teardown path: owners call it for orderly
+    /// shutdown (AppCore does whenever the user disables the server — it
+    /// must, because AppCore is process-lifetime and its controller is
+    /// never dropped). `deinit` is only the safety net for a controller
+    /// dropped while running: a short-lived owner, or a test controller
+    /// created directly.
     public func stop() async {
         await enqueue { [weak self] in
             await self?.performStop()

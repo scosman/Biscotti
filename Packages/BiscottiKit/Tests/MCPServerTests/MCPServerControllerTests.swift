@@ -77,21 +77,32 @@ struct MCPServerControllerTests {
             Issue.record("controller did not start: \(String(describing: controller?.state))")
             return
         }
+
+        // Observable bind proof before the drop: the held port must really
+        // serve, so a regression that reports .running with nothing bound
+        // cannot make the rebind below pass trivially.
+        let before = try await JSONRPCClient.post(port: heldPort, method: "tools/list")
+        #expect(before.status == 200)
+
         controller = nil
 
         // The safety net is fire-and-forget, so the release lands
         // asynchronously: retry the exact port until it binds (2 s budget).
         let rebind = try makeController(port: heldPort)
-        var rebound = false
+        var reboundURL: URL?
         for _ in 0 ..< 40 {
             await rebind.start()
-            if case .running = rebind.state {
-                rebound = true
+            if case let .running(url) = rebind.state {
+                reboundURL = url
                 break
             }
             try await Task.sleep(for: .milliseconds(50))
         }
-        #expect(rebound)
+
+        // Both halves matter: nil means the port never came free within
+        // the budget (the deinit shutdown is gone); a wrong port means the
+        // rebind dodged the held one.
+        #expect(reboundURL?.port == heldPort)
         await rebind.stop()
     }
 

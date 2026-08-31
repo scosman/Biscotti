@@ -12,7 +12,8 @@ private typealias MCPRequestHandler = @Sendable (MCP.HTTPRequest) async -> MCP.H
 /// handler it routes to. Both are created inside `start()` and released in
 /// `stop()` — a stopped controller holds one enum and a `DataStore`
 /// reference, nothing else. That is the "zero overhead when off" contract
-/// (functional spec §1).
+/// (functional spec §1). A controller dropped while running does not leak:
+/// `deinit` fires the listener shutdown as a safety net.
 ///
 /// The handler is stateless in the strongest sense: every request gets its
 /// own `MCP.Server` + `StatelessHTTPServerTransport` pair, built on arrival
@@ -34,17 +35,21 @@ public final class MCPServerController {
     /// Server version reported in `initialize`; from the app bundle when
     /// present (tests and SPM contexts get "0.0.0").
     private let serverVersion: String
-    /// Serializes start/stop/applyEnabled: every call awaits the previous
+    /// Serialized start/stop/applyEnabled: every call awaits the previous
     /// queued work first, so a rapid on/off/on sequence cannot leave an
-    /// orphan listener. Final state wins.
+    /// orphan listener. Final state wins. Operations capture `self` weakly:
+    /// a queued task must never be the reference that keeps the controller
+    /// alive, or `deinit` (the leak safety net) could not run.
     private var work: Task<Void, Never>?
 
-    /// Created in start(), released in stop(). Main-actor confined; the
-    /// underlying objects do their own synchronization.
-    private var listener: HTTPListener?
+    /// The live listener, created in `performStart` and taken by
+    /// `performStop`. A locked box rather than a plain stored property so
+    /// the nonisolated `deinit` can reach it: `deinit` may only touch
+    /// immutable, `Sendable` storage.
+    private let listenerBox = NIOLockedValueBox<HTTPListener?>(nil)
     /// The box the listener's request closure reads; it is what lets the
     /// listener bind *before* the request handler exists (see performStart).
-    private var handlerBox = NIOLockedValueBox<MCPRequestHandler?>(nil)
+    private let handlerBox = NIOLockedValueBox<MCPRequestHandler?>(nil)
 
     public init(store: DataStore, port: Int = MCPServerConfiguration.port) {
         self.store = store
@@ -53,24 +58,41 @@ public final class MCPServerController {
             Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
+    /// The leak safety net: a controller dropped while running releases its
+    /// listener (port + event-loop thread) here. `stop()` stays the graceful
+    /// path — awaited, with the `.stopped` transition; this runs only when
+    /// an owner failed to call it.
+    deinit {
+        let listener = listenerBox.withLockedValue { box -> HTTPListener? in
+            let listener = box
+            box = nil
+            return listener
+        }
+        guard let listener else { return }
+        // `deinit` cannot await; fire-and-forget the same *listener* shutdown
+        // `stop()` awaits. Unlike a graceful stop this does not nil
+        // `handlerBox` first, so in-flight requests in the teardown window
+        // are still served (read-only tools; the window is milliseconds).
+        // The task holds only the listener, never this controller.
+        Task { await listener.shutdown() }
+    }
+
     /// Starts the server. Idempotent: a no-op when already running or
     /// starting; a fresh attempt after `.failed` (the Retry path).
     public func start() async {
-        await enqueue { [self] in
-            await performStart(port: port)
+        await enqueue { [weak self, port] in
+            await self?.performStart(port: port)
         }.value
     }
 
-    /// Stops the listener and closes open connections. Idempotent.
-    ///
-    /// Callers own teardown: nothing shuts a running controller down on
-    /// deallocation (`deinit` cannot await), so the owner must call this
-    /// when the user disables the server and before dropping the
-    /// controller. AppCore is that owner in production; tests use the
-    /// fixture, which guarantees the call.
+    /// Stops the listener and closes open connections. Idempotent. The
+    /// graceful path: awaited, with the state transition to `.stopped`.
+    /// Callers use it for orderly teardown (AppCore does, when the user
+    /// disables the server); they never *must* call it merely to avoid a
+    /// leak — `deinit` is the safety net for a dropped running controller.
     public func stop() async {
-        await enqueue { [self] in
-            await performStop()
+        await enqueue { [weak self] in
+            await self?.performStop()
         }.value
     }
 
@@ -109,15 +131,15 @@ public final class MCPServerController {
             }
             return await handle(request)
         }
-        self.listener = listener
+        listenerBox.withLockedValue { $0 = listener }
 
         let boundPort: Int
         do {
             boundPort = try await listener.start(host: MCPServerConfiguration.host, port: port)
         } catch {
             // The listener tore itself down inside `start`; drop the dead
-            // reference so `self.listener != nil` implies something is bound.
-            self.listener = nil
+            // reference so a non-nil box implies something is bound.
+            listenerBox.withLockedValue { $0 = nil }
             let startError =
                 error as? MCPServerStartError ?? .bindFailed(error.localizedDescription)
             mcpServerLog.error("MCP server failed to start: \(startError.userMessage, privacy: .public)")
@@ -224,9 +246,13 @@ public final class MCPServerController {
         // New requests 503 from here on; requests already in flight keep
         // their own per-request pair alive until they finish.
         handlerBox.withLockedValue { $0 = nil }
+        let listener = listenerBox.withLockedValue { box -> HTTPListener? in
+            let listener = box
+            box = nil
+            return listener
+        }
         if let listener {
             await listener.shutdown()
-            self.listener = nil
         }
 
         state = .stopped

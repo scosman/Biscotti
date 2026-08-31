@@ -60,58 +60,21 @@ actor MeetingToolProvider {
             throw MCPError.invalidParams("'after' must not be later than 'before'.")
         }
 
-        let items = try await resultItems(
+        let outcome = try await resultItems(
             query: query, after: after, before: before, limit: limit
         )
 
         mcpServerLog.debug(
-            "tool query_meetings: query=\(query != nil), after=\(after != nil), before=\(before != nil), limit=\(limit), results=\(items.count)"
+            "tool query_meetings: query=\(query != nil), after=\(after != nil), before=\(before != nil), limit=\(limit), results=\(outcome.items.count), poolFull=\(outcome.poolExhausted)"
         )
+        // "More results may exist" — past the limit, or (with a query)
+        // outside the saturated candidate pool even when the post-filter
+        // count is under the limit (architecture §6.1).
         let payload = QueryMeetingsPayload(
-            results: Array(items),
-            resultsTruncated: items.count == limit
+            results: Array(outcome.items),
+            resultsTruncated: outcome.items.count == limit || outcome.poolExhausted
         )
         return try success(payload)
-    }
-
-    private func resultItems(
-        query: String?, after: Date?, before: Date?, limit: Int
-    ) async throws -> [MeetingResultItem] {
-        func inRange(_ date: Date) -> Bool {
-            (after.map { date >= $0 } ?? true) && (before.map { date <= $0 } ?? true)
-        }
-
-        if let query {
-            // Ranked candidates come from the FTS index in a bounded pool
-            // before the date filter is applied (architecture §6.1); order is
-            // the FTS total order (bm25, then date desc, then UUID).
-            let hits = try await store.searchHits(
-                query, limit: MCPServerConfiguration.searchCandidatePool
-            )
-            return hits.filter { inRange($0.date) }
-                .prefix(limit)
-                .map { hit in
-                    MeetingResultItem(
-                        id: hit.id.uuidString,
-                        title: hit.title,
-                        date: ToolDateFormatting.format(hit.date),
-                        querySnippet: hit.snippet
-                    )
-                }
-        }
-
-        // meetingSummaries is already date-descending.
-        let summaries = try await store.meetingSummaries(limit: nil)
-        return summaries.filter { inRange($0.date) }
-            .prefix(limit)
-            .map { summary in
-                MeetingResultItem(
-                    id: summary.id.uuidString,
-                    title: summary.title,
-                    date: ToolDateFormatting.format(summary.date),
-                    querySnippet: nil
-                )
-            }
     }
 
     // MARK: - biscotti_get_meeting
@@ -319,5 +282,65 @@ actor MeetingToolProvider {
 
     private static func characterCount(of segments: [SegmentData]) -> Int {
         segments.reduce(0) { $0 + $1.text.count }
+    }
+}
+
+// MARK: - Query assembly
+
+private extension MeetingToolProvider {
+    /// The query path's outcome carries the pool signal next to the items:
+    /// a saturated candidate pool means further matches may exist outside
+    /// it, which the date filter and prefix cannot see.
+    typealias QueryOutcome = (
+        items: [MeetingResultItem], poolExhausted: Bool
+    )
+
+    /// Assembles `biscotti_query_meetings` results from either the ranked
+    /// FTS pool (with a query) or the date-descending summaries (without).
+    func resultItems(
+        query: String?, after: Date?, before: Date?, limit: Int
+    ) async throws -> QueryOutcome {
+        func inRange(_ date: Date) -> Bool {
+            (after.map { date >= $0 } ?? true) && (before.map { date <= $0 } ?? true)
+        }
+
+        if let query {
+            // Ranked candidates come from the FTS index in a bounded pool
+            // before the date filter is applied (architecture §6.1); order is
+            // the FTS total order (bm25, then date desc, then UUID).
+            let hits = try await store.searchHits(
+                query, limit: MCPServerConfiguration.searchCandidatePool
+            )
+            // A full pool means the index had at least this many matches:
+            // more may exist beyond it, so the truncation flag must fire
+            // even when the filtered result count is under the limit.
+            let poolExhausted = hits.count >= MCPServerConfiguration.searchCandidatePool
+            let items = hits.filter { inRange($0.date) }
+                .prefix(limit)
+                .map { hit in
+                    MeetingResultItem(
+                        id: hit.id.uuidString,
+                        title: hit.title,
+                        date: ToolDateFormatting.format(hit.date),
+                        querySnippet: hit.snippet
+                    )
+                }
+            return (items, poolExhausted)
+        }
+
+        // meetingSummaries is already date-descending, and every meeting in
+        // the store was considered — no bounded pool, no hidden matches.
+        let summaries = try await store.meetingSummaries(limit: nil)
+        let items = summaries.filter { inRange($0.date) }
+            .prefix(limit)
+            .map { summary in
+                MeetingResultItem(
+                    id: summary.id.uuidString,
+                    title: summary.title,
+                    date: ToolDateFormatting.format(summary.date),
+                    querySnippet: nil
+                )
+            }
+        return (items, false)
     }
 }

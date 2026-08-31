@@ -83,10 +83,5 @@ struct MCPServerWiringTests {
             isRunningAtLoopbackEndpoint(fix.core.mcpServer.state)
         }
         #expect(isRunningAtLoopbackEndpoint(fix.core.mcpServer.state))
-
-        // Release the port and the listener's event-loop thread — the
-        // fixture's cleanup only deletes files, and the listener has no
-        // deinit path (see HTTPListener.shutdown).
-        await fix.core.mcpServer.stop()
     }
 }

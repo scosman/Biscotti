@@ -89,4 +89,55 @@ struct MeetingToolLimitTests {
             try ToolTestSupport.jsonObject(from: underLimit)["results_truncated"] as? Bool == false
         )
     }
+
+    @Test("a saturated candidate pool marks results_truncated even below the limit")
+    func poolExhaustionMarksTruncated() async throws {
+        let (provider, store) = try ToolTestSupport.makeProvider()
+        // One more matching meeting than the ranked pool holds, one per
+        // day from 2026-01-01: a one-month window then matches ~30 of them
+        // — far below the limit — while the pool is exhausted, so more
+        // matches may exist outside it (architecture §6.1).
+        let start = try #require(ToolDateFormatting.parse("2026-01-01T12:00:00Z"))
+        for idx in 0 ... MCPServerConfiguration.searchCandidatePool {
+            _ = try await store.createMeeting(
+                title: "Standup \(idx)",
+                start: start.addingTimeInterval(Double(idx) * 60 * 60 * 24)
+            )
+        }
+
+        let narrowed = try await provider.call(
+            name: "biscotti_query_meetings",
+            arguments: [
+                "query": .string("standup"),
+                "after": .string("2026-06-01"),
+                "before": .string("2026-07-01"),
+                "limit": .int(250)
+            ]
+        )
+        let object = try ToolTestSupport.jsonObject(from: narrowed)
+        let results = try #require(object["results"] as? [[String: Any]])
+        #expect(!results.isEmpty)
+        #expect(results.count < 250)
+        #expect(object["results_truncated"] as? Bool == true)
+    }
+
+    @Test("a sub-pool query result below the limit is not truncated")
+    func subPoolQueryBelowLimitNotTruncated() async throws {
+        let (provider, store) = try ToolTestSupport.makeProvider()
+        try await ToolTestSupport.seedThreeDatedMeetings(store)
+
+        // The pool (3 FTS hits) is far from saturated and the window
+        // leaves 2 results under the limit: neither truncation condition
+        // holds.
+        let result = try await provider.call(
+            name: "biscotti_query_meetings",
+            arguments: [
+                "query": .string("meeting"),
+                "after": .string("2026-07-01"),
+                "limit": .int(20)
+            ]
+        )
+        #expect(try ToolTestSupport.idList(result).count == 2)
+        #expect(try ToolTestSupport.jsonObject(from: result)["results_truncated"] as? Bool == false)
+    }
 }

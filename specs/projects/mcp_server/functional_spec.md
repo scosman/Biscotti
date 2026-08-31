@@ -173,8 +173,11 @@ weighted highly), so `query` already covers them.
 ```
 
 - `query_snippet` is present only when `query` was passed.
-- `results_truncated` is `true` when the returned count equals the effective
-  `limit` — i.e. more matches may exist.
+- `results_truncated` is `true` when the returned count reaches the effective
+  `limit`, **or** when `query` saturated the ranked candidate pool (below) —
+  more matches may exist past the limit or outside the pool, even when the
+  post-filter count is under the `limit`. The flag is conservative ("may
+  exist"), never exact.
 - No matches → `{"results": [], "results_truncated": false}` (not an error).
 - Errors: unparseable date → invalid params. `before` earlier than `after` →
   invalid params. Unknown tag name is **not** an error — it simply matches
@@ -183,8 +186,9 @@ weighted highly), so `query` already covers them.
 **Known limitation (documented, not fixed):** when `query` is combined with a
 date filter, ranked candidates are drawn from the search index in a bounded
 pool (500) before the date filter is applied. A date range that matches only
-very low-ranked results could miss them. Acceptable at the scale of one
-person's meeting history.
+very low-ranked results could miss them; when the pool saturates,
+`results_truncated` reports `true` so callers know more matches may exist
+outside it. Acceptable at the scale of one person's meeting history.
 
 ### 5.2 `biscotti_get_meeting`
 

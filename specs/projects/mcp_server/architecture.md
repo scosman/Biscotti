@@ -306,6 +306,9 @@ validate: limit ∈ 1...250, default 20
 
 if query != nil:
     hits = try await store.searchHits(query, limit: searchCandidatePool)   // 500
+    pool_exhausted = (hits.count == searchCandidatePool)   // more matches may
+                                                          // exist outside the
+                                                          // pool
     filtered = hits.filter { date range }
     results = filtered.prefix(limit).map { id, title, date, query_snippet: hit.snippet }
     // order: as returned by FTS (bm25 rank, then date desc, then UUID)
@@ -313,8 +316,9 @@ else:
     summaries = try await store.meetingSummaries(limit: nil)               // already date-desc
     filtered = summaries.filter { date range }
     results = filtered.prefix(limit).map { id, title, date }
+    pool_exhausted = false   // no bounded pool: every meeting was considered
 
-results_truncated = (results.count == limit)
+results_truncated = (results.count == limit) || pool_exhausted
 ```
 
 Date comparison uses the meeting's effective date (`SearchHit.date` /
@@ -496,7 +500,8 @@ New test target `MCPServerTests` (+ additions to `DataStoreTests`,
   relevance order; date-only newest-first; `after`/`before` inclusive bounds;
   `after > before` invalid params; unparseable date invalid params; date-only
   string accepted; `limit` rejected outside 1…250 (default 20, cap 250);
-  `results_truncated` true at exactly `limit` and false below; `query_snippet`
+  `results_truncated` true at exactly `limit`, true when the ranked pool
+  saturates even below `limit`, and false when neither holds; `query_snippet`
   present only with a query; empty result set is not an error.
 - `get_meeting`: full payload for a rich meeting (calendar + tags + people +
   transcript); missing-calendar and missing-transcript variants; `summary`/

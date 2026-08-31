@@ -71,10 +71,13 @@ struct SettingsMCPTests {
             Issue.record(
                 "expected .running through mcpServerState, got \(viewModel.mcpServerState)"
             )
-            await fix.core.mcpServer.stop()
             return
         }
 
+        // Behavior-asserting stop: the forwarding property must expose the
+        // transition back to .stopped. (No cleanup stop is needed at the
+        // end of these tests — dropping the fixture's controller releases
+        // the listener through deinit.)
         await fix.core.mcpServer.stop()
         #expect(viewModel.mcpServerState == .stopped)
     }
@@ -103,7 +106,6 @@ struct SettingsMCPTests {
                 "expected .failed through mcpServerState, got \(viewModel.mcpServerState)"
             )
             await holder.stop()
-            await fix.core.mcpServer.stop()
             return
         }
         #expect(error == .portInUse(port: heldPort))
@@ -140,7 +142,6 @@ struct SettingsMCPTests {
                 "expected .failed through mcpServerState, got \(viewModel.mcpServerState)"
             )
             await holder.stop()
-            await fix.core.mcpServer.stop()
             return
         }
         #expect(error == .portInUse(port: heldPort))
@@ -158,7 +159,5 @@ struct SettingsMCPTests {
         #expect(reboundURL.port == heldPort)
         #expect(reboundURL.host == "127.0.0.1")
         #expect(reboundURL.path == "/mcp")
-
-        await fix.core.mcpServer.stop()
     }
 }

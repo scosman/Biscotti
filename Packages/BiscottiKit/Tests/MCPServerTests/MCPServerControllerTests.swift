@@ -66,6 +66,35 @@ struct MCPServerControllerTests {
         await rebind.stop()
     }
 
+    @Test("dropping a running controller releases the port (deinit safety net)")
+    func deallocWhileRunningReleasesPort() async throws {
+        // Bind an ephemeral port, then drop the only strong reference
+        // without calling stop(): deinit must release the port (and the
+        // listener's event-loop thread) so the same port can be rebound.
+        var controller: MCPServerController? = try makeController()
+        await controller?.start()
+        guard case let .running(url)? = controller?.state, let heldPort = url.port else {
+            Issue.record("controller did not start: \(String(describing: controller?.state))")
+            return
+        }
+        controller = nil
+
+        // The safety net is fire-and-forget, so the release lands
+        // asynchronously: retry the exact port until it binds (2 s budget).
+        let rebind = try makeController(port: heldPort)
+        var rebound = false
+        for _ in 0 ..< 40 {
+            await rebind.start()
+            if case .running = rebind.state {
+                rebound = true
+                break
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(rebound)
+        await rebind.stop()
+    }
+
     @Test("bind conflict surfaces .failed(.portInUse)")
     func portInUseFails() async throws {
         // Hold a port with a first server…

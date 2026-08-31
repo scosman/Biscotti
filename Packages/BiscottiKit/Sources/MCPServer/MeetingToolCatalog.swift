@@ -23,7 +23,7 @@ enum MeetingToolCatalog {
 
     private static let queryMeetings = Tool(
         name: queryMeetingsName,
-        description: "Search the user's recorded meetings in Biscotti. Use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said. Useful whenever the user asks about a meeting, call, sync, standup, or something someone said.",
+        description: "Search the user's recorded meetings in Biscotti. Results sorted by query relevance if query provided, and newest first when no query. Use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said. Useful whenever the user asks about a meeting, call, sync, standup, or something someone said.",
         inputSchema: [
             "type": "object",
             "properties": [

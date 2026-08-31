@@ -72,8 +72,17 @@ generate: ## Generate Xcode projects from project.yml files
 	cd App && xcodegen generate
 	cd ManualTestApp && xcodegen generate
 
+# Compiler warnings are errors in `make build` (and therefore `make ci`).
+# SwiftLint/SwiftFormat only see style; this is what makes the compiler
+# itself strict, so deprecations (e.g. SwiftNIO's NIOAny writes) fail the
+# build instead of shipping as noise. NOT yet on `make test`: the test
+# targets still carry ~8 pre-existing warnings (swift-testing `#require`
+# patterns, a deprecated `String(cString:)`). Once those are fixed, add
+# $(SWIFT_STRICT) to the test target too.
+SWIFT_STRICT := -Xswiftc -warnings-as-errors
+
 build: ## Build all SPM packages
-	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
+	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg $(SWIFT_STRICT) || exit 1; done
 
 test: ## GATING: run package tests
 	@for pkg in $(PACKAGES); do \

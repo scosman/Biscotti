@@ -61,6 +61,26 @@ struct MCPRoundTripTests {
         }
     }
 
+    /// All three tools are read-only over local data; the advertised hints
+    /// must say so (functional spec §5).
+    @Test("every advertised tool carries the read-only annotations")
+    func toolsCarryReadOnlyAnnotations() async throws {
+        try await MCPServerFixture.withRunningServer { fixture in
+            let listTools = try await JSONRPCClient.post(port: fixture.port, method: "tools/list")
+            let tools = try #require(
+                (listTools.body["result"] as? [String: Any])?["tools"] as? [[String: Any]]
+            )
+            #expect(tools.count == Self.expectedToolNames.count)
+            for tool in tools {
+                let annotations = try #require(tool["annotations"] as? [String: Any])
+                #expect(annotations["readOnlyHint"] as? Bool == true)
+                #expect(annotations["destructiveHint"] as? Bool == false)
+                #expect(annotations["idempotentHint"] as? Bool == true)
+                #expect(annotations["openWorldHint"] as? Bool == false)
+            }
+        }
+    }
+
     /// Regression: a shared `MCP.Server` latches `initialized` after the
     /// first handshake, so every later client got -32600 "Server is already
     /// initialized". Stateless HTTP must serve each client independently

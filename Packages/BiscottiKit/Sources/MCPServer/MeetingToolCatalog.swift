@@ -23,13 +23,13 @@ enum MeetingToolCatalog {
 
     private static let queryMeetings = Tool(
         name: queryMeetingsName,
-        description: "Search the user's recorded meetings in Biscotti. Use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said.",
+        description: "Search the user's recorded meetings in Biscotti. Use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said. Useful whenever the user asks about a meeting, call, sync, standup, or something someone said.",
         inputSchema: [
             "type": "object",
             "properties": [
                 "query": [
                     "type": "string",
-                    "description": "Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms (the app's own search stack)."
+                    "description": "Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms."
                 ],
                 "after": [
                     "type": "string",
@@ -42,8 +42,8 @@ enum MeetingToolCatalog {
                 "limit": [
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 50,
-                    "description": "Maximum number of results to return (1-50, default 50)."
+                    "maximum": 250,
+                    "description": "Maximum number of results to return (1-250, default 50)."
                 ]
             ]
         ],
@@ -86,15 +86,24 @@ enum MeetingToolCatalog {
         annotations: readOnlyAnnotations,
         outputSchema: [
             "type": "object",
-            "required": ["id", "title", "date", "audio_files", "transcript", "transcript_version_count"],
+            "required": [
+                "id", "title", "date", "summary", "notes", "audio_files",
+                "transcript", "transcript_version_count"
+            ],
             "properties": [
                 "id": ["type": "string"],
                 "title": ["type": "string"],
                 "date": ["type": "string"],
                 "end_date": ["type": "string"],
-                "recording_duration_seconds": ["type": "number"],
-                "summary": ["type": "string"],
-                "notes": ["type": "string"],
+                "recording_duration_seconds": ["type": "integer"],
+                "summary": [
+                    "type": ["string", "null"],
+                    "description": "The AI-generated summary; always present, null when the meeting has none."
+                ],
+                "notes": [
+                    "type": ["string", "null"],
+                    "description": "The user's own notes; always present, null when the meeting has none."
+                ],
                 "tags": ["type": "array", "items": ["type": "string"]],
                 "participants": [
                     "type": "array",
@@ -196,6 +205,14 @@ enum MeetingToolCatalog {
                 "id": [
                     "type": "string",
                     "description": "The meeting's UUID, as returned by biscotti_query_meetings."
+                ],
+                "start_seconds": [
+                    "type": "number",
+                    "description": "Seconds from the start of the recording (0 = the beginning) where the returned window begins; inclusive. Only segments overlapping the `[start_seconds, end_seconds)` window are returned; either bound may be omitted. Timestamps in the returned text keep their original values."
+                ],
+                "end_seconds": [
+                    "type": "number",
+                    "description": "Seconds from the start of the recording where the returned window ends; exclusive. Only segments overlapping the `[start_seconds, end_seconds)` window are returned; either bound may be omitted. Timestamps in the returned text keep their original values."
                 ]
             ]
         ],

@@ -62,4 +62,23 @@ extension MeetingToolProvider {
         }
         return int
     }
+
+    /// A JSON number: integer or fractional. JSON integers arrive as
+    /// `.int`, so both cases convert (a whole `5` and `5.0` are equal).
+    func optionalNumber(
+        _ name: String, in arguments: [String: Value]
+    ) throws -> Double? {
+        guard let value = arguments[name] else { return nil }
+        switch value {
+        case let .int(int):
+            return Double(int)
+        case let .double(double):
+            guard double.isFinite else {
+                throw MCPError.invalidParams("Parameter '\(name)' must be a finite number.")
+            }
+            return double
+        default:
+            throw MCPError.invalidParams("Parameter '\(name)' must be a number.")
+        }
+    }
 }

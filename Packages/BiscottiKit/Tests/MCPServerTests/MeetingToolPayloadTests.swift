@@ -3,7 +3,8 @@ import Testing
 @testable import MCPServer
 
 /// Golden-JSON assertions on the wire contract (architecture §10): snake_case
-/// keys, optional fields omitted rather than emitted as `null`. Decoded via
+/// keys, optional fields omitted rather than emitted as `null` — except
+/// `MeetingDetailPayload.summary`/`notes`, which always serialize. Decoded via
 /// `JSONSerialization` so drift fails loudly.
 @Suite("Tool payload encoding")
 struct MeetingToolPayloadTests {
@@ -29,7 +30,7 @@ struct MeetingToolPayloadTests {
         #expect(Set(results[1].keys) == Set(["date", "id", "title"]))
     }
 
-    @Test("MeetingDetailPayload omits nil optionals, keeps snake_case keys")
+    @Test("MeetingDetailPayload emits summary/notes as null, omits other nil optionals")
     func detailPayloadKeys() throws {
         let payload = MeetingDetailPayload(
             id: "A",
@@ -62,13 +63,29 @@ struct MeetingToolPayloadTests {
         let object = try encodeToJSONObject(payload)
         #expect(
             Set(object.keys) == Set([
-                "audio_files", "date", "id", "title", "transcript", "transcript_version_count"
+                "audio_files", "date", "id", "notes", "summary", "title",
+                "transcript", "transcript_version_count"
             ])
         )
+        // The two keys a caller read as missing-when-empty: present, null.
+        #expect(object["summary"] is NSNull)
+        #expect(object["notes"] is NSNull)
         let audio = try #require(object["audio_files"] as? [String: Any])
         #expect(Set(audio.keys) == ["present"])
         let transcript = try #require(object["transcript"] as? [String: Any])
         #expect(Set(transcript.keys) == ["available"])
+    }
+
+    @Test("MeetingDetailPayload decodes explicit nulls and missing keys the same")
+    func detailPayloadDecodesNulls() throws {
+        let json = Data(
+            #"{"id":"A","title":"T","date":"2026-08-27T17:00:00Z","summary":null,"notes":null,"audio_files":{"present":false},"transcript":{"available":false},"transcript_version_count":0}"#
+                .utf8
+        )
+        let payload = try JSONDecoder().decode(MeetingDetailPayload.self, from: json)
+        #expect(payload.summary == nil)
+        #expect(payload.notes == nil)
+        #expect(payload.recordingDurationSeconds == nil)
     }
 
     private func makeFullDetailPayload() -> MeetingDetailPayload {
@@ -79,7 +96,7 @@ struct MeetingToolPayloadTests {
             title: "T",
             date: "2026-08-27T17:00:00Z",
             endDate: "2026-08-27T17:30:00Z",
-            recordingDurationSeconds: 1804.2,
+            recordingDurationSeconds: 1804,
             summary: "## Decisions",
             notes: "note",
             tags: ["eng"],
@@ -127,6 +144,7 @@ struct MeetingToolPayloadTests {
                 "tags", "title", "transcript", "transcript_version_count"
             ])
         )
+        #expect(object["recording_duration_seconds"] as? Int == 1804)
 
         let calendar = try #require(object["calendar"] as? [String: Any])
         #expect(

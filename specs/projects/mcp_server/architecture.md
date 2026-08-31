@@ -91,7 +91,8 @@ public enum MCPServerConfiguration {
     static let maxConcurrentConnections = 16
     static let idleTimeoutSeconds: Int64 = 120
     static let searchCandidatePool = 500         // see §6.1
-    static let maxResultLimit = 50
+    static let maxResultLimit = 250
+    static let defaultResultLimit = 50           // limit's default (spec §5.1)
 }
 ```
 
@@ -258,7 +259,7 @@ actor HTTPListener {
 Static `[Tool]` with the names, descriptions (verbatim from functional spec §5),
 `inputSchema`, and `outputSchema` as `MCP.Value` literals. Descriptions live
 here and nowhere else. Input schemas mirror the parameter tables exactly,
-including `"minimum": 1, "maximum": 50` on `limit`.
+including `"minimum": 1, "maximum": 250` on `limit`.
 
 ### 5.2 `MeetingToolProvider`
 
@@ -289,14 +290,17 @@ actor MeetingToolProvider {
 `SpeakerPayload`), `TranscriptPayload`. Snake_case keys via explicit
 `CodingKeys` — never a global encoder strategy, so a field rename cannot
 silently change the wire contract. Optional fields use
-`encodeIfPresent` semantics (omit, don't emit `null`).
+`encodeIfPresent` semantics (omit, don't emit `null`) — except
+`MeetingDetailPayload.summary`/`notes`, which always serialize, with an
+explicit `null` when the meeting has none (custom `encode(to:)` on that one
+struct; functional spec §5.2).
 
 ## 6. Algorithms
 
 ### 6.1 `biscotti_query_meetings`
 
 ```
-validate: limit ∈ 1...50, default 50
+validate: limit ∈ 1...250, default 50
           before/after parse as ISO-8601 (full or date-only), after ≤ before
           (no filter is legal: falls through to the date-descending list)
 
@@ -330,6 +334,11 @@ audio  = try await store.storedAudioFileRefs(meetingID: id)  → paths reported
                                                     the disk
 people = try await store.meetingPeople(id: id)      → new, §7.2
 
+recording_duration_seconds = detail.recordingDuration as whole seconds
+                              (rounded, an integer)
+summary/notes = always encoded; null when the meeting has none
+               (functional spec §5.2)
+
 transcript stats from detail.preferredTranscript:
     segment_count   = segments.count
     character_count = Σ segment.text.count
@@ -347,9 +356,13 @@ omitted when nil. `audio_files.present` comes straight from
 ### 6.3 `biscotti_get_transcript`
 
 `meetingDetail(id:)` → `preferredTranscript` (nil ⇒ tool error "no transcript
-yet") → `TranscriptTextFormatter.text(segments:names:)`, plus the same word and
-character counts as §6.2 (computed on the *segments*, so they agree with
-`get_meeting` exactly).
+yet") → filter segments to those overlapping `[start_seconds, end_seconds)`
+when either bound is given (seconds relative to the recording start,
+zero-based; start inclusive, end exclusive; a missing bound leaves that side
+unbounded; both bounds with start ≥ end match nothing) → `TranscriptTextFormatter.text(segments:names:)`, plus the same
+word and character counts as §6.2 (computed on the *filtered* segments, so
+they agree with the returned text). Timestamps in the text keep their
+original from-the-start values — the window filters, it never rebases.
 
 ### 6.4 `TranscriptTextFormatter`
 
@@ -482,19 +495,25 @@ New test target `MCPServerTests` (+ additions to `DataStoreTests`,
   newest N; query-only
   relevance order; date-only newest-first; `after`/`before` inclusive bounds;
   `after > before` invalid params; unparseable date invalid params; date-only
-  string accepted; `limit` clamped/rejected outside 1…50; `results_truncated`
-  true at exactly `limit` and false below; `query_snippet` present only with a
-  query; empty result set is not an error.
+  string accepted; `limit` rejected outside 1…250 (default 50, cap 250);
+  `results_truncated` true at exactly `limit` and false below; `query_snippet`
+  present only with a query; empty result set is not an error.
 - `get_meeting`: full payload for a rich meeting (calendar + tags + people +
-  transcript); missing-calendar and missing-transcript variants; unknown id →
+  transcript); missing-calendar and missing-transcript variants; `summary`/
+  `notes` present as explicit `null` when the meeting has none;
+  `recording_duration_seconds` rounded to whole seconds; unknown id →
   `isError` result; `audio_files.present` false when files are gone; stats math
   (segment/word/character/speaker counts) on a known fixture.
 - `get_transcript`: turn collapsing across consecutive same-speaker segments;
   mapped vs unmapped speaker names; `MM:SS` and `HH:MM:SS` boundary at 3600 s;
-  empty-segment transcript → empty text, zero counts; unknown id and
-  no-transcript tool errors.
+  `start_seconds`/`end_seconds` windowing (sub-window, inclusive start /
+  exclusive end boundaries, each bound alone, past-the-end, before-the-start,
+  `start ≥ end` — empty, not an error; non-numeric bound invalid params;
+  timestamps stay absolute); empty-segment transcript → empty text, zero
+  counts; unknown id and no-transcript tool errors.
 - Payload encoding: golden-JSON assertions on key shape (snake_case, omitted
-  optionals) so the wire contract can't drift silently.
+  optionals, `summary`/`notes` as explicit `null`) so the wire contract can't
+  drift silently.
 
 **Transport / HTTP** (real listener on `127.0.0.1:0`, driven with `URLSession`):
 - `initialize` → `tools/list` → `tools/call` round trip; the three tools appear

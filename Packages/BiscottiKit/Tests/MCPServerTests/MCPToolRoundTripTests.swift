@@ -70,6 +70,11 @@ struct MCPToolRoundTripTests {
             let transcriptStats = try #require(detailStructured["transcript"] as? [String: Any])
             #expect(transcriptStats["available"] as? Bool == true)
             #expect(transcriptStats["segment_count"] as? Int == 1)
+            // summary/notes are always on the wire: null for this bare meeting.
+            #expect(detailStructured["summary"] is NSNull)
+            #expect(detailStructured["notes"] is NSNull)
+            // Whole seconds, rounded (983.947… → 984).
+            #expect(detailStructured["recording_duration_seconds"] as? Int == 984)
 
             let transcript = try await JSONRPCClient.post(
                 port: fixture.port,
@@ -142,6 +147,7 @@ struct MCPToolRoundTripTests {
             title: "Weekly sync",
             start: ToolDateFormatting.parse("2026-08-27T17:00:00Z")
         )
+        try await store.setRecordingDuration(983.9472506249986, for: meetingID)
         let result = TranscriptResult(
             transcriptionMethodId: "v1",
             language: "en",

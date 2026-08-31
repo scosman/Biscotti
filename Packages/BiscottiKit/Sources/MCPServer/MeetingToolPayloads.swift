@@ -4,7 +4,9 @@ import Foundation
 // pre-formatted ISO-8601 strings, so encoding needs no date strategy. Snake_case
 // keys come from explicit `CodingKeys` — never a global encoder strategy — so a
 // Swift property rename cannot silently change the wire contract. Optional
-// fields are omitted when nil (`encodeIfPresent`), never emitted as `null`.
+// fields are omitted when nil (`encodeIfPresent`), never emitted as `null` —
+// except `MeetingDetailPayload.summary`/`notes`, which always serialize, with
+// an explicit `null` when the meeting has none (functional spec §5.2).
 //
 // The payload structs are flat (not nested in each other): each carries its own
 // `CodingKeys`, and the repo's strict `nesting` rule caps type nesting at one
@@ -131,7 +133,8 @@ struct MeetingDetailPayload: Codable, Equatable {
     let title: String
     let date: String
     let endDate: String?
-    let recordingDurationSeconds: Double?
+    /// Whole seconds, rounded (functional spec §5.2).
+    let recordingDurationSeconds: Int?
     let summary: String?
     let notes: String?
     let tags: [String]?
@@ -157,6 +160,27 @@ struct MeetingDetailPayload: Codable, Equatable {
         case calendar
         case transcript
         case transcriptVersionCount = "transcript_version_count"
+    }
+
+    /// Custom encode for exactly one rule: `summary` and `notes` are always
+    /// on the wire — the string when set, `null` when the meeting has none.
+    /// Everything else keeps default `Codable` behavior (`encodeIfPresent`).
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(date, forKey: .date)
+        try container.encodeIfPresent(endDate, forKey: .endDate)
+        try container.encodeIfPresent(recordingDurationSeconds, forKey: .recordingDurationSeconds)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(tags, forKey: .tags)
+        try container.encodeIfPresent(participants, forKey: .participants)
+        try container.encodeIfPresent(organizer, forKey: .organizer)
+        try container.encode(audioFiles, forKey: .audioFiles)
+        try container.encodeIfPresent(calendar, forKey: .calendar)
+        try container.encode(transcript, forKey: .transcript)
+        try container.encode(transcriptVersionCount, forKey: .transcriptVersionCount)
     }
 }
 

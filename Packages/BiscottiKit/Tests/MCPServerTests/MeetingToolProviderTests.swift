@@ -37,22 +37,6 @@ struct MeetingToolProviderTests {
         }
     }
 
-    @Test("limit alone returns the newest N")
-    func queryLimitAloneReturnsNewestN() async throws {
-        let (provider, store) = try ToolTestSupport.makeProvider()
-        let ids = try await ToolTestSupport.seedThreeDatedMeetings(store)
-
-        let result = try await provider.call(
-            name: "biscotti_query_meetings",
-            arguments: ["limit": .int(2)]
-        )
-        #expect(result.isError != true)
-        #expect(try ToolTestSupport.idList(result) == [
-            ids[2].uuidString, ids[1].uuidString
-        ])
-        #expect(try ToolTestSupport.jsonObject(from: result)["results_truncated"] as? Bool == true)
-    }
-
     @Test("empty query string is invalid params")
     func queryEmptyStringIsInvalid() async throws {
         let (provider, _) = try ToolTestSupport.makeProvider()
@@ -81,28 +65,6 @@ struct MeetingToolProviderTests {
                 "after": .string("2026-09-01T00:00:00Z"),
                 "before": .string("2026-08-01T00:00:00Z")
             ]
-        )
-    }
-
-    @Test("limit outside 1...50 is invalid params")
-    func queryLimitOutOfRangeIsInvalid() async throws {
-        let (provider, _) = try ToolTestSupport.makeProvider()
-        for limit in [Value.int(0), .int(-1), .int(51), .int(500)] {
-            try await ToolTestSupport.expectInvalidParams(
-                provider,
-                name: "biscotti_query_meetings",
-                arguments: ["after": .string("2026-01-01"), "limit": limit]
-            )
-        }
-    }
-
-    @Test("non-integer limit is invalid params")
-    func queryLimitDoubleIsInvalid() async throws {
-        let (provider, _) = try ToolTestSupport.makeProvider()
-        try await ToolTestSupport.expectInvalidParams(
-            provider,
-            name: "biscotti_query_meetings",
-            arguments: ["after": .string("2026-01-01"), "limit": .double(5.5)]
         )
     }
 
@@ -231,26 +193,6 @@ struct MeetingToolProviderTests {
         #expect(try Set(ToolTestSupport.idList(unfiltered)) == Set([
             inRange.uuidString, outOfRange.uuidString
         ]))
-    }
-
-    @Test("results_truncated is true at exactly the limit, false below")
-    func queryTruncationFlag() async throws {
-        let (provider, store) = try ToolTestSupport.makeProvider()
-        try await ToolTestSupport.seedThreeDatedMeetings(store)
-
-        let atLimit = try await provider.call(
-            name: "biscotti_query_meetings",
-            arguments: ["after": .string("2026-01-01"), "limit": .int(3)]
-        )
-        #expect(try ToolTestSupport.jsonObject(from: atLimit)["results_truncated"] as? Bool == true)
-
-        let underLimit = try await provider.call(
-            name: "biscotti_query_meetings",
-            arguments: ["after": .string("2026-07-01"), "limit": .int(3)]
-        )
-        #expect(
-            try ToolTestSupport.jsonObject(from: underLimit)["results_truncated"] as? Bool == false
-        )
     }
 
     @Test("no matches is an empty result, not an error")

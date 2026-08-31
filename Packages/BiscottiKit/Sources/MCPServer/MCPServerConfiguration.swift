@@ -21,7 +21,9 @@ public enum MCPServerConfiguration {
     /// applied (architecture §6.1). Bounds the known limitation where a date
     /// range matching only very low-ranked results could miss them.
     static let searchCandidatePool = 500
-    /// Maximum number of results `biscotti_query_meetings` returns; also the
-    /// default (functional spec §5.1).
-    static let maxResultLimit = 50
+    /// Maximum number of results `biscotti_query_meetings` accepts; the
+    /// schema and description say 1-250 (functional spec §5.1).
+    static let maxResultLimit = 250
+    /// The limit applied when the caller sends none (functional spec §5.1).
+    static let defaultResultLimit = 50
 }

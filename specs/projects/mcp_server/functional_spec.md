@@ -134,16 +134,17 @@ Shared conventions:
 
 > Search the user's recorded meetings in Biscotti. Use
 > `biscotti_get_meeting` for details and `biscotti_get_transcript` for what
-> was said.
+> was said. Useful whenever the user asks about a meeting, call, sync,
+> standup, or something someone said.
 
 **Parameters** (all optional):
 
 | Name | Type | Notes |
 |---|---|---|
-| `query` | string | Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms (the app's own search stack). |
+| `query` | string | Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms. |
 | `after` | string | Only meetings whose date is ≥ this. |
 | `before` | string | Only meetings whose date is ≤ this. |
-| `limit` | integer | 1–50, default 50. |
+| `limit` | integer | 1–250, default 50. |
 
 With **no filters at all**, the tool lists the user's meetings most recent
 first (date descending) — it never errors for being unfiltered. `limit`
@@ -192,7 +193,8 @@ person's meeting history.
 
 **Parameters:** `id` (string, UUID) — required.
 
-**Result** (fields omitted when not applicable):
+**Result** (fields omitted when not applicable — except `summary` and
+`notes`, which are always present, `null` when the meeting has none):
 
 ```json
 {
@@ -200,7 +202,7 @@ person's meeting history.
   "title": "Weekly sync",
   "date": "2026-08-27T17:00:00Z",
   "end_date": "2026-08-27T17:30:00Z",
-  "recording_duration_seconds": 1804.2,
+  "recording_duration_seconds": 1804,
   "summary": "## Decisions\n…",
   "notes": "my own notes",
   "tags": ["roadmap", "eng"],
@@ -241,6 +243,10 @@ person's meeting history.
 
 - `transcript` describes the **preferred** transcript version. When none exists:
   `{"available": false}`.
+- `summary` and `notes` are **always present** — `null` when the meeting has
+  none (never omitted).
+- `recording_duration_seconds` is whole seconds, rounded (an integer, not a
+  float).
 - `speakers[].name` appears only where the user has mapped that speaker to a
   person.
 - `audio_files.present` is false when the files were deleted from disk; the
@@ -255,7 +261,22 @@ person's meeting history.
 > `biscotti_get_meeting` first, and prefer the AI summary when you only need
 > the gist.
 
-**Parameters:** `id` (string, UUID) — required.
+**Parameters:**
+
+| Name | Type | Notes |
+|---|---|---|
+| `id` | string (UUID) | required |
+| `start_seconds` | number | Seconds from the start of the recording (0 = the beginning) where the returned window begins; inclusive. Only segments overlapping the `[start_seconds, end_seconds)` window are returned; either bound may be omitted. Timestamps in the returned text keep their original values. |
+| `end_seconds` | number | Seconds from the start of the recording where the returned window ends; exclusive. Only segments overlapping the `[start_seconds, end_seconds)` window are returned; either bound may be omitted. Timestamps in the returned text keep their original values. |
+
+`start_seconds` / `end_seconds` are **relative to the recording start,
+zero-based**: `[start_seconds, end_seconds)` with start inclusive / end
+exclusive, and the two bounds are independently optional. Only segments
+**overlapping** the window are returned — the timestamp text of each line
+stays absolute (unchanged values, filtered set), and `word_count` /
+`character_count` describe the returned window. A window that matches
+nothing (past the end, before the start, or `start_seconds ≥ end_seconds`)
+returns empty `text` and zero counts — not an error.
 
 **Result:**
 

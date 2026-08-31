@@ -52,7 +52,7 @@ actor MeetingToolProvider {
         let before = try optionalDate("before", in: arguments)
         let limit = try optionalInt(
             "limit", in: arguments, range: 1 ... MCPServerConfiguration.maxResultLimit
-        ) ?? MCPServerConfiguration.maxResultLimit
+        ) ?? MCPServerConfiguration.defaultResultLimit
 
         // No filter is legal: the date-descending list of the most recent
         // meetings comes back (`limit` alone means "newest N").
@@ -136,7 +136,7 @@ actor MeetingToolProvider {
             title: detail.title,
             date: ToolDateFormatting.format(detail.date),
             endDate: detail.endDate.map(ToolDateFormatting.format),
-            recordingDurationSeconds: detail.recordingDuration,
+            recordingDurationSeconds: detail.recordingDuration.map { Int($0.rounded()) },
             summary: detail.summary.isEmpty ? nil : detail.summary,
             notes: detail.notes.isEmpty ? nil : detail.notes,
             tags: detail.tags.isEmpty ? nil : detail.tags.map(\.name),
@@ -159,6 +159,8 @@ actor MeetingToolProvider {
 
     private func getTranscript(arguments: [String: Value]) async throws -> CallTool.Result {
         let id = try requiredUUID("id", in: arguments)
+        let startSeconds = try optionalNumber("start_seconds", in: arguments)
+        let endSeconds = try optionalNumber("end_seconds", in: arguments)
 
         guard let detail = try await store.meetingDetail(id: id) else {
             return toolError("No meeting with that id.")
@@ -167,24 +169,48 @@ actor MeetingToolProvider {
             return toolError("That meeting has no transcript yet.")
         }
 
+        // Window params filter before formatting; the timestamp text of each
+        // line keeps its original from-the-start values (functional spec §5.3).
+        let segments = Self.windowed(
+            preferred.segments, startSeconds: startSeconds, endSeconds: endSeconds
+        )
         let text = TranscriptTextFormatter.text(
-            segments: preferred.segments,
+            segments: segments,
             names: preferred.speakerAssignments.mapValues(\.name)
         )
         mcpServerLog.debug(
-            "tool get_transcript: segments=\(preferred.segments.count)"
+            "tool get_transcript: segments=\(segments.count)/\(preferred.segments.count), windowed=\(startSeconds != nil || endSeconds != nil)"
         )
         let payload = TranscriptPayload(
             id: detail.id.uuidString,
             transcriptID: preferred.id.uuidString,
-            wordCount: Self.wordCount(of: preferred.segments),
-            characterCount: Self.characterCount(of: preferred.segments),
+            wordCount: Self.wordCount(of: segments),
+            characterCount: Self.characterCount(of: segments),
             text: text
         )
         return try success(payload)
     }
 
     // MARK: - Result helpers
+
+    /// Overlap filter for the window params (functional spec §5.3): a
+    /// segment is kept when it overlaps the half-open `[start, end)` window
+    /// — start inclusive, end exclusive. A missing bound leaves that side
+    /// unbounded. A window with both bounds and `start ≥ end` is empty
+    /// (interval math alone would keep a segment straddling the window).
+    private static func windowed(
+        _ segments: [SegmentData], startSeconds: Double?, endSeconds: Double?
+    ) -> [SegmentData] {
+        if let startSeconds, let endSeconds, startSeconds >= endSeconds {
+            return []
+        }
+        guard startSeconds != nil || endSeconds != nil else { return segments }
+        return segments.filter { segment in
+            let overlapsStart = startSeconds.map { segment.endTime > $0 } ?? true
+            let overlapsEnd = endSeconds.map { segment.startTime < $0 } ?? true
+            return overlapsStart && overlapsEnd
+        }
+    }
 
     /// Success carries the payload twice: as `structuredContent` and as the
     /// same DTO serialized to sorted-key JSON text — one source of truth, two

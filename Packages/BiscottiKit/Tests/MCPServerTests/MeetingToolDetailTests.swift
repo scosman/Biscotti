@@ -31,7 +31,8 @@ struct MeetingToolDetailTests {
 
         try await store.applyGeneratedSummary("## Decisions\nShip it.", for: meetingID)
         try await store.setNotes("my own notes", for: meetingID)
-        try await store.setRecordingDuration(1804.2, for: meetingID)
+        // .7 fraction: rounded (1805), not truncated (1804).
+        try await store.setRecordingDuration(1804.7, for: meetingID)
 
         try await store.attachAudio(
             [AudioFileRef(role: .mic, path: "/tmp/mic.aac", byteSize: 100, isPresent: true),
@@ -87,7 +88,7 @@ struct MeetingToolDetailTests {
         #expect(object["title"] as? String == "Weekly sync")
         #expect(object["date"] as? String == "2026-08-27T17:00:00Z")
         #expect(object["end_date"] as? String == "2026-08-27T17:30:00Z")
-        #expect(object["recording_duration_seconds"] as? Double == 1804.2)
+        #expect(object["recording_duration_seconds"] as? Int == 1805)
         #expect(object["summary"] as? String == "## Decisions\nShip it.")
         #expect(object["notes"] as? String == "my own notes")
         #expect(object["tags"] as? [String] == ["eng", "roadmap"])
@@ -130,7 +131,7 @@ struct MeetingToolDetailTests {
         #expect(speakers[1].keys.contains("name") == false) // unmapped: omitted
     }
 
-    @Test("omits inapplicable fields; no calendar, no transcript")
+    @Test("summary and notes are always present; other inapplicable fields omitted")
     func getMeetingSparsePayload() async throws {
         let (provider, store) = try ToolTestSupport.makeProvider()
         let meetingID = try await store.createMeeting(title: "Bare meeting")
@@ -142,8 +143,12 @@ struct MeetingToolDetailTests {
         #expect(result.isError != true)
         let object = try ToolTestSupport.jsonObject(from: result)
 
+        // The two keys that must never go missing: present, null.
+        #expect(object["summary"] is NSNull)
+        #expect(object["notes"] is NSNull)
+
         for absentKey in [
-            "end_date", "recording_duration_seconds", "summary", "notes", "tags",
+            "end_date", "recording_duration_seconds", "tags",
             "participants", "organizer", "calendar"
         ] {
             #expect(object.keys.contains(absentKey) == false, "\(absentKey) should be omitted")

@@ -38,6 +38,10 @@ current implementation misses (cold launch, menu-bar-only, window closed).
 - Deep links into settings *sub*-sections (`settings?section=ai`). Settings
   opens at its default section.
 - x-callback-url style return/callback parameters.
+- A "Copy Link to Meeting" affordance in the app. These URLs resolve only
+  against the local machine's library, so a meeting link is not shareable
+  with anyone else — the audience is other software on the same machine
+  (the MCP server above all), not humans passing links around.
 
 ## 3. General rules
 
@@ -49,22 +53,34 @@ case-insensitive per RFC 3986; compare lowercased). Anything else is ignored.
 **R2 — Route key.** The route is the URL *host* (`biscotti://meetings` →
 host `meetings`). Compared case-insensitively. An unknown host is a no-op.
 
-**R3 — Bad input is a silent no-op.** Unknown host, malformed UUID,
-unparseable numbers, a UUID with no matching meeting, a missing required
-parameter: the URL is ignored. Nothing is shown to the user, no alert, no
-error page. Every rejection is logged at `debug` via the existing `os.Logger`
-for diagnosis.
+**R3 — Two tiers of failure.** Rejection happens at one of two points, and
+they behave differently:
 
-**R4 — Window behavior on a no-op.** A rejected URL does **not** foreground
-the app and does **not** open a window. Only a URL that resolves to a route
-brings the app forward. (Rationale: a bad link from a background process
-shouldn't yank focus.) Because rejection can only be determined after
-parsing — and, for `meeting`, after an async store lookup — the app is
-foregrounded *after* the route resolves, not before.
+| Tier | Cases | Behavior |
+|---|---|---|
+| **Parse** | wrong scheme, unknown host, malformed UUID, unparseable number, missing required parameter | **Silent no-op.** Nothing shown, app not foregrounded. |
+| **Existence** | well-formed link to a meeting or event that isn't there | **Foreground, then alert** ("Meeting Not Found" / "Event Not Found"). |
 
-**R5 — Foregrounding.** A URL that resolves always: shows the main window
-(creating it if needed), switches the activation policy to `.regular`, and
-activates the app. This is the existing `AppDelegate.showMainWindow()` path.
+Both tiers log at `debug` via the existing `os.Logger`.
+
+The split follows from cost: parsing is synchronous and free, so a malformed
+URL from a background process can be discarded before anything is shown —
+it never steals focus. An existence check needs the store (one indexed
+fetch) or the in-memory upcoming list, and by then the app is already
+coming forward, so failing silently would leave a human who clicked a stale
+link staring at an app that did nothing. The alert is the honest answer.
+
+**R4 — Foregrounding.** Any URL that *parses* foregrounds the app: shows the
+main window (creating it if needed), switches the activation policy to
+`.regular`, and activates. This is the existing
+`AppDelegate.showMainWindow()` path, called before the route resolves, so
+the app responds immediately.
+
+**R5 — No loading state.** Nothing in the resolve path is slow enough to
+warrant a spinner: `meetingExists` is a single indexed fetch and the event
+lookup is an in-memory scan of `calendar.upcoming`. Until a link resolves,
+the app simply keeps showing whatever it was showing; navigation happens in
+one step or an alert appears.
 
 **R6 — Onboarding.** While `route == .onboarding`, every incoming URL is
 dropped (logged, not queued). The user finishes onboarding first.
@@ -72,7 +88,7 @@ dropped (logged, not queued). The user finishes onboarding first.
 **R7 — Recording.** An in-progress recording is never interrupted or stopped
 by navigation. Navigating away from the recording pane is allowed; recording
 continues and the user can return via the sidebar indicator. (`record` while
-already recording is a no-op — see §4.7.)
+already recording routes to the recording pane — see §4.7.)
 
 **R8 — Unknown query parameters are ignored,** not treated as errors. This
 keeps links forward-compatible.
@@ -123,8 +139,9 @@ notes-timestamp link behavior. This is the one case where a *valid* parameter
 is overridden rather than honored.
 
 **Existence check.** The meeting must exist in the store
-(`store.meetingExists(id:)`). A well-formed UUID with no matching meeting is
-a no-op (R3) — no navigation, no foregrounding.
+(`store.meetingExists(id:)`). A well-formed UUID with no matching meeting
+foregrounds the app and shows a **"Meeting Not Found"** alert (R3), leaving
+the current route untouched.
 
 **Seek clamping.** `time` is clamped to `[0, duration]` by the existing
 `MeetingDetailViewModel.applySeekIfReady()`. A negative or absurdly large
@@ -167,12 +184,10 @@ identifier is the existing composite key from
 segment. A query parameter percent-encodes cleanly and avoids path-splitting
 ambiguity.
 
-**No existence check.** Unlike `meeting`, upcoming events are not stored by
-key in a way that supports a cheap existence probe; `AppCore.selectEvent(_:)`
-already routes to a preview that handles an unresolvable key. A key that no
-longer matches a live event therefore navigates to an empty preview rather
-than being a no-op. This is the one documented exception to R3, and it is
-acceptable because the route is P2 with no current emitter.
+**Existence check.** `CalendarService.event(forKey:)` is a synchronous scan
+of the in-memory `upcoming` list, so the check is free. A key that matches no
+live event foregrounds the app and shows an **"Event Not Found"** alert
+(R3) rather than navigating to an empty preview.
 
 **Stability caveat.** The composite key embeds an occurrence timestamp, so a
 link to a rescheduled event stops resolving. These links are not durable and
@@ -188,10 +203,11 @@ starts recording with no confirmation.
 |---|---|---|
 | `?title=` | no | Sets the new meeting's title instead of the default. |
 
-**Already recording → no-op.** `AppCore.startRecording` already guards on
-`runState` being `.idle`/`.detectedPending`, so a second `record` URL during
-a recording does nothing. The URL does *not* navigate to the recording pane
-in that case either; it is a plain no-op (R3/R4).
+**Already recording → show the recording.** `AppCore.startRecording` already
+guards on `runState` being `.idle`/`.detectedPending`, so a second `record`
+URL cannot start a second session. Rather than doing nothing, it routes to
+the recording pane — the user asked to record and a recording is what they
+get to see. No alert: this is a success, not a failure.
 
 **Title semantics.** Without `title`, the meeting gets the usual
 `"Untitled Meeting"` default and remains eligible for AI-generated titling
@@ -269,6 +285,17 @@ revisiting later for the search-results list, but not in this project — see
 §10.)
 
 ## 8. Testing
+
+### The two alerts
+
+Standard SwiftUI alerts on the app shell, one OK button, no recovery action:
+
+| Trigger | Title | Message |
+|---|---|---|
+| `meeting/{uuid}` with no such meeting | Meeting Not Found | This link points to a meeting that is no longer in Biscotti. It may have been deleted. |
+| `upcoming?key=` with no matching event | Event Not Found | This link points to a calendar event that is no longer upcoming. It may have ended, moved, or been cancelled. |
+
+Only one alert can be pending at a time; a second failure replaces the first.
 
 ### Unit tests (gating, `make test`)
 

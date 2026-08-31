@@ -152,35 +152,59 @@ it is invisible only because the notes links always carry distinct times.)
 
 ### 3.2 The entry point
 
+Parsing stays in the delegate (it is synchronous and decides whether to
+foreground); `AppCore` receives an already-parsed link:
+
 ```swift
 public extension AppCore {
-    /// Parses and applies a `biscotti://` URL.
-    /// - Returns: true if it resolved to a route (caller should foreground).
-    @discardableResult
-    func handleAppLink(_ url: URL) async -> Bool
+    /// Applies a parsed link. Sets `linkError` if the target is missing.
+    func apply(_ link: AppLink) async
 }
 ```
 
-Returning `Bool` is what makes R4 implementable: the delegate foregrounds
-only on `true`. Flow:
+Taking `AppLink` rather than `URL` is what keeps this simple: no `Bool`
+return to thread back for foregrounding, and the tests exercise intents
+rather than re-testing string parsing already covered in `AppLinksTests`.
 
-1. `guard let link = AppLink(url: url) else { log.debug; return false }`
-2. `guard route != .onboarding else { log.debug; return false }` (R6)
-3. Switch and apply:
+Flow:
+
+1. `guard route != .onboarding else { log.debug; return }` (R6)
+2. Switch and apply:
 
 | Case | Action |
 |---|---|
 | `.home` | `showHome()` |
 | `.meetings` | `showMeetings()` |
 | `.settings` | `showSettings()` |
-| `.meeting` | `store.meetingExists(id:)`; if false → `return false`. Else `select(id)` + set `pendingMeetingIntent` |
+| `.meeting` | `store.meetingExists(id:)`; false → `linkError = .meetingNotFound`, route untouched. Else `select(id)` + set `pendingMeetingIntent` |
 | `.search` | `showMeetings()`, `setMeetingsQuery(q)`, `focusSearch()` |
-| `.upcoming` | `selectEvent(key)` |
-| `.record` | guard `runState` is `.idle`/`.detectedPending` → else `return false`; `await startRecording(title:)` |
+| `.upcoming` | `calendar.event(forKey:)`; nil → `linkError = .eventNotFound`. Else `selectEvent(key)` |
+| `.record` | if already recording → `route = .recording`. Else `await startRecording(title:)` |
 
 `handleDeepLink(_:)` is removed; its one caller is the delegate. Callers that
 want the old timestamp-jump behavior get it unchanged through `.meeting` with
 a `.transcriptTime` target.
+
+### 3.2.1 The alert
+
+```swift
+public enum AppLinkError: String, Sendable, Equatable {
+    case meetingNotFound, eventNotFound
+    public var title: String { … }
+    public var message: String { … }
+}
+
+public internal(set) var linkError: AppLinkError?
+public func dismissLinkError() { linkError = nil }
+```
+
+`AppShellView` gains one `.alert` bound through the get/set `Binding`
+pattern already used for `showReTranscribeAfterCorrection` in
+`MeetingDetailView`, with a single OK button calling `dismissLinkError()`.
+A second failure overwrites the first (functional spec §8).
+
+Modelling this as an enum rather than a `String?` keeps the copy out of
+`AppCore` and lets tests assert on a case instead of matching prose.
 
 ### 3.3 `startRecording` gains a title
 
@@ -270,16 +294,17 @@ private var isCoreReady = false
 
 ```swift
 @MainActor func handleOpenURL(_ url: URL) {
-    Task { @MainActor in
-        if await core?.handleAppLink(url) == true { showMainWindow() }
-    }
+    guard let link = AppLink(url: url) else { return }   // R3 parse tier
+    showMainWindow()                                      // R4
+    Task { @MainActor in await core?.apply(link) }
 }
 ```
 
-Note the ordering inversion from today's code, which calls
-`showMainWindow()` first: R4 requires resolution before foregrounding. The
-cost is that a `meeting` link waits on one `meetingExists` query (a single
-indexed SwiftData fetch, sub-millisecond) before the window appears.
+The parse guard runs first and is synchronous, so a malformed URL costs
+nothing and never opens a window. Everything that parses foregrounds
+immediately — the existing code shape is preserved, with no ordering
+inversion and no spinner, because resolution completes faster than the
+window animation.
 
 ## 6. MCP `app_url`
 
@@ -313,10 +338,12 @@ Plus the build→parse round-trip over all cases.
 
 ### 8.2 `AppCoreTests` (rewriting `DeepLinkTests`)
 
-Per-route state assertions; `handleAppLink` returning false for a nonexistent
-meeting *and* leaving `route` untouched (R4); the onboarding drop (R6);
-`record` while recording being a no-op; `record?title=` reaching the store;
-and repeated identical URLs producing distinct tokens (§3.1).
+Per-route state assertions; a nonexistent meeting setting
+`linkError == .meetingNotFound` *and* leaving `route` untouched; an
+unresolvable event key setting `.eventNotFound`; `dismissLinkError()`
+clearing it; the onboarding drop (R6); `record` while recording routing to
+`.recording` without starting a second session; `record?title=` reaching the
+store; and repeated identical links producing distinct tokens (§3.1).
 
 `DeepLinkTests.missingTimeIsNoOp` is rewritten to assert the meeting opens on
 Summary.
@@ -368,4 +395,4 @@ libraries the rule names (`Transcription`, `AudioCapture`, `LocalLLM`,
 |---|---|
 | Removing `onOpenURL` regresses a path AppKit doesn't cover | The manual script tests all four delivery states explicitly before this ships |
 | `application(_:open:)` not firing under ad-hoc signing / stale LaunchServices registration | Script's first instruction covers re-registering; a stale registered copy of Biscotti is the most likely false failure |
-| Foreground-after-resolve feels laggy | One indexed fetch; if it ever shows, foreground eagerly and accept the focus-steal on bad links |
+| An alert on every stale link becomes noise | Only two triggers, both meaning a real target vanished; a link that merely fails to parse stays silent |

@@ -149,11 +149,38 @@ struct ScriptShapeTests {
         }
     }
 
+    @Test("MCP Server script has a non-empty id and title")
+    func mcpIdentity() {
+        let script = TestScript.mcp
+        #expect(!script.id.isEmpty)
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "mcp_server")
+    }
+
+    @Test("MCP Server script has exactly 2 steps")
+    func mcpStepCount() {
+        #expect(TestScript.mcp.steps.count == 2)
+    }
+
+    @Test("MCP Server step IDs match the canonical set")
+    func mcpStepIDs() {
+        let ids = Set(TestScript.mcp.steps.map(\.id))
+        #expect(ids == ["mcp_connect", "mcp_real_client"])
+    }
+
+    @Test("Every step ID in MCP Server is non-empty")
+    func mcpStepIDsNonEmpty() {
+        for step in TestScript.mcp.steps {
+            #expect(!step.id.isEmpty, "Empty step ID in MCP Server script")
+        }
+    }
+
     @Test("All step IDs across all scripts are unique")
     func allStepIDsUnique() {
         let allSteps = TestScript.audioCapture.steps
             + TestScript.transcription.steps
             + TestScript.localLLM.steps
+            + TestScript.mcp.steps
         let ids = allSteps.map(\.id)
         let uniqueIDs = Set(ids)
         #expect(ids.count == uniqueIDs.count, "Duplicate step IDs found")
@@ -165,7 +192,8 @@ struct ScriptShapeTests {
         #expect(ids.contains("audio_capture"))
         #expect(ids.contains("transcription"))
         #expect(ids.contains("local_llm"))
-        #expect(allScripts.count == 3)
+        #expect(ids.contains("mcp_server"))
+        #expect(allScripts.count == 4)
     }
 
     @Test("Step IDs within Audio Capture are unique")
@@ -183,6 +211,12 @@ struct ScriptShapeTests {
     @Test("Step IDs within Local LLM are unique")
     func localLLMInternalUniqueness() {
         let ids = TestScript.localLLM.steps.map(\.id)
+        #expect(ids.count == Set(ids).count)
+    }
+
+    @Test("Step IDs within MCP Server are unique")
+    func mcpInternalUniqueness() {
+        let ids = TestScript.mcp.steps.map(\.id)
         #expect(ids.count == Set(ids).count)
     }
 }

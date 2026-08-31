@@ -63,7 +63,7 @@ L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI
                     MenuBarUI · OnboardingUI · SettingsUI            (+ DesignSystem)
     Shared UI       ModelManagementUI  (used by SettingsUI + OnboardingUI)
 L2  Coordination    AppCore  (the headless "background app" engine)
-L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary
+L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary · MCPServer
 L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem · Intelligence
         engines     AudioCapture(pkg) · Transcription(pkg) · LocalLLM(pkg)
 ```
@@ -210,13 +210,23 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 - **Deep-dive risk:** **low.**
 - **From:** none (new).
 
+#### 27. MCPServer  ·  *module in BiscottiKit*  ·  [built]
+- **Home:** module in `BiscottiKit` (`Sources/MCPServer`; the swift-sdk/swift-nio dependencies are on the BiscottiKit package).
+- **Owns:** the opt-in local MCP server — a stateless Streamable-HTTP MCP endpoint on `127.0.0.1:8516/mcp` exposing three **read-only** tools over the user's meetings (`biscotti_query_meetings`, `biscotti_get_meeting`, `biscotti_get_transcript`), with `Origin` validation, a 1 MB body cap, connection/idle limits, and zero allocation when off.
+- **Provides:** `MCPServerController` (the `@MainActor` lifecycle owner — start/stop/applyEnabled), `MeetingToolProvider` + catalog + payload DTOs + transcript formatter (the tool surface), and the NIO HTTP listener/bridge. Owned by `AppCore` (started on launch iff `AppSettings.mcpServerEnabled`, applied live via `.mcpServerEnabledDidChange`); surfaced in `SettingsUI` (General section's MCP row with subtitle + How-to-connect link + retry; the sheet holds the endpoint URL/copy and links to the `App/ConnectingMCP.md` guide). Manual test registered (ManualTestApp `MCP Server` script, `mcp_real_client` step) — seeded not-run, hardware pass pending.
+- **Out of scope:** any write tool, resources/prompts, auth, non-loopback binding, sessions/SSE (functional spec §10).
+- **Depends on:** DataStore only (internally); MCP swift-sdk + swift-nio (external, exact-pinned).
+- **Tested by:** unit/integration tests in `MCPServerTests` (HTTP surface, JSON-RPC round trips, tool logic, lifecycle) + AppCore/SettingsUI wiring tests.
+- **Deep-dive risk:** **low** (protocol stack is the pinned SDK; transport validated by tests).
+- **From:** the `mcp_server` spec project.
+
 ### Coordination module (in `BiscottiKit`)
 
 #### 14. AppCore  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** the headless "background app" engine — the flows that run with no window open.
 - **Must provide:** wire detection → notification → recording → transcription → AI enhancements into coherent flows ("meeting app started → prompt → record → on stop, queue transcription → auto speaker-ID + summary"); own app-wide run state the UIs observe; drive auto-stop and the recording/upcoming/recent data the menu bar shows; remain operational with no window. **[P2]** dispatch global-shortcut actions.
 - **Out of scope:** rendering (UI modules), low-level capabilities (delegates to services), Apple-lifecycle glue (app target).
-- **Depends on:** Recording, MeetingDetection, TranscriptionService, Calendar, Notifications, DataStore, Intelligence.
+- **Depends on:** Recording, MeetingDetection, TranscriptionService, Calendar, Notifications, DataStore, Intelligence, MCPServer.
 - **Tested by:** unit tests with stubbed services — the core of the app is validated headlessly, no UI.
 - **Deep-dive risk:** **medium** (orchestration is where edge cases live).
 - **From:** none (new).
@@ -277,8 +287,8 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 #### 22. SettingsUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** settings screens.
-- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle; **AI Enhancements section** (summarize/speaker-name toggles + model download row with progress). **[P3]** audio file-usage view + deletion.
-- **Depends on:** Calendar, Vocabulary, DataStore, Intelligence, DesignSystem.
+- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle; **AI Enhancements section** (summarize/speaker-name toggles + model download row with progress); **MCP row** in General (subtitle + How-to-connect link + retry; the sheet holds the endpoint URL/copy and links to the `App/ConnectingMCP.md` guide; reads `MCPServerState` directly). **[P3]** audio file-usage view + deletion.
+- **Depends on:** Calendar, Vocabulary, DataStore, Intelligence, DesignSystem, MCPServer.
 - **Tested by:** view-model unit tests.
 - **Deep-dive risk:** **low.** **From:** none.
 
@@ -326,6 +336,7 @@ graph TD
     REC[Recording]; DET[MeetingDetection]; TS[TranscriptionService]; CAL[Calendar]; NOTIF[Notifications]; VOC[Vocabulary]
     STORE[DataStore]; PERM[Permissions]; RC[RemoteConfig]
     INT[Intelligence]
+    MCPS[MCPServer]
   end
   AUD[(AudioCapture pkg)]; TRX[(Transcription pkg)]; LLM[(LocalLLM pkg)]
 
@@ -339,9 +350,11 @@ graph TD
   LIST --> STORE & CORE & DS
   MENU & ONB & SET --> CORE & DS
   ONB --> PERM & CAL & TS
-  SET --> CAL & VOC & STORE & INT
+  SET --> CAL & VOC & STORE & INT & MCPS
   MENU --> STORE
   CORE --> REC & DET & TS & CAL & NOTIF & STORE
+  CORE --> MCPS
+  MCPS --> STORE
   INT --> LLM & STORE
   CORE --> INT
   REC --> AUD & STORE & PERM

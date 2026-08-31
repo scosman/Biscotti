@@ -2,6 +2,7 @@ import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import MCPServer
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -53,6 +54,12 @@ public extension Notification.Name {
     /// AppCore observes this to refresh its cached flag.
     static let stopRecordingAutomaticallyDidChange = Notification.Name(
         "net.scosman.biscotti.stopRecordingAutomaticallyDidChange"
+    )
+
+    /// Posted after the "MCP server" setting is toggled. AppCore observes
+    /// this to start/stop the MCP server live, without a restart.
+    static let mcpServerEnabledDidChange = Notification.Name(
+        "net.scosman.biscotti.mcpServerEnabledDidChange"
     )
 }
 
@@ -243,6 +250,10 @@ public final class AppCore {
     /// Checks for newer releases on GitHub.
     public let updateChecker: UpdateChecker
 
+    /// Local MCP server lifecycle (loopback HTTP, read-only meeting tools).
+    /// Only starts when the user enables it in Settings.
+    public let mcpServer: MCPServerController
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -318,7 +329,8 @@ public final class AppCore {
         intelligence: Intelligence,
         modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler(),
-        updateChecker: UpdateChecker? = nil
+        updateChecker: UpdateChecker? = nil,
+        mcpServer: MCPServerController? = nil
     ) {
         self.store = store
         self.permissions = permissions
@@ -331,6 +343,7 @@ public final class AppCore {
         self.modelManager = modelManager
         self.scheduler = scheduler
         self.updateChecker = updateChecker ?? UpdateChecker()
+        self.mcpServer = mcpServer ?? MCPServerController(store: store)
     }
 
     // MARK: - Lifecycle
@@ -425,6 +438,14 @@ public final class AppCore {
         scheduleCalendarTimers()
         startUpcomingMirrorTask()
         startMinuteTickTask()
+
+        // MCP server: nothing is bound or scheduled unless the user opted in.
+        // Read here (not passed in) so the completeOnboarding path is covered too.
+        let mcpEnabled = await (try? store.settings())?.mcpServerEnabled ?? false
+        if mcpEnabled {
+            logger.info("startBackgroundServices: starting MCP server")
+            await mcpServer.start()
+        }
         logger.info("startBackgroundServices: done")
     }
 
@@ -573,32 +594,8 @@ public final class AppCore {
 
     // MARK: - Permission refresh
 
-    /// Refreshes all permission statuses from their live system sources.
-    ///
-    /// Microphone uses its injected seam. Calendar reads the live status
-    /// from `CalendarService` (which queries EventKit directly). Notifications
-    /// reads the live status from `NotificationService`. System audio has no
-    /// public TCC API so its status is unchanged here.
-    public func refreshAllPermissions() async {
-        // Refresh mic (and any injected cal/notif seams)
-        await permissions.refresh()
-
-        // Sync calendar status from CalendarService (ground truth)
-        let calStatus: PermissionState = switch calendar.auth {
-        case .authorized: .authorized
-        case .denied, .restricted: .denied
-        case .notDetermined: .notDetermined
-        }
-        permissions.noteCalendar(calStatus)
-
-        // Sync notification status from NotificationService (ground truth)
-        if await notifications.isCurrentlyAuthorized() {
-            permissions.noteNotifications(.authorized)
-        } else if await notifications.isDenied() {
-            permissions.noteNotifications(.denied)
-        }
-        // else: leave as .notDetermined
-    }
+    // (refreshAllPermissions lives in an extension below to keep the class
+    // body within the type_body_length lint limit.)
 }
 
 // MARK: - Data refresh
@@ -697,6 +694,35 @@ public extension AppCore {
     /// Routes to the read-only preview for an upcoming calendar event.
     func selectEvent(_ key: String) {
         route = .event(key)
+    }
+
+    // MARK: - Permission refresh
+
+    /// Refreshes all permission statuses from their live system sources.
+    ///
+    /// Microphone uses its injected seam. Calendar reads the live status
+    /// from `CalendarService` (which queries EventKit directly). Notifications
+    /// reads the live status from `NotificationService`. System audio has no
+    /// public TCC API so its status is unchanged here.
+    func refreshAllPermissions() async {
+        // Refresh mic (and any injected cal/notif seams)
+        await permissions.refresh()
+
+        // Sync calendar status from CalendarService (ground truth)
+        let calStatus: PermissionState = switch calendar.auth {
+        case .authorized: .authorized
+        case .denied, .restricted: .denied
+        case .notDetermined: .notDetermined
+        }
+        permissions.noteCalendar(calStatus)
+
+        // Sync notification status from NotificationService (ground truth)
+        if await notifications.isCurrentlyAuthorized() {
+            permissions.noteNotifications(.authorized)
+        } else if await notifications.isDenied() {
+            permissions.noteNotifications(.denied)
+        }
+        // else: leave as .notDetermined
     }
 }
 
@@ -855,52 +881,47 @@ extension AppCore {
     /// Starts async observers that refresh cached notification settings
     /// when they are changed from SettingsUI. Cancels any previously
     /// running observers first.
+    ///
+    /// The handlers capture `self` weakly, matching the `[weak self]` on the
+    /// helper's Task: nothing in the task graph may hold AppCore strongly,
+    /// or the stored tasks would form a retain cycle (AppCore → tasks →
+    /// handler → AppCore) and leak every test fixture that launches one.
     func startNotificationSettingsObservers() {
         for task in notificationSettingsObserverTasks {
             task.cancel()
         }
-        notificationSettingsObserverTasks.removeAll()
-
-        let monitorTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .monitorForMeetingsDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    monitorForMeetings = settings.monitorForMeetings
-                }
-            }
-        }
-
-        let calendarModeTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .calendarNotificationModeDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    calendarNotificationMode = settings.calendarNotificationMode
-                    scheduleCalendarTimers()
-                }
-            }
-        }
-
-        let autoStopTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .stopRecordingAutomaticallyDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    stopRecordingAutomatically = settings.stopRecordingAutomatically
-                }
-            }
-        }
-
         notificationSettingsObserverTasks = [
-            monitorTask, calendarModeTask, autoStopTask
+            settingsObserverTask(for: .monitorForMeetingsDidChange) { [weak self] in
+                self?.monitorForMeetings = $0.monitorForMeetings
+            },
+            settingsObserverTask(for: .calendarNotificationModeDidChange) { [weak self] in
+                self?.calendarNotificationMode = $0.calendarNotificationMode
+                self?.scheduleCalendarTimers()
+            },
+            settingsObserverTask(for: .stopRecordingAutomaticallyDidChange) { [weak self] in
+                self?.stopRecordingAutomatically = $0.stopRecordingAutomatically
+            },
+            settingsObserverTask(for: .mcpServerEnabledDidChange) { [weak self] in
+                await self?.mcpServer.applyEnabled($0.mcpServerEnabled)
+            }
         ]
+    }
+
+    /// One notification-observing task: on each post, re-reads the settings
+    /// snapshot and hands it to `handle` on the MainActor.
+    private func settingsObserverTask(
+        for name: Notification.Name,
+        handle: @escaping @MainActor (AppSettingsData) async -> Void
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: name) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    await handle(settings)
+                }
+            }
+        }
     }
 }
 

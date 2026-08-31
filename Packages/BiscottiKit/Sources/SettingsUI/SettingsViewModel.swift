@@ -5,6 +5,7 @@ import DataStore
 import Foundation
 import Intelligence
 import LocalLLM
+import MCPServer
 import Permissions
 import ServiceManagement
 import Vocabulary
@@ -68,6 +69,10 @@ public final class SettingsViewModel {
 
     /// How far before a meeting the menu bar shows the detailed text.
     public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
+
+    /// Whether the local MCP server is enabled (persisted intent; the live
+    /// state is `mcpServerState`). Off by default.
+    public private(set) var mcpServerEnabled = false
 
     // MARK: - Notification settings
 
@@ -382,6 +387,7 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            mcpServerEnabled = settings.mcpServerEnabled
             aiAnalysisEnabled = settings.aiAnalysisEnabled
             customVocabularyEnabled = settings.customVocabularyResolved
             calendarVocabularyEnabled = settings.calendarVocabularyEnabled
@@ -469,6 +475,13 @@ public extension SettingsViewModel {
     var calendarNotificationsDisabled: Bool {
         calendarState != .authorized
     }
+
+    /// The MCP server's live lifecycle state, forwarded from AppCore. The
+    /// Settings row renders its caption from this (truth), while the toggle
+    /// reflects `mcpServerEnabled` (intent).
+    var mcpServerState: MCPServerState {
+        core.mcpServer.state
+    }
 }
 
 // MARK: - Notification settings actions
@@ -545,6 +558,35 @@ public extension SettingsViewModel {
         } catch {
             stopRecordingAutomatically = !enabled
         }
+    }
+}
+
+// MARK: - MCP Server actions
+
+public extension SettingsViewModel {
+    /// Toggles the "MCP" setting. Persists to the store and posts
+    /// `.mcpServerEnabledDidChange` so AppCore starts/stops the server live.
+    /// The optimistic update is kept even when the server later fails to
+    /// start — the user's intent is preserved (functional spec §2.3).
+    func setMCPServerEnabled(_ enabled: Bool) async {
+        mcpServerEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.mcpServerEnabled = enabled
+            }
+            NotificationCenter.default.post(
+                name: .mcpServerEnabledDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            mcpServerEnabled = !enabled
+        }
+    }
+
+    /// Re-attempts the MCP server bind after a failure (the Retry button).
+    func retryMCPServer() async {
+        await core.mcpServer.start()
     }
 }
 

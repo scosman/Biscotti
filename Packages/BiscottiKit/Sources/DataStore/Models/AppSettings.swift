@@ -68,6 +68,10 @@ import SwiftData
     /// Whether per-meeting terms are derived from the associated calendar event.
     public var calendarVocabularyEnabled: Bool = true
 
+    /// Whether the local MCP server (loopback, read-only tools) runs. Off by
+    /// default; AppCore starts/stops the server to match.
+    public var mcpServerEnabled: Bool = false
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -107,7 +111,8 @@ import SwiftData
         selectedModelID: String = "",
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
-        calendarVocabularyEnabled: Bool = true
+        calendarVocabularyEnabled: Bool = true,
+        mcpServerEnabled: Bool = false
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -126,5 +131,6 @@ import SwiftData
         self.summaryPrompt = summaryPrompt
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
+        self.mcpServerEnabled = mcpServerEnabled
     }
 }

@@ -320,15 +320,44 @@ Existing MCP payload tests assert on decoded structs, so adding a required
 field means updating those fixtures — expected, and it is how we know the
 schema and payload stayed in sync.
 
-## 7. Documentation
+## 7. Copy Meeting Link
 
-New `App/deeplinks.md`, per functional spec §9. Content is the §4 vocabulary
+Functional spec §8. Two call sites, one shared implementation:
+
+```swift
+// AppCore
+func copyMeetingLink(_ id: UUID) {
+    let url = AppLink.meeting(id: id, target: .tab(.summary)).url
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+}
+```
+
+`AppCore` already imports AppKit-adjacent surface via its dependencies; if
+importing `AppKit` there proves awkward under the module's platform
+conditionals, the write moves behind a `pasteboardWriter: (String) -> Void`
+seam injected from the app target — the same shape as the existing
+`urlOpener` closures in `AppShellViewModel`. The seam is preferable anyway
+for testability: the unit test asserts the *string handed to the writer*
+rather than mutating the developer's real pasteboard during `make test`.
+Default to the seam.
+
+- `MeetingListView.contextMenu(forSelectionType:)` gains a Copy Meeting Link
+  button guarded on `ids.count == 1`.
+- `MeetingDetailView`'s `ellipsis.circle` menu gains one unconditionally
+  (a detail view always has exactly one meeting).
+
+Both call through their existing view models to `core.copyMeetingLink(_:)`.
+
+## 8. Documentation
+
+New `App/deeplinks.md`, per functional spec §10. Content is the §4 vocabulary
 written for an external integrator, with a copy-pasteable
 `open 'biscotti://…'` example per route.
 
-## 8. Testing
+## 9. Testing
 
-### 8.1 `AppLinksTests` (new, pure, fast)
+### 9.1 `AppLinksTests` (new, pure, fast)
 
 Table-driven over `(urlString, expected: AppLink?)`. Covers every route, the
 §4.4 resolution order including the `tab`+`time` conflict, case-insensitivity
@@ -336,7 +365,7 @@ of scheme/host/tab, unknown parameters ignored, `search?query=` empty vs.
 absent, `record?title=` whitespace-only → `nil`, and every rejection in R3.
 Plus the build→parse round-trip over all cases.
 
-### 8.2 `AppCoreTests` (rewriting `DeepLinkTests`)
+### 9.2 `AppCoreTests` (rewriting `DeepLinkTests`)
 
 Per-route state assertions; a nonexistent meeting setting
 `linkError == .meetingNotFound` *and* leaving `route` untouched; an
@@ -348,13 +377,13 @@ store; and repeated identical links producing distinct tokens (§3.1).
 `DeepLinkTests.missingTimeIsNoOp` is rewritten to assert the meeting opens on
 Summary.
 
-### 8.3 Not unit-testable
+### 9.3 Not unit-testable
 
 `application(_:open:)` and the cold-launch drain live in the app target,
 which has no test host (`make test-app` is empty). They are covered by the
 manual script — which is precisely the split the repo already uses.
 
-### 8.4 Manual test script
+### 9.4 Manual test script
 
 New `AppURLsScript.swift` in `ManualTestKit/Scripts/`, added to
 `allScripts`. Follows the established pattern: the script declares steps with
@@ -365,19 +394,22 @@ closures call `NSWorkspace.shared.open(_:)` from the app target.
 Fixed-URL routes (`home`, `meetings`, `settings`, `search?query=…`,
 `record`) are one `.action` button each plus a `.humanQuestion`.
 
-**Getting a real meeting UUID.** The meeting routes need a UUID from the
-user's actual library, which ManualTestApp cannot invent. It must not read
-Biscotti's SwiftData store directly — a second process on a live SwiftData
-file risks lock contention and is not a supported configuration. Instead the
-wired action calls the running app's **MCP server** over
-`127.0.0.1:8516` (`biscotti_query_meetings`, take the first result's `id`),
-then opens `biscotti://meeting/{id}`, `…?tab=notes` and `…?time=30`.
+**Getting a real meeting UUID — via the pasteboard.** The meeting routes need
+a UUID from the user's actual library. The harness gets it from **Copy
+Meeting Link** (§7): an `.instruction` step tells the human to copy a link in
+the real app, and the wired `.action` reads
+`NSPasteboard.general.string(forType: .string)`, validates it parses as an
+`AppLink.meeting`, and opens it — then repeats with `?tab=notes` and
+`?time=30` appended by rebuilding through `AppLink`. A pasteboard holding no
+valid `biscotti://` URL throws with "copy a meeting link first", surfacing in
+the runner as a failed step.
 
-This has a real benefit: it makes the manual script the end-to-end test of
-the `app_url` field from §6, which is otherwise only unit-tested. Its cost is
-a precondition — the MCP toggle must be on — stated in the script's first
-`.instruction` step, with the fallback of copying a timestamp link out of any
-meeting's Notes if the human would rather not enable it.
+Two approaches were rejected. Reading Biscotti's SwiftData store from
+ManualTestApp would put a second process on a live store — unsupported, risks
+lock contention against the user's real library, and would drag `DataStore`
+and schema-version tracking into a deliberately dependency-free harness.
+Calling the running app's MCP server would work but demands the MCP toggle be
+on, coupling this script to an unrelated integration.
 
 The three delivery states unit tests cannot reach (cold launch, menu-bar
 only, background) are `.instruction` + `.humanQuestion` pairs, as in the MCP
@@ -389,7 +421,7 @@ libraries the rule names (`Transcription`, `AudioCapture`, `LocalLLM`,
 `MCPServer`) — except `MCPServer`, via §6. So `mcp_*` steps must be marked
 `not-run` when the `app_url` change lands.
 
-## 9. Risks
+## 10. Risks
 
 | Risk | Mitigation |
 |---|---|

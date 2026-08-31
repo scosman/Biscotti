@@ -38,10 +38,8 @@ current implementation misses (cold launch, menu-bar-only, window closed).
 - Deep links into settings *sub*-sections (`settings?section=ai`). Settings
   opens at its default section.
 - x-callback-url style return/callback parameters.
-- A "Copy Link to Meeting" affordance in the app. These URLs resolve only
-  against the local machine's library, so a meeting link is not shareable
-  with anyone else — the audience is other software on the same machine
-  (the MCP server above all), not humans passing links around.
+- Sharing links between machines. A `biscotti://` URL resolves only against
+  the local library, so a link copied on one Mac means nothing on another.
 
 ## 3. General rules
 
@@ -284,7 +282,31 @@ through an abstraction to prove it.
 revisiting later for the search-results list, but not in this project — see
 §10.)
 
-## 8. Testing
+## 8. Copy Meeting Link
+
+The app gains a **Copy Meeting Link** command that puts
+`biscotti://meeting/{uuid}` on the general pasteboard, in two places that
+already host per-meeting commands:
+
+1. The meetings-list row context menu (`MeetingListView.contextMenu`),
+   alongside Delete. Shown only for a single-row selection — a multi-select
+   has no one link to copy.
+2. The meeting detail overflow menu (the `ellipsis.circle` menu that holds
+   "Reveal recording in Finder" and "Re-transcribe").
+
+No `tab` or `time` parameter: the copied link opens the meeting at its
+default view, matching the MCP `app_url` (§7).
+
+The link is machine-local (see Out of scope). The use case is a user pasting
+a meeting link into their own notes app, task manager, or calendar entry on
+the same Mac — not sending it to a colleague. The UI does not caution about
+this; a link that silently fails elsewhere is an acceptable cost for a
+one-line menu item, and the "Meeting Not Found" alert (§3) is the honest
+answer on any machine that lacks the meeting.
+
+This is also the manual test's source of a real meeting UUID (§9).
+
+## 9. Testing
 
 ### The two alerts
 
@@ -321,9 +343,19 @@ A new `app_urls` script in `ManualTestKit/Scripts/`, registered in
 `NSWorkspace` and macOS routes it to the real Biscotti app — a genuine
 end-to-end test of system registration, not a simulation.
 
-Shape: one `.action` button per URL that opens it, each followed by a
-`.humanQuestion` confirming where Biscotti landed. Plus the three delivery
-states unit tests cannot reach, as `.instruction` + `.humanQuestion` pairs:
+Shape: one `.action` button per fixed URL that opens it, each followed by a
+`.humanQuestion` confirming where Biscotti landed.
+
+The meeting routes need a UUID from the user's real library, which the
+harness cannot invent. An `.instruction` step tells the human to use **Copy
+Meeting Link** (§8) in the real app; the following `.action` steps read the
+URL off `NSPasteboard.general` and open it as-is, then with `?tab=notes` and
+`?time=30` appended. That also exercises the new menu item end to end. If the
+pasteboard holds no `biscotti://` URL, the step fails with a message saying
+to copy one first.
+
+Plus the three delivery states unit tests cannot reach, as `.instruction` +
+`.humanQuestion` pairs:
 
 - **Cold launch** — quit Biscotti entirely, then open a `meeting` URL.
 - **Menu-bar only** — close Biscotti's window (app alive in the menu bar),
@@ -338,7 +370,7 @@ Note: this script needs the real Biscotti app installed and registered with
 LaunchServices. If a stale copy of Biscotti is registered, URLs open *that*
 build — the script says so explicitly in its first instruction step.
 
-## 9. Documentation — `App/deeplinks.md`
+## 10. Documentation — `App/deeplinks.md`
 
 The URL vocabulary is a public contract for other applications, so it is
 documented in its own file, `App/deeplinks.md` — not folded into
@@ -352,7 +384,7 @@ access to this repo.
 
 `biscotti_get_meeting`'s `app_url` description (§7) points at this document.
 
-## 10. Deliberately deferred
+## 11. Deliberately deferred
 
 - `app_url` on `biscotti_query_meetings` results.
 - `settings?section=…` deep links.

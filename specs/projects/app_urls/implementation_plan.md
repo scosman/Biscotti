@@ -10,7 +10,7 @@ and the on-hardware proof.
 
 ## Phases
 
-- [ ] **Phase 1 — `AppLinks` module.** New dependency-free target
+- [x] **Phase 1 — `AppLinks` module.** New dependency-free target
   (`AppLink`, `MeetingTarget`, `MeetingTab`), the parser, the builder, and
   `AppLinksTests` covering the whole vocabulary, both failure tiers, and the
   build→parse round-trip. Wired into `Package.swift` for `AppCore`,

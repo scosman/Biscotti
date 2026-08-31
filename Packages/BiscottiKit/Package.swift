@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
+        .library(name: "AppLinks", targets: ["AppLinks"]),
         .library(name: "AppCore", targets: ["AppCore"]),
         .library(name: "MeetingListUI", targets: ["MeetingListUI"]),
         .library(name: "RecordingUI", targets: ["RecordingUI"]),
@@ -129,8 +130,18 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "AppLinks",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AppLinksTests",
+            dependencies: ["AppLinks"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "AppCore",
             dependencies: [
+                "AppLinks",
                 "DataStore",
                 "Intelligence",
                 "MCPServer",
@@ -256,6 +267,7 @@ let package = Package(
             name: "MeetingDetailUI",
             dependencies: [
                 "AppCore",
+                "AppLinks",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
@@ -592,6 +604,7 @@ let package = Package(
         .target(
             name: "MCPServer",
             dependencies: [
+                "AppLinks",
                 "DataStore",
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "NIOCore", package: "swift-nio"),

@@ -26,6 +26,10 @@ public struct SettingsView: View {
     /// Internal (not private) so the cross-file MCP row extension
     /// (`SettingsMCPRow.swift`) can present the help sheet.
     @State var showMCPHelp = false
+    /// Internal (not private) so the cross-file MCP row extension
+    /// (`SettingsMCPRow.swift`) can present the toggle-on confirmation
+    /// alert (functional spec §2.1).
+    @State var showMCPConfirm = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel

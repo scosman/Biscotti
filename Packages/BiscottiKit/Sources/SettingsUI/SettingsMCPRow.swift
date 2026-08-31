@@ -9,6 +9,19 @@ extension SettingsView {
     /// starting/failed (functional spec §2.1).
     static let mcpSubtitle = "Chat with your meeting notes in any agent."
 
+    /// Toggle-on confirmation alert copy (functional spec §2.1).
+    /// Verbatim-identity policy: these statics == the spec text.
+    static let mcpConfirmTitle = "Allow local apps to read your meetings?"
+
+    static let mcpConfirmMessage =
+        "While MCP is on, any app on this Mac can read your meeting notes, "
+            + "transcripts, and summaries. Nothing leaves your Mac unless an agent "
+            + "you connect sends it somewhere."
+
+    static let mcpConfirmCancelTitle = "Cancel"
+
+    static let mcpConfirmTurnOnTitle = "Turn On"
+
     /// The MCP settings row, last in the General section: the toggle holds
     /// the user's intent (`mcpServerEnabled`), the caption below renders the
     /// server's live state (`mcpServerState`). The toggle stays on after a
@@ -58,6 +71,15 @@ extension SettingsView {
         .sheet(isPresented: $showMCPHelp) {
             MCPHelpSheet()
         }
+        .alert(Self.mcpConfirmTitle, isPresented: $showMCPConfirm) {
+            Button(Self.mcpConfirmCancelTitle, role: .cancel) {}
+            Button(Self.mcpConfirmTurnOnTitle) {
+                Task { await viewModel.setMCPServerEnabled(true) }
+            }
+            .keyboardShortcut(.defaultAction)
+        } message: {
+            Text(Self.mcpConfirmMessage)
+        }
     }
 
     private var mcpSubtitleText: some View {
@@ -68,11 +90,19 @@ extension SettingsView {
 
     /// Intent binding: reads/writes the persisted setting; AppCore reacts to
     /// the posted notification and drives the live state the caption shows.
+    /// Turning on does not enable directly — it presents the confirmation
+    /// alert (§2.1); only that alert's Turn On button enables. Cancel leaves
+    /// the stored intent off, so the toggle (whose `get` reads it) snaps
+    /// back. Turning off is unchanged: immediate disable, no alert.
     var mcpEnabledBinding: Binding<Bool> {
         Binding(
             get: { viewModel.mcpServerEnabled },
             set: { newValue in
-                Task { await viewModel.setMCPServerEnabled(newValue) }
+                if newValue {
+                    showMCPConfirm = true
+                } else {
+                    Task { await viewModel.setMCPServerEnabled(false) }
+                }
             }
         )
     }

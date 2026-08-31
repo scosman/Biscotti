@@ -51,10 +51,26 @@ containing:
 There is no JSON config snippet in the sheet: client configs are inconsistent
 across agents, so per-client instructions live in the guide instead.
 
+Toggling the row on does not enable the server directly — it first presents a
+confirmation alert. This alert appears **every time** the toggle is turned on
+(there is no "asked once" persistence and no bypass).
+
+- **Title:** "Allow local apps to read your meetings?"
+- **Message:** "While MCP is on, any app on this Mac can read your meeting
+  notes, transcripts, and summaries. Nothing leaves your Mac unless an agent
+  you connect sends it somewhere."
+- **Buttons:** "Cancel" (cancel role), then "Turn On" (default), in that order.
+
+The server is enabled only when the user clicks **Turn On** — that performs
+the existing enable path (persist the setting, start the server). **Cancel**
+changes nothing: the toggle stays off. Toggling off is unchanged — immediate,
+no alert.
+
 ### 2.2 Lifecycle
 
-- Toggling **on** starts the server immediately (sub-second); the row reflects
-  the real state, not the intent.
+- Toggling **on** presents the confirmation alert (above); only **Turn On**
+  starts the server immediately (sub-second); the row reflects the real
+  state, not the intent.
 - Toggling **off** stops the listener and closes open connections immediately.
 - The setting persists. On app launch, the server starts iff the setting is on.
 - The server lives only as long as the app process. Quitting stops it. Running

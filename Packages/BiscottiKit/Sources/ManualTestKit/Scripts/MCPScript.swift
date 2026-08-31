@@ -15,7 +15,9 @@ public extension TestScript {
             .instruction(
                 id: "mcp_connect",
                 text: "Run the real Biscotti app (not ManualTestApp), open "
-                    + "Settings → General, and turn the MCP toggle on. "
+                    + "Settings → General, and turn the MCP toggle on. A "
+                    + "confirmation alert appears (it appears every time the "
+                    + "toggle is turned on) — click “Turn On”. "
                     + "The caption should show the subtitle with a "
                     + "“How to connect” link on the same line. Open the "
                     + "link: the sheet holds the MCP Server URL "

@@ -63,17 +63,19 @@ public final class MCPServerController {
     /// path — awaited, with the `.stopped` transition; this runs only when
     /// an owner failed to call it.
     deinit {
+        // Like a graceful stop, stop serving first: requests arriving in
+        // the teardown window get a 503 instead of meeting content from a
+        // controller whose owner is gone.
+        handlerBox.withLockedValue { $0 = nil }
         let listener = listenerBox.withLockedValue { box -> HTTPListener? in
             let listener = box
             box = nil
             return listener
         }
         guard let listener else { return }
-        // `deinit` cannot await; fire-and-forget the same *listener* shutdown
-        // `stop()` awaits. Unlike a graceful stop this does not nil
-        // `handlerBox` first, so in-flight requests in the teardown window
-        // are still served (read-only tools; the window is milliseconds).
-        // The task holds only the listener, never this controller.
+        // `deinit` cannot await; fire-and-forget the same *listener*
+        // shutdown `stop()` awaits. The task holds only the listener,
+        // never this controller.
         Task { await listener.shutdown() }
     }
 

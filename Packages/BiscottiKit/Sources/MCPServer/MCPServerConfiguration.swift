@@ -25,5 +25,5 @@ public enum MCPServerConfiguration {
     /// schema and description say 1-250 (functional spec §5.1).
     static let maxResultLimit = 250
     /// The limit applied when the caller sends none (functional spec §5.1).
-    static let defaultResultLimit = 50
+    static let defaultResultLimit = 20
 }

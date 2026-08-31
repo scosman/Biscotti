@@ -144,7 +144,7 @@ Shared conventions:
 | `query` | string | Full-text search over title, summary, notes, transcript, people and tags. Prefix-matched per term, AND across terms. |
 | `after` | string | Only meetings whose date is ≥ this. |
 | `before` | string | Only meetings whose date is ≤ this. |
-| `limit` | integer | 1–250, default 50. |
+| `limit` | integer | 1–250, default 20. |
 
 With **no filters at all**, the tool lists the user's meetings most recent
 first (date descending) — it never errors for being unfiltered. `limit`

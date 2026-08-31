@@ -4,7 +4,7 @@ import MCP
 import Testing
 @testable import MCPServer
 
-/// The `limit` parameter of `biscotti_query_meetings` (cap 250, default 50)
+/// The `limit` parameter of `biscotti_query_meetings` (cap 250, default 20)
 /// and the `results_truncated` flag it drives, against an in-memory
 /// `DataStore`, no sockets.
 @Suite("biscotti_query_meetings limit")
@@ -25,7 +25,7 @@ struct MeetingToolLimitTests {
         #expect(try ToolTestSupport.jsonObject(from: result)["results_truncated"] as? Bool == true)
     }
 
-    @Test("limit cap is 250 and the default stays 50")
+    @Test("limit cap is 250 and the default stays 20")
     func limitCapAndDefault() async throws {
         let (provider, store) = try ToolTestSupport.makeProvider()
         let start = try #require(ToolDateFormatting.parse("2026-08-01T12:00:00Z"))
@@ -33,9 +33,9 @@ struct MeetingToolLimitTests {
             _ = try await store.createMeeting(title: "Meeting \(idx)", start: start)
         }
 
-        // No limit: the newest 50 (the default), flagged truncated.
+        // No limit: the newest 20 (the default), flagged truncated.
         let defaulted = try await provider.call(name: "biscotti_query_meetings", arguments: [:])
-        #expect(try ToolTestSupport.idList(defaulted).count == 50)
+        #expect(try ToolTestSupport.idList(defaulted).count == 20)
         #expect(
             try ToolTestSupport.jsonObject(from: defaulted)["results_truncated"] as? Bool == true
         )

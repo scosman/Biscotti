@@ -92,7 +92,7 @@ public enum MCPServerConfiguration {
     static let idleTimeoutSeconds: Int64 = 120
     static let searchCandidatePool = 500         // see §6.1
     static let maxResultLimit = 250
-    static let defaultResultLimit = 50           // limit's default (spec §5.1)
+    static let defaultResultLimit = 20           // limit's default (spec §5.1)
 }
 ```
 
@@ -300,7 +300,7 @@ struct; functional spec §5.2).
 ### 6.1 `biscotti_query_meetings`
 
 ```
-validate: limit ∈ 1...250, default 50
+validate: limit ∈ 1...250, default 20
           before/after parse as ISO-8601 (full or date-only), after ≤ before
           (no filter is legal: falls through to the date-descending list)
 
@@ -495,7 +495,7 @@ New test target `MCPServerTests` (+ additions to `DataStoreTests`,
   newest N; query-only
   relevance order; date-only newest-first; `after`/`before` inclusive bounds;
   `after > before` invalid params; unparseable date invalid params; date-only
-  string accepted; `limit` rejected outside 1…250 (default 50, cap 250);
+  string accepted; `limit` rejected outside 1…250 (default 20, cap 250);
   `results_truncated` true at exactly `limit` and false below; `query_snippet`
   present only with a query; empty result set is not an error.
 - `get_meeting`: full payload for a rich meeting (calendar + tags + people +

@@ -43,7 +43,7 @@ enum MeetingToolCatalog {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 250,
-                    "description": "Maximum number of results to return (1-250, default 50)."
+                    "description": "Maximum number of results to return (1-250, default 20)."
                 ]
             ]
         ],

@@ -54,11 +54,8 @@ actor MeetingToolProvider {
             "limit", in: arguments, range: 1 ... MCPServerConfiguration.maxResultLimit
         ) ?? MCPServerConfiguration.maxResultLimit
 
-        guard query != nil || after != nil || before != nil else {
-            throw MCPError.invalidParams(
-                "Provide at least one of 'query', 'before', or 'after'. 'limit' alone does not filter."
-            )
-        }
+        // No filter is legal: the date-descending list of the most recent
+        // meetings comes back (`limit` alone means "newest N").
         if let after, let before, after > before {
             throw MCPError.invalidParams("'after' must not be later than 'before'.")
         }

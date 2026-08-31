@@ -23,7 +23,7 @@ enum MeetingToolCatalog {
 
     private static let queryMeetings = Tool(
         name: queryMeetingsName,
-        description: "Search the user's recorded meetings in Biscotti. Returns a short summary of each match — use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said.",
+        description: "Search the user's recorded meetings in Biscotti. Use `biscotti_get_meeting` for details and `biscotti_get_transcript` for what was said.",
         inputSchema: [
             "type": "object",
             "properties": [
@@ -33,11 +33,11 @@ enum MeetingToolCatalog {
                 ],
                 "after": [
                     "type": "string",
-                    "description": "Only meetings whose date is on or after this ISO-8601 date-time (a bare date like 2026-08-30 means local midnight)."
+                    "description": "Only meetings whose date is on or after this ISO-8601 date-time with a time zone, e.g. `2026-08-30T14:03:00Z` or `2026-08-30T14:03:00+02:00` (a bare date like 2026-08-30 means local midnight)."
                 ],
                 "before": [
                     "type": "string",
-                    "description": "Only meetings whose date is on or before this ISO-8601 date-time (a bare date like 2026-08-30 means local midnight)."
+                    "description": "Only meetings whose date is on or before this ISO-8601 date-time with a time zone, e.g. `2026-08-30T14:03:00Z` or `2026-08-30T14:03:00+02:00` (a bare date like 2026-08-30 means local midnight)."
                 ],
                 "limit": [
                     "type": "integer",

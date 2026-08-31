@@ -103,12 +103,14 @@ struct MCPToolRoundTripTests {
     @Test("invalid tool arguments are a JSON-RPC invalid-params error")
     func invalidParamsOverWire() async throws {
         try await MCPServerFixture.withRunningServer { fixture in
+            // An unparseable date is the invalid-params case (`limit` alone
+            // is now legal — "newest N").
             let response = try await JSONRPCClient.post(
                 port: fixture.port,
                 method: "tools/call",
                 params: [
                     "name": "biscotti_query_meetings",
-                    "arguments": ["limit": 10] as [String: Any]
+                    "arguments": ["after": "not-a-date"] as [String: Any]
                 ]
             )
             let error = try #require(response.body["error"] as? [String: Any])

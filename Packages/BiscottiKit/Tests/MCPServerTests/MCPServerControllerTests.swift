@@ -5,20 +5,23 @@ import Testing
 
 /// Controller lifecycle: idempotence, restart after stop (the port really
 /// is released), the bind-conflict path, and rapid on/off/on serialization.
+///
+/// Every controller here binds an ephemeral port (0) or a port held by
+/// another in-test controller — tests must never touch the production
+/// port 8516, which the real app dogfoods.
 @MainActor
 @Suite("MCPServerController lifecycle")
 struct MCPServerControllerTests {
     @Test("start twice is a no-op")
     func doubleStartIsNoOp() async throws {
         let controller = try makeController()
-        await controller.start(port: 0)
+        await controller.start()
         guard case let .running(url) = controller.state else {
             Issue.record("expected .running, got \(controller.state)")
             return
         }
 
-        // The second start must not rebind or fail — even though it targets
-        // the fixed production port.
+        // The second start must not rebind or fail.
         await controller.start()
 
         guard case let .running(urlAfter) = controller.state else {
@@ -32,17 +35,17 @@ struct MCPServerControllerTests {
     @Test("stop twice is a no-op")
     func doubleStopIsNoOp() async throws {
         let controller = try makeController()
-        await controller.start(port: 0)
+        await controller.start()
         await controller.stop()
         #expect(controller.state == .stopped)
         await controller.stop()
         #expect(controller.state == .stopped)
     }
 
-    @Test("start → stop → start rebinds the same port")
-    func restartRebindsSamePort() async throws {
+    @Test("stop releases the port for an immediate rebind")
+    func stopReleasesPortForRebind() async throws {
         let controller = try makeController()
-        await controller.start(port: 0)
+        await controller.start()
         guard case let .running(url) = controller.state, let firstPort = url.port else {
             Issue.record("expected .running with a port, got \(controller.state)")
             return
@@ -53,28 +56,29 @@ struct MCPServerControllerTests {
 
         // Binding the exact port just released proves shutdown actually
         // returned it to the OS.
-        await controller.start(port: firstPort)
-        guard case let .running(urlAfter) = controller.state else {
-            Issue.record("expected .running after restart, got \(controller.state)")
+        let rebind = try makeController(port: firstPort)
+        await rebind.start()
+        guard case let .running(urlAfter) = rebind.state else {
+            Issue.record("expected .running after rebind, got \(rebind.state)")
             return
         }
         #expect(urlAfter.port == firstPort)
-        await controller.stop()
+        await rebind.stop()
     }
 
     @Test("bind conflict surfaces .failed(.portInUse)")
     func portInUseFails() async throws {
         // Hold a port with a first server…
         let holder = try makeController()
-        await holder.start(port: 0)
+        await holder.start()
         guard case let .running(url) = holder.state, let heldPort = url.port else {
             Issue.record("holder did not start: \(holder.state)")
             return
         }
 
         // …then try to bind it again.
-        let contender = try makeController()
-        await contender.start(port: heldPort)
+        let contender = try makeController(port: heldPort)
+        await contender.start()
         #expect(contender.state == .failed(.portInUse(port: heldPort)))
 
         await holder.stop()
@@ -85,7 +89,7 @@ struct MCPServerControllerTests {
     @Test("applyEnabled(false) from .running reaches .stopped")
     func applyEnabledFalseStops() async throws {
         let controller = try makeController()
-        await controller.start(port: 0)
+        await controller.start()
         #expect(isRunning(controller))
 
         await controller.applyEnabled(false)
@@ -99,9 +103,9 @@ struct MCPServerControllerTests {
         // Fire the sequence without awaiting between calls. Whichever order
         // the calls enqueue in, the work queue must serialize them so no
         // listener is orphaned and the state matches reality.
-        async let start1: Void = controller.start(port: 0)
+        async let start1: Void = controller.start()
         async let stop1: Void = controller.stop()
-        async let start2: Void = controller.start(port: 0)
+        async let start2: Void = controller.start()
         await start1
         await stop1
         await start2
@@ -125,9 +129,9 @@ struct MCPServerControllerTests {
         #expect(controller.state == .stopped)
     }
 
-    private func makeController() throws -> MCPServerController {
+    private func makeController(port: Int = 0) throws -> MCPServerController {
         let store = try DataStore(storage: .inMemory)
-        return MCPServerController(store: store)
+        return MCPServerController(store: store, port: port)
     }
 
     private func isRunning(_ controller: MCPServerController) -> Bool {

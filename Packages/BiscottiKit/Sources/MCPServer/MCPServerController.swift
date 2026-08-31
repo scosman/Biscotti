@@ -27,6 +27,10 @@ public final class MCPServerController {
     public private(set) var state: MCPServerState = .stopped
 
     private let store: DataStore
+    /// The port every start attempts. Production keeps the fixed default
+    /// (8516); tests inject 0 for an ephemeral port — they must never bind
+    /// the production port, which the real app dogfoods.
+    private let port: Int
     /// Server version reported in `initialize`; from the app bundle when
     /// present (tests and SPM contexts get "0.0.0").
     private let serverVersion: String
@@ -42,8 +46,9 @@ public final class MCPServerController {
     /// listener bind *before* the request handler exists (see performStart).
     private var handlerBox = NIOLockedValueBox<MCPRequestHandler?>(nil)
 
-    public init(store: DataStore) {
+    public init(store: DataStore, port: Int = MCPServerConfiguration.port) {
         self.store = store
+        self.port = port
         serverVersion =
             Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
@@ -51,18 +56,18 @@ public final class MCPServerController {
     /// Starts the server. Idempotent: a no-op when already running or
     /// starting; a fresh attempt after `.failed` (the Retry path).
     public func start() async {
-        await start(port: MCPServerConfiguration.port)
-    }
-
-    /// Port-parameterized entry point for tests, which bind an ephemeral
-    /// port (0) to stay parallel-safe.
-    func start(port: Int) async {
         await enqueue { [self] in
             await performStart(port: port)
         }.value
     }
 
     /// Stops the listener and closes open connections. Idempotent.
+    ///
+    /// Callers own teardown: nothing shuts a running controller down on
+    /// deallocation (`deinit` cannot await), so the owner must call this
+    /// when the user disables the server and before dropping the
+    /// controller. AppCore is that owner in production; tests use the
+    /// fixture, which guarantees the call.
     public func stop() async {
         await enqueue { [self] in
             await performStop()

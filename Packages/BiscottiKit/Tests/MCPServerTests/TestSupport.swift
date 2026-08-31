@@ -27,8 +27,8 @@ struct MCPServerFixture {
         store: DataStore,
         _ body: (MCPServerFixture) async throws -> Void
     ) async throws {
-        let controller = MCPServerController(store: store)
-        await controller.start(port: 0)
+        let controller = MCPServerController(store: store, port: 0)
+        await controller.start()
 
         guard case let .running(url) = controller.state, let port = url.port else {
             let state = controller.state
@@ -50,7 +50,10 @@ struct MCPServerFixture {
         case failedToStart(MCPServerState)
 
         var description: String {
-            "MCP server fixture failed to start: \(String(describing: self))"
+            switch self {
+            case let .failedToStart(state):
+                "MCP server fixture failed to start: \(state)"
+            }
         }
     }
 }
@@ -85,29 +88,62 @@ enum RawHTTPClient {
         return try await task.value
     }
 
-    private static func perform(port: Int, request: Request) throws -> RawHTTPResponse {
-        let socketFD = socket(AF_INET, SOCK_STREAM, 0)
-        guard socketFD >= 0 else { throw ClientError.socketCreationFailed }
+    /// A connected socket that sends nothing, holding one server
+    /// connection open (connection-cap test).
+    final class HeldConnection {
+        fileprivate let socketFD: Int32
+
+        fileprivate init(socketFD: Int32) {
+            self.socketFD = socketFD
+        }
+
+        func close() {
+            Darwin.close(socketFD)
+        }
+    }
+
+    /// Connects and holds the connection open without sending anything.
+    static func connect(port: Int) async throws -> HeldConnection {
+        let task = Task.detached(priority: .userInitiated) {
+            try openSocket(to: port)
+        }
+        return try await HeldConnection(socketFD: task.value)
+    }
+
+    /// Connects, sends nothing, and waits for the server to close the
+    /// connection. Returns the bytes received before the close — empty
+    /// when the server closes an over-cap or idle connection without
+    /// responding. Throws `ClientError.serverDidNotClose` when the
+    /// connection is still open after the receive timeout.
+    static func awaitServerClose(port: Int) async throws -> Data {
+        let task = Task.detached(priority: .userInitiated) {
+            try awaitClose(port: port)
+        }
+        return try await task.value
+    }
+
+    private static func awaitClose(port: Int) throws -> Data {
+        let socketFD = try openSocket(to: port)
         defer { close(socketFD) }
 
-        var noSigPipe: Int32 = 1
-        setsockopt(socketFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-
-        var address = sockaddr_in()
-        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = UInt16(port).bigEndian
-        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-
-        let connected = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                connect(socketFD, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let received = recv(socketFD, &buffer, buffer.count, 0)
+            if received == 0 { return data }
+            if received < 0 {
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    throw ClientError.serverDidNotClose
+                }
+                throw ClientError.receiveFailed(errno)
             }
+            data.append(contentsOf: buffer[0 ..< received])
         }
-        guard connected == 0 else { throw ClientError.connectFailed(errno) }
+    }
 
-        var timeout = timeval(tv_sec: 10, tv_usec: 0)
-        setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    private static func perform(port: Int, request: Request) throws -> RawHTTPResponse {
+        let socketFD = try openSocket(to: port)
+        defer { close(socketFD) }
 
         var head = "\(request.method) \(request.path) HTTP/1.1\r\n"
         head += "Host: 127.0.0.1:\(port)\r\n"
@@ -124,6 +160,36 @@ enum RawHTTPClient {
 
         let wire = try readToEOF(socketFD)
         return try parse(wire)
+    }
+
+    /// Creates a connected TCP socket to the server with a 10 s receive
+    /// timeout. Shared by the request path and the connection probes.
+    private static func openSocket(to port: Int) throws -> Int32 {
+        let socketFD = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketFD >= 0 else { throw ClientError.socketCreationFailed }
+
+        var noSigPipe: Int32 = 1
+        setsockopt(socketFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.connect(socketFD, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else {
+            close(socketFD)
+            throw ClientError.connectFailed(errno)
+        }
+
+        var timeout = timeval(tv_sec: 10, tv_usec: 0)
+        setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        return socketFD
     }
 
     private static func sendAll(_ socketFD: Int32, _ data: Data) throws {
@@ -204,6 +270,8 @@ enum RawHTTPClient {
         case socketCreationFailed
         case connectFailed(Int32)
         case sendFailed(Int32)
+        case receiveFailed(Int32)
+        case serverDidNotClose
         case unparseableResponse
     }
 }

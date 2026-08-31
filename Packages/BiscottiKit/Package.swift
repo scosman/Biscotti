@@ -159,6 +159,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "Intelligence",
+                "MCPServer",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",

@@ -296,9 +296,9 @@ silently change the wire contract. Optional fields use
 ### 6.1 `biscotti_query_meetings`
 
 ```
-validate: at least one of query/before/after present, else invalidParams
-          limit ∈ 1...50, default 50
+validate: limit ∈ 1...50, default 50
           before/after parse as ISO-8601 (full or date-only), after ≤ before
+          (no filter is legal: falls through to the date-descending list)
 
 if query != nil:
     hits = try await store.searchHits(query, limit: searchCandidatePool)   // 500
@@ -436,13 +436,19 @@ Same file and pattern as the six existing ones.
   caption switches on `viewModel.core.mcpServer.state`:
   - `.stopped` → the subtitle
   - `.starting` → "Starting…"
-  - `.running(url)` → subtitle + endpoint line with a Copy button
-    (`NSPasteboard`, transient "Copied" like the transcript Copy button)
-    and a "How to connect" link
+  - `.running` → the subtitle with a "How to connect" link on the same
+    line, after it, in the app accent color (sage). The caption never
+    shows the endpoint URL or a Copy button — those live only in the sheet
   - `.failed(err)` → `err.userMessage` in `Tokens` error styling + "Retry"
     (`await core.mcpServer.start()`)
-- `MCPHelpSheet.swift` (new, alongside `AlertsHelpSheet.swift`): the endpoint,
-  the paste-ready JSON snippet, the one-sentence exposure warning.
+- `MCPHelpSheet.swift` (new, alongside `AlertsHelpSheet.swift`), titled
+  "Connect to MCP": one intent line, an "MCP Server URL" section (the
+  endpoint at readable size with a Copy button, `NSPasteboard`, transient
+  "Copied" like the transcript Copy button), a link to the per-agent
+  connection guide (`App/ConnectingMCP.md` on GitHub), and the one-sentence
+  exposure warning. There is deliberately no JSON config snippet — client
+  configs are inconsistent across agents, so per-client instructions live
+  in the guide instead.
 - SettingsUI reads state from `AppCore`, so it needs **no** new package
   dependency (AppCore already re-exports what it owns).
 
@@ -472,7 +478,8 @@ New test target `MCPServerTests` (+ additions to `DataStoreTests`,
 `SettingsUITests`, `AppCoreTests`).
 
 **Tool logic** (in-memory `DataStore`, no sockets):
-- `query_meetings`: no-filter error; `limit` alone is an error; query-only
+- `query_meetings`: no-filter lists newest-first; `limit` alone returns the
+  newest N; query-only
   relevance order; date-only newest-first; `after`/`before` inclusive bounds;
   `after > before` invalid params; unparseable date invalid params; date-only
   string accepted; `limit` clamped/rejected outside 1…50; `results_truncated`
@@ -514,8 +521,8 @@ New test target `MCPServerTests` (+ additions to `DataStoreTests`,
 
 **Manual test** — new `MCPScript` in `ManualTestKit/Scripts`, registered in
 `allScripts`, with one `.instruction` step (run the real app, enable MCP,
-connect a real MCP client with the config snippet, call all three tools) and
-**one recordable `.humanQuestion` step** (`mcp_real_client`) so
+connect a real MCP client via the per-agent connection guide, call all three
+tools) and **one recordable `.humanQuestion` step** (`mcp_real_client`) so
 `make manual-tests-check` tracks it. Per the repo's staleness rule, later
 changes to this module set `mcp_real_client` back to `not-run`.
 
@@ -527,7 +534,7 @@ changes to this module set `mcp_real_client` back to `not-run`.
 | SDK is pre-1.0; API churn between versions | Exact version pin; all SDK contact confined to `MCPServerController` + `MeetingToolProvider` |
 | NIO adds build time to every AppCore-dependent test target | One-time cold cost; measured in the spike phase. If unacceptable, the fallback is moving `MCPServerController` ownership from AppCore to the app target and passing state to SettingsUI explicitly. |
 | A client that insists on the GET SSE stream | 405 is spec-legal; verified in the manual test against a real client. If a major client turns out to require it, `StatefulHTTPServerTransport` is a contained swap inside the per-request handler factory (`makeRequestHandler`). |
-| `Host` header without a port → 421 from `OriginValidator` | Documented; the help sheet's snippet always includes the port |
+| `Host` header without a port → 421 from `OriginValidator` | Documented; the URL the sheet and the connection guide show always includes the port |
 
 ## 12. Single doc, no component designs
 

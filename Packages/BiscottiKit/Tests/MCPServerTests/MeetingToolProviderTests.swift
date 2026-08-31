@@ -11,23 +11,46 @@ import Testing
 struct MeetingToolProviderTests {
     // MARK: - Validation
 
-    @Test("no filter is invalid params")
-    func queryNoFilterIsInvalid() async throws {
-        let (provider, _) = try ToolTestSupport.makeProvider()
-        try await ToolTestSupport.expectInvalidParams(
-            provider, name: "biscotti_query_meetings", arguments: [:]
-        )
-        try await ToolTestSupport.expectInvalidParams(
-            provider, name: "biscotti_query_meetings", arguments: nil
-        )
+    @Test("no filter lists the most recent meetings first")
+    func queryNoFilterListsNewestFirst() async throws {
+        let (provider, store) = try ToolTestSupport.makeProvider()
+        let ids = try await ToolTestSupport.seedThreeDatedMeetings(store)
+
+        // No arguments and an empty object mean the same thing: the
+        // newest-first list, not an error.
+        for arguments: [String: Value]? in [nil, [:]] {
+            let result = try await provider.call(
+                name: "biscotti_query_meetings",
+                arguments: arguments
+            )
+            #expect(result.isError != true)
+
+            let object = try ToolTestSupport.jsonObject(from: result)
+            #expect(try ToolTestSupport.idList(result) == [
+                ids[2].uuidString, ids[1].uuidString, ids[0].uuidString
+            ])
+            #expect(object["results_truncated"] as? Bool == false)
+            let results = try #require(object["results"] as? [[String: Any]])
+            for item in results {
+                #expect(item.keys.contains("query_snippet") == false)
+            }
+        }
     }
 
-    @Test("limit alone is invalid params")
-    func queryLimitAloneIsInvalid() async throws {
-        let (provider, _) = try ToolTestSupport.makeProvider()
-        try await ToolTestSupport.expectInvalidParams(
-            provider, name: "biscotti_query_meetings", arguments: ["limit": .int(10)]
+    @Test("limit alone returns the newest N")
+    func queryLimitAloneReturnsNewestN() async throws {
+        let (provider, store) = try ToolTestSupport.makeProvider()
+        let ids = try await ToolTestSupport.seedThreeDatedMeetings(store)
+
+        let result = try await provider.call(
+            name: "biscotti_query_meetings",
+            arguments: ["limit": .int(2)]
         )
+        #expect(result.isError != true)
+        #expect(try ToolTestSupport.idList(result) == [
+            ids[2].uuidString, ids[1].uuidString
+        ])
+        #expect(try ToolTestSupport.jsonObject(from: result)["results_truncated"] as? Bool == true)
     }
 
     @Test("empty query string is invalid params")

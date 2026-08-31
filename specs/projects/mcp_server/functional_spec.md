@@ -29,20 +29,27 @@ Last row of the **General** section (after "Show next meeting in menu bar" /
 |---|---|---|
 | Off (default) | `MCP` toggle, off | "Chat with your meeting notes in any agent." |
 | Starting | toggle on, disabled | "Starting…" |
-| On | `MCP` toggle, on | "Chat with your meeting notes in any agent." + endpoint line: `http://127.0.0.1:8516/mcp` with a **Copy** button |
+| On | `MCP` toggle, on | "Chat with your meeting notes in any agent." + a **How to connect** link on the same line, after the subtitle, in the app accent color |
 | Failed | toggle on | Error text (see §2.3) + **Retry** button |
 
-When on, the caption area also shows a **How to connect** link opening a small
-sheet (same treatment as the existing `AlertsHelpSheet`) containing:
+The caption never shows the endpoint URL or a Copy button — those live only in
+the sheet. When on, the **How to connect** link opens a small sheet (same
+treatment as the existing `AlertsHelpSheet`) titled **"Connect to MCP"**
+containing:
 
-- the endpoint URL with a Copy button,
-- a paste-ready JSON snippet for MCP clients, e.g.
-  ```json
-  { "mcpServers": { "biscotti": { "url": "http://127.0.0.1:8516/mcp" } } }
-  ```
+- one line of intent: *"Add Biscotti MCP to any agent to chat with your
+  meeting notes."*,
+- an **MCP Server URL** section: the endpoint URL at readable size with a
+  **Copy** button,
+- a link — *"How to connect to common agents (Claude, Cursor, etc)"* — opening
+  the connection guide (`App/ConnectingMCP.md` on GitHub, `main` branch) in
+  the browser,
 - one sentence on what is exposed and to whom: *"Any app on this Mac can read
   your meetings while this is on. Nothing leaves your machine unless the agent
   you connect sends it somewhere."*
+
+There is no JSON config snippet in the sheet: client configs are inconsistent
+across agents, so per-client instructions live in the guide instead.
 
 ### 2.2 Lifecycle
 
@@ -67,8 +74,8 @@ If the bind fails (port `8516` already in use, or any other listener error):
   underlying reason.
 - A **Retry** button re-attempts the bind.
 - Turning the toggle off clears the error.
-- No automatic port fallback and no automatic retry loop. A fixed port is what
-  makes the client config snippet copy-pasteable.
+- No automatic port fallback and no automatic retry loop. A fixed port is
+  what keeps the URL the settings sheet and the connection guide show stable.
 
 ## 3. Protocol surface
 
@@ -87,7 +94,8 @@ Responses:
 - `GET`/`DELETE`/other on `/mcp` → `405` with `Allow: POST` (spec-legal for a
   server that offers no SSE stream).
 - Any other path → `404`.
-- Missing/foreign `Origin` header → `403` (rejected before reaching any tool).
+- Foreign `Origin` header → `403` (rejected before reaching any tool); absent
+  `Origin` allowed (non-browser clients).
 - Body larger than **1 MB** → `413`.
 
 ## 4. Security model
@@ -124,12 +132,11 @@ Shared conventions:
 
 ### 5.1 `biscotti_query_meetings`
 
-> Search the user's recorded meetings in Biscotti. Returns a short summary of
-> each match — use `biscotti_get_meeting` for details and
-> `biscotti_get_transcript` for what was said.
+> Search the user's recorded meetings in Biscotti. Use
+> `biscotti_get_meeting` for details and `biscotti_get_transcript` for what
+> was said.
 
-**Parameters** (all optional; at least one of `query`, `before`, `after` must be
-present — `limit` alone is an error):
+**Parameters** (all optional):
 
 | Name | Type | Notes |
 |---|---|---|
@@ -137,6 +144,10 @@ present — `limit` alone is an error):
 | `after` | string | Only meetings whose date is ≥ this. |
 | `before` | string | Only meetings whose date is ≤ this. |
 | `limit` | integer | 1–50, default 50. |
+
+With **no filters at all**, the tool lists the user's meetings most recent
+first (date descending) — it never errors for being unfiltered. `limit`
+alone therefore means "the newest N".
 
 There is no separate tag filter: tags are indexed by the search stack (and
 weighted highly), so `query` already covers them.
@@ -163,9 +174,9 @@ weighted highly), so `query` already covers them.
 - `results_truncated` is `true` when the returned count equals the effective
   `limit` — i.e. more matches may exist.
 - No matches → `{"results": [], "results_truncated": false}` (not an error).
-- Errors: no filter given → invalid params, with a message naming the options.
-  Unparseable date → invalid params. `before` earlier than `after` → invalid
-  params. Unknown tag name is **not** an error — it simply matches nothing.
+- Errors: unparseable date → invalid params. `before` earlier than `after` →
+  invalid params. Unknown tag name is **not** an error — it simply matches
+  nothing.
 
 **Known limitation (documented, not fixed):** when `query` is combined with a
 date filter, ranked candidates are drawn from the search index in a bounded

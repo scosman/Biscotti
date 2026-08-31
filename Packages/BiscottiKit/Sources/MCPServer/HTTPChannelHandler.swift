@@ -120,11 +120,17 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
             return
         }
 
+        // Capture the loop and channel while still on the event loop: the
+        // Task below leaves it to await the transport, and both the write
+        // hop and the buffer allocator must target this channel's loop.
+        // (`EventLoop` and `Channel` are Sendable; the context is not.)
+        let loop = context.eventLoop
+        let channel = context.channel
+
         let request = Self.makeHTTPRequest(from: state)
-        let box = ContextBox(context: context)
         Task {
             let response = await self.handle(request)
-            self.write(response, closeAfterWrite: closeAfterResponse, context: box.context)
+            self.write(response, closeAfterWrite: closeAfterResponse, loop: loop, channel: channel)
         }
     }
 
@@ -168,12 +174,13 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
     private func write(
         _ response: MCP.HTTPResponse,
         closeAfterWrite: Bool,
-        context: ChannelHandlerContext
+        loop: EventLoop,
+        channel: Channel
     ) {
         // `.stream` is unreachable in stateless mode; if it ever happens we
         // degrade to a 500 rather than crash or hang the channel.
         guard case .stream = response else {
-            writeRouted(response, closeAfterWrite: closeAfterWrite, context: context)
+            writeRouted(response, closeAfterWrite: closeAfterWrite, loop: loop, channel: channel)
             return
         }
         mcpServerLog.error("Unexpected streaming response in stateless mode; returning 500")
@@ -183,14 +190,16 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
                 .internalError("Streaming responses are not supported")
             ),
             closeAfterWrite: true,
-            context: context
+            loop: loop,
+            channel: channel
         )
     }
 
     private func writeRouted(
         _ response: MCP.HTTPResponse,
         closeAfterWrite: Bool,
-        context: ChannelHandlerContext
+        loop: EventLoop,
+        channel: Channel
     ) {
         let body = response.bodyData
         var headers = Self.responseHeaders(for: response, bodyLength: body?.count ?? 0)
@@ -203,17 +212,16 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
             headers: headers
         )
 
-        nonisolated(unsafe) let channelContext = context
-        channelContext.eventLoop.execute {
-            channelContext.write(self.wrapOutboundOut(.head(head)), promise: nil)
+        loop.execute {
+            channel.write(self.wrapOutboundOut(.head(head)), promise: nil)
             if let body {
-                var buffer = channelContext.channel.allocator.buffer(capacity: body.count)
+                var buffer = channel.allocator.buffer(capacity: body.count)
                 buffer.writeBytes(body)
-                channelContext.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+                channel.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
             }
-            channelContext.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
+            channel.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
             if closeAfterWrite {
-                channelContext.close(promise: nil)
+                channel.close(promise: nil)
             }
         }
     }
@@ -277,14 +285,5 @@ final class HTTPChannelHandler: ChannelInboundHandler, @unchecked Sendable {
     private func cancelIdleTimer() {
         idleCloseTask?.cancel()
         idleCloseTask = nil
-    }
-
-    // MARK: - Concurrency plumbing
-
-    /// `ChannelHandlerContext` is not `Sendable` (NIO confines it to the
-    /// event loop), but the per-request `Task` must carry it across the
-    /// await and only ever use it by hopping back onto the event loop.
-    private struct ContextBox {
-        nonisolated(unsafe) let context: ChannelHandlerContext
     }
 }

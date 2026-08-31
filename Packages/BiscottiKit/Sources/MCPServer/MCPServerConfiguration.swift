@@ -1,7 +1,8 @@
 import Foundation
 
-/// Compile-time constants for the MCP server. Not user-configurable — a fixed
-/// port is what makes the client config snippet copy-pasteable.
+/// Compile-time constants for the MCP server. Not user-configurable — a
+/// fixed port is what keeps the endpoint URL the settings sheet and the
+/// connection guide show stable.
 public enum MCPServerConfiguration {
     public static let host = "127.0.0.1"
     public static let port = 8516

@@ -28,9 +28,15 @@ actor HTTPListener {
     /// Binds `host:port` and starts serving. Returns the bound port
     /// (differs from `port` when binding 0).
     ///
+    /// - Parameter idleTimeout: How long a connection may stay silent
+    ///   before it is closed (tests inject a short one).
     /// - Throws: ``MCPServerStartError/portInUse`` when the port is taken,
     ///   ``MCPServerStartError/bindFailed`` for any other bind failure.
-    func start(host: String, port: Int) async throws -> Int {
+    func start(
+        host: String,
+        port: Int,
+        idleTimeout: Duration = .seconds(MCPServerConfiguration.idleTimeoutSeconds)
+    ) async throws -> Int {
         guard serverChannel == nil else { throw MCPServerStartError.bindFailed("Listener already started") }
 
         // One thread is ample for a single local client and keeps the idle
@@ -61,7 +67,7 @@ actor HTTPListener {
                         ),
                         HTTPChannelHandler(
                             handle: handle,
-                            idleTimeout: .seconds(MCPServerConfiguration.idleTimeoutSeconds)
+                            idleTimeout: idleTimeout
                         )
                     ])
                 }
@@ -72,6 +78,8 @@ actor HTTPListener {
             let channel = try await bootstrap.bind(host: host, port: port).get()
             guard let boundPort = channel.localAddress?.port else {
                 try? await channel.close()
+                try? await group.shutdownGracefully()
+                self.group = nil
                 throw MCPServerStartError.bindFailed("Listener bound without a port")
             }
             serverChannel = channel
@@ -108,8 +116,10 @@ actor HTTPListener {
 }
 
 /// Counts live child connections and closes new ones past the cap
-/// (functional spec §7). Added first in the child pipeline so a connection
-/// over the limit never reaches HTTP parsing.
+/// (functional spec §7). The limiter sits at the tail of the child
+/// pipeline (it is added after `configureHTTPServerPipeline`), but its
+/// `channelActive` runs before the channel reads any bytes, so an
+/// over-cap connection is closed before a request can be parsed.
 private final class ConnectionLimiter: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Any
 

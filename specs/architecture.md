@@ -213,7 +213,7 @@ Each card is intentionally shallow. `Must provide` lists **outcomes**, never int
 #### 27. MCPServer  ·  *module in BiscottiKit*  ·  [built]
 - **Home:** module in `BiscottiKit` (`Sources/MCPServer`; the swift-sdk/swift-nio dependencies are on the BiscottiKit package).
 - **Owns:** the opt-in local MCP server — a stateless Streamable-HTTP MCP endpoint on `127.0.0.1:8516/mcp` exposing three **read-only** tools over the user's meetings (`biscotti_query_meetings`, `biscotti_get_meeting`, `biscotti_get_transcript`), with `Origin` validation, a 1 MB body cap, connection/idle limits, and zero allocation when off.
-- **Provides:** `MCPServerController` (the `@MainActor` lifecycle owner — start/stop/applyEnabled), `MeetingToolProvider` + catalog + payload DTOs + transcript formatter (the tool surface), and the NIO HTTP listener/bridge. Owned by `AppCore` (started on launch iff `AppSettings.mcpServerEnabled`, applied live via `.mcpServerEnabledDidChange`); surfaced in `SettingsUI` (General section's MCP row with endpoint/copy/retry + How-to-connect sheet). Manual test registered (ManualTestApp `MCP Server` script, `mcp_real_client` step) — seeded not-run, hardware pass pending.
+- **Provides:** `MCPServerController` (the `@MainActor` lifecycle owner — start/stop/applyEnabled), `MeetingToolProvider` + catalog + payload DTOs + transcript formatter (the tool surface), and the NIO HTTP listener/bridge. Owned by `AppCore` (started on launch iff `AppSettings.mcpServerEnabled`, applied live via `.mcpServerEnabledDidChange`); surfaced in `SettingsUI` (General section's MCP row with subtitle + How-to-connect link + retry; the sheet holds the endpoint URL/copy and links to the `App/ConnectingMCP.md` guide). Manual test registered (ManualTestApp `MCP Server` script, `mcp_real_client` step) — seeded not-run, hardware pass pending.
 - **Out of scope:** any write tool, resources/prompts, auth, non-loopback binding, sessions/SSE (functional spec §10).
 - **Depends on:** DataStore only (internally); MCP swift-sdk + swift-nio (external, exact-pinned).
 - **Tested by:** unit/integration tests in `MCPServerTests` (HTTP surface, JSON-RPC round trips, tool logic, lifecycle) + AppCore/SettingsUI wiring tests.
@@ -287,7 +287,7 @@ Each screen is its **own module** (cheap target) so screens come online independ
 
 #### 22. SettingsUI  ·  *module in BiscottiKit*  ·  [V1]
 - **Owns:** settings screens.
-- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle; **AI Enhancements section** (summarize/speaker-name toggles + model download row with progress); **MCP row** in General (endpoint/copy/retry + How-to-connect sheet; reads `MCPServerState` directly). **[P3]** audio file-usage view + deletion.
+- **Must provide:** calendar include/exclude; custom-vocab editing; launch-on-startup toggle; **AI Enhancements section** (summarize/speaker-name toggles + model download row with progress); **MCP row** in General (subtitle + How-to-connect link + retry; the sheet holds the endpoint URL/copy and links to the `App/ConnectingMCP.md` guide; reads `MCPServerState` directly). **[P3]** audio file-usage view + deletion.
 - **Depends on:** Calendar, Vocabulary, DataStore, Intelligence, DesignSystem, MCPServer.
 - **Tested by:** view-model unit tests.
 - **Deep-dive risk:** **low.** **From:** none.

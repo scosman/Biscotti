@@ -1,4 +1,3 @@
-import AppKit
 import DesignSystem
 import MCPServer
 import SwiftUI
@@ -14,6 +13,7 @@ extension SettingsView {
     /// the user's intent (`mcpServerEnabled`), the caption below renders the
     /// server's live state (`mcpServerState`). The toggle stays on after a
     /// start failure — intent is preserved, the caption explains (§2.3).
+    /// The endpoint URL and its Copy button live only in the help sheet.
     var mcpRow: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             Toggle("MCP", isOn: mcpEnabledBinding)
@@ -21,29 +21,22 @@ extension SettingsView {
 
             switch viewModel.mcpServerState {
             case .stopped:
-                Text(Self.mcpSubtitle)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
+                mcpSubtitleText
 
             case .starting:
                 Text("Starting\u{2026}")
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
 
-            case let .running(url):
-                Text(Self.mcpSubtitle)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-                HStack(spacing: Tokens.spacingSM) {
-                    Text(url.absoluteString)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Tokens.secondaryText)
-                    MCPEndpointCopyButton(url: url)
+            case .running:
+                HStack(alignment: .firstTextBaseline, spacing: Tokens.spacingSM) {
+                    mcpSubtitleText
                     Button("How to connect") {
                         showMCPHelp = true
                     }
                     .buttonStyle(.link)
                     .controlSize(.small)
+                    .tint(.sage)
                 }
 
             case let .failed(error):
@@ -62,6 +55,12 @@ extension SettingsView {
         }
     }
 
+    private var mcpSubtitleText: some View {
+        Text(Self.mcpSubtitle)
+            .font(Tokens.metadataFont)
+            .foregroundStyle(Tokens.secondaryText)
+    }
+
     /// Intent binding: reads/writes the persisted setting; AppCore reacts to
     /// the posted notification and drives the live state the caption shows.
     var mcpEnabledBinding: Binding<Bool> {
@@ -76,37 +75,5 @@ extension SettingsView {
     var isMCPStarting: Bool {
         if case .starting = viewModel.mcpServerState { return true }
         return false
-    }
-}
-
-/// Endpoint Copy button with transient "Copied" feedback (1.5 s revert), the
-/// same treatment as the transcript Copy button in MeetingDetailUI. Shared by
-/// the MCP settings row and the How-to-connect sheet.
-struct MCPEndpointCopyButton: View {
-    let url: URL
-
-    @State private var didCopy = false
-    @State private var copyResetTask: Task<Void, Never>?
-
-    var body: some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(
-                url.absoluteString, forType: .string
-            )
-            didCopy = true
-            copyResetTask?.cancel()
-            copyResetTask = Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { return }
-                didCopy = false
-            }
-        } label: {
-            Text(didCopy ? "Copied" : "Copy")
-                .transaction { $0.animation = nil }
-        }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
-        .foregroundStyle(didCopy ? .sage : .inkSecondary)
     }
 }

@@ -1,8 +1,8 @@
 /// The MCP Server manual test script.
 ///
 /// One real-client end-to-end pass: the human runs the real Biscotti app,
-/// enables the MCP toggle in Settings, connects a real MCP client using the
-/// snippet from the How-to-connect sheet, and confirms the three read-only
+/// enables the MCP toggle in Settings, connects a real MCP client following
+/// the per-agent connection guide, and confirms the three read-only
 /// tools list and return sane data. Everything before the client connection
 /// is setup instruction; the single recordable question captures the
 /// end-to-end verdict so `make manual-tests-check` tracks it.
@@ -16,10 +16,14 @@ public extension TestScript {
                 id: "mcp_connect",
                 text: "Run the real Biscotti app (not ManualTestApp), open "
                     + "Settings → General, and turn the MCP toggle on. "
-                    + "The caption should show the endpoint "
-                    + "http://127.0.0.1:8516/mcp. Open “How to connect” "
-                    + "and paste the JSON snippet into a real MCP client "
-                    + "(Claude Desktop, Claude Code, Cursor, …). "
+                    + "The caption should show the subtitle with a "
+                    + "“How to connect” link on the same line. Open the "
+                    + "link: the sheet holds the MCP Server URL "
+                    + "(http://127.0.0.1:8516/mcp) with a Copy button and "
+                    + "a link to the per-agent connection guide "
+                    + "(App/ConnectingMCP.md on GitHub). Use that guide to "
+                    + "connect a real MCP client (Claude Desktop, Claude "
+                    + "Code, Cursor, …). "
                     + "Then call all three tools: biscotti_query_meetings "
                     + "(e.g. search for a word you know is in a recorded "
                     + "meeting), biscotti_get_meeting, and "

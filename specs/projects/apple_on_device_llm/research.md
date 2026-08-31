@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Research: Apple on-device LLMs (Foundation Models framework)

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Apple On-Device LLMs

@@ -63,7 +63,8 @@ Import accepts, in this order:
    **seconds**; values at or above it are read as **milliseconds**. (1e11 seconds is
    the year 5138, so the split is unambiguous in practice.)
 
-Anything else is a critical error (§3.1).
+Anything else makes the row misformatted: the row is skipped with a warning (§3.2),
+the rest of the file still imports.
 
 ### 1.4 Escaping (both directions)
 
@@ -87,8 +88,10 @@ Import is strictly **scan, then commit** — the file is read exactly once.
    written to the database during the scan.
 2. **Review.** If the scan produced any errors or warnings, show an alert (§3.3).
    Critical errors block; warnings offer Cancel (default) / Continue.
-3. **Commit.** Insert the already-parsed records. The file is *not* re-read, re-parsed,
-   or re-validated — the exact data produced by the scan is what lands in the database.
+3. **Commit.** Insert the already-parsed records that the scan marked importable
+   (misformatted and duplicate rows were excluded during the scan). The file is *not*
+   re-read, re-parsed, or re-validated — the exact data produced by the scan is what
+   lands in the database.
 
 ### 2.2 What an imported row becomes
 
@@ -125,8 +128,9 @@ Every meeting created by a single import run gets the same batch ID: epoch
 two imports in quick succession cannot collide; if the generated value somehow matches
 an existing batch, it is incremented until unique.
 
-The field exists purely to make a future "undo this import" possible. **No un-import UI
-is built in this project** and nothing reads the field yet.
+The field exists to make a future "undo this import" possible. **No user-facing un-import
+UI is built in this project** — the only thing that reads the field is the debug-build
+affordance in §6.1.
 
 ### 2.4 Duplicate handling
 
@@ -157,24 +161,27 @@ Any of these means nothing is imported:
 - The file is empty or has no header row.
 - After alias resolution, any of `id`, `title`, or `created` is missing from the header.
 - The CSV is structurally malformed (e.g. an unterminated quoted field).
-- **Any** row has a blank `id`, a blank `title`, or a `created` value that is missing or
-  unparseable per §1.3.
+- After the scan, **no row is importable** — every row was either misformatted or a
+  duplicate. There is nothing to import, so the alert blocks rather than offering
+  Continue.
 
-Note that a single bad row blocks the entire file — this is deliberate: a partial import
-of a file the user believed was clean is harder to reason about and harder to undo than a
-rejection that names the bad rows.
+Critical errors are all *file-level*: a problem with an individual row never blocks the
+whole import (see misformatted rows below).
 
 ### 3.2 Warnings (import can proceed)
 
-- **No content:** a row where `summary`, `notes`, and `transcript` are all blank.
-  Reported as a count.
+- **Misformatted rows:** a row with a blank `id`, a blank `title`, or a `created` value
+  that is missing or unparseable per §1.3. The row is **skipped**; the rest of the file
+  still imports. Reported as a count with up to 5 example row numbers, e.g.
+  "3 rows are missing a required value and will be skipped."
+- **No content:** a row where `summary`, `notes`, and `transcript` are all blank. The row
+  still imports. Reported as a count.
 - **Already in the database:** rows skipped per §2.4. Reported as
   "N meetings already exist in your database, these will be skipped."
 - **Duplicate IDs within the file:** reported as a count, first-wins noted.
 - **Ragged rows:** a row with a different field count than the header. Short rows are
   padded with empty values; long rows have their extra fields dropped. Reported as a
-  count. (If padding leaves a required field blank, that becomes a critical error
-  per §3.1.)
+  count. (If padding leaves a required field blank, the row is a misformatted row.)
 - **Ambiguous columns:** both a canonical column and its alias present (§1.2).
 
 ### 3.3 The review alert
@@ -183,7 +190,8 @@ rejection that names the bad rows.
   distinct problem with its count and up to 5 example row numbers. Single dismiss
   button. Nothing is imported.
 - **Warnings only** → warning alert. Body lists each warning with its count in plain
-  language. Buttons: **Cancel** (default action) and **Continue** (secondary).
+  language, and states how many meetings will actually be imported. Buttons: **Cancel**
+  (default action) and **Continue** (secondary).
 - **Neither** → no alert; import proceeds immediately.
 
 Row numbers in messages are 1-based and count the header as row 1, so they match what
@@ -192,8 +200,9 @@ the user sees in a spreadsheet.
 ### 3.4 The result alert
 
 After a commit completes, an alert reports what happened, e.g.
-"Imported 42 meetings." — with a second line when anything was skipped:
-"3 rows were skipped because those meetings already exist."
+"Imported 42 meetings." — with further lines when anything was skipped:
+"3 rows were skipped because those meetings already exist." /
+"2 rows were skipped because they were missing a required value."
 
 If the commit itself fails (a database error), an alert reports the failure. A failed
 commit leaves the database unchanged.
@@ -306,6 +315,29 @@ trailing button:
 - **Export** shows a spinner in place of the button while generating, then opens the save
   dialog (§5.2). Both buttons are disabled while an operation is in flight.
 
+### 6.1 Debug build: Delete Imported Meetings
+
+In debug builds only, the existing **Debug** section at the bottom of Settings gains a
+**Delete Imported Meetings** button, styled like its neighbours. It deletes every meeting
+whose `importBatch` is non-null — the whole imported population, not one batch — so a
+developer can re-run an import repeatedly against a clean slate.
+
+Pressing it counts the meetings and confirms:
+
+- Title: **"Delete N meetings?"**
+- Body: **"This will delete N meetings (and leave M meetings)."** — where N is the number
+  of imported meetings and M the number that will remain.
+- Buttons: **Cancel** (default) and **Delete** (destructive).
+
+Confirming deletes them, along with their transcripts and search-index entries, and
+refreshes the meeting list. A result alert reports "Deleted N meetings."
+
+When there are no imported meetings, pressing the button shows "No imported meetings to
+delete." instead of a confirmation.
+
+This is a developer affordance, not a product feature: it never appears in release
+builds, and it is not a substitute for the real un-import flow (§8, out of scope).
+
 ## 7. Documentation
 
 A new `App/ImportingExporting.md`, short and user-facing, covering:
@@ -320,7 +352,8 @@ A new `App/ImportingExporting.md`, short and user-facing, covering:
 
 ## 8. Out of scope
 
-- Un-importing / undoing a batch (the `importBatch` field is stored for it, nothing more)
+- Un-importing / undoing a single batch as a user-facing feature (the `importBatch` field
+  is stored for it; the only consumer is the debug-build bulk delete in §6.1)
 - Importing or exporting tags, participants, organizers, audio, or calendar data
 - Updating or merging into existing meetings (import only inserts)
 - Non-comma dialects (TSV, semicolon), other encodings, XLSX

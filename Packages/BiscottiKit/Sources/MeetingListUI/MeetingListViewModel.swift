@@ -103,6 +103,12 @@ public final class MeetingListViewModel {
         requestDelete(ids)
     }
 
+    /// Copies a `biscotti://meeting/{uuid}` link for the meeting onto the
+    /// pasteboard. Context-menu item; single selection only.
+    public func copyMeetingLink(_ id: UUID) {
+        core.copyMeetingLink(id)
+    }
+
     /// Shared implementation: captures the given IDs and shows the
     /// delete confirmation alert. Guards against empty sets.
     private func requestDelete(_ ids: Set<UUID>) {

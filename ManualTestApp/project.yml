@@ -46,6 +46,8 @@ targets:
     dependencies:
       - package: BiscottiKit
         product: ManualTestKit
+      - package: BiscottiKit
+        product: AppLinks
       - package: Transcription
         product: Transcription
       - package: AudioCapture

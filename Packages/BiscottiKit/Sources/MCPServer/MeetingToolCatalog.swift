@@ -87,13 +87,17 @@ enum MeetingToolCatalog {
         outputSchema: [
             "type": "object",
             "required": [
-                "id", "title", "date", "summary", "notes", "audio_files",
-                "transcript", "transcript_version_count"
+                "id", "title", "date", "app_url", "summary", "notes",
+                "audio_files", "transcript", "transcript_version_count"
             ],
             "properties": [
                 "id": ["type": "string"],
                 "title": ["type": "string"],
                 "date": ["type": "string"],
+                "app_url": [
+                    "type": "string",
+                    "description": "A biscotti:// URL that opens this meeting in the Biscotti app on this Mac (its default Summary view). You may surface it to the user as a link. See App/deeplinks.md in the Biscotti repo for the full URL vocabulary."
+                ],
                 "end_date": ["type": "string"],
                 "recording_duration_seconds": ["type": "integer"],
                 "summary": [

@@ -1,4 +1,5 @@
 import AppCore
+import AppLinks
 import AppShellUI
 import Carbon
 import DesignSystem
@@ -156,9 +157,6 @@ private struct WindowRootView: View {
                 captured(id: "main")
             }
         }
-        .onOpenURL { url in
-            launchState.deepLinkHandler?(url)
-        }
         .background(WindowTitleHider())
     }
 
@@ -236,11 +234,6 @@ final class LaunchState: @unchecked Sendable {
     /// then (harmless: `showMainWindow` falls back to AppKit activate).
     @ObservationIgnored var sceneOpener: (@MainActor () -> Void)?
 
-    /// Closure that handles a deep-link URL (`biscotti://meeting/…`).
-    /// Set during `buildCore` so `WindowRootView.onOpenURL` can forward
-    /// the URL to `AppDelegate.handleOpenURL`. Nil until core is built.
-    @ObservationIgnored var deepLinkHandler: (@MainActor (URL) -> Void)?
-
     /// Nonisolated init so `AppDelegate` (an `NSObject` subclass whose
     /// stored-property initializers run in a nonisolated context) can
     /// create the instance inline. All three properties start as `nil`;
@@ -276,6 +269,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     /// Observable state read by `BiscottiApp.body`. Mutations here
     /// trigger SwiftUI re-renders (fixes the startup-hang race).
     let launchState = LaunchState()
+
+    /// A URL that arrived via `application(_:open:)` before the core
+    /// finished launching. Only the most recent one is kept (last wins).
+    private var pendingLaunchURL: URL?
+
+    /// Whether `AppCore.onLaunch()` has completed and the shell view
+    /// model reported it. Until then, incoming URLs park in
+    /// `pendingLaunchURL`.
+    private var isCoreReady = false
 
     private let logger = Logger(
         subsystem: "net.scosman.biscotti",
@@ -367,19 +369,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         }
     }
 
-    // MARK: - Deep link handling
-
-    /// Handles an incoming URL opened via the registered `biscotti` scheme.
-    /// Brings the app to the foreground and forwards the URL to AppCore
-    /// for parsing and navigation.
-    @MainActor
-    func handleOpenURL(_ url: URL) {
-        showMainWindow()
-        Task { @MainActor in
-            await core?.handleDeepLink(url)
-        }
-    }
-
     // MARK: - Quit-while-recording
 
     func applicationShouldTerminate(
@@ -430,10 +419,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             core = appCore
             notificationService = appCore.notifications
 
-            launchState.deepLinkHandler = { [weak self] url in
-                self?.handleOpenURL(url)
-            }
             launchState.shellViewModel = AppShellViewModel(core: appCore)
+            launchState.shellViewModel?.onLaunchCompletion = { [weak self] in
+                self?.coreLaunchDidComplete()
+            }
             launchState.menuBarViewModel = MenuBarViewModel(
                 core: appCore,
                 windowOpener: { [weak self] in
@@ -629,6 +618,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
         notificationService?.foregroundPresentationOptions(
             for: notification
         ) ?? [.banner]
+    }
+}
+
+// MARK: - Deep link (app URL) delivery
+
+/// AppKit's process-scoped URL delivery for the `biscotti://` scheme:
+/// fires on cold launch and for a running app, with or without windows —
+/// coverage the SwiftUI scene-scoped `onOpenURL` could not guarantee.
+extension AppDelegate {
+    /// Each URL in the array is processed in order; the last to resolve
+    /// determines the final route. AppKit invokes this on the main
+    /// thread for both cold launch and a running app, with or without
+    /// windows.
+    @MainActor
+    func application(_: NSApplication, open urls: [URL]) {
+        for url in urls {
+            enqueueOrHandle(url)
+        }
+    }
+
+    /// Handles a URL now if the core is ready; otherwise parks it for the
+    /// post-launch drain.
+    @MainActor
+    private func enqueueOrHandle(_ url: URL) {
+        if isCoreReady {
+            handleOpenURL(url)
+        } else {
+            pendingLaunchURL = url
+        }
+    }
+
+    /// The shell view model fires its launch completion exactly once;
+    /// flip ready and drain any URL that arrived during cold launch. The
+    /// drained URL goes through the same path as a live one, including
+    /// the onboarding drop.
+    @MainActor
+    func coreLaunchDidComplete() {
+        guard !isCoreReady else { return }
+        isCoreReady = true
+        if let url = pendingLaunchURL {
+            pendingLaunchURL = nil
+            handleOpenURL(url)
+        }
+    }
+
+    /// Handles an incoming URL opened via the registered `biscotti`
+    /// scheme. A URL that fails to parse is silently dropped before
+    /// anything is shown (it never steals focus); one that parses
+    /// foregrounds the app immediately, then applies the link.
+    @MainActor
+    func handleOpenURL(_ url: URL) {
+        guard let link = AppLink(url: url) else {
+            logger.debug("handleOpenURL: unparseable URL ignored")
+            return
+        }
+        showMainWindow()
+        Task { @MainActor [weak self] in
+            await self?.core?.apply(link)
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+import AppLinks
 import BiscottiTestSupport
 import Calendar
 import DataStore
@@ -1020,13 +1021,13 @@ struct MeetingDetailSeekAndPlayTests {
 
         #expect(viewModel.isPlaying == false)
 
-        // Simulate a deep-link jump arriving for this meeting
-        try await fix.core.handleDeepLink(
-            #require(URL(string: "biscotti://meeting/\(meetingID)?time=42"))
+        // Simulate an app-link intent arriving for this meeting
+        await fix.core.apply(
+            .meeting(id: meetingID, target: .transcriptTime(42))
         )
 
-        // Apply the pending jump (this is what the view's .onChange triggers)
-        await viewModel.applyPendingJumpIfNeeded()
+        // Apply the pending intent (this is what the view's .onChange triggers)
+        await viewModel.applyPendingIntentIfNeeded()
 
         // The seek should have been applied AND playback started
         #expect(fakePlayer.currentTime == 42.0)

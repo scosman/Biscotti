@@ -70,6 +70,11 @@ struct MCPToolRoundTripTests {
             let transcriptStats = try #require(detailStructured["transcript"] as? [String: Any])
             #expect(transcriptStats["available"] as? Bool == true)
             #expect(transcriptStats["segment_count"] as? Int == 1)
+            // The app link survives the HTTP leg in canonical form.
+            #expect(
+                detailStructured["app_url"] as? String
+                    == "biscotti://meeting/\(meetingID.uuidString)"
+            )
             // summary/notes are always on the wire: null for this bare meeting.
             #expect(detailStructured["summary"] is NSNull)
             #expect(detailStructured["notes"] is NSNull)

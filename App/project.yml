@@ -54,6 +54,8 @@ targets:
       - package: BiscottiKit
         product: AppCore
       - package: BiscottiKit
+        product: AppLinks
+      - package: BiscottiKit
         product: DataStore
       - package: BiscottiKit
         product: Intelligence

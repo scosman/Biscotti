@@ -45,6 +45,11 @@ public struct MeetingListView: View {
             }
         }
         .contextMenu(forSelectionType: UUID.self) { ids in
+            if ids.count == 1, let id = ids.first {
+                Button("Copy Meeting Link") {
+                    viewModel.copyMeetingLink(id)
+                }
+            }
             Button(MeetingListViewModel.deleteMenuLabel(for: ids.count)) {
                 viewModel.requestDeleteContextMenu(ids)
             }

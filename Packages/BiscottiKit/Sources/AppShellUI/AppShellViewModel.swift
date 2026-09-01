@@ -47,6 +47,20 @@ public final class AppShellViewModel {
     private var cachedEventPreviewKey: String?
     private var cachedEventPreviewViewModel: EventPreviewViewModel?
 
+    /// Fired once, after the first `onLaunch()` completes, then cleared.
+    /// The app delegate sets this so it can drain any URL that arrived
+    /// during cold launch before the core was ready. Only the first call
+    /// fires it: a cancelled-and-rerun `.task` whose `core.onLaunch()`
+    /// returns early must not signal readiness while the real launch is
+    /// still in flight.
+    @ObservationIgnored
+    public var onLaunchCompletion: (@MainActor () -> Void)?
+
+    /// Whether `onLaunch()` has already been called (first call = the one
+    /// that performs the real launch inside `AppCore`).
+    @ObservationIgnored
+    private var didCallOnLaunch = false
+
     public init(core: AppCore) {
         self.core = core
         meetingListViewModel = MeetingListViewModel(core: core)
@@ -247,7 +261,26 @@ public final class AppShellViewModel {
 
     /// Called on app launch to run recovery and load data.
     public func onLaunch() async {
+        let isFirstCall = !didCallOnLaunch
+        didCallOnLaunch = true
         await core.onLaunch()
+        if isFirstCall {
+            let completion = onLaunchCompletion
+            onLaunchCompletion = nil
+            completion?()
+        }
+    }
+
+    // MARK: - Link errors
+
+    /// The pending app-link error driving the shell alert, if any.
+    public var linkError: AppLinkError? {
+        core.linkError
+    }
+
+    /// Dismisses the app-link error alert.
+    public func dismissLinkError() {
+        core.dismissLinkError()
     }
 
     // MARK: - Time formatting for upcoming events

@@ -36,6 +36,7 @@ struct MeetingToolPayloadTests {
             id: "A",
             title: "T",
             date: "2026-08-27T17:00:00Z",
+            appURL: "biscotti://meeting/A",
             endDate: nil,
             recordingDurationSeconds: nil,
             summary: nil,
@@ -63,10 +64,12 @@ struct MeetingToolPayloadTests {
         let object = try encodeToJSONObject(payload)
         #expect(
             Set(object.keys) == Set([
-                "audio_files", "date", "id", "notes", "summary", "title",
-                "transcript", "transcript_version_count"
+                "app_url", "audio_files", "date", "id", "notes", "summary",
+                "title", "transcript", "transcript_version_count"
             ])
         )
+        // The link is always present for a meeting that resolved.
+        #expect(object["app_url"] as? String == "biscotti://meeting/A")
         // The two keys a caller read as missing-when-empty: present, null.
         #expect(object["summary"] is NSNull)
         #expect(object["notes"] is NSNull)
@@ -79,13 +82,14 @@ struct MeetingToolPayloadTests {
     @Test("MeetingDetailPayload decodes explicit nulls and missing keys the same")
     func detailPayloadDecodesNulls() throws {
         let json = Data(
-            #"{"id":"A","title":"T","date":"2026-08-27T17:00:00Z","summary":null,"notes":null,"audio_files":{"present":false},"transcript":{"available":false},"transcript_version_count":0}"#
+            #"{"id":"A","title":"T","date":"2026-08-27T17:00:00Z","app_url":"biscotti://meeting/A","summary":null,"notes":null,"audio_files":{"present":false},"transcript":{"available":false},"transcript_version_count":0}"#
                 .utf8
         )
         let payload = try JSONDecoder().decode(MeetingDetailPayload.self, from: json)
         #expect(payload.summary == nil)
         #expect(payload.notes == nil)
         #expect(payload.recordingDurationSeconds == nil)
+        #expect(payload.appURL == "biscotti://meeting/A")
     }
 
     private func makeFullDetailPayload() -> MeetingDetailPayload {
@@ -95,6 +99,7 @@ struct MeetingToolPayloadTests {
             id: "A",
             title: "T",
             date: "2026-08-27T17:00:00Z",
+            appURL: "biscotti://meeting/A",
             endDate: "2026-08-27T17:30:00Z",
             recordingDurationSeconds: 1804,
             summary: "## Decisions",
@@ -139,9 +144,10 @@ struct MeetingToolPayloadTests {
         let object = try encodeToJSONObject(makeFullDetailPayload())
         #expect(
             Set(object.keys) == Set([
-                "audio_files", "calendar", "date", "end_date", "id", "notes",
-                "organizer", "participants", "recording_duration_seconds", "summary",
-                "tags", "title", "transcript", "transcript_version_count"
+                "app_url", "audio_files", "calendar", "date", "end_date",
+                "id", "notes", "organizer", "participants",
+                "recording_duration_seconds", "summary", "tags", "title",
+                "transcript", "transcript_version_count"
             ])
         )
         #expect(object["recording_duration_seconds"] as? Int == 1804)

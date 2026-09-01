@@ -70,6 +70,126 @@
     "stepID" : "ac_two_dialogs",
     "timestamp" : "2026-06-19T16:18:54Z"
   },
+  "au_background_check" : {
+    "status" : "pass",
+    "stepID" : "au_background_check",
+    "timestamp" : "2026-09-01T00:04:25Z"
+  },
+  "au_background_open" : {
+    "status" : "pass",
+    "stepID" : "au_background_open",
+    "timestamp" : "2026-09-01T00:04:23Z"
+  },
+  "au_cold_launch_check" : {
+    "status" : "pass",
+    "stepID" : "au_cold_launch_check",
+    "timestamp" : "2026-09-01T00:04:10Z"
+  },
+  "au_cold_launch_open" : {
+    "status" : "pass",
+    "stepID" : "au_cold_launch_open",
+    "timestamp" : "2026-09-01T00:04:07Z"
+  },
+  "au_home_landed" : {
+    "status" : "pass",
+    "stepID" : "au_home_landed",
+    "timestamp" : "2026-08-31T23:38:06Z"
+  },
+  "au_meeting_notes_landed" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_notes_landed",
+    "timestamp" : "2026-08-31T23:39:43Z"
+  },
+  "au_meeting_summary" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_summary",
+    "timestamp" : "2026-08-31T23:39:33Z"
+  },
+  "au_meeting_time_seek" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_time_seek",
+    "timestamp" : "2026-08-31T23:39:49Z"
+  },
+  "au_meetings_landed" : {
+    "status" : "pass",
+    "stepID" : "au_meetings_landed",
+    "timestamp" : "2026-08-31T23:38:22Z"
+  },
+  "au_menubar_check" : {
+    "status" : "pass",
+    "stepID" : "au_menubar_check",
+    "timestamp" : "2026-09-01T00:04:19Z"
+  },
+  "au_menubar_open" : {
+    "status" : "pass",
+    "stepID" : "au_menubar_open",
+    "timestamp" : "2026-09-01T00:04:18Z"
+  },
+  "au_open_home" : {
+    "status" : "pass",
+    "stepID" : "au_open_home",
+    "timestamp" : "2026-08-31T23:38:03Z"
+  },
+  "au_open_meeting" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting",
+    "timestamp" : "2026-08-31T23:39:30Z"
+  },
+  "au_open_meeting_notes" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting_notes",
+    "timestamp" : "2026-08-31T23:39:41Z"
+  },
+  "au_open_meeting_time" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting_time",
+    "timestamp" : "2026-09-01T00:03:58Z"
+  },
+  "au_open_meetings" : {
+    "status" : "pass",
+    "stepID" : "au_open_meetings",
+    "timestamp" : "2026-08-31T23:38:24Z"
+  },
+  "au_open_record" : {
+    "status" : "pass",
+    "stepID" : "au_open_record",
+    "timestamp" : "2026-09-01T00:03:33Z"
+  },
+  "au_open_search" : {
+    "status" : "pass",
+    "stepID" : "au_open_search",
+    "timestamp" : "2026-08-31T23:38:33Z"
+  },
+  "au_open_search_query" : {
+    "status" : "pass",
+    "stepID" : "au_open_search_query",
+    "timestamp" : "2026-09-01T00:03:07Z"
+  },
+  "au_open_settings" : {
+    "status" : "pass",
+    "stepID" : "au_open_settings",
+    "timestamp" : "2026-08-31T23:38:26Z"
+  },
+  "au_record_started" : {
+    "status" : "pass",
+    "stepID" : "au_record_started",
+    "timestamp" : "2026-08-31T23:39:17Z"
+  },
+  "au_search_filtered" : {
+    "status" : "pass",
+    "stepID" : "au_search_filtered",
+    "timestamp" : "2026-09-01T00:03:10Z"
+  },
+  "au_search_focused" : {
+    "status" : "pass",
+    "stepID" : "au_search_focused",
+    "timestamp" : "2026-08-31T23:38:38Z"
+  },
+  "au_settings_landed" : {
+    "status" : "pass",
+    "stepID" : "au_settings_landed",
+    "timestamp" : "2026-08-31T23:38:30Z"
+  },
   "llm_action_items_quality" : {
     "status" : "pass",
     "stepID" : "llm_action_items_quality",
@@ -184,7 +304,7 @@
   "mcp_real_client" : {
     "status" : "pass",
     "stepID" : "mcp_real_client",
-    "timestamp" : "2026-08-31T15:37:23Z"
+    "timestamp" : "2026-09-01T00:08:34Z"
   },
   "tx_ai_test_passed" : {
     "status" : "pass",

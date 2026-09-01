@@ -87,6 +87,11 @@ struct MeetingToolDetailTests {
         #expect(object["id"] as? String == meetingID.uuidString)
         #expect(object["title"] as? String == "Weekly sync")
         #expect(object["date"] as? String == "2026-08-27T17:00:00Z")
+        // The app link: canonical form, default Summary target (no query).
+        #expect(
+            object["app_url"] as? String
+                == "biscotti://meeting/\(meetingID.uuidString)"
+        )
         #expect(object["end_date"] as? String == "2026-08-27T17:30:00Z")
         #expect(object["recording_duration_seconds"] as? Int == 1805)
         #expect(object["summary"] as? String == "## Decisions\nShip it.")
@@ -146,6 +151,12 @@ struct MeetingToolDetailTests {
         // The two keys that must never go missing: present, null.
         #expect(object["summary"] is NSNull)
         #expect(object["notes"] is NSNull)
+
+        // The app link is always present for a meeting that resolved.
+        #expect(
+            object["app_url"] as? String
+                == "biscotti://meeting/\(meetingID.uuidString)"
+        )
 
         for absentKey in [
             "end_date", "recording_duration_seconds", "tags",

@@ -1,3 +1,4 @@
+import AppLinks
 import BiscottiTestSupport
 import Calendar
 import DataStore
@@ -7,6 +8,54 @@ import Testing
 @testable import AppShellUI
 
 // MARK: - Tests
+
+@Suite("AppShellViewModel -- launch completion")
+struct AppShellLaunchCompletionTests {
+    @Test("onLaunchCompletion fires once, after the first launch only")
+    @MainActor
+    func onLaunchCompletionFiresOnce() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellLaunch")
+        defer { fix.cleanup() }
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+
+        let viewModel = AppShellViewModel(core: fix.core)
+        let fired = FiredFlag()
+        viewModel.onLaunchCompletion = {
+            fired.count += 1
+        }
+
+        await viewModel.onLaunch()
+        #expect(fired.count == 1)
+        // The completion is one-shot: cleared after the first fire.
+        #expect(viewModel.onLaunchCompletion == nil)
+
+        // A second run (e.g. SwiftUI re-firing .task on window reopen)
+        // must not fire it again.
+        await viewModel.onLaunch()
+        #expect(fired.count == 1)
+    }
+
+    @Test("linkError passes through AppCore and dismisses")
+    @MainActor
+    func linkErrorPassthrough() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellLaunch")
+        defer { fix.cleanup() }
+
+        let viewModel = AppShellViewModel(core: fix.core)
+        #expect(viewModel.linkError == nil)
+
+        await fix.core.apply(.meeting(id: UUID(), target: .tab(.summary)))
+        #expect(viewModel.linkError == .meetingNotFound)
+
+        viewModel.dismissLinkError()
+        #expect(viewModel.linkError == nil)
+    }
+}
+
+/// Reference-type counter for observing closure invocations.
+private final class FiredFlag: @unchecked Sendable {
+    var count = 0
+}
 
 @Suite("AppShellViewModel -- recording state")
 struct AppShellRecordingStateTests {

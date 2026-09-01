@@ -132,6 +132,9 @@ struct MeetingDetailPayload: Codable, Equatable {
     let id: String
     let title: String
     let date: String
+    /// A `biscotti://` URL that opens this meeting in the app (default
+    /// Summary view). Always present for a meeting that resolved.
+    let appURL: String
     let endDate: String?
     /// Whole seconds, rounded (functional spec §5.2).
     let recordingDurationSeconds: Int?
@@ -149,6 +152,7 @@ struct MeetingDetailPayload: Codable, Equatable {
         case id
         case title
         case date
+        case appURL = "app_url"
         case endDate = "end_date"
         case recordingDurationSeconds = "recording_duration_seconds"
         case summary
@@ -170,6 +174,7 @@ struct MeetingDetailPayload: Codable, Equatable {
         try container.encode(id, forKey: .id)
         try container.encode(title, forKey: .title)
         try container.encode(date, forKey: .date)
+        try container.encode(appURL, forKey: .appURL)
         try container.encodeIfPresent(endDate, forKey: .endDate)
         try container.encodeIfPresent(recordingDurationSeconds, forKey: .recordingDurationSeconds)
         try container.encode(summary, forKey: .summary)

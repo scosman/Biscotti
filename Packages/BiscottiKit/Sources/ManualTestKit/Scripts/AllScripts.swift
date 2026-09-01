@@ -6,5 +6,6 @@ public let allScripts: [TestScript] = [
     .audioCapture,
     .transcription,
     .localLLM,
-    .mcp
+    .mcp,
+    .appURLs
 ]

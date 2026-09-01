@@ -1,3 +1,5 @@
+import AppKit
+import AppLinks
 import Calendar
 import DataStore
 import Foundation
@@ -63,19 +65,49 @@ public extension Notification.Name {
     )
 }
 
-// MARK: - Deep-link jump state
+// MARK: - App-link state
 
-/// A pending transcript jump parsed from a `biscotti://meeting/{id}?time=…` URL.
+/// A pending open-meeting intent parsed from a `biscotti://` URL.
 ///
-/// Set by `handleDeepLink(_:)` and consumed by `MeetingDetailViewModel` once
-/// the target meeting's detail view has applied the jump (tab switch + seek).
-public struct TranscriptJump: Sendable, Equatable {
+/// Set by `apply(_:)` and consumed by `MeetingDetailViewModel` once the
+/// target meeting's detail view has applied the target (tab switch and/or
+/// seek). `token` is monotonic: two identical URLs applied back-to-back
+/// produce intents that differ, so an `.onChange` observer fires for the
+/// second one too.
+public struct MeetingOpenIntent: Sendable, Equatable {
     public let meetingID: UUID
-    public let time: TimeInterval
+    public let target: MeetingTarget
+    public let token: UInt
 
-    public init(meetingID: UUID, time: TimeInterval) {
+    public init(meetingID: UUID, target: MeetingTarget, token: UInt) {
         self.meetingID = meetingID
-        self.time = time
+        self.target = target
+        self.token = token
+    }
+}
+
+/// A well-formed app link whose target no longer exists.
+///
+/// Copy lives here so tests assert on a case instead of matching prose;
+/// the shell presents `title`/`message` in a single-OK alert.
+public enum AppLinkError: String, Sendable, Equatable {
+    case meetingNotFound
+    case eventNotFound
+
+    public var title: String {
+        switch self {
+        case .meetingNotFound: "Meeting Not Found"
+        case .eventNotFound: "Event Not Found"
+        }
+    }
+
+    public var message: String {
+        switch self {
+        case .meetingNotFound:
+            "This link points to a meeting that is no longer in Biscotti. It may have been deleted."
+        case .eventNotFound:
+            "This link points to a calendar event that is no longer upcoming. It may have ended, moved, or been cancelled."
+        }
     }
 }
 
@@ -197,10 +229,19 @@ public final class AppCore {
     /// is active; the view layer renders a countdown card from this.
     public private(set) var autoStop: AutoStopState?
 
-    /// A pending transcript jump from a deep link. Set by
-    /// `handleDeepLink(_:)`, consumed by `MeetingDetailViewModel`
-    /// after applying the tab switch + seek.
-    public private(set) var pendingTranscriptJump: TranscriptJump?
+    /// A pending open-meeting intent from an app link. Set by
+    /// `apply(_:)`, consumed by `MeetingDetailViewModel`
+    /// after applying the tab switch and/or seek.
+    public private(set) var pendingMeetingIntent: MeetingOpenIntent?
+
+    /// Monotonic counter stamped onto every `pendingMeetingIntent` so two
+    /// identical intents are never `Equatable`-equal (which would swallow
+    /// the second in an `.onChange` observer).
+    private var meetingIntentToken: UInt = 0
+
+    /// A well-formed link whose meeting/event is missing. Non-nil presents
+    /// the shell alert; a second failure overwrites the first.
+    public internal(set) var linkError: AppLinkError?
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -274,6 +315,10 @@ public final class AppCore {
     /// The eventKey passed to `startRecording(eventKey:)`. Stashed so
     /// `retryRecordingStartup()` can re-attempt with the original key.
     private var pendingStartupEventKey: String?
+
+    /// The title passed to `startRecording(title:)`. Stashed alongside
+    /// `pendingStartupEventKey` so a retry keeps the caller's title.
+    private var pendingStartupTitle: String?
 
     /// The auto-stop countdown task. Cancelled on keepRecording or manual stop.
     private var countdownTask: Task<Void, Never>?
@@ -452,13 +497,20 @@ public final class AppCore {
     // MARK: - Recording coordination
 
     /// Starts a new recording session, optionally associated with a
-    /// specific calendar event.
+    /// specific calendar event and/or created with an explicit title.
+    ///
+    /// A `nil` title keeps the default ("Untitled Meeting"), which stays
+    /// eligible for AI titling; a non-nil title is the user's choice and
+    /// is left alone by `Intelligence`.
     ///
     /// Navigation to the recording pane happens synchronously so the UI
     /// is responsive. The heavy startup (audio engine init, calendar
     /// association, summaries reload) runs asynchronously; the recording
     /// pane observes `recordingStartup` to show loading/started/failed.
-    public func startRecording(eventKey: String? = nil) async {
+    public func startRecording(
+        eventKey: String? = nil,
+        title: String? = nil
+    ) async {
         // One-recording-at-a-time guard
         guard runState == .idle || runState == .detectedPending else {
             return
@@ -468,8 +520,9 @@ public final class AppCore {
         // persist on screen during an active recording.
         await notifications.cancelAdHocDetected()
 
-        // Stash the eventKey so retry can re-use it.
+        // Stash the eventKey/title so retry can re-use them.
         pendingStartupEventKey = eventKey
+        pendingStartupTitle = title
 
         // Navigate instantly -- the recording pane shows a loading state.
         startupGeneration &+= 1
@@ -479,6 +532,7 @@ public final class AppCore {
         // Heavy startup runs in-line (callers already `await` this).
         await completeRecordingStartup(
             eventKey: eventKey,
+            title: title,
             generation: startupGeneration
         )
     }
@@ -499,6 +553,7 @@ public final class AppCore {
         // Clear detection tracking and startup state
         activeDetectedBundleID = nil
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
         startupGeneration &+= 1
         recordingStartup = nil
 
@@ -737,6 +792,7 @@ extension AppCore {
     /// partially-started recording is torn down and the method bails.
     private func completeRecordingStartup(
         eventKey: String? = nil,
+        title: String? = nil,
         generation: UInt
     ) async {
         // Resolve the calendar event before starting
@@ -746,7 +802,7 @@ extension AppCore {
             calendar.bestMatch(at: Date())
         }
 
-        await recording.start()
+        await recording.start(title: title)
 
         // Bail if cancelled/retried/stopped while start() was in flight.
         guard generation == startupGeneration else {
@@ -768,6 +824,7 @@ extension AppCore {
         runState = .recording(meetingID)
         recordingStartup = .started
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
 
         // Associate with the calendar event if resolved
         if let resolvedEvent {
@@ -819,6 +876,7 @@ extension AppCore {
     public func cancelRecordingStartup() {
         startupGeneration &+= 1
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
         recordingStartup = nil
         // Only revert route if we're still on the recording screen
         // and no actual recording is running.
@@ -829,13 +887,15 @@ extension AppCore {
     }
 
     /// Retries a failed recording startup from scratch, re-using the
-    /// original eventKey from the initial `startRecording` call.
+    /// original eventKey and title from the initial `startRecording` call.
     public func retryRecordingStartup() async {
         let eventKey = pendingStartupEventKey
+        let title = pendingStartupTitle
         startupGeneration &+= 1
         recordingStartup = .loading
         await completeRecordingStartup(
             eventKey: eventKey,
+            title: title,
             generation: startupGeneration
         )
     }
@@ -925,50 +985,106 @@ extension AppCore {
     }
 }
 
-// MARK: - Deep-link handling
+// MARK: - App-link handling
 
 public extension AppCore {
-    /// Handles a `biscotti://meeting/{id}?time={seconds}` deep link.
+    /// Applies a parsed app link.
     ///
-    /// Validates the URL components: scheme must be `biscotti`, host must
-    /// be `meeting`, the path must contain a valid UUID, the `time` query
-    /// parameter must parse as a number, and the meeting must exist in
-    /// the store. On success, navigates to the meeting and sets
-    /// `pendingTranscriptJump` for the detail VM to consume. Invalid
-    /// or unresolvable URLs are silently ignored (no-op).
-    func handleDeepLink(_ url: URL) async {
-        guard url.scheme == "biscotti",
-              url.host == "meeting"
-        else { return }
+    /// While onboarding is active every link is dropped (R6). A link whose
+    /// target does not exist sets `linkError` and leaves the current route
+    /// untouched; a link that never parsed never reaches this method.
+    func apply(_ link: AppLink) async {
+        guard route != .onboarding else {
+            logger.debug("apply: dropped link during onboarding")
+            return
+        }
 
-        // Path is "/{uuid}" — strip the leading slash.
-        let pathID = url.path.hasPrefix("/")
-            ? String(url.path.dropFirst())
-            : url.path
-        guard let meetingID = UUID(uuidString: pathID) else { return }
+        switch link {
+        case .home:
+            showHome()
 
-        // Parse the `time` query parameter.
-        guard let components = URLComponents(
-            url: url, resolvingAgainstBaseURL: false
-        ),
-            let timeString = components.queryItems?
-            .first(where: { $0.name == "time" })?.value,
-            let seconds = Double(timeString)
-        else { return }
+        case .meetings:
+            showMeetings()
 
-        // Verify the meeting exists.
-        let exists = await (try? store.meetingExists(id: meetingID)) ?? false
-        guard exists else { return }
+        case .settings:
+            showSettings()
 
-        select(meetingID)
-        pendingTranscriptJump = TranscriptJump(
-            meetingID: meetingID, time: seconds
+        case let .meeting(id, target):
+            await openMeeting(id: id, target: target)
+
+        case let .search(query):
+            showMeetings()
+            setMeetingsQuery(query)
+            focusSearch()
+
+        case let .upcoming(key):
+            guard calendar.event(forKey: key) != nil else {
+                logger.debug("apply: event for key not found")
+                linkError = .eventNotFound
+                return
+            }
+            selectEvent(key)
+
+        case let .record(title):
+            // `recordingStartup != nil` also covers the loading window
+            // before `runState` flips to `.recording` (and the failed
+            // pane, which has its own Retry): re-entering
+            // `startRecording` mid-startup would supersede the in-flight
+            // start and discard its title.
+            if recording.state.isRecording || recordingStartup != nil {
+                route = .recording
+            } else {
+                await startRecording(title: title)
+            }
+        }
+    }
+
+    /// Clears the pending open-meeting intent after the detail VM has
+    /// applied it.
+    func consumeMeetingIntent() {
+        pendingMeetingIntent = nil
+    }
+
+    /// Dismisses the link-error alert.
+    func dismissLinkError() {
+        linkError = nil
+    }
+
+    /// Copies a `biscotti://meeting/{uuid}` link for the meeting onto the
+    /// general pasteboard. The link opens the meeting at its default view
+    /// (Summary), matching the MCP `app_url` (functional spec §8).
+    ///
+    /// The write goes through the `writer` seam — the real `NSPasteboard`
+    /// write by default, a capture in tests — so `make test` never
+    /// mutates the developer's pasteboard (architecture §7).
+    func copyMeetingLink(
+        _ id: UUID,
+        writer: @MainActor (String) -> Void = { string in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
+    ) {
+        writer(
+            AppLink.meeting(id: id, target: .tab(.summary)).url.absoluteString
         )
     }
 
-    /// Clears the pending transcript jump after the detail VM has applied it.
-    func consumeTranscriptJump() {
-        pendingTranscriptJump = nil
+    /// Selects the meeting and stages the open intent, or fails with
+    /// `.meetingNotFound` (leaving the current route untouched).
+    private func openMeeting(id: UUID, target: MeetingTarget) async {
+        let exists = await (try? store.meetingExists(id: id)) ?? false
+        guard exists else {
+            logger.debug("apply: meeting \(id) not found")
+            linkError = .meetingNotFound
+            return
+        }
+        select(id)
+        meetingIntentToken &+= 1
+        pendingMeetingIntent = MeetingOpenIntent(
+            meetingID: id,
+            target: target,
+            token: meetingIntentToken
+        )
     }
 }
 

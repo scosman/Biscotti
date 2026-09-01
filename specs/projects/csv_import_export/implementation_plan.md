@@ -17,7 +17,7 @@ then the UI that wires it together.
   (deleting its private `TranscriptTextFormatter`). Update MCP tests for the new
   timestamp form and mark the `mcp_*` manual-test steps `not-run`.
 
-- [ ] **Phase 2 — DataStore.** Add `externalID` and `importBatch` to `Meeting`. Add the
+- [x] **Phase 2 — DataStore.** Add `externalID` and `importBatch` to `Meeting`. Add the
   import write path (`existingMeetingIdentity`, `nextImportBatchID`,
   `insertImportedMeetings`), the export read path (`meetingIDsForExport`,
   `exportData(for:)`), and the debug-build bulk delete (`importedMeetingCounts`,

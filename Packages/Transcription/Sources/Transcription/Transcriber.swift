@@ -239,8 +239,8 @@ public actor Transcriber {
             // not lost.
             self.statusContinuations[id] = continuation
             continuation.yield(self.currentStatus)
-            continuation.onTermination = { @Sendable _ in
-                Task { [weak self] in
+            continuation.onTermination = { @Sendable [weak self] _ in
+                Task {
                     await self?.removeContinuation(id: id)
                 }
             }

@@ -208,6 +208,53 @@ struct MeetingOpenIntentTests {
         #expect(fakePlayer.currentTime == 30.0)
     }
 
+    @Test("a newer tab intent cancels a seek deferred before audio loaded")
+    @MainActor
+    func tabIntentClearsDeferredSeek() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingOpenIntent")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.store.createMeeting(
+            title: "Superseded Seek"
+        )
+
+        let fakePlayer = DeepLinkFakePlayer()
+        let viewModel = MeetingDetailViewModel(
+            core: fix.core,
+            meetingID: meetingID,
+            makePlayer: { fakePlayer }
+        )
+
+        // A `?time=` link lands while there is still no audio, so the seek
+        // is staged rather than performed.
+        await fix.core.apply(
+            .meeting(id: meetingID, target: .transcriptTime(30.0))
+        )
+        await viewModel.applyPendingIntentIfNeeded()
+        #expect(viewModel.selectedTab == .transcript)
+
+        // A `?tab=` link for the same meeting supersedes it.
+        await fix.core.apply(.meeting(id: meetingID, target: .tab(.notes)))
+        await viewModel.applyPendingIntentIfNeeded()
+        #expect(viewModel.selectedTab == .notes)
+
+        // Audio arrives afterwards: the stale seek must not fire and drag
+        // the user back to a playing transcript.
+        let micRef = AudioFileRef(
+            role: .mic,
+            path: "/tmp/test/mic.aac",
+            byteSize: 1024,
+            isPresent: true
+        )
+        try await fix.store.attachAudio([micRef], to: meetingID)
+
+        await viewModel.load()
+
+        #expect(viewModel.selectedTab == .notes)
+        #expect(fakePlayer.currentTime == 0)
+        #expect(fakePlayer.isPlaying == false)
+    }
+
     @Test("consumeMeetingIntent is called after applying the intent")
     @MainActor
     func consumeCalledAfterApply() async throws {

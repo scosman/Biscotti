@@ -317,7 +317,13 @@ public final class RecordingController {
         let meetingTitle = title ?? Self.autoTitle()
         let meetingID: UUID
         do {
-            meetingID = try await store.createMeeting(title: meetingTitle)
+            // An explicit title is a deliberate choice, so mark it edited:
+            // otherwise calendar association overwrites it with the matched
+            // event's name (`applyEventTitle` only guards on `editedTitle`).
+            meetingID = try await store.createMeeting(
+                title: meetingTitle,
+                editedTitle: title != nil
+            )
         } catch {
             lastError = .storageFailed("Failed to create meeting: \(error.localizedDescription)")
             return nil

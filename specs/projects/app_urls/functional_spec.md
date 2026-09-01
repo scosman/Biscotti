@@ -74,11 +74,16 @@ main window (creating it if needed), switches the activation policy to
 `AppDelegate.showMainWindow()` path, called before the route resolves, so
 the app responds immediately.
 
-**R5 — No loading state.** Nothing in the resolve path is slow enough to
-warrant a spinner: `meetingExists` is a single indexed fetch and the event
-lookup is an in-memory scan of `calendar.upcoming`. Until a link resolves,
-the app simply keeps showing whatever it was showing; navigation happens in
-one step or an alert appears.
+**R5 — No loading state for navigation.** No *navigation* route needs a
+spinner: `meetingExists` is a single indexed fetch and the event lookup is
+an in-memory scan of `calendar.upcoming`. Until such a link resolves, the
+app keeps showing whatever it was showing; navigation happens in one step
+or an alert appears.
+
+`record` is the exception, and needs nothing new: it awaits
+`startRecording`, whose existing `recordingStartup` loading/failed states
+already drive the recording pane (§4.7). A URL-started recording shows the
+same spinner and the same failure UI as the button and the hotkey.
 
 **R6 — Onboarding.** While `route == .onboarding`, every incoming URL is
 dropped (logged, not queued). The user finishes onboarding first.
@@ -246,8 +251,10 @@ must not be dropped: it is held as a single pending URL and applied once
 recent pending URL is kept — if two arrive during launch, the last wins.
 
 **Multiple URLs.** `application(_:open:)` may be handed several URLs at once.
-Each is processed in order; the last one to resolve determines the final
-route.
+Applying a link suspends (a store lookup, or recording startup), so they
+are chained rather than each given its own task — otherwise an earlier link
+could resolve after a later one and overwrite its route. Each is applied to
+completion in arrival order, so the last URL determines the final route.
 
 ## 6. URL construction
 

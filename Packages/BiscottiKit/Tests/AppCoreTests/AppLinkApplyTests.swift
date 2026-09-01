@@ -332,6 +332,45 @@ struct AppLinkRecordTests {
         try await fix.store.read { store in
             let meeting = try #require(try store.meeting(id: meetingID))
             #expect(meeting.title == "Url-Started Recording")
+            // Marked edited, so a calendar match cannot overwrite it:
+            // `applyEventTitle` guards only on this flag, and every
+            // recording start runs `calendar.bestMatch`.
+            #expect(meeting.editedTitle)
+        }
+    }
+
+    @Test("a calendar event title cannot overwrite a record link's title")
+    @MainActor
+    func recordLinkTitleSurvivesEventTitle() async throws {
+        let fix = try makeCoreFixture(testName: "AppLinkApply")
+        defer { fix.cleanup() }
+
+        await fix.core.apply(.record(title: "Url-Started Recording"))
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+
+        // The association path an auto-matched calendar event would take.
+        try await fix.store.applyEventTitle("Weekly Sync", for: meetingID)
+
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Url-Started Recording")
+        }
+    }
+
+    @Test("a default-titled recording still accepts a calendar event title")
+    @MainActor
+    func defaultTitleStillTakesEventTitle() async throws {
+        let fix = try makeCoreFixture(testName: "AppLinkApply")
+        defer { fix.cleanup() }
+
+        await fix.core.apply(.record(title: nil))
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+
+        try await fix.store.applyEventTitle("Weekly Sync", for: meetingID)
+
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Weekly Sync")
         }
     }
 

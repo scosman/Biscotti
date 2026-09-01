@@ -277,7 +277,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
     /// Whether `AppCore.onLaunch()` has completed and the shell view
     /// model reported it. Until then, incoming URLs park in
     /// `pendingLaunchURL`.
+    ///
+    /// NOTE: this flips only when `AppShellView`'s `.task` runs
+    /// `onLaunch()` to completion — i.e. it depends on the window scene
+    /// appearing. The app has no `LSUIElement`, so the window always
+    /// appears at launch; if that ever changes, a cold-launch URL would
+    /// park here forever.
     private var isCoreReady = false
+
+    /// Tail of the chain that applies links one at a time. `apply(_:)`
+    /// suspends (a store lookup, or recording startup), so without this
+    /// two URLs delivered together could resolve out of order and the
+    /// earlier one overwrite the later one's route.
+    private var linkApplyTask: Task<Void, Never>?
 
     private let logger = Logger(
         subsystem: "net.scosman.biscotti",
@@ -674,7 +686,10 @@ extension AppDelegate {
             return
         }
         showMainWindow()
-        Task { @MainActor [weak self] in
+        // Chain onto the previous apply so links resolve in arrival order.
+        let previous = linkApplyTask
+        linkApplyTask = Task { @MainActor [weak self] in
+            await previous?.value
             await self?.core?.apply(link)
         }
     }

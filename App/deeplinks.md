@@ -77,7 +77,10 @@ a wholly absent `query` parameter is ignored.
 Opens the read-only preview of an upcoming calendar event.
 
 ```sh
-open 'biscotti://upcoming?key=…'
+# Substitute a real, percent-encoded composite key for COMPOSITE_KEY —
+# as written this is a non-empty but unknown key, so it shows
+# "Event Not Found".
+open 'biscotti://upcoming?key=COMPOSITE_KEY'
 ```
 
 `{key}` is an internal identifier Biscotti derives from the event:

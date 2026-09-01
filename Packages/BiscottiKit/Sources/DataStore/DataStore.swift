@@ -122,9 +122,20 @@ public actor DataStore {
     // MARK: - Meeting CRUD
 
     /// Creates a new meeting and returns its ID.
+    ///
+    /// - Parameter editedTitle: Marks `title` as deliberately chosen, so
+    ///   calendar association (``applyEventTitle(_:for:)``) will not
+    ///   overwrite it with the matched event's name. Pass `true` whenever
+    ///   the title came from the caller rather than the auto-title default.
     @discardableResult
-    public func createMeeting(title: String, start: Date? = nil, end: Date? = nil) throws -> UUID {
+    public func createMeeting(
+        title: String,
+        editedTitle: Bool = false,
+        start: Date? = nil,
+        end: Date? = nil
+    ) throws -> UUID {
         let meeting = Meeting(title: title, startDate: start, endDate: end)
+        meeting.editedTitle = editedTitle
         context.insert(meeting)
         try save()
         return meeting.id

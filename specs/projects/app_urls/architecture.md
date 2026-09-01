@@ -10,7 +10,7 @@ per-component docs would add ceremony without adding clarity.
 
 ## 1. Component map
 
-```
+```text
                     ┌─────────────────┐
                     │   AppLinks      │  NEW leaf module, Foundation only
                     │  AppLink (enum) │  parse + build + MeetingTab
@@ -30,9 +30,11 @@ per-component docs would add ceremony without adding clarity.
 
 ### Why a new module
 
-`MCPServer` needs to *build* a URL (§7 of the functional spec) and `AppCore`
-needs to *parse* one. `AppCore` already depends on `MCPServer`, so the shared
-type cannot live in `AppCore` without inverting that edge. `AppLinks` is a
+`MCPServer` needs to *build* a URL (§7 of the functional spec) and the app
+delegate needs to *parse* one into an `AppLink` that `AppCore.apply(_:)`
+then consumes (§3.2 — `AppCore` never sees a raw `URL`). `AppCore` already
+depends on `MCPServer`, so the shared type cannot live in `AppCore` without
+inverting that edge, and the app target sits above both. `AppLinks` is a
 leaf with no dependencies beyond Foundation — the same shape as
 `MeetingCatalog`. It is pure value types and pure functions, so it unit-tests
 with no fixtures, no store, and no main actor.

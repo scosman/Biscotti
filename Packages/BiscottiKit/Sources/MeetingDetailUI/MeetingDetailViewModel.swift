@@ -874,6 +874,11 @@ public extension MeetingDetailViewModel {
 
         switch intent.target {
         case let .tab(tab):
+            // Drop any seek staged by an earlier `?time=` link that is
+            // still waiting on `loadAudioPlayer`. Without this, the newer
+            // tab is shown and then audio finishes loading and yanks the
+            // user to a seeking, playing transcript.
+            pendingSeek = nil
             selectedTab = Tab(tab)
         case let .transcriptTime(time):
             selectedTab = .transcript

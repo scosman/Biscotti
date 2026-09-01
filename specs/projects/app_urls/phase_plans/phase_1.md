@@ -59,10 +59,12 @@ edge available. Nothing calls it yet (architecture §2).
    - `.meeting` with `.tab(.summary)` emits no query parameters;
      `.tab` emits `?tab=…`, `.transcriptTime` emits `?time=…`.
    - `.record(title: nil)` emits no query; non-nil emits `?title=…`.
-   - Non-failable: every case maps to a well-formed URL
-     (`fatalError` with message on the impossible encode failure —
-     `force_unwrapping` and `fatal_error_message` lint rules are both
-     opted in).
+   - Non-failable: every case maps to a well-formed URL. The encode
+     failure is unreachable (fixed scheme/host, UUID path, query values
+     percent-encoded by `URLComponents`), and is handled by degrading —
+     drop the query, then fall back to `Self.homeURL` — rather than
+     trapping. A `fatalError` here would be a crash in a leaf module the
+     MCP server links.
 
 4. **`Package.swift`**:
 

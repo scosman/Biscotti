@@ -20,6 +20,9 @@ P1 — build these:
 P2 — punt only if hard:
 
 * `biscotti://upcoming/ID` (not sure we have an ID)
+  — built as `biscotti://upcoming?key=KEY`: the ID exists (the calendar
+  composite key) but contains `|`, so it is a query item rather than a
+  path segment. See functional spec §4.6.
 
 `meeting/UUID` should have a `?tab` option for summary, transcript, notes.
 

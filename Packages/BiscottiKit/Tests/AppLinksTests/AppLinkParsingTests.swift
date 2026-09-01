@@ -98,6 +98,14 @@ struct AppLinkParsingTests {
         "biscotti://meeting/\(meetingUUID.uuidString)?time=",
         "biscotti://meeting/\(meetingUUID.uuidString)?tab=notes&time=abc",
 
+        // meeting: `Double(_:)` accepts these, but no non-finite value is
+        // a position in a recording — reject rather than seek arbitrarily
+        "biscotti://meeting/\(meetingUUID.uuidString)?time=nan",
+        "biscotti://meeting/\(meetingUUID.uuidString)?time=inf",
+        "biscotti://meeting/\(meetingUUID.uuidString)?time=-inf",
+        "biscotti://meeting/\(meetingUUID.uuidString)?time=infinity",
+        "biscotti://meeting/\(meetingUUID.uuidString)?time=1e999",
+
         // search: query parameter wholly absent
         "biscotti://search",
 

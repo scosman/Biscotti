@@ -75,9 +75,14 @@ private extension AppLink {
     /// `time` must parse (an unparseable number rejects the whole URL),
     /// a parseable `time` beats `tab`, an unrecognized `tab` value falls
     /// back to `.summary`.
+    ///
+    /// `Double(_:)` accepts `"nan"`, `"inf"` and values that overflow to
+    /// infinity (`"1e999"`), none of which are a position in a recording —
+    /// they reach the seek clamp and land somewhere arbitrary. Require a
+    /// finite value so they are rejected at the parse tier instead.
     static func meetingTarget(time: String?, tab: String?) -> MeetingTarget? {
         if let time {
-            guard let seconds = Double(time) else { return nil }
+            guard let seconds = Double(time), seconds.isFinite else { return nil }
             return .transcriptTime(seconds)
         }
         if let tab, let meetingTab = MeetingTab(rawValue: tab.lowercased()) {

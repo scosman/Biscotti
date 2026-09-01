@@ -3,6 +3,7 @@ import AppKit
 import Calendar
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 import HomeUI
 import MeetingDetailUI

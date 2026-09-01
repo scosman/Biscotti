@@ -87,7 +87,7 @@ struct CopyTranscriptTests {
         let pasted = NSPasteboard.general.string(forType: .string)
         #expect(
             pasted
-                == "Alice  0:14\nHello everyone.\n\nBob  0:31\nGood morning."
+                == "[0:14] Alice\nHello everyone.\n\n[0:31] Bob\nGood morning."
         )
     }
 

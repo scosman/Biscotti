@@ -10,7 +10,7 @@ then the UI that wires it together.
 
 ## Phases
 
-- [ ] **Phase 1 — `Formatting` module.** New Foundation-only module. Move `TimeFormatting`
+- [x] **Phase 1 — `Formatting` module.** New Foundation-only module. Move `TimeFormatting`
   out of `DesignSystem` (and its tests), add `ISO8601Formatting` and
   `TranscriptTextFormatting` (render + parse). Rewire the three existing call sites:
   `MeetingDetailUI` Copy, `TranscriptListView`, and `MeetingToolProvider` in `MCPServer`

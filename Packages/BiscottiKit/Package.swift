@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
         .library(name: "DataStore", targets: ["DataStore"]),
         .library(name: "DesignSystem", targets: ["DesignSystem"]),
+        .library(name: "Formatting", targets: ["Formatting"]),
         .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
@@ -68,9 +69,22 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
-            name: "DesignSystem",
+            name: "Formatting",
             dependencies: [
                 "DataStore"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "FormattingTests",
+            dependencies: ["Formatting", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "DesignSystem",
+            dependencies: [
+                "DataStore",
+                "Formatting"
             ],
             resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
@@ -194,6 +208,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
                 "Intelligence",
                 "MCPServer",
                 "MeetingCatalog",
@@ -214,7 +229,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -226,6 +242,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
@@ -272,6 +289,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
@@ -289,6 +307,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
@@ -307,7 +326,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -319,6 +339,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
@@ -335,6 +356,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
                 "HomeUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
@@ -425,7 +447,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -609,6 +632,7 @@ let package = Package(
             dependencies: [
                 "AppLinks",
                 "DataStore",
+                "Formatting",
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),

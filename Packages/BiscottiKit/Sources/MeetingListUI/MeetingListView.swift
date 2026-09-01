@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import DataStore
 import DesignSystem
+import Formatting
 import SwiftUI
 
 /// The Meetings screen's left-bar list: a native `List` with pinned

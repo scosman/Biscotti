@@ -19,7 +19,7 @@ struct MCPTranscriptWindowTests {
                 try await Self.transcript(port: fixture.port, arguments: arguments)
             }
 
-            let fullText = "[00:04] Speaker 0\nFirst\n\n[00:10] Speaker 1\nSecond\n\n[00:20] Speaker 0\nThird"
+            let fullText = "[0:04] Speaker 0\nFirst\n\n[0:10] Speaker 1\nSecond\n\n[0:20] Speaker 0\nThird"
 
             // No params: today's full output.
             let full = try await transcript(["id": meetingID.uuidString])
@@ -32,24 +32,24 @@ struct MCPTranscriptWindowTests {
             let sub = try await transcript([
                 "id": meetingID.uuidString, "start_seconds": 9, "end_seconds": 20
             ])
-            #expect(sub["text"] as? String == "[00:10] Speaker 1\nSecond")
+            #expect(sub["text"] as? String == "[0:10] Speaker 1\nSecond")
             #expect(sub["word_count"] as? Int == 1)
 
             // Start inclusive: [10, 20) still catches the 10–15 segment.
             let inclusive = try await transcript([
                 "id": meetingID.uuidString, "start_seconds": 10, "end_seconds": 20
             ])
-            #expect(inclusive["text"] as? String == "[00:10] Speaker 1\nSecond")
+            #expect(inclusive["text"] as? String == "[0:10] Speaker 1\nSecond")
 
             // Bounds are independently optional: start alone, end alone.
             let startAlone = try await transcript([
                 "id": meetingID.uuidString, "start_seconds": 15
             ])
-            #expect(startAlone["text"] as? String == "[00:20] Speaker 0\nThird")
+            #expect(startAlone["text"] as? String == "[0:20] Speaker 0\nThird")
             let endAlone = try await transcript([
                 "id": meetingID.uuidString, "end_seconds": 10
             ])
-            #expect(endAlone["text"] as? String == "[00:04] Speaker 0\nFirst")
+            #expect(endAlone["text"] as? String == "[0:04] Speaker 0\nFirst")
         }
     }
 

@@ -1,5 +1,6 @@
 import DataStore
 import DesignSystem
+import Formatting
 import SwiftUI
 
 /// Displays a transcript as a recycling `List` of per-segment rows,
@@ -102,7 +103,7 @@ struct TranscriptListView<Header: View>: View {
             ForEach(segments) { segment in
                 TranscriptSegmentRow(
                     segment: segment,
-                    speakerName: TranscriptContent.displayName(
+                    speakerName: TranscriptTextFormatting.displayName(
                         for: segment, names: speakerNames
                     ),
                     speakerColor: TranscriptContent.speakerColor(

@@ -230,6 +230,11 @@ I pushed the fix this morning.
 - Speaker name is the assigned person's name where the speaker has been mapped,
   otherwise the diarization label (`Speaker 0`) — the same resolution the transcript
   view uses on screen.
+- Consecutive segments from the same speaker (same non-nil speaker ID) collapse
+  into **one** turn, their text joined by a space — segment boundaries are
+  diarization artifacts, and a header per fragment would make the Copy output and
+  the CSV unreadable. A turn's timestamp is its first segment's start. Segments
+  without a speaker ID never collapse; blank segments are dropped.
 - One blank line between turns.
 
 This replaces the current Copy output (`Steve  0:23` on the header line). The change is
@@ -257,8 +262,11 @@ Input is free text, which may be Biscotti's own format or plain text from anothe
    (imported transcripts carry no durations).
 7. A transcript that yields zero segments produces no transcript record.
 
-Round-trip is exact: export renders one header per segment, so parsing an exported
-transcript reproduces the same segments, speakers, and times.
+Round-trip preserves every speaker, timestamp, and word: parsing an exported
+transcript reproduces the same speakers and times and the same words in the same
+order. It does not preserve segment boundaries — consecutive same-speaker
+segments are one segment per turn after a round-trip, because render collapses
+them (§4.1).
 
 ## 5. Export
 

@@ -1,6 +1,6 @@
+import Formatting
 import Foundation
 import Testing
-@testable import DesignSystem
 
 @Suite("TimeFormatting -- relativeTimeText")
 struct RelativeTimeTextTests {

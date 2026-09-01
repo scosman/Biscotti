@@ -183,9 +183,13 @@ public enum ISO8601Formatting {
 }
 ```
 
-Rendering uses `Date.ISO8601FormatStyle` with
-`.time(includingFractionalSeconds: true)` — unlike `ISO8601DateFormatter` it is
-`Sendable`, so it can be a `static let` under Swift 6 strict concurrency.
+Rendering uses a per-call `ISO8601DateFormatter` (UTC,
+`.withFractionalSeconds`). The originally prescribed `Date.ISO8601FormatStyle`
+(with `.time(includingFractionalSeconds: true)`) was found during
+implementation to truncate the sub-millisecond `Date` representation error
+downward — a `.017` instant renders `.016` — which breaks both the exact
+output string (§1.3) and the render→parse round-trip; `ISO8601DateFormatter`
+rounds to the nearest millisecond and round-trips exactly.
 
 Parsing tries, in order: ISO-8601 with fractional seconds; ISO-8601 without; a
 whole-string `^-?\d+$` integer (epoch — milliseconds when `abs(value) >= 100_000_000_000`,

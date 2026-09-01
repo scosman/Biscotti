@@ -3,60 +3,12 @@ import DesignSystem
 import Foundation
 import SwiftUI
 
-/// Pure builders for transcript display and clipboard export.
+/// Pure builders for transcript speaker colors.
 ///
-/// Deterministic, side-effect-free functions over `[SegmentData]`
-/// — easy to unit-test without any view or view model.
+/// Deterministic, side-effect-free functions over `SegmentData`
+/// — easy to unit-test without any view or view model. Name resolution
+/// and plain-text rendering live in `Formatting.TranscriptTextFormatting`.
 public enum TranscriptContent {
-    // MARK: - Display name
-
-    /// The display name for a segment's speaker: the assigned person name
-    /// when the segment's `speakerID` is mapped in `names`, otherwise the
-    /// original diarization `speakerLabel`.
-    ///
-    /// Shared by the transcript row (`TranscriptListView`) and `plainText`
-    /// so on-screen and copied text resolve names identically.
-    ///
-    /// - Parameters:
-    ///   - segment: The segment whose speaker name to resolve.
-    ///   - names: A map of diarization speaker ID to assigned display name.
-    public static func displayName(
-        for segment: SegmentData, names: [Int: String]
-    ) -> String {
-        if let sid = segment.speakerID, let assignedName = names[sid] {
-            return assignedName
-        }
-        return segment.speakerLabel
-    }
-
-    // MARK: - Plain text (for pasteboard)
-
-    /// Builds a plain-text rendering of the transcript for clipboard copy.
-    ///
-    /// Format per turn:
-    /// ```
-    /// <Speaker>  MM:SS
-    /// <utterance text>
-    /// ```
-    /// Blank line between turns.
-    ///
-    /// - Parameters:
-    ///   - segments: The transcript segments to render.
-    ///   - names: Optional speaker-ID-to-name map; same semantics as
-    ///     `displayName(for:names:)`.
-    public static func plainText(
-        _ segments: [SegmentData],
-        names: [Int: String] = [:]
-    ) -> String {
-        segments.map { segment in
-            let name = displayName(for: segment, names: names)
-            let timeText = TimeFormatting.formatPlaybackTime(segment.startTime)
-            let trimmedText = segment.text.drop(while: \.isWhitespace)
-            return "\(name)  \(timeText)\n\(trimmedText)"
-        }
-        .joined(separator: "\n\n")
-    }
-
     // MARK: - Speaker color
 
     /// Stable per-speaker color from the shared avatar palette.

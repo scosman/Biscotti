@@ -23,7 +23,7 @@ then the UI that wires it together.
   `exportData(for:)`), and the debug-build bulk delete (`importedMeetingCounts`,
   `deleteImportedMeetings`), with the draft/read model types.
 
-- [ ] **Phase 3 — `ImportExport` module.** CSV parser and writer, `MeetingCSVImporter.scan`
+- [x] **Phase 3 — `ImportExport` module.** CSV parser and writer, `MeetingCSVImporter.scan`
   with its full error/warning taxonomy, and the chunk-streaming `MeetingCSVExporter`.
   Entirely unit-testable — no UI, no app target.
 

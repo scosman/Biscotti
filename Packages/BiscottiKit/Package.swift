@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "DataStore", targets: ["DataStore"]),
         .library(name: "DesignSystem", targets: ["DesignSystem"]),
         .library(name: "Formatting", targets: ["Formatting"]),
+        .library(name: "ImportExport", targets: ["ImportExport"]),
         .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
@@ -78,6 +79,19 @@ let package = Package(
         .testTarget(
             name: "FormattingTests",
             dependencies: ["Formatting", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ImportExport",
+            dependencies: [
+                "DataStore",
+                "Formatting"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ImportExportTests",
+            dependencies: ["ImportExport", "DataStore", "Formatting"],
             swiftSettings: warningsAsErrors
         ),
         .target(

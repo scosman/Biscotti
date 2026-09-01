@@ -76,6 +76,31 @@ struct ISO8601FormattingParseTests {
         #expect(asMilliseconds.timeIntervalSince1970 == 100_000_000)
     }
 
+    @Test("Int.min and Int.max epoch integers parse without trapping")
+    func epochExtremes() throws {
+        // The full-precision literals parse as Int.min / Int.max; both
+        // magnitudes are far above the millisecond threshold.
+        let minParsed = try #require(
+            ISO8601Formatting.date(from: "-9223372036854775808")
+        )
+        #expect(minParsed.timeIntervalSince1970 == Double(Int.min) / 1000)
+        let maxParsed = try #require(
+            ISO8601Formatting.date(from: "9223372036854775807")
+        )
+        #expect(maxParsed.timeIntervalSince1970 == Double(Int.max) / 1000)
+    }
+
+    @Test("a negative epoch integer below the threshold is seconds")
+    func negativeEpochSeconds() throws {
+        let parsed = try #require(ISO8601Formatting.date(from: "-1767450402"))
+        #expect(parsed.timeIntervalSince1970 == -1_767_450_402)
+    }
+
+    @Test("a leading plus is not accepted as an epoch integer")
+    func leadingPlusRejected() {
+        #expect(ISO8601Formatting.date(from: "+5") == nil)
+    }
+
     @Test("trims surrounding whitespace before matching")
     func trimsWhitespace() throws {
         let parsed = try #require(ISO8601Formatting.date(from: "  2026-01-03T14:26:42Z\r\n"))

@@ -81,6 +81,18 @@ struct CSVParserTests {
         #expect(try CSVParser.parse("a,\"\",b") == [["a", "", "b"]])
     }
 
+    @Test("A lone quoted empty field is one row with one empty field")
+    func loneQuotedEmptyField() throws {
+        #expect(try CSVParser.parse("\"\"") == [[""]])
+    }
+
+    @Test("A doubled quote at the start of a quoted field is a literal quote")
+    func doubledQuoteAtFieldStart() throws {
+        // `"""x"` = open quote, escaped pair (one literal quote), x,
+        // closing quote — the case the quotePending flag exists for.
+        #expect(try CSVParser.parse("\"\"\"x\",y") == [["\"x", "y"]])
+    }
+
     @Test("Text after a closing quote is kept, with the quote as content")
     func textAfterClosingQuote() throws {
         #expect(try CSVParser.parse("\"closed\"tail,x") == [["closed\"tail", "x"]])

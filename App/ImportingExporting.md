@@ -40,6 +40,9 @@ Import is lenient about the header:
 Anything else makes that row invalid — it is skipped with a warning, and the
 rest of the file still imports.
 
+A file with only a header row (no data rows) is valid to import: nothing is
+imported, and Biscotti reports "Imported 0 meetings."
+
 ## The transcript format
 
 The transcript column is plain text. Biscotti's own format marks each speaker
@@ -81,3 +84,7 @@ occurrence wins) is skipped with a warning.
 Export writes **every** meeting, newest first, to a file named
 `Biscotti_export_{timestamp}.csv` (for example
 `Biscotti_export_2026-09-01-142642.csv`). You pick where to save it.
+
+The `id` column always carries Biscotti's own UUID for each meeting — an
+imported meeting's original (non-UUID) identifier is never re-exported. If you
+round-trip a file through another tool, use Biscotti's UUIDs as the identity.

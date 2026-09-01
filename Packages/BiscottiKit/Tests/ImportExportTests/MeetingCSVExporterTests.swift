@@ -248,3 +248,118 @@ struct MeetingCSVExporterTests {
         }
     }
 }
+
+/// The exporter's failure paths: creation failures propagate the real
+/// error, and any failure after the file exists removes the partial file.
+@Suite("MeetingCSVExporter failure paths")
+struct MeetingCSVExporterFailureTests {
+    private func makeTempDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(
+            at: url,
+            withIntermediateDirectories: true
+        )
+        return url
+    }
+
+    /// Stand-in source so a failing chunk fetch can exercise the
+    /// partial-file cleanup deterministically.
+    private struct StubSource: MeetingExportSource {
+        var ids: [UUID] = []
+        var data: [UUID: MeetingExportData] = [:]
+        /// When set, any chunk containing this ID throws.
+        var errorTriggerID: UUID?
+
+        func meetingIDsForExport() throws -> [UUID] {
+            ids
+        }
+
+        func exportData(for ids: [UUID]) throws -> [MeetingExportData] {
+            if let errorTriggerID, ids.contains(errorTriggerID) {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            return ids.compactMap { data[$0] }
+        }
+    }
+
+    private func exportData(
+        id: UUID, title: String
+    ) -> MeetingExportData {
+        MeetingExportData(
+            id: id,
+            title: title,
+            date: Date(timeIntervalSince1970: 1_750_000_000)
+        )
+    }
+
+    @Test("Exporting into a directory that does not exist throws")
+    func nonexistentDirectoryThrows() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let missing = FileManager.default.temporaryDirectory
+            .appending(path: "missing-\(UUID().uuidString)", directoryHint: .isDirectory)
+
+        await #expect(throws: Error.self) {
+            _ = try await MeetingCSVExporter(store: store).export(to: missing)
+        }
+    }
+
+    @Test("Exporting onto an unwritable file throws and leaves it untouched")
+    func unwritableTargetThrows() async throws {
+        let store = try DataStore(storage: .inMemory)
+        _ = try await store.createMeeting(title: "One")
+
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        let target = directory.appending(
+            path: MeetingCSVExporter.fileName(for: now)
+        )
+        try Data("old contents".utf8).write(to: target)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o444], ofItemAtPath: target.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: target.path
+            )
+        }
+
+        await #expect(throws: Error.self) {
+            _ = try await MeetingCSVExporter(store: store).export(
+                to: directory, now: now
+            )
+        }
+        // The pre-existing file was not truncated or replaced.
+        #expect(try String(contentsOf: target, encoding: .utf8) == "old contents")
+    }
+
+    @Test("A failure after the file was created removes the partial file")
+    func failedChunkRemovesPartialFile() async throws {
+        let trigger = UUID()
+        var source = StubSource()
+        source.ids = [UUID(), UUID(), trigger, UUID(), UUID()]
+        source.data = Dictionary(
+            uniqueKeysWithValues: source.ids.map {
+                ($0, exportData(id: $0, title: "M\($0.uuidString.prefix(4))"))
+            }
+        )
+        source.errorTriggerID = trigger
+
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+
+        // chunkSize 2 puts the trigger in the second chunk: the file is
+        // created and the header written before the failure lands.
+        let exporter = MeetingCSVExporter(source: source, chunkSize: 2)
+        await #expect(throws: Error.self) {
+            _ = try await exporter.export(to: directory, now: now)
+        }
+
+        let partial = directory.appending(
+            path: MeetingCSVExporter.fileName(for: now)
+        )
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
+    }
+}

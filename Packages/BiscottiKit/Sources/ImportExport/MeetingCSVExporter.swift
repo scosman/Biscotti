@@ -1,27 +1,26 @@
 import DataStore
 import Formatting
 import Foundation
-import os
-
-/// Export failure (architecture §4.3). I/O errors from the write path
-/// propagate as-is; this type covers the one failure Foundation reports
-/// as a `Bool` rather than a throw. The payload is the file path.
-public enum CSVExportError: Error, Equatable, Sendable {
-    case cannotCreateFile(String)
-}
 
 /// Writes every meeting in the store to a CSV file (functional spec §5),
 /// streaming in chunks so memory stays bounded regardless of library size
 /// — a few thousand meetings with long transcripts would otherwise be
 /// hundreds of megabytes of `String` (architecture §4.3).
 public struct MeetingCSVExporter: Sendable {
-    private let store: DataStore
+    private let source: any MeetingExportSource
     private let chunkSize: Int
 
     public init(store: DataStore, chunkSize: Int = 50) {
-        precondition(chunkSize > 0, "chunkSize must be at least 1")
-        self.store = store
-        self.chunkSize = chunkSize
+        self.init(source: store, chunkSize: chunkSize)
+    }
+
+    /// Test entry point: any source, so a failing chunk fetch can exercise
+    /// the partial-file cleanup path.
+    init(source: any MeetingExportSource, chunkSize: Int) {
+        self.source = source
+        // A non-positive chunk size is a caller mistake, not a reason to
+        // trap a release build.
+        self.chunkSize = max(1, chunkSize)
     }
 
     /// Writes the CSV to `directory` and returns the file URL.
@@ -35,12 +34,10 @@ public struct MeetingCSVExporter: Sendable {
     ) async throws -> URL {
         let fileURL = directory.appending(path: Self.fileName(for: now))
 
-        guard FileManager.default.createFile(
-            atPath: fileURL.path(),
-            contents: nil
-        ) else {
-            throw CSVExportError.cannotCreateFile(fileURL.path())
-        }
+        // Creates or truncates, and throws the real underlying error when
+        // the directory is missing or the file is unwritable — no
+        // Bool-returning createFile to reinterpret.
+        try Data().write(to: fileURL)
 
         var completed = false
         defer {
@@ -51,24 +48,31 @@ public struct MeetingCSVExporter: Sendable {
 
         do {
             let handle = try FileHandle(forWritingTo: fileURL)
-            defer { try? handle.close() }
-
-            try handle.write(contentsOf: Data(CSVColumns.headerRow.utf8))
-
-            let ids = try await store.meetingIDsForExport()
             var exported = 0
-            for start in stride(from: 0, to: ids.count, by: chunkSize) {
-                let end = min(start + chunkSize, ids.count)
-                let meetings = try await store.exportData(
-                    for: Array(ids[start ..< end])
-                )
+            do {
+                try handle.write(contentsOf: Data(CSVColumns.headerRow.utf8))
 
-                var text = ""
-                for meeting in meetings {
-                    text += Self.row(for: meeting)
+                let ids = try await source.meetingIDsForExport()
+                for start in stride(from: 0, to: ids.count, by: chunkSize) {
+                    let end = min(start + chunkSize, ids.count)
+                    let meetings = try await source.exportData(
+                        for: Array(ids[start ..< end])
+                    )
+
+                    var text = ""
+                    for meeting in meetings {
+                        text += Self.row(for: meeting)
+                    }
+                    try handle.write(contentsOf: Data(text.utf8))
+                    exported += meetings.count
                 }
-                try handle.write(contentsOf: Data(text.utf8))
-                exported += meetings.count
+                // Close explicitly on the success path so a close failure
+                // surfaces instead of reporting a successful export of a
+                // possibly unwritten file.
+                try handle.close()
+            } catch {
+                try? handle.close()
+                throw error
             }
 
             completed = true
@@ -110,3 +114,13 @@ public struct MeetingCSVExporter: Sendable {
         return "Biscotti_export_\(formatter.string(from: now)).csv"
     }
 }
+
+/// The store surface the exporter reads. Internal so tests can stand in a
+/// failing source; `DataStore` conforms through its existing
+/// import/export methods.
+protocol MeetingExportSource: Sendable {
+    func meetingIDsForExport() async throws -> [UUID]
+    func exportData(for ids: [UUID]) async throws -> [MeetingExportData]
+}
+
+extension DataStore: MeetingExportSource {}

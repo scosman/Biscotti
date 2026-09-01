@@ -163,11 +163,9 @@ public enum TranscriptTextFormatting {
         _ line: String,
         pattern: Regex<(Substring, Substring)>
     ) -> ParsedHeader? {
-        guard line.first == "[",
-              let match = line.prefixMatch(of: pattern)
-        else { return nil }
+        guard let match = line.prefixMatch(of: pattern) else { return nil }
 
-        let time = timestamp(String(match.output.1))
+        let time = seconds(fromTimestamp: String(match.output.1))
         let trailing = line[match.range.upperBound...]
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let colon = trailing.firstIndex(of: ":") else {
@@ -186,7 +184,7 @@ public enum TranscriptTextFormatting {
 
     /// Two colon-separated parts are `M:SS`; three are `H:MM:SS`. The
     /// header pattern guarantees digits.
-    private static func timestamp(_ timestamp: String) -> TimeInterval {
+    private static func seconds(fromTimestamp timestamp: String) -> TimeInterval {
         let parts = timestamp.split(separator: ":").map { Int($0) ?? 0 }
         if parts.count == 3 {
             return TimeInterval(parts[0] * 3600 + parts[1] * 60 + parts[2])

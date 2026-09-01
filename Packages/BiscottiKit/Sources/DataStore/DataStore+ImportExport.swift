@@ -5,9 +5,12 @@ import SwiftData
 
 public extension DataStore {
     /// Everything already in the database that an import must not duplicate
-    /// (functional spec §2.4). One fetch, mapped into two sets.
+    /// (functional spec §2.4). One fetch, narrowed to the two columns it
+    /// reads — the same treatment as `nextImportBatchID`.
     func existingMeetingIdentity() throws -> ExistingMeetingIdentity {
-        let meetings = try context.fetch(FetchDescriptor<Meeting>())
+        var descriptor = FetchDescriptor<Meeting>()
+        descriptor.propertiesToFetch = [\.id, \.externalID]
+        let meetings = try context.fetch(descriptor)
         return ExistingMeetingIdentity(
             meetingIDs: Set(meetings.map(\.id)),
             externalIDs: Set(meetings.compactMap(\.externalID))
@@ -17,6 +20,13 @@ public extension DataStore {
     /// Returns a fresh import batch ID: epoch milliseconds at `now`,
     /// incremented while a meeting already carries that exact `importBatch`
     /// — two imports inside the same millisecond cannot share a batch.
+    ///
+    /// The value is only claimed once `insertImportedMeetings` writes it,
+    /// with `await` points in between, so two overlapping imports could in
+    /// principle draw the same ID. That cannot happen through the UI (the
+    /// section's buttons are disabled while an import is in flight), and
+    /// the field's only reader today is the debug bulk delete, which
+    /// ignores batch boundaries.
     func nextImportBatchID(now: Date = Date()) throws -> Int {
         var descriptor = FetchDescriptor<Meeting>(
             predicate: #Predicate { $0.importBatch != nil }
@@ -39,13 +49,32 @@ public extension DataStore {
     /// non-empty transcript drafts), all stamped with `batchID`. One save at
     /// the end — a failure leaves the store unchanged. Returns the number of
     /// meetings inserted.
+    ///
+    /// The scanner has already deduplicated against the identity it was
+    /// handed (functional spec §2.4), but the write path does not trust
+    /// that: a draft whose meeting ID already exists — in the store or in
+    /// an earlier draft of this batch — is skipped, because `Meeting.id`
+    /// carries no unique constraint and a duplicate row would corrupt the
+    /// store silently.
     @discardableResult
     func insertImportedMeetings(
         _ drafts: [ImportedMeetingDraft], batchID: Int
     ) throws -> Int {
         guard !drafts.isEmpty else { return 0 }
 
+        var idDescriptor = FetchDescriptor<Meeting>()
+        idDescriptor.propertiesToFetch = [\.id]
+        let existingIDs = try Set(
+            context.fetch(idDescriptor).map(\.id)
+        )
+
+        var inserted = 0
+        var batchIDs = Set<UUID>()
         for draft in drafts {
+            guard existingIDs.contains(draft.meetingID) == false,
+                  batchIDs.insert(draft.meetingID).inserted
+            else { continue }
+
             let meeting = Meeting(
                 id: draft.meetingID,
                 title: draft.title,
@@ -62,36 +91,47 @@ public extension DataStore {
             meeting.importBatch = batchID
             context.insert(meeting)
 
-            guard !draft.transcript.isEmpty else { continue }
-
-            let record = TranscriptRecord(
-                transcriptionMethodId: "imported",
-                language: "",
-                speakerCount: Set(draft.transcript.map(\.speakerID)).count
-            )
-            context.insert(record)
-
-            for (index, segment) in draft.transcript.enumerated() {
-                // Imported segments carry no durations (functional spec §4.2).
-                let segmentRecord = TranscriptSegmentRecord(
-                    index: index,
-                    speakerID: segment.speakerID,
-                    speakerLabel: segment.speakerLabel,
-                    startTime: segment.startTime,
-                    endTime: segment.startTime,
-                    text: segment.text,
-                    noSpeechProbability: 0
-                )
-                context.insert(segmentRecord)
-                record.segments.append(segmentRecord)
+            if !draft.transcript.isEmpty {
+                insertImportedTranscript(draft.transcript, into: meeting)
             }
-
-            meeting.transcripts.append(record)
-            meeting.preferredTranscriptID = record.id
+            inserted += 1
         }
 
+        guard inserted > 0 else { return 0 }
         try save()
-        return drafts.count
+        return inserted
+    }
+
+    /// Builds and inserts the transcript record for a non-empty imported
+    /// transcript, links it to the meeting, and marks it preferred
+    /// (functional spec §2.2/§4.2).
+    private func insertImportedTranscript(
+        _ transcript: [TranscriptSegmentDraft], into meeting: Meeting
+    ) {
+        let record = TranscriptRecord(
+            transcriptionMethodId: "imported",
+            language: "",
+            speakerCount: Set(transcript.map(\.speakerID)).count
+        )
+        context.insert(record)
+
+        for (index, segment) in transcript.enumerated() {
+            // Imported segments carry no durations (functional spec §4.2).
+            let segmentRecord = TranscriptSegmentRecord(
+                index: index,
+                speakerID: segment.speakerID,
+                speakerLabel: segment.speakerLabel,
+                startTime: segment.startTime,
+                endTime: segment.startTime,
+                text: segment.text,
+                noSpeechProbability: 0
+            )
+            context.insert(segmentRecord)
+            record.segments.append(segmentRecord)
+        }
+
+        meeting.transcripts.append(record)
+        meeting.preferredTranscriptID = record.id
     }
 }
 
@@ -115,15 +155,18 @@ public extension DataStore {
     /// chunked exports keep the newest-first sequence. IDs that no longer
     /// resolve to a meeting are skipped.
     func exportData(for ids: [UUID]) throws -> [MeetingExportData] {
-        // The #Predicate macro cannot capture a function parameter directly;
-        // it needs a local binding.
-        let ids = ids
         let fetched = try context.fetch(
             FetchDescriptor<Meeting>(
                 predicate: #Predicate { ids.contains($0.id) }
             )
         )
-        let byID = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+        // `Meeting.id` has no unique constraint; if duplicate rows ever
+        // entered the store, first-wins here keeps this lookup from
+        // trapping on them.
+        let byID = Dictionary(
+            fetched.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         var results: [MeetingExportData] = []
         for id in ids {
@@ -134,33 +177,14 @@ public extension DataStore {
     }
 
     private func exportData(for meeting: Meeting) throws -> MeetingExportData {
-        let preferred: TranscriptRecord? = if let preferredID = meeting.preferredTranscriptID {
-            meeting.transcripts.first { $0.id == preferredID }
-        } else {
-            nil
-        }
-
-        let segments: [SegmentData] = (preferred?.segments ?? [])
-            .sorted { $0.index < $1.index }
-            .map {
-                SegmentData(
-                    id: $0.id,
-                    speakerID: $0.speakerID,
-                    speakerLabel: $0.speakerLabel,
-                    startTime: $0.startTime,
-                    endTime: $0.endTime,
-                    text: $0.text
-                )
+        // The same read model the detail surface uses: index-sorted
+        // segments and speaker assignments resolved to person names with
+        // dangling person IDs dropped (`mapTranscript`).
+        let transcript = try meeting.preferredTranscriptID
+            .flatMap { preferredID in
+                meeting.transcripts.first { $0.id == preferredID }
             }
-
-        // Resolve speaker assignments to person names, dropping dangling
-        // person IDs — the same policy as `mapTranscript`.
-        var speakerNames: [Int: String] = [:]
-        for (speakerID, entry) in preferred?.speakerAssignments ?? [:] {
-            if let person = try fetchPerson(id: entry.personID) {
-                speakerNames[speakerID] = person.name
-            }
-        }
+            .map { try mapTranscript($0) }
 
         return MeetingExportData(
             id: meeting.id,
@@ -168,8 +192,8 @@ public extension DataStore {
             date: meeting.startDate ?? meeting.createdAt,
             summary: meeting.summary,
             notes: meeting.notes,
-            segments: segments,
-            speakerNames: speakerNames
+            segments: transcript?.segments ?? [],
+            speakerNames: transcript?.speakerAssignments.mapValues(\.name) ?? [:]
         )
     }
 }

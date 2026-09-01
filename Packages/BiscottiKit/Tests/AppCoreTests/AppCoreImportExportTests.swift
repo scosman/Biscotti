@@ -18,6 +18,7 @@ struct AppCoreImportExportTests {
         let url = try Self.writeCSV(
             "id,title,created,summary\nabc-1,Standup,2026-01-03T14:26:42Z,Hello"
         )
+        defer { try? FileManager.default.removeItem(at: url) }
         let result = await fix.core.scanMeetingImport(at: url)
 
         #expect(result.criticalErrors.isEmpty)
@@ -57,6 +58,7 @@ struct AppCoreImportExportTests {
                 + "abc-1,Standup,2026-01-03T14:26:42Z\n"
                 + "abc-2,Retro,2026-01-04T09:00:00Z\n"
         )
+        defer { try? FileManager.default.removeItem(at: url) }
         let result = await fix.core.scanMeetingImport(at: url)
         let summary = try await fix.core.commitMeetingImport(result)
 
@@ -83,6 +85,7 @@ struct AppCoreImportExportTests {
         // is false only because there is nothing to insert. The commit
         // must handle it deliberately: zero imported, no store writes.
         let url = try Self.writeCSV("id,title,created,summary,notes,transcript")
+        defer { try? FileManager.default.removeItem(at: url) }
         let result = await fix.core.scanMeetingImport(at: url)
         #expect(result.criticalErrors.isEmpty)
         #expect(result.warnings.isEmpty)
@@ -108,6 +111,7 @@ struct AppCoreImportExportTests {
                 + "abc-new,Fresh,2026-01-04T09:00:00Z\n"
                 + ",No ID,2026-01-05T09:00:00Z\n"
         )
+        defer { try? FileManager.default.removeItem(at: url) }
         let result = await fix.core.scanMeetingImport(at: url)
         let summary = try await fix.core.commitMeetingImport(result)
 
@@ -119,32 +123,24 @@ struct AppCoreImportExportTests {
 
     // MARK: - Export
 
-    @Test("exportMeetingsCSV writes the canonical header to a temp file")
+    @Test("exportMeetingsCSV writes the canonical header to the chosen directory")
     func exportWritesHeader() async throws {
         let fix = try makeCoreFixture(testName: "CSVExport")
         defer { fix.cleanup() }
 
         _ = try await fix.store.createMeeting(title: "One")
 
-        // The export filename has second granularity and the temp
-        // directory is shared with the concurrently running SettingsUI
-        // export tests, whose cancel paths delete their temp file by
-        // that same name. Export just past a fresh second boundary and
-        // retry once if a sibling still raced the same second.
-        var exported: URL?
-        for _ in 0 ..< 3 {
-            try await Self.sleepPastSecondBoundary()
-            let candidate = try await fix.core.exportMeetingsCSV()
-            if FileManager.default.fileExists(atPath: candidate.path()) {
-                exported = candidate
-                break
-            }
-        }
-        guard let url = exported else {
-            Issue.record("the export file never appeared in the temp directory")
-            return
-        }
-        defer { try? FileManager.default.removeItem(at: url) }
+        // A per-test directory: the generated filename has second
+        // granularity, so same-second exports must not share one.
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "csv-export-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let url = try await fix.core.exportMeetingsCSV(to: directory)
 
         #expect(url.lastPathComponent.hasPrefix("Biscotti_export_"))
         #expect(url.lastPathComponent.hasSuffix(".csv"))
@@ -194,14 +190,6 @@ struct AppCoreImportExportTests {
     #endif
 
     // MARK: - Helpers
-
-    /// Sleeps until just past the next whole-second boundary, so a
-    /// second-granularity export filename is unique to this call.
-    private static func sleepPastSecondBoundary() async throws {
-        let fraction = Date().timeIntervalSince1970
-            .truncatingRemainder(dividingBy: 1)
-        try await Task.sleep(for: .seconds((1 - fraction) + 0.02))
-    }
 
     private static func writeCSV(_ text: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory

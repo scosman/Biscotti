@@ -171,8 +171,17 @@ struct MeetingCSVImporterRowTests {
     @Test("A UUID id becomes the meeting ID directly; id and title are trimmed")
     func uuidIDUsedDirectly() throws {
         let id = UUID()
-        let result = scanCSV(canonicalHeader + "\n \(id.uuidString) ,  Spaced Title  ,2026-01-03")
+        let result = scanCSV(
+            canonicalHeader + "\n \(id.uuidString) ,  Spaced Title  ,2026-01-03,,,"
+        )
 
+        // Full-width row: no ragged-row warning rides along.
+        #expect(
+            !result.warnings.contains {
+                if case .raggedRows = $0 { return true }
+                return false
+            }
+        )
         let draft = try onlyDraft(result)
         #expect(draft.meetingID == id)
         #expect(draft.externalID == nil)
@@ -234,9 +243,12 @@ struct MeetingCSVImporterRowTests {
     @Test("When every row is bad the scan reports nothingToImport")
     func nothingToImport() {
         let result = scanCSV(
-            canonicalHeader + "\n,yesterday,,\n,also bad,,"
+            canonicalHeader + "\n,yesterday,,,,\n,also bad,,,,"
         )
 
+        // Full-width rows: the blank ids make both rows misformatted and
+        // nothing else.
+        #expect(result.warnings == [.misformattedRows(count: 2, exampleRows: [2, 3])])
         #expect(result.criticalErrors == [.nothingToImport])
         #expect(result.drafts.isEmpty)
         #expect(!result.canProceed)
@@ -343,6 +355,35 @@ struct MeetingCSVImporterFileTests {
                 + "\(id),T,2026-01-03,summary,,\n"
                 + "\n"
                 + "\n"
+        )
+
+        #expect(result.criticalErrors.isEmpty)
+        #expect(result.warnings.isEmpty)
+
+        let draft = try onlyDraft(result)
+        #expect(draft.meetingID == id)
+    }
+
+    @Test("Trailing blank lines keep a header-only file on the commit-zero path")
+    func headerOnlyWithTrailingBlanks() {
+        // Same user content as a plain header-only file: no critical
+        // error, so the flow commits and reports "Imported 0 meetings."
+        // rather than blocking.
+        let result = scanCSV(canonicalHeader + "\n\n")
+
+        #expect(result.criticalErrors.isEmpty)
+        #expect(result.warnings.isEmpty)
+        #expect(result.drafts.isEmpty)
+    }
+
+    @Test("Whitespace-only lines are dropped like blank lines, not double-reported")
+    func whitespaceOnlyLinesDropped() throws {
+        let id = UUID()
+        let result = scanCSV(
+            canonicalHeader + "\n"
+                + "   \n"
+                + "\(id),T,2026-01-03,summary,,\n"
+                + "\t\n"
         )
 
         #expect(result.criticalErrors.isEmpty)

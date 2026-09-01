@@ -86,11 +86,15 @@ public extension AppCore {
         )
     }
 
-    /// Streams every meeting to a CSV file in the temporary directory
-    /// and returns its URL (functional spec §5.2). The exporter is
-    /// stateless, so it is built per call.
-    func exportMeetingsCSV() async throws -> URL {
-        try await MeetingCSVExporter(store: store).export()
+    /// Streams every meeting to a CSV file in `directory` (the temporary
+    /// directory by default) and returns its URL (functional spec §5.2).
+    /// The exporter is stateless, so it is built per call. Tests pass a
+    /// unique directory: the generated filename has second granularity,
+    /// so same-second exports to one directory would collide.
+    func exportMeetingsCSV(
+        to directory: URL = URL.temporaryDirectory
+    ) async throws -> URL {
+        try await MeetingCSVExporter(store: store).export(to: directory)
     }
 }
 

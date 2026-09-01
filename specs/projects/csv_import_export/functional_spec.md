@@ -187,7 +187,9 @@ whole import (see misformatted rows below).
 ### 3.3 The review alert
 
 - **Any critical errors** → blocking alert. Title names the failure; body lists each
-  distinct problem with its count and up to 5 example row numbers. Single dismiss
+  distinct problem with its count and up to 5 example row numbers. When the scan also
+  produced warnings (e.g. a file whose every row is a duplicate), those are listed too,
+  each with its count — so "nothing to import" always explains why. Single dismiss
   button. Nothing is imported.
 - **Warnings only** → warning alert. Body lists each warning with its count in plain
   language, and states how many meetings will actually be imported. Buttons: **Cancel**

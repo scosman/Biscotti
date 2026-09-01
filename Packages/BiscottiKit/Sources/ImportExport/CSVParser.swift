@@ -18,18 +18,23 @@ enum CSVParseError: Error, Equatable {
 
 enum CSVParser {
     static func parse(_ text: String) throws(CSVParseError) -> [[String]] {
-        var scalars = Array(text.unicodeScalars)
+        // Iterated by index rather than copied into an Array: the copy
+        // would be a second full buffer (4 bytes per scalar) on top of
+        // the string itself.
+        let scalars = text.unicodeScalars
         // The import flow strips the BOM from the raw bytes before decoding;
         // this second strip keeps the parser correct for any caller.
-        if scalars.first == "\u{FEFF}" { scalars.removeFirst() }
+        var index = scalars.startIndex
+        if index < scalars.endIndex, scalars[index] == "\u{FEFF}" {
+            index = scalars.index(after: index)
+        }
 
         var scanner = Scanner()
-        var index = 0
-        while index < scalars.count {
+        while index < scalars.endIndex {
             if scanner.consume(scalars[index]) {
                 index = indexAfterRowTerminator(scalars, at: index)
             } else {
-                index += 1
+                index = scalars.index(after: index)
             }
         }
 
@@ -42,16 +47,16 @@ enum CSVParser {
 
     /// A CR may be half of a CRLF pair — skip its LF too.
     private static func indexAfterRowTerminator(
-        _ scalars: [Unicode.Scalar],
-        at index: Int
-    ) -> Int {
-        if scalars[index] == "\r",
-           index + 1 < scalars.count,
-           scalars[index + 1] == "\n"
-        {
-            return index + 2
+        _ scalars: String.UnicodeScalarView,
+        at index: String.UnicodeScalarView.Index
+    ) -> String.UnicodeScalarView.Index {
+        if scalars[index] == "\r" {
+            let next = scalars.index(after: index)
+            if next < scalars.endIndex, scalars[next] == "\n" {
+                return scalars.index(after: next)
+            }
         }
-        return index + 1
+        return scalars.index(after: index)
     }
 }
 
@@ -69,6 +74,11 @@ private struct Scanner {
     /// scalar: a second quote is a literal quote, anything else closes
     /// the field.
     private var quotePending = false
+    /// Whether the current row exists at all — it takes a field
+    /// character, a comma, or an opening quote to make one. Tracked
+    /// explicitly because "row has content" is not the same test: a lone
+    /// quoted empty field (`""`) is a row with no content.
+    private var rowPending = false
     private var fields: [String] = []
     private var field = String.UnicodeScalarView()
 
@@ -87,10 +97,10 @@ private struct Scanner {
         }
     }
 
-    /// Emits the final row only when it has content: a trailing
+    /// Emits the final row only when one is pending: a trailing
     /// terminator already ended the last row, leaving nothing pending.
     mutating func finishRowIfPending() {
-        if !(fields.isEmpty && field.isEmpty) {
+        if rowPending {
             endField()
             rows.append(fields)
         }
@@ -99,13 +109,16 @@ private struct Scanner {
     private mutating func consumeAtFieldStart(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar {
         case "\"":
+            rowPending = true
             state = .inQuoted
         case ",":
+            rowPending = true
             endField()
         case "\r", "\n":
             endRow()
             return true
         default:
+            rowPending = true
             field.append(scalar)
             state = .inUnquoted
         }
@@ -168,12 +181,14 @@ private struct Scanner {
         field.removeAll()
         state = .fieldStart
         quotePending = false
+        rowPending = true
     }
 
     private mutating func endRow() {
         endField()
         rows.append(fields)
         fields = []
+        rowPending = false
         rowIndex += 1
     }
 }

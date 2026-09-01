@@ -97,13 +97,14 @@ public extension SettingsViewModel {
     func beginImport() async {
         guard !importExportBusy else { return }
         importExportBusy = true
-        importInFlight = true
-        defer {
-            importExportBusy = false
-            importInFlight = false
-        }
+        defer { importExportBusy = false }
 
         guard let url = presentOpenPanel() else { return }
+        // The spinner covers the scan/commit, not the file chooser
+        // (architecture §6.1).
+        importInFlight = true
+        defer { importInFlight = false }
+
         let result = await appCore.scanMeetingImport(at: url)
 
         if !result.criticalErrors.isEmpty {
@@ -113,7 +114,7 @@ public extension SettingsViewModel {
             )
             return
         }
-        if result.needsReview {
+        if !result.warnings.isEmpty {
             pendingImport = result
             importAlert = .review(body: Self.reviewBody(for: result))
             return
@@ -176,8 +177,11 @@ public extension SettingsViewModel {
         finishExport(tempURL)
     }
 
-    /// Clears the presented alert (the alert-dismissal binding).
+    /// Clears the presented alert (the alert-dismissal binding) and drops
+    /// any held scan result — only the review alert's Continue may commit
+    /// one, so no dismissal path may leave it pending.
     func dismissImportAlert() {
+        pendingImport = nil
         importAlert = nil
     }
 }
@@ -208,7 +212,13 @@ extension SettingsViewModel {
         }
 
         do {
-            if FileManager.default.fileExists(atPath: destination.path()) {
+            // `path(percentEncoded: false)`: the encoded form of a path
+            // with a space or non-ASCII character never matches a real
+            // file, which would send an already-confirmed replace down
+            // the move path and lose the export.
+            if FileManager.default.fileExists(
+                atPath: destination.path(percentEncoded: false)
+            ) {
                 // The save panel already asked about replacing an existing
                 // file, so the replacement is confirmed. replaceItemAt
                 // keeps the original intact when the swap fails (disk
@@ -230,7 +240,7 @@ extension SettingsViewModel {
         } catch {
             importAlert = .failure(
                 title: Self.exportFailedTitle,
-                body: "The file could not be saved: \(error.localizedDescription)."
+                body: "The file could not be saved: \(Self.detail(for: error))."
             )
             // A failed move still consumes the temp file (architecture §8).
             try? FileManager.default.removeItem(at: tempURL)
@@ -253,12 +263,22 @@ extension SettingsViewModel {
         return panel.url
     }
 
-    /// Live save panel, pre-filled with the generated export filename.
+    /// Live save panel, restricted to `.csv`, pre-filled with the generated
+    /// export filename, and opened in the user's Downloads folder (falling
+    /// back to the system-default directory when it cannot be resolved).
     @MainActor
     static func presentCSVSavePanel(fileName: String) -> URL? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = fileName
+        // Keeps the `.csv` extension attached even when the user strips it.
+        panel.allowedContentTypes = [.commaSeparatedText]
         panel.canCreateDirectories = true
+        panel.directoryURL = try? FileManager.default.url(
+            for: .downloadsDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
         guard panel.runModal() == .OK else { return nil }
         return panel.url
     }
@@ -273,9 +293,14 @@ extension SettingsViewModel {
     static let exportFailedTitle = "Export Failed"
 
     /// Body for the blocking alert: each distinct problem with its count
-    /// and up to 5 example row numbers (functional spec §3.3).
+    /// and up to 5 example row numbers (functional spec §3.3) — the
+    /// critical errors first, then, when the scan also produced warnings
+    /// (an all-duplicates file, a file whose every row was skipped), each
+    /// warning with its count, so "nothing to import" always says why.
     static func blockedBody(for result: ImportScanResult) -> String {
-        result.criticalErrors.map(\.message).joined(separator: "\n")
+        (result.criticalErrors.map(\.message)
+            + result.warnings.map(\.message))
+            .joined(separator: "\n")
     }
 
     /// Body for the review alert: each warning with its count, then how
@@ -309,11 +334,11 @@ extension SettingsViewModel {
         return lines.joined(separator: "\n")
     }
 
-    /// A short, user-facing reason for a store or exporter error.
+    /// A short, user-facing reason for a store or exporter error. The
+    /// exporter propagates underlying Foundation errors as-is; only the
+    /// store wraps its own reason strings.
     static func detail(for error: Error) -> String {
         switch error {
-        case let CSVExportError.cannotCreateFile(path):
-            "the temporary file could not be created at \(path)"
         case let DataStoreError.saveFailed(reason):
             reason
         default:

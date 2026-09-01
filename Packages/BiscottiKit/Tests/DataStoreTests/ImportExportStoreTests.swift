@@ -1,7 +1,7 @@
-import DataStore
 import Foundation
 import Testing
 import Transcription
+@testable import DataStore
 
 // MARK: - Shared Helpers
 
@@ -43,33 +43,25 @@ private func makeSegments() -> [TranscriptSegmentDraft] {
     ]
 }
 
-private func twoSpeakerResult() -> TranscriptResult {
+private func twoSpeakerResult(
+    texts: [String] = ["Hello world", "Hi there"]
+) -> TranscriptResult {
     TranscriptResult(
         transcriptionMethodId: "v1",
         language: "en",
         speakerCount: 2,
-        segments: [
+        segments: texts.enumerated().map { index, text in
             TranscriptSegment(
-                speakerID: 0,
-                speakerLabel: "Speaker 0",
-                startTime: 0.0,
-                endTime: 3.5,
-                text: "Hello world",
+                speakerID: index,
+                speakerLabel: "Speaker \(index)",
+                startTime: TimeInterval(index) * 3.5,
+                endTime: TimeInterval(index + 1) * 3.5,
+                text: text,
                 confidence: 0.9,
                 noSpeechProbability: 0.01,
                 words: nil
-            ),
-            TranscriptSegment(
-                speakerID: 1,
-                speakerLabel: "Speaker 1",
-                startTime: 3.5,
-                endTime: 7.0,
-                text: "Hi there",
-                confidence: 0.85,
-                noSpeechProbability: 0.02,
-                words: nil
             )
-        ],
+        },
         speakerEmbeddings: [:],
         processingDuration: 1.0
     )
@@ -191,6 +183,35 @@ struct ImportWritePathTests {
         let store = try makeStore()
         let inserted = try await store.insertImportedMeetings([], batchID: 1)
         #expect(inserted == 0)
+    }
+
+    @Test("Insert skips drafts whose meeting ID is already taken")
+    func insertSkipsTakenIDs() async throws {
+        let store = try makeStore()
+        let recordedID = try await store.createMeeting(title: "Recorded")
+        let inBatchDup = UUID()
+
+        let inserted = try await store.insertImportedMeetings(
+            [
+                makeDraft(id: recordedID, title: "Clash"),
+                makeDraft(id: inBatchDup, title: "First"),
+                makeDraft(id: inBatchDup, title: "Second"),
+                makeDraft(title: "Fresh")
+            ],
+            batchID: 1
+        )
+        // One clash with the store, one clash within the batch, one insert.
+        #expect(inserted == 2)
+
+        try await store.read { store in
+            // The recorded meeting is untouched, and the in-batch first
+            // occurrence wins.
+            let recorded = try #require(try store.meeting(id: recordedID))
+            #expect(recorded.title == "Recorded")
+            let inBatchWinner = try #require(try store.meeting(id: inBatchDup))
+            #expect(inBatchWinner.title == "First")
+        }
+        #expect(try await store.existingMeetingIdentity().meetingIDs.count == 3)
     }
 
     @Test("existingMeetingIdentity returns both ID sets")
@@ -387,5 +408,113 @@ struct ImportDeleteExportTests {
         #expect(export.segments.isEmpty)
         #expect(export.speakerNames.isEmpty)
         #expect(export.date == createdAt)
+    }
+
+    @Test("exportData with several transcripts exports the preferred one")
+    func exportDataUsesPreferredTranscript() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+        _ = try await store.addTranscript(
+            twoSpeakerResult(),
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        let secondID = try await store.addTranscript(
+            twoSpeakerResult(texts: ["Second version A", "Second version B"]),
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await store.setPreferredTranscript(secondID, for: meetingID)
+
+        let export = try #require(
+            try await store.exportData(for: [meetingID]).first
+        )
+        #expect(export.segments.map(\.text) == ["Second version A", "Second version B"])
+    }
+
+    @Test("exportData with transcripts but no preferred ID yields empty segments")
+    func exportDataWithoutPreferredID() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+        _ = try await store.addTranscript(
+            twoSpeakerResult(),
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+
+        let export = try #require(
+            try await store.exportData(for: [meetingID]).first
+        )
+        #expect(export.segments.isEmpty)
+        #expect(export.speakerNames.isEmpty)
+    }
+
+    @Test("exportData sorts segments by index, not storage order")
+    func exportDataSortsSegmentsByIndex() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+
+        try await store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            let record = TranscriptRecord(
+                transcriptionMethodId: "manual",
+                language: "",
+                speakerCount: 1
+            )
+            store.context.insert(record)
+            // Appended out of index order on purpose: relationship order
+            // must not become segment order.
+            let late = TranscriptSegmentRecord(
+                index: 1,
+                speakerID: 0,
+                speakerLabel: "Steve",
+                startTime: 10,
+                endTime: 10,
+                text: "Second",
+                noSpeechProbability: 0
+            )
+            let early = TranscriptSegmentRecord(
+                index: 0,
+                speakerID: 0,
+                speakerLabel: "Steve",
+                startTime: 0,
+                endTime: 0,
+                text: "First",
+                noSpeechProbability: 0
+            )
+            store.context.insert(late)
+            store.context.insert(early)
+            record.segments.append(late)
+            record.segments.append(early)
+            meeting.transcripts.append(record)
+            meeting.preferredTranscriptID = record.id
+            try store.save()
+        }
+
+        let export = try #require(
+            try await store.exportData(for: [meetingID]).first
+        )
+        #expect(export.segments.map(\.text) == ["First", "Second"])
+    }
+
+    @Test("exportData survives duplicate meeting IDs already in the store")
+    func exportDataDuplicateMeetingIDs() async throws {
+        let store = try makeStore()
+        let dup = UUID()
+
+        // The write path now prevents this state, but rows written before
+        // that guard existed (or by another tool) must not trap a read.
+        try await store.read { store in
+            store.context.insert(Meeting(id: dup, title: "First"))
+            store.context.insert(Meeting(id: dup, title: "Second"))
+            try store.save()
+        }
+
+        let data = try await store.exportData(for: [dup, dup])
+        #expect(data.count == 2)
+        #expect(data.map(\.id) == [dup, dup])
     }
 }

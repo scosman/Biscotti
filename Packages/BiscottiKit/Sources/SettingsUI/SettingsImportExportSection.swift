@@ -106,11 +106,15 @@ extension SettingsView {
     private func alertButtons(for state: ImportAlertState) -> some View {
         switch state {
         case .blocked, .result, .failure:
-            Button("OK") { viewModel.dismissImportAlert() }
+            // The cancel role lets Escape dismiss a single-button alert.
+            Button("OK", role: .cancel) { viewModel.dismissImportAlert() }
 
         case .review:
             // Cancel is the default action and Continue is secondary
-            // (functional spec §3.3).
+            // (functional spec §3.3). This deliberately differs from the
+            // MCP row's confirm alert, whose *confirm* button is the
+            // default action — here the spec makes Cancel the safe
+            // default.
             Button("Cancel", role: .cancel) {
                 viewModel.cancelImportReview()
             }
@@ -123,7 +127,7 @@ extension SettingsView {
             case .confirmDeleteImported:
                 // Never presented through this modifier (the binding
                 // excludes it); the branch keeps the switch exhaustive.
-                Button("OK") { viewModel.dismissImportAlert() }
+                Button("OK", role: .cancel) { viewModel.dismissImportAlert() }
         #endif
         }
     }

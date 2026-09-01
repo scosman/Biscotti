@@ -36,9 +36,13 @@ public enum ISO8601Formatting {
         }
 
         // The bare-integer branch must match the whole string so a value
-        // like "12:30" or "2026x" is never mistaken for an epoch count.
+        // like "12:30" or "2026x" is never mistaken for an epoch count —
+        // `Int(trimmed)` already guarantees that; the regex's only extra
+        // rejection is a leading plus ("+5"). The magnitude comparison,
+        // not `abs`, keeps `Int.min` from trapping.
         if let value = Int(trimmed), trimmed.wholeMatch(of: /-?\d+/) != nil {
-            let seconds = abs(value) >= epochMillisecondsThreshold
+            let seconds = value >= epochMillisecondsThreshold
+                || value <= -epochMillisecondsThreshold
                 ? Double(value) / 1000
                 : Double(value)
             return Date(timeIntervalSince1970: seconds)

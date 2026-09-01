@@ -32,10 +32,7 @@ private final class PanelSpy {
     }
 }
 
-// Serialized: the export tests share the temp directory and a
-// second-granularity filename, so one test's cancel-path delete must
-// never land inside another's export-to-move window.
-@Suite("SettingsViewModel -- Import/Export", .serialized)
+@Suite("SettingsViewModel -- Import/Export")
 @MainActor
 struct SettingsImportExportTests {
     // MARK: - Import flow
@@ -65,7 +62,9 @@ struct SettingsImportExportTests {
         defer { fix.cleanup() }
 
         let spy = PanelSpy()
-        spy.openPanelResult = try ImportExportTestSupport.writeCSV("id,title\nabc-1,Standup")
+        let csv = try ImportExportTestSupport.writeCSV("id,title\nabc-1,Standup")
+        defer { try? FileManager.default.removeItem(at: csv) }
+        spy.openPanelResult = csv
         let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
 
         await viewModel.beginImport()
@@ -78,6 +77,37 @@ struct SettingsImportExportTests {
         #expect(body == "Required columns are missing: created.")
         #expect(viewModel.pendingImport == nil)
         #expect(try await fix.store.meetingSummaries().isEmpty)
+    }
+
+    @Test("an all-duplicates file blocks and the body names the counts")
+    func allDuplicatesBlockedBodyNamesCounts() async throws {
+        let fix = try makeCoreFixture(testName: "IOAllDup")
+        defer { fix.cleanup() }
+
+        let existingID = try await fix.store.createMeeting(title: "Existing")
+        let spy = PanelSpy()
+        let csv = try ImportExportTestSupport.writeCSV(
+            "id,title,created\n\(existingID.uuidString),Existing,2026-01-03T14:26:42Z"
+        )
+        defer { try? FileManager.default.removeItem(at: csv) }
+        spy.openPanelResult = csv
+        let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
+
+        await viewModel.beginImport()
+
+        // The blocking alert explains *why* nothing can import: the
+        // critical error plus the warning counts (functional spec §3.3).
+        guard case let .blocked(title, body) = viewModel.importAlert else {
+            Issue.record("expected .blocked, got \(String(describing: viewModel.importAlert))")
+            return
+        }
+        #expect(title == "Cannot Import This File")
+        #expect(body == """
+        No meetings in this file can be imported.
+        1 meeting already exists in your database, it will be skipped.
+        """)
+        #expect(viewModel.pendingImport == nil)
+        #expect(try await fix.store.meetingSummaries().count == 1)
     }
 
     @Test("warnings present .review; Cancel keeps the store untouched, Continue commits")
@@ -94,7 +124,9 @@ struct SettingsImportExportTests {
         let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
 
         // First pass: review appears, Cancel leaves the store untouched.
-        spy.openPanelResult = try ImportExportTestSupport.writeCSV(csv)
+        let firstCSV = try ImportExportTestSupport.writeCSV(csv)
+        defer { try? FileManager.default.removeItem(at: firstCSV) }
+        spy.openPanelResult = firstCSV
         await viewModel.beginImport()
         guard case .review = viewModel.importAlert else {
             Issue.record("expected .review, got \(String(describing: viewModel.importAlert))")
@@ -103,10 +135,13 @@ struct SettingsImportExportTests {
         #expect(viewModel.pendingImport?.drafts.count == 1)
         viewModel.cancelImportReview()
         #expect(viewModel.importAlert == nil)
+        #expect(viewModel.pendingImport == nil)
         #expect(try await fix.store.meetingSummaries().count == 1)
 
         // Second pass: Continue commits exactly the held scan result.
-        spy.openPanelResult = try ImportExportTestSupport.writeCSV(csv)
+        let secondCSV = try ImportExportTestSupport.writeCSV(csv)
+        defer { try? FileManager.default.removeItem(at: secondCSV) }
+        spy.openPanelResult = secondCSV
         await viewModel.beginImport()
         guard case .review = viewModel.importAlert else {
             Issue.record("expected .review again, got \(String(describing: viewModel.importAlert))")
@@ -127,15 +162,51 @@ struct SettingsImportExportTests {
         #expect(fix.core.summaries.count == 2)
     }
 
+    @Test("dismissing the review alert through the binding drops the held scan")
+    func dismissalDropsPendingImport() async throws {
+        let fix = try makeCoreFixture(testName: "IODismiss")
+        defer { fix.cleanup() }
+
+        let existingID = try await fix.store.createMeeting(title: "Existing")
+        let spy = PanelSpy()
+        let csv = try ImportExportTestSupport.writeCSV(
+            "id,title,created\n"
+                + "\(existingID.uuidString),Existing,2026-01-03T14:26:42Z\n"
+                + "abc-fresh,Fresh,2026-01-04T09:00:00Z"
+        )
+        defer { try? FileManager.default.removeItem(at: csv) }
+        spy.openPanelResult = csv
+        let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
+
+        await viewModel.beginImport()
+        guard case .review = viewModel.importAlert else {
+            Issue.record("expected .review, got \(String(describing: viewModel.importAlert))")
+            return
+        }
+        #expect(viewModel.pendingImport != nil)
+
+        // The alert binding's dismissal path (not the Cancel button).
+        viewModel.dismissImportAlert()
+
+        #expect(viewModel.importAlert == nil)
+        #expect(viewModel.pendingImport == nil)
+        // With nothing held, a stray Continue is a no-op.
+        await viewModel.confirmImport()
+        #expect(viewModel.importAlert == nil)
+        #expect(try await fix.store.meetingSummaries().count == 1)
+    }
+
     @Test("clean file commits straight through with no review alert")
     func cleanFileCommitsDirectly() async throws {
         let fix = try makeCoreFixture(testName: "IOClean")
         defer { fix.cleanup() }
 
         let spy = PanelSpy()
-        spy.openPanelResult = try ImportExportTestSupport.writeCSV(
+        let csv = try ImportExportTestSupport.writeCSV(
             "id,title,created,summary\nabc-1,Standup,2026-01-03T14:26:42Z,Hello"
         )
+        defer { try? FileManager.default.removeItem(at: csv) }
+        spy.openPanelResult = csv
         let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
 
         await viewModel.beginImport()
@@ -159,9 +230,11 @@ struct SettingsImportExportTests {
         // deliberately in the clean path — zero meetings committed, the
         // §3.4 result alert shown, and no review alert on the way.
         let spy = PanelSpy()
-        spy.openPanelResult = try ImportExportTestSupport.writeCSV(
+        let csv = try ImportExportTestSupport.writeCSV(
             "id,title,created,summary,notes,transcript"
         )
+        defer { try? FileManager.default.removeItem(at: csv) }
+        spy.openPanelResult = csv
         let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
 
         await viewModel.beginImport()
@@ -176,8 +249,55 @@ struct SettingsImportExportTests {
         #expect(!viewModel.importExportBusy)
     }
 
-    // MARK: - Export flow
+    // MARK: - Alert copy
 
+    @Test("resultBody lists skipped rows per spec wording")
+    func resultBodyCopy() {
+        let single = SettingsViewModel.resultBody(
+            for: ImportCommitSummary(imported: 1, skippedExisting: 0, skippedMisformatted: 0)
+        )
+        #expect(single == "Imported 1 meeting.")
+
+        let full = SettingsViewModel.resultBody(
+            for: ImportCommitSummary(imported: 42, skippedExisting: 3, skippedMisformatted: 2)
+        )
+        #expect(full == """
+        Imported 42 meetings.
+        3 rows were skipped because those meetings already exist.
+        2 rows were skipped because they were missing a required value.
+        """)
+    }
+
+    @Test("reviewBody lists each warning, then how many meetings will import")
+    func reviewBodyCopy() {
+        let draft = ImportedMeetingDraft(
+            meetingID: UUID(),
+            title: "Standup",
+            created: Date(timeIntervalSince1970: 1_767_000_000)
+        )
+        let result = ImportScanResult(
+            drafts: [draft],
+            warnings: [.alreadyInDatabase(count: 2)]
+        )
+
+        #expect(
+            SettingsViewModel.reviewBody(for: result) == """
+            2 meetings already exist in your database, these will be skipped.
+
+            1 meeting will be imported.
+            """
+        )
+    }
+}
+
+// Serialized: these tests drive AppCore's default temp-directory export
+// path, whose filename has second granularity — one test's cancel-path
+// delete must never land inside another's export-to-move window. (The
+// AppCore suite's export test passes its own directory and does not
+// share this state.)
+@Suite("SettingsViewModel -- Export flow", .serialized)
+@MainActor
+struct SettingsExportFlowTests {
     @Test("export moves the temp file to the chosen destination")
     func exportMovesFile() async throws {
         let fix = try makeCoreFixture(testName: "IOExportMove")
@@ -204,7 +324,7 @@ struct SettingsImportExportTests {
         #expect(spy.busyWhenSaveShown == [true])
         #expect(spy.exportSpinnerWhenSaveShown == [false])
 
-        #expect(FileManager.default.fileExists(atPath: destination.path()))
+        #expect(FileManager.default.fileExists(atPath: destination.path))
         #expect(viewModel.importAlert == nil)
         #expect(!viewModel.importExportBusy)
         #expect(!viewModel.exportInFlight)
@@ -236,7 +356,40 @@ struct SettingsImportExportTests {
         }
         let tempFile = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
-        #expect(!FileManager.default.fileExists(atPath: tempFile.path()))
+        #expect(!FileManager.default.fileExists(atPath: tempFile.path))
+    }
+
+    @Test("export replaces an existing file at a path containing a space")
+    func exportReplacesExistingDestinationInSpacedPath() async throws {
+        let fix = try makeCoreFixture(testName: "IOExportSpace")
+        defer { fix.cleanup() }
+
+        _ = try await fix.store.createMeeting(title: "One")
+
+        // A directory whose name contains a space: its percent-encoded
+        // path never matches a real file, which used to send the
+        // already-confirmed replace down the move path and fail.
+        let spacedDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("My Exports \(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: spacedDirectory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: spacedDirectory) }
+
+        let destination = spacedDirectory
+            .appendingPathComponent("biscotti export.csv")
+        try Data("old contents".utf8).write(to: destination)
+
+        let spy = PanelSpy()
+        spy.savePanelResult = destination
+        let viewModel = ImportExportTestSupport.makeViewModel(fix: fix, spy: spy)
+
+        await viewModel.beginExport()
+
+        let saved = try String(contentsOf: destination, encoding: .utf8)
+        #expect(saved.hasPrefix("id,title,created,summary,notes,transcript\r\n"))
+        #expect(viewModel.importAlert == nil)
     }
 
     @Test("cancelling the save panel deletes the temp file and shows no alert")
@@ -258,7 +411,7 @@ struct SettingsImportExportTests {
         }
         let tempFile = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
-        #expect(!FileManager.default.fileExists(atPath: tempFile.path()))
+        #expect(!FileManager.default.fileExists(atPath: tempFile.path))
         #expect(viewModel.importAlert == nil)
         #expect(!viewModel.importExportBusy)
     }
@@ -288,30 +441,9 @@ struct SettingsImportExportTests {
         }
         let tempFile = FileManager.default.temporaryDirectory
             .appendingPathComponent(fileName)
-        #expect(!FileManager.default.fileExists(atPath: tempFile.path()))
+        #expect(!FileManager.default.fileExists(atPath: tempFile.path))
         #expect(!viewModel.importExportBusy)
     }
-
-    // MARK: - Alert copy
-
-    @Test("resultBody lists skipped rows per spec wording")
-    func resultBodyCopy() {
-        let single = SettingsViewModel.resultBody(
-            for: ImportCommitSummary(imported: 1, skippedExisting: 0, skippedMisformatted: 0)
-        )
-        #expect(single == "Imported 1 meeting.")
-
-        let full = SettingsViewModel.resultBody(
-            for: ImportCommitSummary(imported: 42, skippedExisting: 3, skippedMisformatted: 2)
-        )
-        #expect(full == """
-        Imported 42 meetings.
-        3 rows were skipped because those meetings already exist.
-        2 rows were skipped because they were missing a required value.
-        """)
-    }
-
-    // MARK: - Helpers
 }
 
 #if DEBUG

@@ -71,14 +71,6 @@ public struct ExistingMeetingIdentity: Sendable, Equatable {
         self.meetingIDs = meetingIDs
         self.externalIDs = externalIDs
     }
-
-    /// True when a row's identity is already taken: a UUID that exists as a
-    /// meeting ID, or a non-UUID string that exists as an `externalID`.
-    public func contains(meetingID: UUID, externalID: String?) -> Bool {
-        if meetingIDs.contains(meetingID) { return true }
-        if let externalID, externalIDs.contains(externalID) { return true }
-        return false
-    }
 }
 
 /// Everything the CSV exporter needs for one meeting (architecture §2.2).

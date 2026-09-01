@@ -1,7 +1,6 @@
 import DataStore
 import Formatting
 import Foundation
-import os
 
 /// Scans a CSV file into importable meeting drafts (functional spec §2.1).
 /// Pure and store-free — the caller hands in the existing identity rather
@@ -60,8 +59,12 @@ public enum MeetingCSVImporter {
         }
 
         let outcome = scanRows(Array(rows.dropFirst()), header: header, existing: existing)
+        // `.nothingToImport` requires at least one real data row — the
+        // `dataRowCount` a blank line never increments — so a header-only
+        // file (with or without trailing blank lines) stays on the clean
+        // commit-zero path (functional spec §3.3/§3.4).
         let criticalErrors: [ImportCriticalError] =
-            outcome.drafts.isEmpty && rows.count > 1 ? [.nothingToImport] : []
+            outcome.drafts.isEmpty && outcome.dataRowCount > 0 ? [.nothingToImport] : []
 
         importExportLog.info(
             "CSV scan: \(outcome.drafts.count) importable rows, \(outcome.misformattedRowNumbers.count) misformatted, \(outcome.alreadyInDatabaseCount) already in database, \(outcome.duplicateRowNumbers.count) duplicate in file"
@@ -136,11 +139,13 @@ public enum MeetingCSVImporter {
 
         for (offset, rawFields) in rows.enumerated() {
             let rowNumber = offset + 2
-            // A blank line parses to a single empty field. It carries no
-            // data — dropping it keeps a hand-edited file's stray blank
-            // lines (a trailing "\r\n\r\n") from being reported as
+            // A blank line parses to a single empty field (a line of
+            // spaces to a single blank one). It carries no data —
+            // dropping it keeps a hand-edited file's stray blank lines
+            // (a trailing "\r\n\r\n") from being reported as ragged or
             // misformatted rows.
-            if rawFields == [""] { continue }
+            if rawFields.count == 1, isBlank(rawFields[0]) { continue }
+            outcome.dataRowCount += 1
             var fields = rawFields
             if fields.count != header.width {
                 outcome.raggedRowNumbers.append(rowNumber)
@@ -301,6 +306,9 @@ private struct HeaderResolution {
 /// Tallies from the single pass over the data rows.
 private struct RowScanOutcome {
     var drafts: [ImportedMeetingDraft] = []
+    /// Data rows that survived the blank-line skip — the denominator
+    /// for the `.nothingToImport` gate.
+    var dataRowCount = 0
     var raggedRowNumbers: [Int] = []
     var misformattedRowNumbers: [Int] = []
     var alreadyInDatabaseCount = 0

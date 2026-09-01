@@ -5,8 +5,9 @@
 
 **Private Meeting Transcripts for MacOS.**
 
-[![Download for macOS](https://img.shields.io/badge/Download_for_macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg)
-
+<a href="https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg">
+  <img width="165" height="38" alt="Download for macOS" src="https://github.com/user-attachments/assets/a0ff77ed-d9cd-49df-9ba5-b866098d8d67" />
+</a>
 </div>
 
 ---

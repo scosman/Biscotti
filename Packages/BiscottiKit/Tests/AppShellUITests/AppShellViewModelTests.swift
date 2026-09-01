@@ -709,21 +709,17 @@ struct AppShellUpcomingCapTests {
     @MainActor
     func upcomingEventsCappedAt6() async throws {
         let now = Date()
-        let dtos = (0 ..< 9).map { idx in
-            EKEventDTO(
+        let dtos = (0 ..< 9).map { idx -> EKEventDTO in
+            let start: TimeInterval = Double(idx + 1) * 600
+            let end: TimeInterval = start + 3600
+            return EKEventDTO(
                 eventIdentifier: "ev-cap-\(idx)",
                 calendarItemIdentifier: "ci-cap-\(idx)",
                 calendarItemExternalIdentifier: "ext-cap-\(idx)",
-                occurrenceDate: now.addingTimeInterval(
-                    Double(idx + 1) * 600
-                ),
+                occurrenceDate: now.addingTimeInterval(start),
                 title: "Cap Event \(idx)",
-                startDate: now.addingTimeInterval(
-                    Double(idx + 1) * 600
-                ),
-                endDate: now.addingTimeInterval(
-                    Double(idx + 1) * 600 + 3600
-                ),
+                startDate: now.addingTimeInterval(start),
+                endDate: now.addingTimeInterval(end),
                 isAllDay: false,
                 location: "https://zoom.us/j/cap\(idx)",
                 url: nil,

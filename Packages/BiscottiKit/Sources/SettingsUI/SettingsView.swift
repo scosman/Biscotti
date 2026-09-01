@@ -44,6 +44,7 @@ public struct SettingsView: View {
         "Notifications",
         "AI Enhancements",
         "Custom Vocabulary",
+        "Import/Export",
         "Calendars"
     ]
 
@@ -74,6 +75,7 @@ public struct SettingsView: View {
                     notificationsSection
                     aiEnhancementsSection
                     customVocabularySection
+                    importExportSection
                     calendarSection
 
                     #if DEBUG
@@ -246,6 +248,8 @@ public struct SettingsView: View {
                     Label("Clear Selected LLM", systemImage: "arrow.uturn.backward")
                 }
                 .foregroundStyle(.sage)
+
+                deleteImportedMeetingsRow
             }
         }
     #endif

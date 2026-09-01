@@ -8,7 +8,7 @@ struct SettingsLayoutTests {
     /// the titles AND their order as they appear on screen. The physical
     /// section ordering in `body` (which computed property appears first)
     /// is verified in the Phase 12 manual pass.
-    @Test("section titles match spec order: General, Permissions, Notifications, AI, Vocab, Calendars")
+    @Test("section titles match spec order: General, Permissions, Notifications, AI, Vocab, Import/Export, Calendars")
     func sectionTitlesMatchSpec() {
         let expected = [
             "General",
@@ -16,6 +16,7 @@ struct SettingsLayoutTests {
             "Notifications",
             "AI Enhancements",
             "Custom Vocabulary",
+            "Import/Export",
             "Calendars"
         ]
         #expect(SettingsView.sectionTitles == expected)

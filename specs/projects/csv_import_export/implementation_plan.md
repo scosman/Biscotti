@@ -27,6 +27,6 @@ then the UI that wires it together.
   with its full error/warning taxonomy, and the chunk-streaming `MeetingCSVExporter`.
   Entirely unit-testable — no UI, no app target.
 
-- [ ] **Phase 4 — Wiring, UI, and docs.** AppCore's three actions plus the debug pair;
+- [x] **Phase 4 — Wiring, UI, and docs.** AppCore's three actions plus the debug pair;
   the Settings Import/Export section with panels, spinners, and alerts; the debug
   Delete Imported Meetings row; and `App/ImportingExporting.md` linked from both rows.

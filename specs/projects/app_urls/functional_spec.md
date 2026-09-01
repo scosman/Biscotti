@@ -354,8 +354,10 @@ URL off `NSPasteboard.general` and open it as-is, then with `?tab=notes` and
 pasteboard holds no `biscotti://` URL, the step fails with a message saying
 to copy one first.
 
-Plus the three delivery states unit tests cannot reach, as `.instruction` +
-`.humanQuestion` pairs:
+Plus the three delivery states unit tests cannot reach, as `.instruction`
+(state setup) + `.action` + `.humanQuestion` triples — the wired action
+opens the URL through `NSWorkspace.open`, which ManualTestApp delivers as
+an external caller just like any integrator:
 
 - **Cold launch** — quit Biscotti entirely, then open a `meeting` URL.
 - **Menu-bar only** — close Biscotti's window (app alive in the menu bar),

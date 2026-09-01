@@ -9,8 +9,9 @@
 /// The meeting steps get a real UUID from the pasteboard: the human uses
 /// the real app's Copy Meeting Link command first, which also exercises
 /// that menu item end to end. The delivery-state steps (cold launch,
-/// menu-bar only, background) run `open` from Terminal — an external
-/// caller, like any integrator.
+/// menu-bar only, background) open their URLs with wired buttons like
+/// every other route — ManualTestApp is itself an external caller, so
+/// they exercise the same delivery path any integrator would.
 public extension TestScript {
     static let appURLs = TestScript(
         id: "app_urls",
@@ -65,6 +66,17 @@ public extension TestScript {
                 id: "au_search_focused",
                 prompt: "Meetings screen with an empty query (browse mode) "
                     + "and the search field focused, cursor in it?"
+            ),
+            .action(
+                id: "au_open_search_query",
+                label: "Open biscotti://search?query=meeting",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .humanQuestion(
+                id: "au_search_filtered",
+                prompt: "Search field populated with the term 'meeting', "
+                    + "the search ran, and the list is filtered to "
+                    + "matches (no-results is fine if nothing matches)?"
             ),
             // record — starts a REAL recording
             .instruction(
@@ -124,18 +136,33 @@ public extension TestScript {
             // Delivery states unit tests cannot reach
             .instruction(
                 id: "au_cold_launch_setup",
-                text: "Quit Biscotti completely (⌘Q), then run this in "
-                    + "Terminal: open 'biscotti://settings'"
+                text: "Quit Biscotti completely via the Quit item in its "
+                    + "menu-bar menu (Biscotti ▸ Quit Biscotti). Note: "
+                    + "with the default settings, ⌘Q is NOT a full quit — "
+                    + "Biscotti catches it and stays running in the menu "
+                    + "bar with the window closed. The next step opens "
+                    + "the meeting link you copied earlier, so leave it "
+                    + "on the pasteboard."
+            ),
+            .action(
+                id: "au_cold_launch_open",
+                label: "Open the copied meeting link (Biscotti not running)",
+                run: { _ in /* wired by the app target */ }
             ),
             .humanQuestion(
                 id: "au_cold_launch_check",
-                prompt: "Did Biscotti launch from quit and land on Settings?"
+                prompt: "Did Biscotti launch from quit and open the linked "
+                    + "meeting on its Summary tab?"
             ),
             .instruction(
                 id: "au_menubar_setup",
                 text: "Close Biscotti's window with the red traffic-light "
-                    + "button (the app stays alive in the menu bar), then "
-                    + "run this in Terminal: open 'biscotti://meetings'"
+                    + "button (the app stays alive in the menu bar)."
+            ),
+            .action(
+                id: "au_menubar_open",
+                label: "Open biscotti://meetings (window closed)",
+                run: { _ in /* wired by the app target */ }
             ),
             .humanQuestion(
                 id: "au_menubar_check",
@@ -144,8 +171,12 @@ public extension TestScript {
             .instruction(
                 id: "au_background_setup",
                 text: "Bring another app in front of Biscotti (Biscotti "
-                    + "still running with its window), then run this in "
-                    + "Terminal: open 'biscotti://home'"
+                    + "still running with its window)."
+            ),
+            .action(
+                id: "au_background_open",
+                label: "Open biscotti://home (Biscotti in the background)",
+                run: { _ in /* wired by the app target */ }
             ),
             .humanQuestion(
                 id: "au_background_check",

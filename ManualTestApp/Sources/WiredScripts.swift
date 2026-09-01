@@ -639,6 +639,14 @@ enum WiredScripts {
                             AppLink.search(query: "").url, status: status
                         )
                     }
+                case "au_open_search_query":
+                    return .action(id: id, label: label) { status in
+                        // A real query: the app must populate the field
+                        // and run the search, not just focus it.
+                        try await openThroughSystem(
+                            AppLink.search(query: "meeting").url, status: status
+                        )
+                    }
                 case "au_open_record":
                     return .action(id: id, label: label) { status in
                         try await openThroughSystem(
@@ -668,6 +676,29 @@ enum WiredScripts {
                             AppLink.meeting(id: meetingID, target: .transcriptTime(30)).url,
                             status: status
                         )
+                    }
+                case "au_cold_launch_open":
+                    return .action(id: id, label: label) { status in
+                        // The app is quit at this point — the open must
+                        // cold-launch it and deliver the URL. A meeting
+                        // link is the stronger test than a fixed route:
+                        // it drives the store fetch and the pending-
+                        // intent drain during the cold-launch race. The
+                        // pasteboard still holds the link copied earlier
+                        // in the script.
+                        let meetingID = try await pasteboardMeetingID()
+                        try await openThroughSystem(
+                            AppLink.meeting(id: meetingID, target: .tab(.summary)).url,
+                            status: status
+                        )
+                    }
+                case "au_menubar_open":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(AppLink.meetings.url, status: status)
+                    }
+                case "au_background_open":
+                    return .action(id: id, label: label) { status in
+                        try await openThroughSystem(AppLink.home.url, status: status)
                     }
                 default:
                     return step

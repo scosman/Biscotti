@@ -414,8 +414,11 @@ Calling the running app's MCP server would work but demands the MCP toggle be
 on, coupling this script to an unrelated integration.
 
 The three delivery states unit tests cannot reach (cold launch, menu-bar
-only, background) are `.instruction` + `.humanQuestion` pairs, as in the MCP
-script.
+only, background) are `.instruction` (state setup) + `.action` +
+`.humanQuestion` triples. The actions open their URLs through
+`NSWorkspace.open` like every other route — ManualTestApp is itself an
+external caller (separate bundle), so this exercises the same
+LaunchServices delivery path an integrator's `open` command would.
 
 Per the staleness rule in `CLAUDE.md`, only recordable steps are written to
 `manual_test_results.json`. Note this project touches none of the four

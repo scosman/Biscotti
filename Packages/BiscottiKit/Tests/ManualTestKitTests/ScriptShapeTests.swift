@@ -175,65 +175,6 @@ struct ScriptShapeTests {
         }
     }
 
-    @Test("App URLs script has a non-empty id and title")
-    func appURLsIdentity() {
-        let script = TestScript.appURLs
-        #expect(!script.id.isEmpty)
-        #expect(!script.title.isEmpty)
-        #expect(script.id == "app_urls")
-    }
-
-    @Test("App URLs script has exactly 25 steps")
-    func appURLsStepCount() {
-        #expect(TestScript.appURLs.steps.count == 25)
-    }
-
-    @Test("App URLs step IDs match the canonical set")
-    func appURLsStepIDs() {
-        let ids = Set(TestScript.appURLs.steps.map(\.id))
-        let expected: Set = [
-            "au_setup",
-            "au_open_home",
-            "au_home_landed",
-            "au_open_meetings",
-            "au_meetings_landed",
-            "au_open_settings",
-            "au_settings_landed",
-            "au_open_search",
-            "au_search_focused",
-            "au_record_setup",
-            "au_open_record",
-            "au_record_started",
-            "au_copy_link_setup",
-            "au_open_meeting",
-            "au_meeting_summary",
-            "au_open_meeting_notes",
-            "au_meeting_notes_landed",
-            "au_open_meeting_time",
-            "au_meeting_time_seek",
-            "au_cold_launch_setup",
-            "au_cold_launch_check",
-            "au_menubar_setup",
-            "au_menubar_check",
-            "au_background_setup",
-            "au_background_check"
-        ]
-        #expect(ids == expected)
-    }
-
-    @Test("Every step ID in App URLs is non-empty")
-    func appURLsStepIDsNonEmpty() {
-        for step in TestScript.appURLs.steps {
-            #expect(!step.id.isEmpty, "Empty step ID in App URLs script")
-        }
-    }
-
-    @Test("Step IDs within App URLs are unique")
-    func appURLsInternalUniqueness() {
-        let ids = TestScript.appURLs.steps.map(\.id)
-        #expect(ids.count == Set(ids).count)
-    }
-
     @Test("All step IDs across all scripts are unique")
     func allStepIDsUnique() {
         let allSteps = TestScript.audioCapture.steps
@@ -278,6 +219,75 @@ struct ScriptShapeTests {
     @Test("Step IDs within MCP Server are unique")
     func mcpInternalUniqueness() {
         let ids = TestScript.mcp.steps.map(\.id)
+        #expect(ids.count == Set(ids).count)
+    }
+}
+
+/// App URLs shape checks live in their own suite: the shared struct
+/// would exceed `type_body_length` (250 lines) with them folded in.
+@Suite("App URLs script structural invariants")
+struct AppURLsScriptShapeTests {
+    @Test("App URLs script has a non-empty id and title")
+    func identity() {
+        let script = TestScript.appURLs
+        #expect(!script.id.isEmpty)
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "app_urls")
+    }
+
+    @Test("App URLs script has exactly 30 steps")
+    func stepCount() {
+        #expect(TestScript.appURLs.steps.count == 30)
+    }
+
+    @Test("App URLs step IDs match the canonical set")
+    func stepIDs() {
+        let ids = Set(TestScript.appURLs.steps.map(\.id))
+        let expected: Set = [
+            "au_setup",
+            "au_open_home",
+            "au_home_landed",
+            "au_open_meetings",
+            "au_meetings_landed",
+            "au_open_settings",
+            "au_settings_landed",
+            "au_open_search",
+            "au_search_focused",
+            "au_open_search_query",
+            "au_search_filtered",
+            "au_record_setup",
+            "au_open_record",
+            "au_record_started",
+            "au_copy_link_setup",
+            "au_open_meeting",
+            "au_meeting_summary",
+            "au_open_meeting_notes",
+            "au_meeting_notes_landed",
+            "au_open_meeting_time",
+            "au_meeting_time_seek",
+            "au_cold_launch_setup",
+            "au_cold_launch_open",
+            "au_cold_launch_check",
+            "au_menubar_setup",
+            "au_menubar_open",
+            "au_menubar_check",
+            "au_background_setup",
+            "au_background_open",
+            "au_background_check"
+        ]
+        #expect(ids == expected)
+    }
+
+    @Test("Every step ID in App URLs is non-empty")
+    func stepIDsNonEmpty() {
+        for step in TestScript.appURLs.steps {
+            #expect(!step.id.isEmpty, "Empty step ID in App URLs script")
+        }
+    }
+
+    @Test("Step IDs within App URLs are unique")
+    func internalUniqueness() {
+        let ids = TestScript.appURLs.steps.map(\.id)
         #expect(ids.count == Set(ids).count)
     }
 }

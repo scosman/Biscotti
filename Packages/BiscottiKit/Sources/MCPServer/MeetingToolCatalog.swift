@@ -96,7 +96,7 @@ enum MeetingToolCatalog {
                 "date": ["type": "string"],
                 "app_url": [
                     "type": "string",
-                    "description": "A biscotti:// URL that opens this meeting in the Biscotti app on this Mac (its default Summary view). You may surface it to the user as a link. See App/deeplinks.md in the Biscotti repo for the full URL vocabulary."
+                    "description": "A biscotti:// URL that opens this meeting in the Biscotti app on this Mac, on its default Summary tab. Append `?tab=transcript` or `?tab=notes` to open a different tab. You may surface it to the user as a link."
                 ],
                 "end_date": ["type": "string"],
                 "recording_duration_seconds": ["type": "integer"],
@@ -201,7 +201,7 @@ enum MeetingToolCatalog {
 
     private static let getTranscript = Tool(
         name: getTranscriptName,
-        description: "The full diarized transcript of one Biscotti meeting, as plain text with speaker names and timestamps. This can be very long — a one-hour meeting runs to tens of thousands of words. Check `transcript.word_count` from `biscotti_get_meeting` first, and prefer the AI summary when you only need the gist.",
+        description: "The full diarized transcript of one Biscotti meeting, as plain text with speaker names and timestamps. This can be very long — a one-hour meeting runs to tens of thousands of words. Check `transcript.word_count` from `biscotti_get_meeting` first, and prefer the AI summary when you only need the gist. To link the user to a specific moment, open `biscotti://meeting/{id}?time={seconds}` (e.g. `?time=102.7`); Biscotti shows the transcript tab with playback cued to that time.",
         inputSchema: [
             "type": "object",
             "required": ["id"],

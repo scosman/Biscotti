@@ -73,11 +73,12 @@
   "au_background_check" : {
     "status" : "pass",
     "stepID" : "au_background_check",
-    "timestamp" : "2026-08-31T23:42:07Z"
+    "timestamp" : "2026-09-01T00:04:25Z"
   },
   "au_background_open" : {
-    "status" : "not-run",
-    "stepID" : "au_background_open"
+    "status" : "pass",
+    "stepID" : "au_background_open",
+    "timestamp" : "2026-09-01T00:04:23Z"
   },
   "au_cold_launch_check" : {
     "status" : "pass",

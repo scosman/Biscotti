@@ -37,14 +37,24 @@ public extension AppLink {
                 components.queryItems = [URLQueryItem(name: "title", value: title)]
             }
         }
-        guard let url = components.url else {
-            fatalError("AppLink \(self) does not encode to a URL")
-        }
-        return url
+        // Scheme and host are fixed literals, the path is a UUID string,
+        // and `URLComponents` percent-encodes query values — so this does
+        // not fail. If it ever did, degrade rather than trap: the query is
+        // the only free-text input, and the route without its parameters
+        // still opens the right page.
+        if let url = components.url { return url }
+        components.queryItems = nil
+        return components.url ?? Self.homeURL
     }
 }
 
 private extension AppLink {
+    /// Last-resort fallback for the unreachable build failure above.
+    /// A string literal with no interpolation, so it cannot be nil.
+    /// (No `force_unwrapping` disable needed — the pinned SwiftLint does
+    /// not flag call-result unwraps; see `MCPServerConfiguration`.)
+    static let homeURL = URL(string: "biscotti://home")!
+
     /// Whole-number times render without a fractional part (`42`, not
     /// `42.0`), matching the documented URL vocabulary; every other value
     /// uses `Double`'s shortest round-tripping description.

@@ -1,6 +1,6 @@
 # Connecting Agents to Biscotti MCP
 
-You can chat with your Biscotti meeting notes in apps like Claude Desktop or LM Studio. Ask questions like "What did Sarah and I agree to last time we chatted?". It can reach meetings and read summaries/notes/transcripts.
+You can chat with your Biscotti meeting notes in apps like Claude Desktop or LM Studio. Ask questions like "What did Sarah and I agree to last time we chatted?". It can search meetings and read summaries/notes/transcripts.
 
 It works with any app that speaks [MCP](https://modelcontextprotocol.io), through a local MCP server on your Mac.
 

@@ -155,6 +155,21 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 ### Project 14 — Custom Vocabularies  ·  **built**
  - **Delivered:** the `Vocabulary` module (assembly, extraction, limits, bundled word list), `TranscriptionService` wiring (`effectiveVocabulary` computed per job, recorded on each transcript), Settings section (master toggle, calendar toggle, term editor sheet), and the re-transcribe alert (offered when attaching/changing a calendar event changes the effective vocabulary). Built via the `custom_vocabulary` spec project. Previously blocked by the `promptTokens` blanking bug in argmax-oss-swift v1.0.0 ([#489](https://github.com/argmaxinc/argmax-oss-swift/issues/489)); fixed in v1.1.0 ([PR #514](https://github.com/argmaxinc/argmax-oss-swift/pull/514)).
 
+### Project 15 — Long-Transcript Analysis  ·  [P2]
+- **Archetype:** feature (analysis pipeline).
+- **Delivers:** analysis of transcripts larger than the model's context window, by splitting the transcript into chunks and processing them sequentially. Two candidate shapes, compared in `specs/projects/apple_on_device_llm/research.md` §10: **rolling refine** (each fresh session gets the running summary plus the next chunk; streaming survives; ~60% of the value for ~40% of the effort — recommended to prototype first) and **full map-reduce** (Apple's TN3193 shape; better fidelity to early content, more work).
+- **In scope:** a transcript chunker (turn-boundary splitting under a token budget), the map/refine + reduce prompt set with AI test-set coverage, an orchestrator alongside `MeetingAnalyzer`, a cross-chunk speaker-identification strategy, new `EnhancementStatus` progress stages and Summary-tab UI, and reconciling the user's custom summary prompt (it can only govern the final step).
+- **Depends on:** Project 10.
+- **Risk:** **medium-high.** Summary quality over a chunked hour-long meeting is unproven and must be measured against today's single-shot Gemma before committing. Not Apple-specific: this also lets Gemma exceed its 48k ceiling and makes E2B viable on low-RAM Macs.
+
+### Project 16 — Apple On-Device LLM  ·  **BLOCKED**
+- **Archetype:** library+feature.
+- **Would deliver:** an "Apple Intelligence" option alongside the two Gemma models — availability and quality detection via `FoundationModels`, the four unavailable states with copy and a System Settings link, an OS gate that keeps Sequoia launching, and `LLMModelRef` replacing the file-path assumption in `LocalLLM`.
+- **Blocked by:** the on-device model's fixed context window — 4096 tokens (macOS 26.0–26.3) or 8192 (current generation), shared between input and output. After our prompt and output reserves that fits **~20 minutes of meeting** at 8192, and **nothing** at 4096. The API itself is compatible; the block is on value, not feasibility. Full analysis and token math in `specs/projects/apple_on_device_llm/` (`research.md`, `functional_spec.md`).
+- **Unblocked by:** Project 15, **or** Apple raising the on-device window to ~32k, **or** an explicit product decision that short meetings are enough.
+- **Depends on:** Project 10; Project 15 for the block to clear.
+- **Risk:** **medium**, once unblocked. One unresolved second-order risk: `rateLimited` is thrown for background processes on battery, which describes a menu-bar app auto-running analysis after a meeting — unverified on hardware.
+
 ---
 
 ## Critical Path & Parallelism
@@ -183,3 +198,5 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 | 12 | iCloud Sync | feature/integration | yes | 3,4 | med-high · P2 |
 | 13 | Power-User & Storage Polish | feature/integration | yes | 4 | low-med · P2/P3 |
 | 14 | Custom Vocabularies | feature/integration | yes | 1,4,8 | **built** |
+| 15 | Long-Transcript Analysis | feature | yes | 10 | med-high · P2 |
+| 16 | Apple On-Device LLM | library+feature | yes | 10,15 | **BLOCKED** (context window) |

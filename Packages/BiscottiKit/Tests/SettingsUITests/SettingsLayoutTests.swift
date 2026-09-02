@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import SettingsUI
 
@@ -8,7 +9,7 @@ struct SettingsLayoutTests {
     /// the titles AND their order as they appear on screen. The physical
     /// section ordering in `body` (which computed property appears first)
     /// is verified in the Phase 12 manual pass.
-    @Test("section titles match spec order: General, Permissions, Notifications, AI, Vocab, Calendars")
+    @Test("section titles match spec order: General, Permissions, Notifications, AI, Vocab, Import/Export, Calendars")
     func sectionTitlesMatchSpec() {
         let expected = [
             "General",
@@ -16,6 +17,7 @@ struct SettingsLayoutTests {
             "Notifications",
             "AI Enhancements",
             "Custom Vocabulary",
+            "Import/Export",
             "Calendars"
         ]
         #expect(SettingsView.sectionTitles == expected)
@@ -37,5 +39,21 @@ struct SettingsLayoutTests {
     @Test("Custom Vocabulary header caption marks the feature as beta")
     func customVocabularyHeaderCaption() {
         #expect(SettingsView.customVocabularyHeaderCaption == "Beta")
+    }
+
+    /// The Import/Export row titles and subtitles render directly in the
+    /// section, and the "Learn more" link opens the user-facing guide.
+    @Test("Import/Export row copy and guide URL match the spec")
+    func importExportRowCopy() {
+        #expect(SettingsView.importRowTitle == "Import Meetings")
+        #expect(SettingsView.importRowSubtitle == "Import meetings from other apps, via CSV.")
+        #expect(SettingsView.exportRowTitle == "Export Meetings")
+        #expect(SettingsView.exportRowSubtitle == "Export all meetings to CSV.")
+        #expect(
+            SettingsView.importExportGuideURL
+                == URL(
+                    string: "https://github.com/scosman/Biscotti/blob/main/App/ImportingExporting.md"
+                )
+        )
     }
 }

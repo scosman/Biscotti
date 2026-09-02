@@ -1107,7 +1107,11 @@ public extension DataStore {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private func mapTranscript(_ record: TranscriptRecord) throws -> TranscriptData {
+    /// Maps a transcript record to its read model: segments in index
+    /// order, speaker assignments resolved to people (dangling person IDs
+    /// dropped). Internal: shared by the detail read models and the CSV
+    /// export read path so the two never drift.
+    internal func mapTranscript(_ record: TranscriptRecord) throws -> TranscriptData {
         let sortedSegments = record.segments.sorted(by: { $0.index < $1.index })
         let segments = sortedSegments.map { seg in
             SegmentData(

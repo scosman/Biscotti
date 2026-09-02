@@ -307,23 +307,23 @@ returns empty `text` and zero counts — not an error.
   "transcript_id": "…",
   "word_count": 6180,
   "character_count": 34117,
-  "text": "[00:04] Ada L.\nLet's start with the roadmap.\n\n[00:31] Speaker 2\n…"
+  "text": "[0:04] Ada L.\nLet's start with the roadmap.\n\n[0:31] Speaker 2\n…"
 }
 ```
 
-- Format: one block per speaker turn — a `[MM:SS] Name` header line, then the
+- Format: one block per speaker turn — a `[M:SS] Name` header line, then the
   spoken text on its own line(s) below it, with a blank line between turns:
 
   ```
-  [00:04] Ada L.
+  [0:04] Ada L.
   Let's start with the roadmap.
 
-  [00:31] Speaker 2
+  [0:31] Speaker 2
   Sure — I pushed the deck last night.
   ```
 
   Consecutive segments from the same speaker are collapsed into one turn.
-  `HH:MM:SS` is used past the hour mark.
+  `H:MM:SS` is used past the hour mark.
 - Speaker names resolve through the user's speaker→person mapping; unmapped
   speakers keep their diarization label ("Speaker 2").
 - Returns the **preferred** transcript version only.

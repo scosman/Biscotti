@@ -4,6 +4,7 @@ import AppLinks
 import Calendar
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 import Intelligence
 import SummaryPromptUI
@@ -343,7 +344,7 @@ public final class MeetingDetailViewModel {
               !transcript.segments.isEmpty
         else { return }
 
-        let text = TranscriptContent.plainText(
+        let text = TranscriptTextFormatting.render(
             transcript.segments,
             names: displayedSpeakerNames
         )
@@ -605,8 +606,8 @@ public extension MeetingDetailViewModel {
 
     /// Speaker ID -> display name map derived from the displayed
     /// transcript's speaker assignments. Passed to `TranscriptListView`
-    /// (and `TranscriptContent`) for name replacement in each row and
-    /// for the view's `Equatable` re-render trigger.
+    /// (and `TranscriptTextFormatting`) for name replacement in each row
+    /// and for the view's `Equatable` re-render trigger.
     var displayedSpeakerNames: [Int: String] {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
     }

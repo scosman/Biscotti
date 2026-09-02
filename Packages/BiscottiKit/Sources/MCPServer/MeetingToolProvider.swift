@@ -1,5 +1,6 @@
 import AppLinks
 import DataStore
+import Formatting
 import Foundation
 import MCP
 
@@ -140,8 +141,8 @@ actor MeetingToolProvider {
         let segments = Self.windowed(
             preferred.segments, startSeconds: startSeconds, endSeconds: endSeconds
         )
-        let text = TranscriptTextFormatter.text(
-            segments: segments,
+        let text = TranscriptTextFormatting.render(
+            segments,
             names: preferred.speakerAssignments.mapValues(\.name)
         )
         mcpServerLog.debug(

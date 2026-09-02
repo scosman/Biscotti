@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import Calendar
 import DesignSystem
+import Formatting
 import Foundation
 
 /// The primary call-to-action for the event preview, determined by

@@ -1,6 +1,7 @@
 import BiscottiTestSupport
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 import Testing
 @testable import AppCore

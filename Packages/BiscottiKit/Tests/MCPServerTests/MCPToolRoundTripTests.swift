@@ -93,7 +93,7 @@ struct MCPToolRoundTripTests {
             let transcriptStructured = try #require(
                 (transcript.body["result"] as? [String: Any])?["structuredContent"] as? [String: Any]
             )
-            #expect((transcriptStructured["text"] as? String)?.contains("[00:04]") == true)
+            #expect((transcriptStructured["text"] as? String)?.contains("[0:04]") == true)
         }
     }
 

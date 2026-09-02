@@ -226,7 +226,7 @@ struct MeetingToolDetailTests {
         #expect(object["id"] as? String == meetingID.uuidString)
         #expect(object["transcript_id"] as? String == transcriptID.uuidString)
         #expect(
-            object["text"] as? String == "[00:04] Ada L.\nHello more words\n\n[00:31] Speaker 1\nHi"
+            object["text"] as? String == "[0:04] Ada L.\nHello more words\n\n[0:31] Speaker 1\nHi"
         )
         #expect(object["word_count"] as? Int == 4)
         #expect(object["character_count"] as? Int == 21)

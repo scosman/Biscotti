@@ -3,6 +3,7 @@ import AppKit
 import Calendar
 import DataStore
 import Foundation
+import ImportExport
 import Intelligence
 import LocalLLM
 import MCPServer
@@ -52,6 +53,16 @@ public final class SettingsViewModel {
     /// Seam for reading the system launch-at-login status. Defaults to
     /// `SMAppService.mainApp.status == .enabled`. Injected in tests.
     private let readLaunchAtLoginStatus: @MainActor () -> Bool
+
+    /// Seam for the CSV open panel. Defaults to a live `NSOpenPanel`
+    /// limited to `.csv`, single selection (functional spec §6).
+    /// Injected in tests.
+    let presentOpenPanel: @MainActor () -> URL?
+
+    /// Seam for the export save panel, handed the generated filename.
+    /// Defaults to a live `NSSavePanel` pre-filled with that name
+    /// (functional spec §5.2). Injected in tests.
+    let presentSavePanel: @MainActor (String) -> URL?
 
     // MARK: - General
 
@@ -117,6 +128,31 @@ public final class SettingsViewModel {
     /// The set of enabled calendar IDs. nil = all enabled.
     public private(set) var enabledCalendarIDs: Set<String>?
 
+    // MARK: - Import/Export
+
+    /// True while an import or export operation (scan, commit, CSV
+    /// generation, or save panel) is in flight. Disables both section
+    /// buttons (functional spec §6). Internal setter: written by the
+    /// import/export actions extension.
+    public internal(set) var importExportBusy = false
+
+    /// True while CSV generation runs; the Export row shows a spinner in
+    /// place of its button (functional spec §5.2).
+    public internal(set) var exportInFlight = false
+
+    /// True while a CSV file is being scanned or committed; the Import
+    /// row shows a spinner in place of its button.
+    public internal(set) var importInFlight = false
+
+    /// The scan result held between the review alert and its Cancel /
+    /// Continue decision (functional spec §2.1). Internal (not public):
+    /// only the section's own views and `@testable` tests read it.
+    var pendingImport: ImportScanResult?
+
+    /// The alert currently presented by the Import/Export rows (or, in
+    /// debug builds, the delete-imported confirmation).
+    var importAlert: ImportAlertState?
+
     // MARK: - Permissions
 
     /// True while a system-audio tone-probe is running.
@@ -132,9 +168,18 @@ public final class SettingsViewModel {
     ///   - readLaunchAtLoginStatus: Closure returning the system's
     ///     launch-at-login state. Defaults to `SMAppService.mainApp.status`.
     ///     Override in tests for determinism.
+    ///   - presentOpenPanel: Closure presenting the CSV open panel and
+    ///     returning the chosen file, or nil when cancelled. Defaults to a
+    ///     live `NSOpenPanel`. Override in tests.
+    ///   - presentSavePanel: Closure presenting the save panel for the
+    ///     generated export filename and returning the chosen destination,
+    ///     or nil when cancelled. Defaults to a live `NSSavePanel`.
+    ///     Override in tests.
     public init(
         core: AppCore,
-        readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil
+        readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil,
+        presentOpenPanel: (@MainActor () -> URL?)? = nil,
+        presentSavePanel: (@MainActor (String) -> URL?)? = nil
     ) {
         appCore = core
         self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
@@ -143,6 +188,12 @@ public final class SettingsViewModel {
             #else
                 false
             #endif
+        }
+        self.presentOpenPanel = presentOpenPanel ?? {
+            Self.presentCSVOpenPanel()
+        }
+        self.presentSavePanel = presentSavePanel ?? { fileName in
+            Self.presentCSVSavePanel(fileName: fileName)
         }
     }
 

@@ -15,15 +15,17 @@ struct HomeViewModelStateTests {
     @MainActor
     func homeShowsUpcomingPreview() async throws {
         let now = Date()
-        let dtos = (0 ..< 8).map { idx in
-            EKEventDTO(
+        let dtos = (0 ..< 8).map { idx -> EKEventDTO in
+            let start: TimeInterval = Double(idx + 1) * 600
+            let end: TimeInterval = start + 3600
+            return EKEventDTO(
                 eventIdentifier: "ev-\(idx)",
                 calendarItemIdentifier: "ci-\(idx)",
                 calendarItemExternalIdentifier: "ext-\(idx)",
                 occurrenceDate: now,
                 title: "Event \(idx)",
-                startDate: now.addingTimeInterval(Double(idx + 1) * 600),
-                endDate: now.addingTimeInterval(Double(idx + 1) * 600 + 3600),
+                startDate: now.addingTimeInterval(start),
+                endDate: now.addingTimeInterval(end),
                 isAllDay: false,
                 location: "https://zoom.us/j/\(idx)",
                 url: nil,

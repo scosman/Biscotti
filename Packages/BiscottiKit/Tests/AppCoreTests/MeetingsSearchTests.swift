@@ -16,6 +16,19 @@ private func pollUntil(
     }
 }
 
+/// Polls a transient condition by yielding instead of sleeping, so
+/// short-lived states (e.g. the spinner flag while a search is mid
+/// actor-hop) are observed without 50ms sleep granularity missing them.
+private func pollUntilTransient(
+    _ condition: @MainActor () -> Bool
+) async throws {
+    for _ in 0 ..< 10000 {
+        if await condition() { return }
+        await Task.yield()
+    }
+    Issue.record("Transient condition never observed")
+}
+
 // MARK: - neighborID table tests
 
 @Suite("AppCore -- neighborID")
@@ -211,7 +224,7 @@ struct BatchNeighborIDTests {
 
 @Suite("AppCore -- setMeetingsQuery with FakeScheduler")
 struct MeetingsSearchDebouncedTests {
-    @Test("search fires after 300ms debounce")
+    @Test("search fires after 50ms debounce")
     @MainActor
     func debouncedSearchFiresAfterDelay() async throws {
         let fix = try makeCoreFixture(
@@ -237,8 +250,9 @@ struct MeetingsSearchDebouncedTests {
         // Yield to let the search task register its sleep on FakeScheduler
         try await pollUntil { fakeScheduler.pendingCount > 0 }
 
-        // Advance past the 300ms debounce
-        fakeScheduler.advance(by: .milliseconds(300))
+        // Advance past the 50ms debounce (spinner grace of 150ms not
+        // yet reached -- its sleep stays pending)
+        fakeScheduler.advance(by: .milliseconds(50))
         // Poll until the search completes (store query is an async actor hop)
         try await pollUntil { fix.core.isSearchingMeetings == false }
 
@@ -246,6 +260,9 @@ struct MeetingsSearchDebouncedTests {
         #expect(fix.core.isSearchingMeetings == false)
         #expect(fix.core.meetingsResults.count == 1)
         #expect(fix.core.meetingsResults.first?.title == "Budget review")
+
+        // Drain the still-parked spinner sleep
+        fakeScheduler.cancelAll()
     }
 
     @Test("rapid-fire queries cancel prior debounces")
@@ -273,13 +290,15 @@ struct MeetingsSearchDebouncedTests {
         // Yield to let the search task register its sleep
         try await pollUntil { fakeScheduler.pendingCount > 0 }
 
-        // Only the last query should execute after debounce
+        // Only the last query should execute after debounce. 300ms
+        // clears every pending sleep (both queries' debounce + spinner).
         fakeScheduler.advance(by: .milliseconds(300))
         try await pollUntil { fix.core.isSearchingMeetings == false }
 
         #expect(fix.core.meetingsQuery == "Alpha")
         #expect(fix.core.meetingsResults.count == 1)
         #expect(fix.core.meetingsResults.first?.title == "Alpha Meeting")
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
     }
 
     @Test("empty query clears results synchronously (no debounce)")
@@ -311,7 +330,162 @@ struct MeetingsSearchDebouncedTests {
         // Should clear immediately, no debounce needed
         #expect(fix.core.meetingsResults.isEmpty)
         #expect(fix.core.isSearchingMeetings == false)
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
         #expect(fix.core.meetingsQuery == "")
+
+        // Armed case: a fresh query's sleeps are pending when the empty
+        // query lands -- the clear must reset the flags synchronously
+        fix.core.setMeetingsQuery("Test")
+        try await pollUntil { fakeScheduler.pendingCount == 2 }
+        fix.core.setMeetingsQuery("")
+        #expect(fix.core.meetingsResults.isEmpty)
+        #expect(fix.core.isSearchingMeetings == false)
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
+
+        // Drain the parked sleeps from the cancelled query
+        fakeScheduler.cancelAll()
+    }
+}
+
+// MARK: - Spinner grace window via FakeScheduler
+
+@Suite("AppCore -- meetings search spinner grace window")
+struct MeetingsSearchSpinnerTests {
+    @Test("both debounce and spinner sleeps are scheduled; spinner deadline is later")
+    @MainActor
+    func schedulesTwoSleepsSpinnerLater() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            testName: "MeetingsSpinner"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        fix.core.setMeetingsQuery("anything")
+
+        // Debounce sleep (50ms) + spinner grace sleep (150ms)
+        try await pollUntil { fakeScheduler.pendingCount == 2 }
+
+        // Just before the debounce deadline: neither has fired
+        fakeScheduler.advance(by: .milliseconds(49))
+        #expect(fakeScheduler.pendingCount == 2)
+
+        // At the debounce deadline: search fires, spinner still pending
+        fakeScheduler.advance(by: .milliseconds(1))
+        #expect(fakeScheduler.pendingCount == 1)
+
+        // Drain the still-parked spinner sleep
+        fakeScheduler.cancelAll()
+    }
+
+    @Test("spinner stays hidden when the search finishes within the grace window")
+    @MainActor
+    func fastSearchNeverShowsSpinner() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            testName: "MeetingsSpinner"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        _ = try await fix.store.createMeeting(title: "Budget review")
+        await fix.core.reloadSummaries()
+
+        fix.core.setMeetingsQuery("Budget")
+        try await pollUntil { fakeScheduler.pendingCount == 2 }
+
+        // Advance to t+100ms: the 50ms debounce fires, the 150ms spinner
+        // grace has NOT elapsed. The in-memory search completes well
+        // inside the remaining grace.
+        fakeScheduler.advance(by: .milliseconds(100))
+        try await pollUntil { fix.core.isSearchingMeetings == false }
+        #expect(fix.core.meetingsResults.count == 1)
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
+
+        // Fire the (long-cancelled) spinner sleep: it must be a no-op.
+        fakeScheduler.advance(by: .milliseconds(200))
+        try await pollUntil { fakeScheduler.pendingCount == 0 }
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
+    }
+
+    @Test("spinner appears when the search outlasts the grace window, then clears")
+    @MainActor
+    func slowSearchShowsSpinnerThenClears() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            testName: "MeetingsSpinner"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        _ = try await fix.store.createMeeting(title: "Budget review")
+        await fix.core.reloadSummaries()
+
+        fix.core.setMeetingsQuery("Budget")
+        try await pollUntil { fakeScheduler.pendingCount == 2 }
+
+        // One advance past both deadlines: the spinner task is enqueued
+        // ahead of the search task, and the search task must suspend on
+        // the DataStore actor hop -- so the spinner flag becomes true
+        // while the search is still in flight.
+        fakeScheduler.advance(by: .milliseconds(200))
+        try await pollUntilTransient { fix.core.showsMeetingsSearchSpinner }
+
+        // The search then completes and clears the spinner
+        try await pollUntil { fix.core.isSearchingMeetings == false }
+        #expect(fix.core.meetingsResults.count == 1)
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
+    }
+
+    @Test("re-query during the grace window resets the spinner state")
+    @MainActor
+    func rapidRequeryDuringGraceResetsSpinner() async throws {
+        let fix = try makeCoreFixture(
+            useFakeScheduler: true,
+            testName: "MeetingsSpinner"
+        )
+        defer { fix.cleanup() }
+
+        guard let fakeScheduler = fix.fakeScheduler else {
+            Issue.record("Expected FakeScheduler")
+            return
+        }
+
+        _ = try await fix.store.createMeeting(title: "Alpha Meeting")
+        await fix.core.reloadSummaries()
+
+        fix.core.setMeetingsQuery("Alp")
+        try await pollUntil { fakeScheduler.pendingCount == 2 }
+
+        // Second query before any deadline fires: cancels the first
+        // search (its two sleeps stay parked but their tasks cancelled)
+        fix.core.setMeetingsQuery("Alpha")
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
+        #expect(fix.core.isSearchingMeetings == true)
+
+        // Wait for the second query's sleeps to register (2 new + the
+        // first query's 2 still-parked cancelled entries)
+        try await pollUntil { fakeScheduler.pendingCount == 4 }
+
+        // Fire everything: cancelled tasks must no-op; only "Alpha" runs
+        fakeScheduler.advance(by: .milliseconds(300))
+        try await pollUntil { fix.core.isSearchingMeetings == false }
+
+        #expect(fix.core.meetingsResults.count == 1)
+        #expect(fix.core.meetingsResults.first?.title == "Alpha Meeting")
+        #expect(fix.core.showsMeetingsSearchSpinner == false)
     }
 }
 

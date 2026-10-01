@@ -5,6 +5,7 @@ import DataStore
 import Foundation
 import Intelligence
 import LocalLLM
+import MCPServer
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -12,6 +13,7 @@ import Permissions
 import Recording
 import TranscriptionService
 import UserNotifications
+import Vocabulary
 
 /// Bundles all test dependencies for AppCore-based tests.
 ///
@@ -452,6 +454,10 @@ public struct FakeCoreHardwareProbe: HardwareProbing {
 }
 
 /// Creates a `CoreFixture` with configurable fakes.
+///
+/// `mcpServerPort` defaults to 0 (ephemeral): tests must never bind the
+/// production port 8516, which the real app dogfoods. Bind-conflict tests
+/// pass a port held by another controller.
 @MainActor
 // swiftlint:disable:next function_body_length
 public func makeCoreFixture(
@@ -472,6 +478,7 @@ public func makeCoreFixture(
     modelDownloaded: Bool = false,
     hardwareRAMBytes: UInt64 = 32_000_000_000,
     hardwareDiskBytes: Int64? = 100_000_000_000,
+    mcpServerPort: Int = 0,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -507,7 +514,8 @@ public func makeCoreFixture(
 
     let fakeEngine = FakeTranscriber()
     let transcription = TranscriptionService(
-        store: store, engine: fakeEngine
+        store: store, engine: fakeEngine,
+        vocabulary: VocabularyService(store: store)
     )
 
     let fakeEventStore = FakeEventStore(
@@ -590,7 +598,8 @@ public func makeCoreFixture(
         notifications: notificationService,
         intelligence: intelligence,
         modelManager: modelManager,
-        scheduler: scheduler
+        scheduler: scheduler,
+        mcpServer: MCPServerController(store: store, port: mcpServerPort)
     )
 
     return CoreFixture(

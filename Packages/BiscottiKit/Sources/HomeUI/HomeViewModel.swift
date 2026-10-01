@@ -2,6 +2,7 @@ import AppCore
 import Calendar
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 
 /// View model for the Home screen.

@@ -23,6 +23,10 @@ public actor DataStore {
 
     private let container: ModelContainer
     let context: ModelContext
+    let searchIndex: SearchIndex
+    /// Last-known SwiftData history token for incremental FTS5 index
+    /// sync. `nil` on launch; the first search triggers a full reconcile.
+    var lastSyncToken: DefaultHistoryToken?
 
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
@@ -62,6 +66,57 @@ public actor DataStore {
 
         context = ModelContext(container)
         context.autosaveEnabled = true
+
+        // FTS5 search index: separate SQLite file alongside the SwiftData store.
+        let indexStorage: SearchIndex.Storage = switch storage {
+        case let .onDisk(url):
+            .onDisk(url.appending(path: "SearchIndex.sqlite"))
+        case .inMemory:
+            .inMemory
+        }
+        searchIndex = Self.openSearchIndex(indexStorage)
+    }
+
+    /// Opens the search index, recovering from a damaged index file.
+    ///
+    /// The index is **derived, fully rebuildable data**. It must never be able
+    /// to stop the app opening its primary store: a corrupt `SearchIndex.sqlite`
+    /// would otherwise take every meeting and recording down with it.
+    ///
+    /// Recovery ladder:
+    /// 1. Open normally.
+    /// 2. On failure, delete the index file (and its WAL/SHM sidecars) and
+    ///    retry. The first search then does a full reconcile and rebuilds it.
+    ///    Deleted rather than quarantined -- the file can be hundreds of MB
+    ///    and holds nothing that is not reconstructible from the store.
+    /// 3. If that still fails (disk full, read-only volume, permissions), fall
+    ///    back to an in-memory index. The app is fully usable and search still
+    ///    works; the index just does not survive relaunch.
+    ///
+    /// This covers damage that surfaces when the file is opened or when the
+    /// schema is read. SQLite can also report corruption later, on a query
+    /// that touches a bad page -- that path is not covered here.
+    private static func openSearchIndex(
+        _ storage: SearchIndex.Storage
+    ) -> SearchIndex {
+        if let index = try? SearchIndex(storage: storage) {
+            return index
+        }
+
+        if case let .onDisk(url) = storage {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(
+                    atPath: url.path + suffix
+                )
+            }
+            if let rebuilt = try? SearchIndex(storage: storage) {
+                return rebuilt
+            }
+        }
+
+        // Last resort. `SearchIndex(storage: .inMemory)` only fails if SQLite
+        // cannot allocate at all, in which case the process is already lost.
+        return try! SearchIndex(storage: .inMemory) // swiftlint:disable:this force_try
     }
 
     // MARK: - Meeting CRUD
@@ -139,6 +194,9 @@ public actor DataStore {
         guard let meeting = try meeting(id: meetingID) else {
             throw DataStoreError.notFound(meetingID)
         }
+        // Eagerly remove from FTS5 index so it stays consistent even
+        // before the next search-triggered sync.
+        try? searchIndex.removeMeeting(uuid: meetingID)
         context.delete(meeting)
         try save()
     }

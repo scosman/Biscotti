@@ -26,7 +26,7 @@ SWIFTFORMAT_SHA256  := b990400779aceb7d7020796eb9ba814d4480543f671d38fc0ff48cb72
 SWIFTFORMAT_DIR := $(TOOLS_DIR)/swiftformat-$(SWIFTFORMAT_VERSION)
 SWIFTFORMAT := $(SWIFTFORMAT_DIR)/swiftformat
 
-.PHONY: help bootstrap generate build test test-ai lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
+.PHONY: help bootstrap generate build test test-ai bench lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -72,8 +72,17 @@ generate: ## Generate Xcode projects from project.yml files
 	cd App && xcodegen generate
 	cd ManualTestApp && xcodegen generate
 
+# Compiler warnings are errors in `make build` (and therefore `make ci`).
+# SwiftLint/SwiftFormat only see style; this is what makes the compiler
+# itself strict, so deprecations (e.g. SwiftNIO's NIOAny writes) fail the
+# build instead of shipping as noise. NOT yet on `make test`: the test
+# targets still carry ~8 pre-existing warnings (swift-testing `#require`
+# patterns, a deprecated `String(cString:)`). Once those are fixed, add
+# $(SWIFT_STRICT) to the test target too.
+SWIFT_STRICT := -Xswiftc -warnings-as-errors
+
 build: ## Build all SPM packages
-	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
+	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg $(SWIFT_STRICT) || exit 1; done
 
 test: ## GATING: run package tests
 	@for pkg in $(PACKAGES); do \
@@ -87,6 +96,9 @@ test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/BiscottiKit --filter IntelligenceAITests
+
+bench: ## NON-GATING: FTS5 search benchmarks (SLOW ~12 min; prints report)
+	BISCOTTI_RUN_BENCH=1 swift test --no-parallel --package-path Packages/BiscottiKit --filter "SearchBenchmark"
 
 lint: $(SWIFTLINT) $(SWIFTFORMAT) ## Check formatting + lint (non-mutating)
 	$(SWIFTFORMAT) $(LINT_PATHS) --lint --quiet --cache ignore

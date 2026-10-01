@@ -1,0 +1,42 @@
+/// Known multi-part public suffixes for extracting the registrable domain label.
+/// Covers the common cases; a full Public Suffix List is not bundled.
+enum PublicSuffixes {
+    static let multiPart: Set<String> = [
+        "ac.uk",
+        "co.at",
+        "co.id",
+        "co.il",
+        "co.in",
+        "co.jp",
+        "co.kr",
+        "co.nz",
+        "co.th",
+        "co.uk",
+        "co.za",
+        "com.ar",
+        "com.au",
+        "com.br",
+        "com.cn",
+        "com.co",
+        "com.hk",
+        "com.mx",
+        "com.my",
+        "com.ph",
+        "com.pk",
+        "com.sg",
+        "com.tr",
+        "com.tw",
+        "com.ua",
+        "com.vn",
+        "gov.uk",
+        "net.au",
+        "net.br",
+        "net.cn",
+        "or.jp",
+        "or.kr",
+        "org.au",
+        "org.br",
+        "org.cn",
+        "org.uk"
+    ]
+}

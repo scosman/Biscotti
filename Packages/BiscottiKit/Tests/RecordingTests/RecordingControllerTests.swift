@@ -104,6 +104,21 @@ struct RecordingStartStopTests {
         }
     }
 
+    @Test("Start with an explicit title uses it for the created meeting")
+    @MainActor
+    func startWithTitleCreatesTitledMeeting() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start(title: "Named by Caller")
+
+        let meetingID = try #require(fix.controller.state.meetingID)
+        try await fix.store.read { store in
+            let meeting = try #require(try store.meeting(id: meetingID))
+            #expect(meeting.title == "Named by Caller")
+        }
+    }
+
     @Test("Start requests mic permission when not determined")
     @MainActor
     func startRequestsMicPermission() async throws {

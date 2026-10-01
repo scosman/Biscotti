@@ -43,8 +43,8 @@
         static func previewSearch() -> MeetingListViewModel {
             let core = try! PreviewAppCore.make() // swiftlint:disable:this force_try
             // Set a query to switch to search mode. Results will be
-            // empty (debounce + in-memory store), showing the spinner
-            // or no-results state.
+            // empty (debounce + in-memory store), briefly quiet, then
+            // the no-results state.
             core.setMeetingsQuery("budget")
             return MeetingListViewModel(core: core)
         }

@@ -3,10 +3,13 @@ import AppKit
 import Calendar
 import DataStore
 import Foundation
+import ImportExport
 import Intelligence
 import LocalLLM
+import MCPServer
 import Permissions
 import ServiceManagement
+import Vocabulary
 
 /// A group of calendars from the same source for the settings UI.
 public struct CalendarGroup: Identifiable, Sendable, Equatable {
@@ -25,7 +28,14 @@ public struct CalendarGroup: Identifiable, Sendable, Equatable {
     }
 }
 
-// TODO(vocab): re-add a Custom Vocabulary settings section once the deferred Phase 9 SDK vocab support lands
+/// Validation error returned when adding or editing a vocabulary term.
+public enum VocabularyTermError: Equatable, Sendable {
+    /// The term already exists (case-insensitive match). The associated
+    /// value is the existing term's text for the inline message.
+    case duplicate(String)
+    /// The term exceeds `VocabularyLimits.maxSingleTermLength` characters.
+    case tooLong
+}
 
 /// View model for the Settings screen: calendar include/exclude, permissions
 /// overview with inline request actions, and general preferences.
@@ -44,6 +54,16 @@ public final class SettingsViewModel {
     /// `SMAppService.mainApp.status == .enabled`. Injected in tests.
     private let readLaunchAtLoginStatus: @MainActor () -> Bool
 
+    /// Seam for the CSV open panel. Defaults to a live `NSOpenPanel`
+    /// limited to `.csv`, single selection (functional spec §6).
+    /// Injected in tests.
+    let presentOpenPanel: @MainActor () -> URL?
+
+    /// Seam for the export save panel, handed the generated filename.
+    /// Defaults to a live `NSSavePanel` pre-filled with that name
+    /// (functional spec §5.2). Injected in tests.
+    let presentSavePanel: @MainActor (String) -> URL?
+
     // MARK: - General
 
     /// Launch at login toggle state. Reflects `SMAppService.mainApp.status`
@@ -60,6 +80,10 @@ public final class SettingsViewModel {
 
     /// How far before a meeting the menu bar shows the detailed text.
     public private(set) var menuBarLeadTime: MenuBarLeadTime = .oneHour
+
+    /// Whether the local MCP server is enabled (persisted intent; the live
+    /// state is `mcpServerState`). Off by default.
+    public private(set) var mcpServerEnabled = false
 
     // MARK: - Notification settings
 
@@ -78,34 +102,23 @@ public final class SettingsViewModel {
     /// and `.none` (notifications disabled entirely).
     public private(set) var showStayVisibleRow = false
 
-    /// Whether the calendar notification picker should be disabled
-    /// (calendar access not authorized).
-    public var calendarNotificationsDisabled: Bool {
-        calendarState != .authorized
-    }
-
-    // MARK: - Update checker
-
-    /// The update checker status, forwarded from AppCore.
-    public var updateStatus: UpdateStatus {
-        core.updateChecker.status
-    }
-
     // MARK: - AI Enhancements
 
     /// Whether AI analysis (summary + speaker inference) is enabled (persisted).
     public private(set) var aiAnalysisEnabled: Bool = true
 
-    /// Whether any AI model is available (active model exists).
-    public var modelAvailable: Bool {
-        core.modelManager.isModelAvailable
-    }
+    // MARK: - Custom Vocabulary
 
-    /// Display name of the currently active model, or `nil` if none.
-    public var activeModelDisplayName: String? {
-        guard let id = core.modelManager.activeModelID else { return nil }
-        return LLMModelCatalog.model(id: id)?.displayName
-    }
+    /// Master switch for custom vocabulary biasing. Seeded from the shipped
+    /// default so the toggle does not flash "on" before `load()` resolves it.
+    public private(set) var customVocabularyEnabled: Bool =
+        AppSettingsData.customVocabularyDefault
+
+    /// Whether calendar-derived terms are included.
+    public private(set) var calendarVocabularyEnabled: Bool = true
+
+    /// The user's stored vocabulary terms, in insertion order.
+    public private(set) var vocabularyTerms: [String] = []
 
     // MARK: - Calendar state
 
@@ -115,30 +128,38 @@ public final class SettingsViewModel {
     /// The set of enabled calendar IDs. nil = all enabled.
     public private(set) var enabledCalendarIDs: Set<String>?
 
+    // MARK: - Import/Export
+
+    /// True while an import or export operation (scan, commit, CSV
+    /// generation, or save panel) is in flight. Disables both section
+    /// buttons (functional spec §6). Internal setter: written by the
+    /// import/export actions extension.
+    public internal(set) var importExportBusy = false
+
+    /// True while CSV generation runs; the Export row shows a spinner in
+    /// place of its button (functional spec §5.2).
+    public internal(set) var exportInFlight = false
+
+    /// True while a CSV file is being scanned or committed; the Import
+    /// row shows a spinner in place of its button.
+    public internal(set) var importInFlight = false
+
+    /// The scan result held between the review alert and its Cancel /
+    /// Continue decision (functional spec §2.1). Internal (not public):
+    /// only the section's own views and `@testable` tests read it.
+    var pendingImport: ImportScanResult?
+
+    /// The alert currently presented by the Import/Export rows (or, in
+    /// debug builds, the delete-imported confirmation).
+    var importAlert: ImportAlertState?
+
     // MARK: - Permissions
-
-    /// Permission states for each kind.
-    public var microphoneState: PermissionState {
-        core.permissions.microphone
-    }
-
-    public var systemAudioState: SystemAudioPermissionState {
-        core.permissions.systemAudio
-    }
 
     /// True while a system-audio tone-probe is running.
     public private(set) var isValidatingSystemAudio: Bool = false
 
     /// True when the "Fix permissions" alert should be presented.
     public var showFixPermissionsAlert: Bool = false
-
-    public var calendarState: PermissionState {
-        core.permissions.calendar
-    }
-
-    public var notificationsState: PermissionState {
-        core.permissions.notifications
-    }
 
     // MARK: - Init
 
@@ -147,9 +168,18 @@ public final class SettingsViewModel {
     ///   - readLaunchAtLoginStatus: Closure returning the system's
     ///     launch-at-login state. Defaults to `SMAppService.mainApp.status`.
     ///     Override in tests for determinism.
+    ///   - presentOpenPanel: Closure presenting the CSV open panel and
+    ///     returning the chosen file, or nil when cancelled. Defaults to a
+    ///     live `NSOpenPanel`. Override in tests.
+    ///   - presentSavePanel: Closure presenting the save panel for the
+    ///     generated export filename and returning the chosen destination,
+    ///     or nil when cancelled. Defaults to a live `NSSavePanel`.
+    ///     Override in tests.
     public init(
         core: AppCore,
-        readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil
+        readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil,
+        presentOpenPanel: (@MainActor () -> URL?)? = nil,
+        presentSavePanel: (@MainActor (String) -> URL?)? = nil
     ) {
         appCore = core
         self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
@@ -158,6 +188,12 @@ public final class SettingsViewModel {
             #else
                 false
             #endif
+        }
+        self.presentOpenPanel = presentOpenPanel ?? {
+            Self.presentCSVOpenPanel()
+        }
+        self.presentSavePanel = presentSavePanel ?? { fileName in
+            Self.presentCSVSavePanel(fileName: fileName)
         }
     }
 
@@ -402,7 +438,11 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            mcpServerEnabled = settings.mcpServerEnabled
             aiAnalysisEnabled = settings.aiAnalysisEnabled
+            customVocabularyEnabled = settings.customVocabularyResolved
+            calendarVocabularyEnabled = settings.calendarVocabularyEnabled
+            vocabularyTerms = settings.customVocabulary
         } catch {
             enabledCalendarIDs = nil
         }
@@ -442,6 +482,56 @@ public final class SettingsViewModel {
                     calendars: calendars.sorted { $0.title < $1.title }
                 )
             }
+    }
+}
+
+// MARK: - Computed forwarding properties (extracted for type_body_length)
+
+public extension SettingsViewModel {
+    /// The update checker status, forwarded from AppCore.
+    var updateStatus: UpdateStatus {
+        core.updateChecker.status
+    }
+
+    /// Whether any AI model is available (active model exists).
+    var modelAvailable: Bool {
+        core.modelManager.isModelAvailable
+    }
+
+    /// Display name of the currently active model, or `nil` if none.
+    var activeModelDisplayName: String? {
+        guard let id = core.modelManager.activeModelID else { return nil }
+        return LLMModelCatalog.model(id: id)?.displayName
+    }
+
+    /// Permission states for each kind.
+    var microphoneState: PermissionState {
+        core.permissions.microphone
+    }
+
+    var systemAudioState: SystemAudioPermissionState {
+        core.permissions.systemAudio
+    }
+
+    var calendarState: PermissionState {
+        core.permissions.calendar
+    }
+
+    var notificationsState: PermissionState {
+        core.permissions.notifications
+    }
+
+    /// Whether the calendar notification picker should be disabled
+    /// (calendar access not authorized).
+    var calendarNotificationsDisabled: Bool {
+        calendarState != .authorized
+    }
+
+    /// The MCP server's live lifecycle state, forwarded from AppCore. The
+    /// Settings row renders its caption from this (truth), while the toggle
+    /// reflects `mcpServerEnabled` (intent).
+    var mcpServerState: MCPServerState {
+        core.mcpServer.state
     }
 }
 
@@ -522,6 +612,35 @@ public extension SettingsViewModel {
     }
 }
 
+// MARK: - MCP Server actions
+
+public extension SettingsViewModel {
+    /// Toggles the "MCP" setting. Persists to the store and posts
+    /// `.mcpServerEnabledDidChange` so AppCore starts/stops the server live.
+    /// The optimistic update is kept even when the server later fails to
+    /// start — the user's intent is preserved (functional spec §2.3).
+    func setMCPServerEnabled(_ enabled: Bool) async {
+        mcpServerEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.mcpServerEnabled = enabled
+            }
+            NotificationCenter.default.post(
+                name: .mcpServerEnabledDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            mcpServerEnabled = !enabled
+        }
+    }
+
+    /// Re-attempts the MCP server bind after a failure (the Retry button).
+    func retryMCPServer() async {
+        await core.mcpServer.start()
+    }
+}
+
 // MARK: - AI Enhancements actions
 
 public extension SettingsViewModel {
@@ -556,6 +675,115 @@ public extension SettingsViewModel {
     /// the sheet reopens (via `loadEffectivePrompt`).
     func saveSummaryPrompt(_ text: String) async {
         try? await core.saveSummaryPrompt(text)
+    }
+}
+
+// MARK: - Custom Vocabulary actions
+
+public extension SettingsViewModel {
+    /// Toggles the master custom vocabulary switch. Persists with
+    /// optimistic update; reverts on failure.
+    func setCustomVocabularyEnabled(_ enabled: Bool) async {
+        customVocabularyEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.customVocabularyEnabled = enabled
+            }
+        } catch {
+            customVocabularyEnabled = !enabled
+        }
+    }
+
+    /// Toggles the calendar-derived vocabulary switch. Persists with
+    /// optimistic update; reverts on failure.
+    func setCalendarVocabularyEnabled(_ enabled: Bool) async {
+        calendarVocabularyEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.calendarVocabularyEnabled = enabled
+            }
+        } catch {
+            calendarVocabularyEnabled = !enabled
+        }
+    }
+
+    /// Adds a term to the vocabulary list. Returns a validation error
+    /// if the term is invalid, or `nil` on success. Whitespace-only
+    /// input is silently ignored (returns `nil`, adds nothing).
+    func addVocabularyTerm(_ raw: String) async -> VocabularyTermError? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.count > VocabularyLimits.maxSingleTermLength {
+            return .tooLong
+        }
+
+        if let existing = vocabularyTerms.first(where: {
+            $0.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return .duplicate(existing)
+        }
+
+        vocabularyTerms.append(trimmed)
+        do {
+            let updated = vocabularyTerms
+            try await core.store.updateSettings { settings in
+                settings.customVocabulary = updated
+            }
+        } catch {
+            vocabularyTerms.removeLast()
+        }
+        return nil
+    }
+
+    /// Removes the term at the given index.
+    func removeVocabularyTerm(at index: Int) async {
+        guard vocabularyTerms.indices.contains(index) else { return }
+        let removed = vocabularyTerms.remove(at: index)
+        do {
+            let updated = vocabularyTerms
+            try await core.store.updateSettings { settings in
+                settings.customVocabulary = updated
+            }
+        } catch {
+            vocabularyTerms.insert(removed, at: index)
+        }
+    }
+
+    /// Updates the term at the given index. Returns a validation error
+    /// if the new value is invalid, or `nil` on success.
+    func updateVocabularyTerm(
+        at index: Int, to raw: String
+    ) async -> VocabularyTermError? {
+        guard vocabularyTerms.indices.contains(index) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+
+        // Empty edit reverts silently
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.count > VocabularyLimits.maxSingleTermLength {
+            return .tooLong
+        }
+
+        // Duplicate check excludes the term being edited
+        if let existing = vocabularyTerms.enumerated().first(where: {
+            $0.offset != index
+                && $0.element.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return .duplicate(existing.element)
+        }
+
+        let previous = vocabularyTerms[index]
+        vocabularyTerms[index] = trimmed
+        do {
+            let updated = vocabularyTerms
+            try await core.store.updateSettings { settings in
+                settings.customVocabulary = updated
+            }
+        } catch {
+            vocabularyTerms[index] = previous
+        }
+        return nil
     }
 }
 

@@ -1,6 +1,8 @@
 import DataStore
 import Foundation
+import os
 import Transcription
+import Vocabulary
 
 /// App-level transcription orchestration on top of the `Transcription` engine.
 ///
@@ -25,6 +27,18 @@ public final class TranscriptionService {
 
     private let store: DataStore
     private let engine: any Transcribing
+    private let vocabulary: VocabularyService
+
+    #if DEBUG
+        /// DEBUG-only diagnostics logger. Logs the effective vocabulary handed to
+        /// the engine. Lives here rather than in the engine so the lines land in
+        /// the app process — the engine runs inside `BiscottiTranscriber.xpc`,
+        /// whose logs are awkward to follow from the app. Not compiled into
+        /// release builds.
+        private static let vocabDebugLog = Logger(
+            subsystem: "net.scosman.biscotti", category: "TranscriptionService"
+        )
+    #endif
 
     // MARK: - In-flight guard
 
@@ -39,9 +53,11 @@ public final class TranscriptionService {
     /// - Parameters:
     ///   - store: The `DataStore` actor for resolving audio paths and persisting transcripts.
     ///   - engine: The transcription engine (shared instance, not a factory).
-    public init(store: DataStore, engine: any Transcribing) {
+    ///   - vocabulary: The vocabulary service that assembles the effective word list per job.
+    public init(store: DataStore, engine: any Transcribing, vocabulary: VocabularyService) {
         self.store = store
         self.engine = engine
+        self.vocabulary = vocabulary
     }
 
     // MARK: - Transcribe
@@ -136,9 +152,21 @@ public final class TranscriptionService {
 
         guard await downloadModels(meetingID: meetingID) else { return }
 
-        guard let result = await runEngine(meetingID: meetingID, paths: paths) else { return }
+        // Compute vocabulary ONCE and thread the same array into both the
+        // engine call and persistence, so `vocabularyUsed` is byte-identical
+        // to what the engine received. Re-transcription goes through the same
+        // path and naturally recomputes.
+        let vocab = await vocabulary.effectiveVocabulary(meetingID: meetingID)
 
-        guard await persistAndPromote(meetingID: meetingID, result: result) else { return }
+        #if DEBUG
+            Self.vocabDebugLog.debug(
+                "Vocabulary for \(meetingID, privacy: .public) (\(vocab.count, privacy: .public) terms): \(vocab.joined(separator: ", "), privacy: .public)"
+            )
+        #endif
+
+        guard let result = await runEngine(meetingID: meetingID, paths: paths, vocabulary: vocab) else { return }
+
+        guard await persistAndPromote(meetingID: meetingID, result: result, vocabularyUsed: vocab) else { return }
 
         jobs[meetingID] = .completed
     }
@@ -205,14 +233,15 @@ public final class TranscriptionService {
     /// Runs STT + diarization. Returns `nil` (with `.failed` set) on error.
     private func runEngine(
         meetingID: UUID,
-        paths: (mic: URL, system: URL)
+        paths: (mic: URL, system: URL),
+        vocabulary: [String]
     ) async -> TranscriptResult? {
         jobs[meetingID] = .transcribing
         do {
             return try await engine.processAudio(
                 mic: paths.mic,
                 system: paths.system,
-                customVocabulary: []
+                customVocabulary: vocabulary
             )
         } catch {
             let (message, retriable) = mapEngineError(error)
@@ -224,11 +253,15 @@ public final class TranscriptionService {
     /// Persists the transcript result and promotes it as preferred.
     /// Returns `false` (with `.failed` set) on error.
     @discardableResult
-    private func persistAndPromote(meetingID: UUID, result: TranscriptResult) async -> Bool {
+    private func persistAndPromote(
+        meetingID: UUID,
+        result: TranscriptResult,
+        vocabularyUsed: [String]
+    ) async -> Bool {
         do {
             let transcriptID = try await store.addTranscript(
                 result,
-                vocabularyUsed: [],
+                vocabularyUsed: vocabularyUsed,
                 mappedEventIdentifier: nil,
                 to: meetingID
             )

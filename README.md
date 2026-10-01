@@ -5,8 +5,9 @@
 
 **Private Meeting Transcripts for MacOS.**
 
-[![Download for macOS](https://img.shields.io/badge/Download_for_macOS-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg)
-
+<a href="https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg">
+  <img width="165" height="38" alt="Download for macOS" src="https://github.com/user-attachments/assets/a0ff77ed-d9cd-49df-9ba5-b866098d8d67" />
+</a>
 </div>
 
 ---
@@ -27,7 +28,9 @@
 - 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
 - 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
+- 🧩 **MCP** - chat with your meeting notes in apps like Claude Desktop or LM Studio.
 - ⏹️ **Auto‑stop** — detects when your call ends and stops recording.
+- 📖 **Custom vocabulary** — transcribe uncommon words you use, like names or jargon.
 - ⚡ **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
 - 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No echo.
 - 📝 **Markdown notes** — jot notes in markdown, linked to the moment they happened.
@@ -97,6 +100,9 @@ Yes. Biscotti can sync any calendars you connect to the Apple Calendar app on yo
 
 **How does speaker idenitification work?**
 Three steps: an AI model transcribes what you say, a second AI model separates speakers by voice, and a third model figures out who's who. Enhanced by calendar metadata when available.
+
+**Which languages does it support?**
+The [transcription model](https://huggingface.co/openai/whisper-large-v3-turbo) supports 99 languages and [summary model](https://huggingface.co/google/gemma-4-12B-it) supports 35+ languages.
 
 ## Built with
 

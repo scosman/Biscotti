@@ -9,14 +9,14 @@ Three surfaces: a Settings section, a term-editor sheet, and an alert. All follo
 
 ## 1. Settings section
 
-Placed directly after **General**, before **Permissions**.
+Placed directly after **AI Enhancements**, before **Calendars**.
 
 ```
-┌─ General ──────────────────────────────────────────────────────┐
+┌─ AI Enhancements ─────────────────────────────────────────────┐
 │ … existing rows …                                               │
 └─────────────────────────────────────────────────────────────────┘
-┌─ Custom Vocabulary ────────────────────────────────────────────┐
-│ ☑ Custom Vocabulary                                             │
+┌─ Custom Vocabulary ────────────────────────────────────  Beta ─┐
+│ ☐ Custom Vocabulary                                             │
 │   Help Biscotti recognize uncommon words you use, like names    │
 │   or technical terms.                                           │
 │                                                                 │
@@ -27,10 +27,14 @@ Placed directly after **General**, before **Permissions**.
 │   Pull uncommon words from the event's title, description,      │
 │   and attendee names. English only.                             │
 └─────────────────────────────────────────────────────────────────┘
-┌─ Permissions ──────────────────────────────────────────────────┐
+┌─ Calendars ────────────────────────────────────────────────────┐
 ```
 
-**Structure.** A `Section("Custom Vocabulary")` in the existing grouped `Form`, with three rows.
+**Structure.** A `Section` in the existing grouped `Form`, with three rows and a custom `header:`
+closure — an `HStack` of the title, a `Spacer`, and a muted `Beta` caption, mirroring the
+`AI runs locally on your Mac.` caption on the AI Enhancements header. The master toggle is off by
+default while the feature is in beta (see `functional_spec.md` §5.0), so the two rows below it are
+hidden until the user opts in.
 
 - **Row 1 — master toggle.** `Toggle` + a `Tokens.metadataFont` / `Tokens.secondaryText` subtitle
   beneath, wrapped in a `VStack(alignment: .leading, spacing: Tokens.spacingXS)`. This is exactly the
@@ -47,9 +51,9 @@ section compact when the feature is off; disabling would keep the feature's capa
 The section collapses to a single row when off, so the header still advertises the feature.
 
 **Implementation gotcha.** `SettingsView.sectionTitles` is a positional array and section headers are
-read as `sectionTitles[N]`. Inserting "Custom Vocabulary" at index 1 shifts Permissions, Notifications,
-AI Enhancements, and Calendars by one. Every `sectionTitles[N]` reference must be re-indexed, and the
-existing `SettingsUI` tests that assert on titles must be updated.
+read as `sectionTitles[N]`. "Custom Vocabulary" sits at index 4, between AI Enhancements (3) and
+Calendars (5). Every `sectionTitles[N]` reference must match these indices, and the existing
+`SettingsUI` tests that assert on titles must be updated.
 
 ## 2. Vocabulary list editor (sheet)
 

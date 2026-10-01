@@ -678,6 +678,226 @@ struct MeetingDetailDeleteTests {
     }
 }
 
+// MARK: - Re-transcribe vocabulary alert tests
+
+@Suite("MeetingDetailViewModel -- re-transcribe vocabulary alert")
+struct MeetingDetailReTranscribeAlertTests {
+    @Test("no alert when meeting has no transcript versions")
+    @MainActor
+    func reTranscribeNotOfferedWithNoTranscript() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        #expect(detailVM.versions.isEmpty)
+        let result = await detailVM.shouldOfferReTranscribe()
+        #expect(result == false)
+    }
+
+    @Test("no alert when audio is not available")
+    @MainActor
+    func reTranscribeNotOfferedWithNoAudio() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        // Create meeting WITHOUT audio
+        let meetingID = try await fix.store.createMeeting(title: "No Audio")
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        #expect(!detailVM.versions.isEmpty)
+        #expect(detailVM.detail?.hasAudio == false)
+        let offer = await detailVM.shouldOfferReTranscribe()
+        #expect(offer == false)
+    }
+
+    @Test("no alert when custom vocabulary toggle is off")
+    @MainActor
+    func reTranscribeNotOfferedWhenCustomVocabDisabled() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        // Turn off the master toggle
+        try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = false
+        }
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        let offer = await detailVM.shouldOfferReTranscribe()
+        #expect(offer == false)
+    }
+
+    @Test("no alert when calendar vocabulary toggle is off")
+    @MainActor
+    func reTranscribeNotOfferedWhenCalendarVocabDisabled() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        // Turn off calendar vocabulary. The master toggle must be explicitly
+        // on, or the guard short-circuits there and this stops testing the
+        // calendar-toggle path at all.
+        try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
+            $0.calendarVocabularyEnabled = false
+        }
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        let offer = await detailVM.shouldOfferReTranscribe()
+        #expect(offer == false)
+    }
+
+    @Test("no alert when vocabulary is unchanged")
+    @MainActor
+    func reTranscribeNotOfferedWhenVocabularyUnchanged() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // Add custom vocab terms to settings. The master toggle must be
+        // explicitly on, or the guard short-circuits and the unchanged-
+        // vocabulary comparison below is never reached.
+        try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
+            $0.customVocabulary = ["Acme"]
+        }
+
+        // Compute what the effective vocabulary would be (user terms only,
+        // no calendar context) and persist it as the transcript's vocab.
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: ["Acme"],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        let offer = await detailVM.shouldOfferReTranscribe()
+        #expect(offer == false)
+    }
+
+    @Test("alert offered when vocabulary differs")
+    @MainActor
+    func reTranscribeOfferedWhenVocabularyDiffers() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        // Settings have custom vocab enabled with terms. The master toggle is
+        // off by default while the feature is in beta, so opt in explicitly.
+        try await fix.store.updateSettings {
+            $0.customVocabularyEnabled = true
+            $0.customVocabulary = ["Kubernetes"]
+        }
+
+        // Transcript was recorded with no vocabulary
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        let offer = await detailVM.shouldOfferReTranscribe()
+        #expect(offer == true)
+    }
+
+    @Test("removeAssociation does not trigger re-transcribe alert")
+    @MainActor
+    func reTranscribeNotOfferedOnRemoveAssociation() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let snapshot = CalendarSnapshot(
+            eventIdentifier: "ev-retranscribe",
+            calendarItemIdentifier: "ci-retranscribe",
+            calendarItemExternalIdentifier: "ext-retranscribe",
+            occurrenceStartDate: Date(),
+            compositeKey: "key-retranscribe",
+            title: "Retranscribe Test",
+            startDate: Date(),
+            endDate: Date().addingTimeInterval(3600),
+            isAllDay: false,
+            location: nil,
+            url: nil,
+            timeZone: nil,
+            eventNotes: "",
+            status: nil,
+            availability: nil,
+            calendarTitle: "Work",
+            calendarColorHex: "#0066CC",
+            conferenceURL: nil,
+            conferencePlatform: nil
+        )
+        try await fix.store.setSnapshot(snapshot, for: meetingID)
+
+        let txResult = FakeTranscriber.defaultResult
+        let transcriptID = try await fix.store.addTranscript(
+            txResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+
+        let detailVM = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await detailVM.load()
+
+        // Remove association (eventKey = nil)
+        await detailVM.removeAssociation()
+
+        #expect(detailVM.showReTranscribeAfterCorrection == false)
+    }
+}
+
 // MARK: - EventPreviewViewModel tests
 
 @Suite("EventPreviewViewModel")

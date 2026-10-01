@@ -25,10 +25,20 @@ enum TextNormalize {
             .joined(separator: " ")
     }
 
-    /// Split normalized text into words on whitespace boundaries.
+    /// Additional characters treated as word boundaries by `words(_:)`.
+    ///
+    /// A slash is a list separator to the model: asked to say "NASA,
+    /// Kubernetes" it may emit "NASA/Kubernetes". Splitting on it keeps
+    /// both terms visible to the word matcher. Deliberately narrow —
+    /// hyphens are NOT included, because splitting "Llama-ish" into
+    /// "llama" would turn a genuine mis-transcription into a false match.
+    private static let wordSeparators = CharacterSet(charactersIn: " /")
+
+    /// Split normalized text into words on whitespace and slash boundaries.
     static func words(_ text: String) -> [String] {
         let normalized = normalize(text)
         guard !normalized.isEmpty else { return [] }
-        return normalized.components(separatedBy: " ")
+        return normalized.components(separatedBy: wordSeparators)
+            .filter { !$0.isEmpty }
     }
 }

@@ -11,6 +11,8 @@ struct BundledMeetingCatalogTests {
     @Test("Recognized meeting app bundle IDs", arguments: [
         "us.zoom.xos",
         "com.microsoft.teams2",
+        "com.microsoft.teams2.modulehost",
+        "com.microsoft.teams2.helper",
         "Cisco-Systems.Spark",
         "com.cisco.webexmeetingsapp",
         "com.logmein.GoToMeeting",
@@ -74,9 +76,21 @@ struct BundledMeetingCatalogTests {
         ("com.apple.WebKit.GPU", "Safari"),
         ("com.apple.avconferenced", "FaceTime"),
         ("com.tinyspeck.slackmacgap.helper", "Slack"),
+        ("com.microsoft.teams2.modulehost", "Microsoft Teams"),
+        ("com.microsoft.teams2.helper", "Microsoft Teams"),
     ])
     func helperDisplayName(helperID: String, expectedParentName: String) {
         #expect(catalog.displayName(forBundleID: helperID) == expectedParentName)
+    }
+
+    /// The mic-holding Teams sub-processes must merge into the parent app so
+    /// detection reports one "Microsoft Teams" call, not several.
+    @Test("Teams sub-processes resolve to the parent bundle ID", arguments: [
+        "com.microsoft.teams2.modulehost",
+        "com.microsoft.teams2.helper",
+    ])
+    func teamsHelperResolvesToParent(helperID: String) {
+        #expect(catalog.parentBundleID(forHelperBundleID: helperID) == "com.microsoft.teams2")
     }
 
     @Test("Display name for unknown bundle ID is nil")

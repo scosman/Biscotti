@@ -1,3 +1,4 @@
+import AppLinks
 import BiscottiTestSupport
 import Calendar
 import DataStore
@@ -771,9 +772,7 @@ private func makeMeetingEventDTO(suffix: String) -> EKEventDTO {
 
 @Suite("MeetingDetailViewModel -- association correction re-transcribe")
 struct MeetingDetailCorrectionReTranscribeTests {
-    // TODO(re-transcribe-prompt): restore this test once vocab support
-    // (Phase 9) lands. The prompt is currently suppressed.
-    @Test("association correction does NOT show re-transcribe prompt (vocab deferred)")
+    @Test("no re-transcribe alert when meeting has no transcript")
     @MainActor
     func associationCorrectionSuppressesPrompt() async throws {
         let dto = makeMeetingEventDTO(suffix: "retx")
@@ -805,7 +804,7 @@ struct MeetingDetailCorrectionReTranscribeTests {
         }
 
         await viewModel.correctAssociation(eventKey: eventKey)
-        // Prompt suppressed until vocab support lands
+        // No transcript versions exist, so no re-transcribe alert
         #expect(viewModel.showReTranscribeAfterCorrection == false)
     }
 
@@ -1021,13 +1020,13 @@ struct MeetingDetailSeekAndPlayTests {
 
         #expect(viewModel.isPlaying == false)
 
-        // Simulate a deep-link jump arriving for this meeting
-        try await fix.core.handleDeepLink(
-            #require(URL(string: "biscotti://meeting/\(meetingID)?time=42"))
+        // Simulate an app-link intent arriving for this meeting
+        await fix.core.apply(
+            .meeting(id: meetingID, target: .transcriptTime(42))
         )
 
-        // Apply the pending jump (this is what the view's .onChange triggers)
-        await viewModel.applyPendingJumpIfNeeded()
+        // Apply the pending intent (this is what the view's .onChange triggers)
+        await viewModel.applyPendingIntentIfNeeded()
 
         // The seek should have been applied AND playback started
         #expect(fakePlayer.currentTime == 42.0)

@@ -96,8 +96,9 @@ struct ManageModelsViewModelTests {
         let firstID = try #require(LLMModelCatalog.all.first?.id)
         viewModel.download(id: firstID)
 
-        // Wait for the background Task to complete
-        try await Task.sleep(for: .milliseconds(50))
+        // Poll for the background Task to complete -- a fixed sleep
+        // races the task under parallel-test load
+        try await pollUntil { fixture.modelManager.isModelAvailable }
 
         // Verify ModelManager received the download
         #expect(fixture.modelManager.isModelAvailable == true)
@@ -124,8 +125,8 @@ struct ManageModelsViewModelTests {
         let viewModel = ManageModelsViewModel(core: fixture.core)
         viewModel.choose(id: secondID)
 
-        // Wait for the background Task to complete
-        try await Task.sleep(for: .milliseconds(50))
+        // Poll for the background Task to complete
+        try await pollUntil { fixture.modelManager.activeModelID == secondID }
 
         #expect(fixture.modelManager.activeModelID == secondID)
     }
@@ -172,8 +173,12 @@ struct ManageModelsViewModelTests {
         // Target should be cleared immediately
         #expect(viewModel.deleteTarget == nil)
 
-        // Wait for the background Task to complete
-        try await Task.sleep(for: .milliseconds(50))
+        // Poll for the background Task to complete
+        try await pollUntil {
+            viewModel.modelChoices.first {
+                $0.model.id == downloadedChoice.model.id
+            }?.isDownloaded == false
+        }
 
         // Model should no longer be downloaded
         let refreshedChoices = viewModel.modelChoices

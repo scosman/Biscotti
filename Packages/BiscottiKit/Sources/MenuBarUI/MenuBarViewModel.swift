@@ -3,6 +3,7 @@ import AppKit
 import Calendar
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 
 /// View model for the `MenuBarExtra` content and label views.

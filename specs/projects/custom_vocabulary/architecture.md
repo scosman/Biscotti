@@ -43,7 +43,9 @@ the vocabulary fields would make them the one inconsistent setting. So:
 
 ```swift
 /// Master switch for custom vocabulary. When false no prompt is sent at all.
-public var customVocabularyEnabled: Bool = true
+/// `nil` means the user has never chosen; resolve via
+/// `AppSettingsData.customVocabularyResolved`. See functional_spec.md §5.0.
+public var customVocabularyEnabled: Bool?
 /// Whether per-meeting terms are derived from the associated calendar event.
 public var calendarVocabularyEnabled: Bool = true
 ```
@@ -115,14 +117,13 @@ public enum VocabularyLimits {
     public static let maxSingleTermLength = 60
     public static let maxInvitees = 20
     public static let maxUniqueDomains = 5
-    public static let maxUncommonWords = 15
     public static let minTokenLength = 3
     public static let minNameLength = 2
     /// Hit-rate ceiling when there are `shortTextWordCount` or fewer checked words.
     public static let shortTextHitRateCeiling = 0.34
     public static let shortTextWordCount = 5
     /// Hit-rate ceiling above `shortTextWordCount` checked words.
-    public static let longTextHitRateCeiling = 0.20
+    public static let longTextHitRateCeiling = 0.25
 }
 ```
 
@@ -155,7 +156,7 @@ public final class VocabularyService: Sendable {
 Body:
 
 1. `guard let settings = try? await store.settings() else { return [] }`
-2. `guard settings.customVocabularyEnabled else { return [] }` — short-circuits before any I/O.
+2. `guard settings.customVocabularyResolved else { return [] }` — short-circuits before any I/O.
 3. `let context = settings.calendarVocabularyEnabled ? try? await store.calendarContext(meetingID:) : nil`
 4. Build `VocabularyInputs` from `settings` + `context`.
 5. `return VocabularyAssembler.assemble(inputs, uncommon: CommonWordList.uncommonFilter(logger:))`
@@ -262,8 +263,8 @@ enum UncommonWordExtractor {
 4. **Group** by `lowercased()` key, preserving every observed surface form in encounter order.
 5. `let checked = Set(keys)`; return `[]` if empty.
 6. `let miss = uncommon(checked)`.
-7. **Guards** — return `[]` when any holds:
-   - `miss.count > maxUncommonWords`
+7. **Guards** — return `[]` when either holds. There is no absolute cap on `miss.count`; see
+   `functional_spec.md` §3.4.3 for why.
    - `checked.count <= shortTextWordCount && Double(miss.count) / Double(checked.count) > shortTextHitRateCeiling`
    - `checked.count > shortTextWordCount && Double(miss.count) / Double(checked.count) > longTextHitRateCeiling`
 8. Emit the missing keys in first-encounter order, each passed through `CasingNormalizer` with
@@ -383,9 +384,9 @@ Re-transcription goes through the same path, so it naturally recomputes.
   section as an extension on `SettingsView`.
 - New file `VocabularyListSheet.swift` in `SettingsUI`. It stays in `SettingsUI` rather than becoming
   its own module — unlike `SummaryPromptUI`, it has exactly one presentation site.
-- **`sectionTitles` re-index.** Inserting `"Custom Vocabulary"` at index 1 shifts Permissions (1→2),
-  Notifications (2→3), AI Enhancements (3→4), and Calendars (4→5). Every `sectionTitles[N]` reference
-  and every settings test asserting on titles must be updated together.
+- **`sectionTitles` placement.** `"Custom Vocabulary"` sits at index 4, between AI Enhancements (3)
+  and Calendars (5). Every `sectionTitles[N]` reference and every settings test asserting on titles
+  must match these indices.
 
 ### 5.3 `MeetingDetailUI`
 
@@ -405,7 +406,7 @@ private func shouldOfferReTranscribe() async -> Bool {
     guard let newest = transcriptVersions.first else { return false }   // sorted desc
     guard audioIsPresent else { return false }
     guard let settings = try? await core.settings(),
-          settings.customVocabularyEnabled,
+          settings.customVocabularyResolved,
           settings.calendarVocabularyEnabled else { return false }
     let recomputed = await vocabulary.effectiveVocabulary(meetingID: meetingID)
     return recomputed != newest.vocabularyUsed
@@ -467,9 +468,9 @@ malformed addresses ignored.
 
 **`UncommonWordExtractorTests`** — URLs, emails, and digit-bearing tokens scrubbed before tokenizing;
 tokens under 3 letters dropped; case-insensitive grouping; the "Project Parakeet Team Meeting" case
-passing under the 34% ceiling; a >5-word case failing at 21%; a French description dropping
-everything; more than 15 uncommon words dropping everything; empty input returning `[]`. Uses an
-injected `uncommon` closure — no bundle.
+passing under the 34% ceiling; a >5-word case failing at 33%; a French description dropping
+everything; a 16-uncommon-word description returning all 16 (no absolute cap); empty input returning
+`[]`. Uses an injected `uncommon` closure — no bundle.
 
 **`CommonWordListTests`** — exercises the **real** bundled resource, so the asset itself is under
 test: known-common words are absent from the result (`meeting`, `project`, `team`, `report`); at

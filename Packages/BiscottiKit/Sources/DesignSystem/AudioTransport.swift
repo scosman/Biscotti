@@ -1,3 +1,4 @@
+import Formatting
 import SwiftUI
 
 /// Standard audio transport card: play/pause + scrubber + elapsed/total +

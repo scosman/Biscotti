@@ -1,7 +1,10 @@
+import AppKit
+import AppLinks
 import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import MCPServer
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -54,21 +57,57 @@ public extension Notification.Name {
     static let stopRecordingAutomaticallyDidChange = Notification.Name(
         "net.scosman.biscotti.stopRecordingAutomaticallyDidChange"
     )
+
+    /// Posted after the "MCP server" setting is toggled. AppCore observes
+    /// this to start/stop the MCP server live, without a restart.
+    static let mcpServerEnabledDidChange = Notification.Name(
+        "net.scosman.biscotti.mcpServerEnabledDidChange"
+    )
 }
 
-// MARK: - Deep-link jump state
+// MARK: - App-link state
 
-/// A pending transcript jump parsed from a `biscotti://meeting/{id}?time=…` URL.
+/// A pending open-meeting intent parsed from a `biscotti://` URL.
 ///
-/// Set by `handleDeepLink(_:)` and consumed by `MeetingDetailViewModel` once
-/// the target meeting's detail view has applied the jump (tab switch + seek).
-public struct TranscriptJump: Sendable, Equatable {
+/// Set by `apply(_:)` and consumed by `MeetingDetailViewModel` once the
+/// target meeting's detail view has applied the target (tab switch and/or
+/// seek). `token` is monotonic: two identical URLs applied back-to-back
+/// produce intents that differ, so an `.onChange` observer fires for the
+/// second one too.
+public struct MeetingOpenIntent: Sendable, Equatable {
     public let meetingID: UUID
-    public let time: TimeInterval
+    public let target: MeetingTarget
+    public let token: UInt
 
-    public init(meetingID: UUID, time: TimeInterval) {
+    public init(meetingID: UUID, target: MeetingTarget, token: UInt) {
         self.meetingID = meetingID
-        self.time = time
+        self.target = target
+        self.token = token
+    }
+}
+
+/// A well-formed app link whose target no longer exists.
+///
+/// Copy lives here so tests assert on a case instead of matching prose;
+/// the shell presents `title`/`message` in a single-OK alert.
+public enum AppLinkError: String, Sendable, Equatable {
+    case meetingNotFound
+    case eventNotFound
+
+    public var title: String {
+        switch self {
+        case .meetingNotFound: "Meeting Not Found"
+        case .eventNotFound: "Event Not Found"
+        }
+    }
+
+    public var message: String {
+        switch self {
+        case .meetingNotFound:
+            "This link points to a meeting that is no longer in Biscotti. It may have been deleted."
+        case .eventNotFound:
+            "This link points to a calendar event that is no longer upcoming. It may have ended, moved, or been cancelled."
+        }
     }
 }
 
@@ -148,8 +187,14 @@ public final class AppCore {
     /// The search results (flat, ranked). Empty when in browse mode.
     public private(set) var meetingsResults: [SearchHit] = []
 
-    /// Whether a search query is currently in flight.
+    /// Whether a search query is currently in flight (from dispatch until
+    /// results land). Gates the no-results empty state, not the spinner.
     public private(set) var isSearchingMeetings = false
+
+    /// Whether the search spinner should render. Flips true only when a
+    /// search stays in flight longer than the 150ms grace window, so the
+    /// spinner never flashes for fast searches.
+    public private(set) var showsMeetingsSearchSpinner = false
 
     /// Monotonically increasing token that signals the UI to focus the
     /// search field. Incremented by `focusSearch()`, observed by
@@ -184,10 +229,19 @@ public final class AppCore {
     /// is active; the view layer renders a countdown card from this.
     public private(set) var autoStop: AutoStopState?
 
-    /// A pending transcript jump from a deep link. Set by
-    /// `handleDeepLink(_:)`, consumed by `MeetingDetailViewModel`
-    /// after applying the tab switch + seek.
-    public private(set) var pendingTranscriptJump: TranscriptJump?
+    /// A pending open-meeting intent from an app link. Set by
+    /// `apply(_:)`, consumed by `MeetingDetailViewModel`
+    /// after applying the tab switch and/or seek.
+    public private(set) var pendingMeetingIntent: MeetingOpenIntent?
+
+    /// Monotonic counter stamped onto every `pendingMeetingIntent` so two
+    /// identical intents are never `Equatable`-equal (which would swallow
+    /// the second in an `.onChange` observer).
+    private var meetingIntentToken: UInt = 0
+
+    /// A well-formed link whose meeting/event is missing. Non-nil presents
+    /// the shell alert; a second failure overwrites the first.
+    public internal(set) var linkError: AppLinkError?
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -237,10 +291,15 @@ public final class AppCore {
     /// Checks for newer releases on GitHub.
     public let updateChecker: UpdateChecker
 
+    /// Local MCP server lifecycle (loopback HTTP, read-only meeting tools).
+    /// Only starts when the user enables it in Settings.
+    public let mcpServer: MCPServerController
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
     private var meetingsSearchTask: Task<Void, Never>?
+    private var meetingsSearchSpinnerTask: Task<Void, Never>?
 
     /// The bundle ID of the detected app that triggered the current recording.
     private var activeDetectedBundleID: String?
@@ -256,6 +315,10 @@ public final class AppCore {
     /// The eventKey passed to `startRecording(eventKey:)`. Stashed so
     /// `retryRecordingStartup()` can re-attempt with the original key.
     private var pendingStartupEventKey: String?
+
+    /// The title passed to `startRecording(title:)`. Stashed alongside
+    /// `pendingStartupEventKey` so a retry keeps the caller's title.
+    private var pendingStartupTitle: String?
 
     /// The auto-stop countdown task. Cancelled on keepRecording or manual stop.
     private var countdownTask: Task<Void, Never>?
@@ -311,7 +374,8 @@ public final class AppCore {
         intelligence: Intelligence,
         modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler(),
-        updateChecker: UpdateChecker? = nil
+        updateChecker: UpdateChecker? = nil,
+        mcpServer: MCPServerController? = nil
     ) {
         self.store = store
         self.permissions = permissions
@@ -324,6 +388,7 @@ public final class AppCore {
         self.modelManager = modelManager
         self.scheduler = scheduler
         self.updateChecker = updateChecker ?? UpdateChecker()
+        self.mcpServer = mcpServer ?? MCPServerController(store: store)
     }
 
     // MARK: - Lifecycle
@@ -418,19 +483,34 @@ public final class AppCore {
         scheduleCalendarTimers()
         startUpcomingMirrorTask()
         startMinuteTickTask()
+
+        // MCP server: nothing is bound or scheduled unless the user opted in.
+        // Read here (not passed in) so the completeOnboarding path is covered too.
+        let mcpEnabled = await (try? store.settings())?.mcpServerEnabled ?? false
+        if mcpEnabled {
+            logger.info("startBackgroundServices: starting MCP server")
+            await mcpServer.start()
+        }
         logger.info("startBackgroundServices: done")
     }
 
     // MARK: - Recording coordination
 
     /// Starts a new recording session, optionally associated with a
-    /// specific calendar event.
+    /// specific calendar event and/or created with an explicit title.
+    ///
+    /// A `nil` title keeps the default ("Untitled Meeting"), which stays
+    /// eligible for AI titling; a non-nil title is the user's choice and
+    /// is left alone by `Intelligence`.
     ///
     /// Navigation to the recording pane happens synchronously so the UI
     /// is responsive. The heavy startup (audio engine init, calendar
     /// association, summaries reload) runs asynchronously; the recording
     /// pane observes `recordingStartup` to show loading/started/failed.
-    public func startRecording(eventKey: String? = nil) async {
+    public func startRecording(
+        eventKey: String? = nil,
+        title: String? = nil
+    ) async {
         // One-recording-at-a-time guard
         guard runState == .idle || runState == .detectedPending else {
             return
@@ -440,8 +520,9 @@ public final class AppCore {
         // persist on screen during an active recording.
         await notifications.cancelAdHocDetected()
 
-        // Stash the eventKey so retry can re-use it.
+        // Stash the eventKey/title so retry can re-use them.
         pendingStartupEventKey = eventKey
+        pendingStartupTitle = title
 
         // Navigate instantly -- the recording pane shows a loading state.
         startupGeneration &+= 1
@@ -451,6 +532,7 @@ public final class AppCore {
         // Heavy startup runs in-line (callers already `await` this).
         await completeRecordingStartup(
             eventKey: eventKey,
+            title: title,
             generation: startupGeneration
         )
     }
@@ -471,6 +553,7 @@ public final class AppCore {
         // Clear detection tracking and startup state
         activeDetectedBundleID = nil
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
         startupGeneration &+= 1
         recordingStartup = nil
 
@@ -566,41 +649,23 @@ public final class AppCore {
 
     // MARK: - Permission refresh
 
-    /// Refreshes all permission statuses from their live system sources.
-    ///
-    /// Microphone uses its injected seam. Calendar reads the live status
-    /// from `CalendarService` (which queries EventKit directly). Notifications
-    /// reads the live status from `NotificationService`. System audio has no
-    /// public TCC API so its status is unchanged here.
-    public func refreshAllPermissions() async {
-        // Refresh mic (and any injected cal/notif seams)
-        await permissions.refresh()
+    // (refreshAllPermissions lives in an extension below to keep the class
+    // body within the type_body_length lint limit.)
+}
 
-        // Sync calendar status from CalendarService (ground truth)
-        let calStatus: PermissionState = switch calendar.auth {
-        case .authorized: .authorized
-        case .denied, .restricted: .denied
-        case .notDetermined: .notDetermined
-        }
-        permissions.noteCalendar(calStatus)
+// MARK: - Data refresh
 
-        // Sync notification status from NotificationService (ground truth)
-        if await notifications.isCurrentlyAuthorized() {
-            permissions.noteNotifications(.authorized)
-        } else if await notifications.isDenied() {
-            permissions.noteNotifications(.denied)
-        }
-        // else: leave as .notDetermined
-    }
+// Extracted to an extension to keep the main class body within the
+// type_body_length lint limit after adding the search-spinner stored
+// property (which must live in the class body for @Observable).
 
-    // MARK: - Data refresh
-
+public extension AppCore {
     /// Reloads all meeting summaries from the store (uncapped).
     ///
     /// Increments `summariesVersion` on every call so observers
     /// (e.g. `RecordingViewModel`) detect the refresh even when the
     /// count or content is unchanged.
-    public func reloadSummaries() async {
+    func reloadSummaries() async {
         do {
             summaries = try await store.meetingSummaries()
         } catch {
@@ -685,6 +750,35 @@ public extension AppCore {
     func selectEvent(_ key: String) {
         route = .event(key)
     }
+
+    // MARK: - Permission refresh
+
+    /// Refreshes all permission statuses from their live system sources.
+    ///
+    /// Microphone uses its injected seam. Calendar reads the live status
+    /// from `CalendarService` (which queries EventKit directly). Notifications
+    /// reads the live status from `NotificationService`. System audio has no
+    /// public TCC API so its status is unchanged here.
+    func refreshAllPermissions() async {
+        // Refresh mic (and any injected cal/notif seams)
+        await permissions.refresh()
+
+        // Sync calendar status from CalendarService (ground truth)
+        let calStatus: PermissionState = switch calendar.auth {
+        case .authorized: .authorized
+        case .denied, .restricted: .denied
+        case .notDetermined: .notDetermined
+        }
+        permissions.noteCalendar(calStatus)
+
+        // Sync notification status from NotificationService (ground truth)
+        if await notifications.isCurrentlyAuthorized() {
+            permissions.noteNotifications(.authorized)
+        } else if await notifications.isDenied() {
+            permissions.noteNotifications(.denied)
+        }
+        // else: leave as .notDetermined
+    }
 }
 
 // MARK: - Recording startup lifecycle
@@ -698,6 +792,7 @@ extension AppCore {
     /// partially-started recording is torn down and the method bails.
     private func completeRecordingStartup(
         eventKey: String? = nil,
+        title: String? = nil,
         generation: UInt
     ) async {
         // Resolve the calendar event before starting
@@ -707,7 +802,7 @@ extension AppCore {
             calendar.bestMatch(at: Date())
         }
 
-        await recording.start()
+        await recording.start(title: title)
 
         // Bail if cancelled/retried/stopped while start() was in flight.
         guard generation == startupGeneration else {
@@ -729,6 +824,7 @@ extension AppCore {
         runState = .recording(meetingID)
         recordingStartup = .started
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
 
         // Associate with the calendar event if resolved
         if let resolvedEvent {
@@ -780,6 +876,7 @@ extension AppCore {
     public func cancelRecordingStartup() {
         startupGeneration &+= 1
         pendingStartupEventKey = nil
+        pendingStartupTitle = nil
         recordingStartup = nil
         // Only revert route if we're still on the recording screen
         // and no actual recording is running.
@@ -790,13 +887,15 @@ extension AppCore {
     }
 
     /// Retries a failed recording startup from scratch, re-using the
-    /// original eventKey from the initial `startRecording` call.
+    /// original eventKey and title from the initial `startRecording` call.
     public func retryRecordingStartup() async {
         let eventKey = pendingStartupEventKey
+        let title = pendingStartupTitle
         startupGeneration &+= 1
         recordingStartup = .loading
         await completeRecordingStartup(
             eventKey: eventKey,
+            title: title,
             generation: startupGeneration
         )
     }
@@ -842,99 +941,150 @@ extension AppCore {
     /// Starts async observers that refresh cached notification settings
     /// when they are changed from SettingsUI. Cancels any previously
     /// running observers first.
+    ///
+    /// The handlers capture `self` weakly, matching the `[weak self]` on the
+    /// helper's Task: nothing in the task graph may hold AppCore strongly,
+    /// or the stored tasks would form a retain cycle (AppCore → tasks →
+    /// handler → AppCore) and leak every test fixture that launches one.
     func startNotificationSettingsObservers() {
         for task in notificationSettingsObserverTasks {
             task.cancel()
         }
-        notificationSettingsObserverTasks.removeAll()
-
-        let monitorTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .monitorForMeetingsDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    monitorForMeetings = settings.monitorForMeetings
-                }
-            }
-        }
-
-        let calendarModeTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .calendarNotificationModeDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    calendarNotificationMode = settings.calendarNotificationMode
-                    scheduleCalendarTimers()
-                }
-            }
-        }
-
-        let autoStopTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(
-                named: .stopRecordingAutomaticallyDidChange
-            ) {
-                guard let self else { return }
-                let settings = try? await store.settings()
-                if let settings {
-                    stopRecordingAutomatically = settings.stopRecordingAutomatically
-                }
-            }
-        }
-
         notificationSettingsObserverTasks = [
-            monitorTask, calendarModeTask, autoStopTask
+            settingsObserverTask(for: .monitorForMeetingsDidChange) { [weak self] in
+                self?.monitorForMeetings = $0.monitorForMeetings
+            },
+            settingsObserverTask(for: .calendarNotificationModeDidChange) { [weak self] in
+                self?.calendarNotificationMode = $0.calendarNotificationMode
+                self?.scheduleCalendarTimers()
+            },
+            settingsObserverTask(for: .stopRecordingAutomaticallyDidChange) { [weak self] in
+                self?.stopRecordingAutomatically = $0.stopRecordingAutomatically
+            },
+            settingsObserverTask(for: .mcpServerEnabledDidChange) { [weak self] in
+                await self?.mcpServer.applyEnabled($0.mcpServerEnabled)
+            }
         ]
+    }
+
+    /// One notification-observing task: on each post, re-reads the settings
+    /// snapshot and hands it to `handle` on the MainActor.
+    private func settingsObserverTask(
+        for name: Notification.Name,
+        handle: @escaping @MainActor (AppSettingsData) async -> Void
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: name) {
+                guard let self else { return }
+                let settings = try? await store.settings()
+                if let settings {
+                    await handle(settings)
+                }
+            }
+        }
     }
 }
 
-// MARK: - Deep-link handling
+// MARK: - App-link handling
 
 public extension AppCore {
-    /// Handles a `biscotti://meeting/{id}?time={seconds}` deep link.
+    /// Applies a parsed app link.
     ///
-    /// Validates the URL components: scheme must be `biscotti`, host must
-    /// be `meeting`, the path must contain a valid UUID, the `time` query
-    /// parameter must parse as a number, and the meeting must exist in
-    /// the store. On success, navigates to the meeting and sets
-    /// `pendingTranscriptJump` for the detail VM to consume. Invalid
-    /// or unresolvable URLs are silently ignored (no-op).
-    func handleDeepLink(_ url: URL) async {
-        guard url.scheme == "biscotti",
-              url.host == "meeting"
-        else { return }
+    /// While onboarding is active every link is dropped (R6). A link whose
+    /// target does not exist sets `linkError` and leaves the current route
+    /// untouched; a link that never parsed never reaches this method.
+    func apply(_ link: AppLink) async {
+        guard route != .onboarding else {
+            logger.debug("apply: dropped link during onboarding")
+            return
+        }
 
-        // Path is "/{uuid}" — strip the leading slash.
-        let pathID = url.path.hasPrefix("/")
-            ? String(url.path.dropFirst())
-            : url.path
-        guard let meetingID = UUID(uuidString: pathID) else { return }
+        switch link {
+        case .home:
+            showHome()
 
-        // Parse the `time` query parameter.
-        guard let components = URLComponents(
-            url: url, resolvingAgainstBaseURL: false
-        ),
-            let timeString = components.queryItems?
-            .first(where: { $0.name == "time" })?.value,
-            let seconds = Double(timeString)
-        else { return }
+        case .meetings:
+            showMeetings()
 
-        // Verify the meeting exists.
-        let exists = await (try? store.meetingExists(id: meetingID)) ?? false
-        guard exists else { return }
+        case .settings:
+            showSettings()
 
-        select(meetingID)
-        pendingTranscriptJump = TranscriptJump(
-            meetingID: meetingID, time: seconds
+        case let .meeting(id, target):
+            await openMeeting(id: id, target: target)
+
+        case let .search(query):
+            showMeetings()
+            setMeetingsQuery(query)
+            focusSearch()
+
+        case let .upcoming(key):
+            guard calendar.event(forKey: key) != nil else {
+                logger.debug("apply: event for key not found")
+                linkError = .eventNotFound
+                return
+            }
+            selectEvent(key)
+
+        case let .record(title):
+            // `recordingStartup != nil` also covers the loading window
+            // before `runState` flips to `.recording` (and the failed
+            // pane, which has its own Retry): re-entering
+            // `startRecording` mid-startup would supersede the in-flight
+            // start and discard its title.
+            if recording.state.isRecording || recordingStartup != nil {
+                route = .recording
+            } else {
+                await startRecording(title: title)
+            }
+        }
+    }
+
+    /// Clears the pending open-meeting intent after the detail VM has
+    /// applied it.
+    func consumeMeetingIntent() {
+        pendingMeetingIntent = nil
+    }
+
+    /// Dismisses the link-error alert.
+    func dismissLinkError() {
+        linkError = nil
+    }
+
+    /// Copies a `biscotti://meeting/{uuid}` link for the meeting onto the
+    /// general pasteboard. The link opens the meeting at its default view
+    /// (Summary), matching the MCP `app_url` (functional spec §8).
+    ///
+    /// The write goes through the `writer` seam — the real `NSPasteboard`
+    /// write by default, a capture in tests — so `make test` never
+    /// mutates the developer's pasteboard (architecture §7).
+    func copyMeetingLink(
+        _ id: UUID,
+        writer: @MainActor (String) -> Void = { string in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(string, forType: .string)
+        }
+    ) {
+        writer(
+            AppLink.meeting(id: id, target: .tab(.summary)).url.absoluteString
         )
     }
 
-    /// Clears the pending transcript jump after the detail VM has applied it.
-    func consumeTranscriptJump() {
-        pendingTranscriptJump = nil
+    /// Selects the meeting and stages the open intent, or fails with
+    /// `.meetingNotFound` (leaving the current route untouched).
+    private func openMeeting(id: UUID, target: MeetingTarget) async {
+        let exists = await (try? store.meetingExists(id: id)) ?? false
+        guard exists else {
+            logger.debug("apply: meeting \(id) not found")
+            linkError = .meetingNotFound
+            return
+        }
+        select(id)
+        meetingIntentToken &+= 1
+        pendingMeetingIntent = MeetingOpenIntent(
+            meetingID: id,
+            target: target,
+            token: meetingIntentToken
+        )
     }
 }
 
@@ -958,8 +1108,17 @@ package extension AppCore {
 // MARK: - Meetings search
 
 extension AppCore {
+    /// Search debounce: queries arriving within this window collapse into
+    /// one search (skipped when typing fast).
+    private static let meetingsSearchDebounce: Duration = .milliseconds(50)
+
+    /// Grace window before the spinner appears. Searches that finish
+    /// within it never show a spinner.
+    private static let meetingsSearchSpinnerDelay: Duration = .milliseconds(150)
+
     /// Called when the toolbar query changes (bound from AppShellViewModel).
-    /// Debounces 300ms via the `scheduler` seam before running the search.
+    /// Debounces via the `scheduler` seam before running the search. The
+    /// spinner only appears if the search outlasts `meetingsSearchSpinnerDelay`.
     public func setMeetingsQuery(_ query: String) {
         meetingsQuery = query
         cancelMeetingsSearch()
@@ -973,9 +1132,22 @@ extension AppCore {
         meetingsResults = []
         let sched = scheduler
         let currentStore = store
+        // Spinner grace: only show the spinner if the search is still
+        // in flight after the delay elapses. Captured in a local so a
+        // stale search task can never cancel a newer query's spinner.
+        let spinnerTask = Task { [weak self] in
+            do {
+                try await sched.sleep(for: Self.meetingsSearchSpinnerDelay)
+            } catch {
+                return // cancelled
+            }
+            guard !Task.isCancelled else { return }
+            self?.showsMeetingsSearchSpinner = true
+        }
+        meetingsSearchSpinnerTask = spinnerTask
         meetingsSearchTask = Task { [weak self] in
             do {
-                try await sched.sleep(for: .milliseconds(300))
+                try await sched.sleep(for: Self.meetingsSearchDebounce)
             } catch {
                 return // cancelled
             }
@@ -986,10 +1158,12 @@ extension AppCore {
             let hits = await (try? currentStore.searchHits(
                 query, limit: 50
             )) ?? []
+            spinnerTask.cancel()
             guard !Task.isCancelled, meetingsQuery == query
             else { return }
             meetingsResults = hits
             isSearchingMeetings = false
+            showsMeetingsSearchSpinner = false
             autoSelectTopResult()
         }
     }
@@ -1008,12 +1182,18 @@ extension AppCore {
     private func cancelMeetingsSearch() {
         meetingsSearchTask?.cancel()
         meetingsSearchTask = nil
+        meetingsSearchSpinnerTask?.cancel()
+        meetingsSearchSpinnerTask = nil
         isSearchingMeetings = false
+        showsMeetingsSearchSpinner = false
     }
 
     /// Non-debounced search for the current query. Used after delete
     /// to refresh results immediately.
     private func rerunMeetingsSearchNow() async {
+        // Cancel any in-flight debounced search (and its spinner task)
+        // so a stale completion cannot land after this refresh.
+        cancelMeetingsSearch()
         let currentQuery = meetingsQuery
         guard !currentQuery.isEmpty else { return }
         let hits = await (try? store.searchHits(
@@ -1022,6 +1202,7 @@ extension AppCore {
         guard meetingsQuery == currentQuery else { return }
         meetingsResults = hits
         isSearchingMeetings = false
+        showsMeetingsSearchSpinner = false
     }
 }
 

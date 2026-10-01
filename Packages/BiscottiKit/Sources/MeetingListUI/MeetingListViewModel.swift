@@ -1,6 +1,7 @@
 import AppCore
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 
 /// A group of meetings for list display with a section header.
@@ -53,6 +54,12 @@ public final class MeetingListViewModel {
         core.isSearchingMeetings
     }
 
+    /// Whether the search spinner should render (search in flight past
+    /// the grace window; never flashes for fast searches).
+    public var showsSearchSpinner: Bool {
+        core.showsMeetingsSearchSpinner
+    }
+
     /// The current search query text.
     public var query: String {
         core.meetingsQuery
@@ -95,6 +102,12 @@ public final class MeetingListViewModel {
     /// right-click on an unselected item operates on just that item).
     public func requestDeleteContextMenu(_ ids: Set<UUID>) {
         requestDelete(ids)
+    }
+
+    /// Copies a `biscotti://meeting/{uuid}` link for the meeting onto the
+    /// pasteboard. Context-menu item; single selection only.
+    public func copyMeetingLink(_ id: UUID) {
+        core.copyMeetingLink(id)
     }
 
     /// Shared implementation: captures the given IDs and shows the
@@ -303,18 +316,32 @@ public final class MeetingListViewModel {
         )
     }
 
-    /// A human-readable description of which search fields matched.
-    public nonisolated static func matchedFieldsText(
-        _ fields: [SearchField]
-    ) -> String {
-        fields.map { field in
-            switch field {
-            case .title: "title"
-            case .people: "people"
-            case .transcript: "transcript"
-            case .notes: "notes"
-            case .tags: "tags"
-            }
-        }.joined(separator: ", ")
+    /// The second line of a search result row. Never empty, so no result
+    /// row is left with a bare title.
+    ///
+    /// Prefers the match excerpt. FTS5 picks the best-matching column for
+    /// the snippet, so a title-only match yields the title back -- that
+    /// would just repeat the row's own first line, and in that case the
+    /// meeting's content preview is shown instead.
+    ///
+    /// TODO: FTS5 `snippet()` can wrap matched terms in markers so the hit
+    /// can be emphasized in the excerpt. Left plain for now -- rendering it
+    /// needs an `AttributedString` conversion and a marker that cannot
+    /// collide with transcript text.
+    public nonisolated static func searchSecondLine(for hit: SearchHit) -> String {
+        if let excerpt = matchExcerpt(for: hit) { return excerpt }
+        let preview = hit.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        return preview.isEmpty ? "No transcript yet" : preview
+    }
+
+    /// The snippet, or `nil` when it only echoes the title.
+    private nonisolated static func matchExcerpt(for hit: SearchHit) -> String? {
+        let trimmed = hit.snippet
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\u{2026} \n\t"))
+        guard !trimmed.isEmpty else { return nil }
+        guard !hit.title.localizedCaseInsensitiveContains(trimmed) else {
+            return nil
+        }
+        return hit.snippet
     }
 }

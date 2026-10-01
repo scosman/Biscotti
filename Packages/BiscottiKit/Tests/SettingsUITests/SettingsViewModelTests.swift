@@ -151,21 +151,6 @@ struct SettingsViewModelTests {
         #expect(viewModel2.launchAtLogin == false)
     }
 
-    // MARK: - Vocabulary removed
-
-    @Test("vocabularyDeferred property no longer exists")
-    func vocabPropertyRemoved() throws {
-        // Compile-time check: SettingsViewModel has no `vocabularyDeferred`.
-        // If someone re-adds it, this test documents the intent.
-        let fixture = try makeCoreFixture()
-        defer { fixture.cleanup() }
-        let viewModel = SettingsViewModel(core: fixture.core)
-        // The view model should have no vocabulary-related public state.
-        // This test simply verifies the view model can be created without
-        // referencing any vocabulary property.
-        _ = viewModel
-    }
-
     // MARK: - Permission request actions
 
     @Test("request microphone permission calls the mic seam")

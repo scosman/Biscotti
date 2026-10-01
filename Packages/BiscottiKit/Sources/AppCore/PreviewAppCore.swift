@@ -13,6 +13,7 @@
     import Transcription
     import TranscriptionService
     import UserNotifications
+    import Vocabulary
 
     /// Lightweight factory for building an `AppCore` suitable for SwiftUI previews.
     ///
@@ -36,7 +37,8 @@
 
             let transcription = TranscriptionService(
                 store: store,
-                engine: PreviewTranscriber()
+                engine: PreviewTranscriber(),
+                vocabulary: VocabularyService(store: store)
             )
 
             let catalog = BundledMeetingCatalog()

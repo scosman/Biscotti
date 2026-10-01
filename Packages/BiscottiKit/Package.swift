@@ -8,9 +8,12 @@ let package = Package(
         .library(name: "BiscottiKit", targets: ["BiscottiKit"]),
         .library(name: "DataStore", targets: ["DataStore"]),
         .library(name: "DesignSystem", targets: ["DesignSystem"]),
+        .library(name: "Formatting", targets: ["Formatting"]),
+        .library(name: "ImportExport", targets: ["ImportExport"]),
         .library(name: "Permissions", targets: ["Permissions"]),
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
+        .library(name: "AppLinks", targets: ["AppLinks"]),
         .library(name: "AppCore", targets: ["AppCore"]),
         .library(name: "MeetingListUI", targets: ["MeetingListUI"]),
         .library(name: "RecordingUI", targets: ["RecordingUI"]),
@@ -29,6 +32,8 @@ let package = Package(
         .library(name: "Intelligence", targets: ["Intelligence"]),
         .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
         .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"]),
+        .library(name: "Vocabulary", targets: ["Vocabulary"]),
+        .library(name: "MCPServer", targets: ["MCPServer"]),
         .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"]),
         .executable(name: "voiceprint-cli", targets: ["voiceprint-cli"])
     ],
@@ -37,6 +42,12 @@ let package = Package(
         .package(name: "AudioCapture", path: "../AudioCapture"),
         .package(name: "LocalLLM", path: "../LocalLLM"),
         .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1"),
+        .package(url: "https://github.com/apple/swift-nio", from: "2.65.0"),
+        // MCP swift-sdk — version decided by the Phase 1 spike (architecture §2.1):
+        // 0.12.1 resolved and built cleanly (its swift-docc-plugin `branch: "main"`
+        // dependency did not trip resolution), so the 0.11.0 fallback was not needed.
+        // Pinned exact: pre-1.0 protocol implementation, upgrades are deliberate.
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk", exact: "0.12.1"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
@@ -62,9 +73,35 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
-            name: "DesignSystem",
+            name: "Formatting",
             dependencies: [
                 "DataStore"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "FormattingTests",
+            dependencies: ["Formatting", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ImportExport",
+            dependencies: [
+                "DataStore",
+                "Formatting"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ImportExportTests",
+            dependencies: ["ImportExport", "DataStore", "Formatting"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "DesignSystem",
+            dependencies: [
+                "DataStore",
+                "Formatting"
             ],
             resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
@@ -107,6 +144,7 @@ let package = Package(
             name: "TranscriptionService",
             dependencies: [
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
@@ -117,18 +155,32 @@ let package = Package(
                 "TranscriptionService",
                 "BiscottiTestSupport",
                 "DataStore",
+                "Vocabulary",
                 .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "AppLinks",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AppLinksTests",
+            dependencies: ["AppLinks"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "AppCore",
             dependencies: [
+                "AppLinks",
                 "DataStore",
+                "ImportExport",
                 "Intelligence",
+                "MCPServer",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 "Calendar",
                 "MeetingCatalog",
                 "MeetingDetection",
@@ -150,12 +202,14 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "Intelligence",
+                "MCPServer",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -167,11 +221,15 @@ let package = Package(
             name: "AppCoreTests",
             dependencies: [
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
+                "ImportExport",
                 "Intelligence",
+                "MCPServer",
                 "MeetingCatalog",
                 "MeetingDetailUI",
                 "MeetingDetection",
@@ -190,7 +248,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -202,6 +261,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
@@ -244,14 +304,17 @@ let package = Package(
             name: "MeetingDetailUI",
             dependencies: [
                 "AppCore",
+                "AppLinks",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
                 "TranscriptionService",
-                "VoiceprintMatching"
+                "VoiceprintMatching",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -260,15 +323,18 @@ let package = Package(
             dependencies: [
                 "MeetingDetailUI",
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
                 "VoiceprintMatching",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -281,7 +347,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -293,6 +360,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "Formatting",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
@@ -309,6 +377,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "Formatting",
                 "HomeUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
@@ -323,6 +392,7 @@ let package = Package(
             dependencies: [
                 "AppShellUI",
                 "AppCore",
+                "AppLinks",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
@@ -360,11 +430,14 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "ImportExport",
                 "Intelligence",
                 "LocalLLM",
+                "MCPServer",
                 "ModelManagementUI",
                 "Permissions",
-                "SummaryPromptUI"
+                "SummaryPromptUI",
+                "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -376,13 +449,16 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "ImportExport",
                 "Intelligence",
+                "MCPServer",
                 "MeetingCatalog",
                 "MeetingDetection",
                 "Notifications",
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "Vocabulary",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "Transcription", package: "Transcription")
             ],
@@ -394,7 +470,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
-                "DesignSystem"
+                "DesignSystem",
+                "Formatting"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -576,9 +653,43 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "Vocabulary",
+            dependencies: ["DataStore"],
+            resources: [.process("Resources")],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "VocabularyTests",
+            dependencies: ["Vocabulary", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MCPServer",
+            dependencies: [
+                "AppLinks",
+                "DataStore",
+                "Formatting",
+                .product(name: "MCP", package: "swift-sdk"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "VoiceprintMatching",
             dependencies: [
                 "DataStore"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MCPServerTests",
+            dependencies: [
+                "MCPServer",
+                "DataStore",
+                .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
         ),

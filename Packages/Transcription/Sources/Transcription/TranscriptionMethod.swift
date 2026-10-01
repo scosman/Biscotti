@@ -1,20 +1,25 @@
 /// An opaque, extensible identity for a transcription configuration.
 ///
-/// V1 offers no transcription options — one fixed method bakes in every
+/// There are no transcription options — each fixed method bakes in every
 /// output-affecting parameter (STT model, diarization model, diarization
-/// strategy, word-timestamps). The engine owns the id→settings mapping;
-/// callers receive the id in ``TranscriptResult/transcriptionMethodId``.
+/// strategy, word-timestamps, language detection). The engine owns the
+/// id→settings mapping; callers receive the id in
+/// ``TranscriptResult/transcriptionMethodId``.
 ///
-/// Adding `v2` later is purely additive.
+/// Adding a new method later is purely additive.
 public struct TranscriptionMethod: Sendable, Equatable {
     /// The opaque method identifier (e.g. `"v1"`).
     public let id: String
 
-    /// The fixed V1 method: WhisperKit large-v3 (Sept 2024, 626 MB) +
+    /// The original method: WhisperKit large-v3 (Sept 2024, 626 MB) +
     /// Pyannote v4 community-1, `.subsegment` diarization, word-timestamps on,
-    /// sequential loading on low-RAM Macs.
+    /// sequential loading on low-RAM Macs, language detection off (English).
     public static let v1 = TranscriptionMethod(id: "v1") // swiftlint:disable:this identifier_name
 
+    /// The current method: `v1` settings plus Whisper language detection, so
+    /// non-English audio is transcribed in its spoken language.
+    public static let v2 = TranscriptionMethod(id: "v2") // swiftlint:disable:this identifier_name
+
     /// The current default method the engine uses.
-    public static let current: TranscriptionMethod = .v1
+    public static let current: TranscriptionMethod = .v2
 }

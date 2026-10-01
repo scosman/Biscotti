@@ -9,6 +9,7 @@ struct ResolvedMethodSettings: Equatable {
     let sttModel: String
     let sttModelRepo: String
     let enableWordTimestamps: Bool
+    let detectLanguage: Bool
     let diarizationStrategy: DiarizationStrategyInternal
     let sequentialLoading: Bool
 }
@@ -39,6 +40,8 @@ enum MethodResolver {
         switch method.id {
         case "v1":
             resolveV1(physicalMemory: physicalMemory)
+        case "v2":
+            resolveV2(physicalMemory: physicalMemory)
         default:
             // Unknown methods fall back to v1 behavior.
             resolveV1(physicalMemory: physicalMemory)
@@ -48,6 +51,19 @@ enum MethodResolver {
     // MARK: - V1
 
     private static func resolveV1(physicalMemory: UInt64) -> ResolvedMethodSettings {
+        baseSettings(physicalMemory: physicalMemory, detectLanguage: false)
+    }
+
+    // MARK: - V2
+
+    private static func resolveV2(physicalMemory: UInt64) -> ResolvedMethodSettings {
+        baseSettings(physicalMemory: physicalMemory, detectLanguage: true)
+    }
+
+    private static func baseSettings(
+        physicalMemory: UInt64,
+        detectLanguage: Bool
+    ) -> ResolvedMethodSettings {
         let eightGB: UInt64 = 8 * 1024 * 1024 * 1024
         let isLowRAM = physicalMemory <= eightGB
 
@@ -55,6 +71,7 @@ enum MethodResolver {
             sttModel: sttModel,
             sttModelRepo: defaultRepo,
             enableWordTimestamps: true,
+            detectLanguage: detectLanguage,
             diarizationStrategy: .subsegment,
             sequentialLoading: isLowRAM
         )

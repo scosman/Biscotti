@@ -35,6 +35,17 @@ import SwiftData
     /// Additive field -- defaults nil, no migration needed.
     public var recordingDuration: TimeInterval?
 
+    /// The row's `id` from an imported CSV when it was not a UUID. `nil` for
+    /// recorded meetings and for imports whose ID parsed as a UUID.
+    /// Additive field -- defaults nil, no migration needed.
+    public var externalID: String?
+
+    /// Epoch milliseconds identifying the import run that created this
+    /// meeting. `nil` for every recorded meeting. Written once, never read
+    /// yet -- it exists so a future "undo this import" can find the batch.
+    /// Additive field -- defaults nil, no migration needed.
+    public var importBatch: Int?
+
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []
 

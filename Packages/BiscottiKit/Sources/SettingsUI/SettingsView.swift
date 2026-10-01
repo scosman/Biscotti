@@ -22,6 +22,14 @@ public struct SettingsView: View {
     /// can present the sheet.
     @State var showConnectCalendar = false
     @State private var summaryPromptModel: SummaryPromptModel?
+    @State var showVocabularyListSheet = false
+    /// Internal (not private) so the cross-file MCP row extension
+    /// (`SettingsMCPRow.swift`) can present the help sheet.
+    @State var showMCPHelp = false
+    /// Internal (not private) so the cross-file MCP row extension
+    /// (`SettingsMCPRow.swift`) can present the toggle-on confirmation
+    /// alert (functional spec §2.1).
+    @State var showMCPConfirm = false
 
     public init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -35,11 +43,17 @@ public struct SettingsView: View {
         "Permissions",
         "Notifications",
         "AI Enhancements",
+        "Custom Vocabulary",
+        "Import/Export",
         "Calendars"
     ]
 
     /// Muted caption trailing the AI Enhancements header.
     static let aiEnhancementsHeaderCaption = "AI runs locally on your Mac."
+
+    /// Muted caption trailing the Custom Vocabulary header, marking the
+    /// feature as in beta. Same treatment as `aiEnhancementsHeaderCaption`.
+    static let customVocabularyHeaderCaption = "Beta"
 
     /// Page-level heading, styled like content-page serif titles
     /// (EventPreview, MeetingDetail).
@@ -60,6 +74,8 @@ public struct SettingsView: View {
                     permissionsSection
                     notificationsSection
                     aiEnhancementsSection
+                    customVocabularySection
+                    importExportSection
                     calendarSection
 
                     #if DEBUG
@@ -117,6 +133,7 @@ public struct SettingsView: View {
                 }
             }
             appUpdatesRow
+            mcpRow
         }
     }
 
@@ -231,6 +248,8 @@ public struct SettingsView: View {
                     Label("Clear Selected LLM", systemImage: "arrow.uturn.backward")
                 }
                 .foregroundStyle(.sage)
+
+                deleteImportedMeetingsRow
             }
         }
     #endif

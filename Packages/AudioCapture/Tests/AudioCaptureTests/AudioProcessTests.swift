@@ -30,6 +30,24 @@ struct AudioProcessTests {
         #expect(teams.displayName == "Microsoft Teams")
     }
 
+    /// New Teams runs mic capture in a `modulehost` sub-process rather than
+    /// the main bundle, so the sub-processes must be recognized too.
+    @Test("Teams sub-processes are recognized", arguments: [
+        "com.microsoft.teams2.modulehost",
+        "com.microsoft.teams2.helper",
+    ])
+    func teamsSubProcessRecognized(bundleID: String) {
+        let process = AudioProcess(
+            id: 20,
+            bundleID: bundleID,
+            pid: 5679,
+            isRunningInput: true,
+            isRunningOutput: true
+        )
+        #expect(process.isMeetingApp)
+        #expect(process.displayName == "Microsoft Teams")
+    }
+
     @Test("Chrome is recognized")
     func chromeRecognized() {
         let chrome = AudioProcess(

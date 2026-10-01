@@ -111,7 +111,10 @@ public final class RecordingController {
     /// create directory -> attach audio refs -> start engine -> pump elapsed ->
     /// schedule system-audio denial check. The real system tap surfaces the TCC
     /// prompt on first use — no pre-record probe.
-    public func start() async {
+    ///
+    /// - Parameter title: Explicit meeting title. `nil` keeps the default
+    ///   ("Untitled Meeting"), which stays eligible for AI titling.
+    public func start(title: String? = nil) async {
         lastError = nil
         systemAudioWarning = false
         notes = []
@@ -131,7 +134,7 @@ public final class RecordingController {
         let newRecorder = makeRecorder()
 
         // Create meeting + directory + marker + audio refs
-        guard let setup = await setupMeetingStorage() else {
+        guard let setup = await setupMeetingStorage(title: title) else {
             return // lastError set inside setupMeetingStorage
         }
 
@@ -310,11 +313,11 @@ public final class RecordingController {
     /// Returns the meeting setup on success, or `nil` on failure (with
     /// `lastError` already set). Eagerly cleans up partial state on failure
     /// so the meeting doesn't become an invisible orphan.
-    private func setupMeetingStorage() async -> MeetingSetup? {
-        let title = Self.autoTitle()
+    private func setupMeetingStorage(title: String?) async -> MeetingSetup? {
+        let meetingTitle = title ?? Self.autoTitle()
         let meetingID: UUID
         do {
-            meetingID = try await store.createMeeting(title: title)
+            meetingID = try await store.createMeeting(title: meetingTitle)
         } catch {
             lastError = .storageFailed("Failed to create meeting: \(error.localizedDescription)")
             return nil

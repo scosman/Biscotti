@@ -1,12 +1,15 @@
 import AppCore
 import AppKit
+import AppLinks
 import Calendar
 import DataStore
 import DesignSystem
+import Formatting
 import Foundation
 import Intelligence
 import SummaryPromptUI
 import TranscriptionService
+import Vocabulary
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
@@ -34,6 +37,7 @@ public enum MeetingDetailState: Sendable, Equatable {
 public final class MeetingDetailViewModel {
     private let core: AppCore
     public let meetingID: UUID
+    private let vocabulary: VocabularyService
     private let makePlayer: () -> any AudioPlaybackProviding
 
     /// Injectable "now" for deterministic testing of time-gated UI.
@@ -55,12 +59,9 @@ public final class MeetingDetailViewModel {
     /// Whether to show the event picker sheet for association correction.
     public var showEventPicker: Bool = false
 
-    // TODO(re-transcribe-prompt): restore the "calendar changed -- re-transcribe"
-    // prompt once vocab support (Phase 9) lands. The underlying flag and plumbing
-    // remain; only the UI is suppressed.
-
-    /// Whether to show a re-transcribe prompt after association correction.
-    /// Currently always false -- suppressed until vocabulary support lands.
+    /// Whether to show the re-transcribe alert after association correction.
+    /// Set to true when attaching/changing a calendar event and the recomputed
+    /// effective vocabulary differs from the newest transcript's vocabularyUsed.
     public private(set) var showReTranscribeAfterCorrection: Bool = false
 
     // MARK: - Phase 8: Audio playback
@@ -139,6 +140,17 @@ public final class MeetingDetailViewModel {
         case summary = "Summary"
         case transcript = "Transcript"
         case notes = "Notes"
+
+        /// Maps the link-level tab (`AppLinks`) onto this display enum.
+        /// The two stay separate: this one carries display strings and is
+        /// a view concern.
+        init(_ tab: MeetingTab) {
+            self = switch tab {
+            case .summary: .summary
+            case .transcript: .transcript
+            case .notes: .notes
+            }
+        }
     }
 
     /// The currently selected tab, bindable from the view.
@@ -242,6 +254,7 @@ public final class MeetingDetailViewModel {
     ) {
         self.core = core
         self.meetingID = meetingID
+        vocabulary = VocabularyService(store: core.store)
         self.makePlayer = makePlayer
         self.currentDate = currentDate
         self.urlOpener = urlOpener
@@ -342,7 +355,7 @@ public final class MeetingDetailViewModel {
               !transcript.segments.isEmpty
         else { return }
 
-        let text = TranscriptContent.plainText(
+        let text = TranscriptTextFormatting.render(
             transcript.segments,
             names: displayedSpeakerNames
         )
@@ -604,8 +617,8 @@ public extension MeetingDetailViewModel {
 
     /// Speaker ID -> display name map derived from the displayed
     /// transcript's speaker assignments. Passed to `TranscriptListView`
-    /// (and `TranscriptContent`) for name replacement in each row and
-    /// for the view's `Equatable` re-render trigger.
+    /// (and `TranscriptTextFormatting`) for name replacement in each row
+    /// and for the view's `Equatable` re-render trigger.
     var displayedSpeakerNames: [Int: String] {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
     }
@@ -850,30 +863,36 @@ public extension MeetingDetailViewModel {
     }
 }
 
-// MARK: - Deep-link jump
+// MARK: - App-link intent
 
 public extension MeetingDetailViewModel {
-    /// Token that changes whenever `core.pendingTranscriptJump` changes.
-    /// The view observes this via `.onChange` to trigger
-    /// `applyPendingJumpIfNeeded`.
-    var pendingJumpToken: TranscriptJump? {
-        core.pendingTranscriptJump
+    /// Token that changes whenever `core.pendingMeetingIntent` changes
+    /// (the intent's monotonic `token` guarantees this even for repeated
+    /// identical links). The view observes it via `.onChange` to trigger
+    /// `applyPendingIntentIfNeeded`.
+    var pendingIntentToken: MeetingOpenIntent? {
+        core.pendingMeetingIntent
     }
 
-    /// Checks for a pending transcript jump targeting this meeting.
-    /// If found, switches to the Transcript tab, seeks to the requested
-    /// time (clamped to duration), and consumes the jump. If audio
-    /// is not yet loaded, stores the seek as `pendingSeek` to be
-    /// applied when `loadAudioPlayer()` completes.
-    func applyPendingJumpIfNeeded() async {
-        guard let jump = core.pendingTranscriptJump,
-              jump.meetingID == meetingID
+    /// Checks for a pending open-meeting intent targeting this meeting.
+    /// Applies the target — a plain tab switch, or the transcript tab plus
+    /// a seek (clamped to duration once audio is loaded) — and consumes
+    /// the intent. If audio is not yet loaded, stores the seek as
+    /// `pendingSeek` to be applied when `loadAudioPlayer()` completes.
+    func applyPendingIntentIfNeeded() async {
+        guard let intent = core.pendingMeetingIntent,
+              intent.meetingID == meetingID
         else { return }
 
-        selectedTab = .transcript
-        pendingSeek = jump.time
-        applySeekIfReady()
-        core.consumeTranscriptJump()
+        switch intent.target {
+        case let .tab(tab):
+            selectedTab = Tab(tab)
+        case let .transcriptTime(time):
+            selectedTab = .transcript
+            pendingSeek = time
+            applySeekIfReady()
+        }
+        core.consumeMeetingIntent()
     }
 
     /// Applies `pendingSeek` if the audio player is loaded and has a
@@ -959,10 +978,9 @@ public extension MeetingDetailViewModel {
         await load()
         await core.reloadSummaries()
         showEventPicker = false
-        // TODO(re-transcribe-prompt): restore setting
-        // showReTranscribeAfterCorrection = true when vocab support
-        // (Phase 9) lands. Suppressed because re-transcription without
-        // vocabulary changes has no user-visible benefit.
+        if eventKey != nil {
+            showReTranscribeAfterCorrection = await shouldOfferReTranscribe()
+        }
     }
 
     /// Removes the calendar association.
@@ -1024,6 +1042,12 @@ public extension MeetingDetailViewModel {
         }
     }
 
+    /// Copies a `biscotti://meeting/{uuid}` link for this meeting onto
+    /// the pasteboard (overflow-menu item).
+    func copyMeetingLink() {
+        core.copyMeetingLink(meetingID)
+    }
+
     /// Saves the current `editableTitle` to the store. Called on submit
     /// (Enter key) and on blur (focus loss) to prevent losing edits.
     ///
@@ -1055,6 +1079,28 @@ public extension MeetingDetailViewModel {
         } catch {
             // Non-fatal; title will be retried on next edit.
         }
+    }
+}
+
+// MARK: - Re-transcribe vocabulary check
+
+extension MeetingDetailViewModel {
+    /// Checks whether the recomputed effective vocabulary differs from
+    /// the newest transcript's recorded vocabulary. All preconditions
+    /// must hold: at least one transcript, audio present, both the
+    /// custom-vocabulary and calendar-vocabulary toggles on. Ordered
+    /// comparison -- prompt order matters.
+    func shouldOfferReTranscribe() async -> Bool {
+        guard let newest = versions.first else { return false }
+        guard detail?.hasAudio == true else { return false }
+        guard let settings = try? await core.store.settings(),
+              settings.customVocabularyResolved,
+              settings.calendarVocabularyEnabled
+        else { return false }
+        let recomputed = await vocabulary.effectiveVocabulary(
+            meetingID: meetingID
+        )
+        return recomputed != newest.vocabularyUsed
     }
 }
 

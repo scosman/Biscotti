@@ -41,6 +41,19 @@ public struct AppShellView: View {
             }
         }
         .background(Color.wall.ignoresSafeArea())
+        // A well-formed link whose target vanished foregrounds the app
+        // and explains itself; a later failure replaces an earlier one.
+        .alert(
+            viewModel.linkError?.title ?? "",
+            isPresented: Binding(
+                get: { viewModel.linkError != nil },
+                set: { if !$0 { viewModel.dismissLinkError() } }
+            )
+        ) {
+            Button("OK") { viewModel.dismissLinkError() }
+        } message: {
+            Text(viewModel.linkError?.message ?? "")
+        }
         // Two-way sync between the search field and AppCore's query.
         // Harmless during onboarding (no field is shown).
         .onChange(of: searchText) { _, newValue in

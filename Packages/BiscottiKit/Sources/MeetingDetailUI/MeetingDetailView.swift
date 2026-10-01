@@ -73,12 +73,12 @@ public struct MeetingDetailView: View {
             alignment: .topLeading
         )
         .task { await viewModel.load() }
-        .task { await viewModel.applyPendingJumpIfNeeded() }
+        .task { await viewModel.applyPendingIntentIfNeeded() }
         .onChange(of: viewModel.currentJobStatus) { _, newStatus in
             Task { await viewModel.onJobStatusChange(newStatus) }
         }
-        .onChange(of: viewModel.pendingJumpToken) { _, _ in
-            Task { await viewModel.applyPendingJumpIfNeeded() }
+        .onChange(of: viewModel.pendingIntentToken) { _, _ in
+            Task { await viewModel.applyPendingIntentIfNeeded() }
         }
         .onChange(of: viewModel.enhancementStatus) { _, newStatus in
             Task {
@@ -127,6 +127,31 @@ public struct MeetingDetailView: View {
                 onCancel: {
                     viewModel.showEventPicker = false
                 }
+            )
+        }
+        .alert(
+            "Re-transcribe with keywords from this event?",
+            isPresented: Binding(
+                get: { viewModel.showReTranscribeAfterCorrection },
+                set: { newValue in
+                    if !newValue {
+                        viewModel.dismissReTranscribePrompt()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                Task {
+                    await viewModel.reTranscribeAfterCorrection()
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                viewModel.dismissReTranscribePrompt()
+            }
+        } message: {
+            Text(
+                "We\u{2019}ll use this event\u{2019}s title, description and attendee list to improve transcription accuracy."
             )
         }
         .confirmationDialog(
@@ -258,8 +283,6 @@ public struct MeetingDetailView: View {
     /// `listRowMaxWidth`, matching the ScrollView path's layout.
     private func transcriptListLayout(geo _: GeometryProxy) -> some View {
         transcriptReadyContent
-            .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
-            .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
             .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
                 pinnedTransportBar
             }
@@ -286,8 +309,6 @@ public struct MeetingDetailView: View {
             .frame(maxWidth: Tokens.readableContentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .onPreferenceChange(ChromeHeightKey.self) { chromeHeight = $0 }
-        .onPreferenceChange(TransportHeightKey.self) { transportHeight = $0 }
         .safeAreaInset(edge: .bottom, spacing: Self.transportSpacing) {
             pinnedTransportBar
         }
@@ -304,7 +325,7 @@ public struct MeetingDetailView: View {
     /// **Layout coupling:** the `verticalOverhead` constant mirrors the
     /// padding and divider in `scrollViewLayout(geo:)`. If you change
     /// the padding values or divider there, update this calculation to
-    /// match. The `transportHeight` is measured via `TransportHeightKey`
+    /// match. The `transportHeight` is measured via `onGeometryChange`
     /// in `pinnedTransportBar` -- it accounts for the bottom
     /// `safeAreaInset` that the outer `GeometryReader` does not subtract
     /// from its reported size.
@@ -316,10 +337,14 @@ public struct MeetingDetailView: View {
             + Self.transportSpacing // gap between content and transport bar
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
     }
+}
 
+// MARK: - Chrome sub-views
+
+private extension MeetingDetailView {
     // MARK: - Header
 
-    private var header: some View {
+    var header: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             HStack(alignment: .top) {
                 EditableMeetingTitle(
@@ -340,7 +365,7 @@ public struct MeetingDetailView: View {
         }
     }
 
-    private static let versionDateFormatter: DateFormatter = {
+    static let versionDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
@@ -350,7 +375,7 @@ public struct MeetingDetailView: View {
     /// Whether copy is possible for the active tab. Non-mutating: uses
     /// `hasDisplayableTranscript` instead of calling the cache-building
     /// method, so it is safe during `body` evaluation.
-    private var canCopy: Bool {
+    var canCopy: Bool {
         switch viewModel.selectedTab {
         case .summary:
             !viewModel.summaryText.isEmpty
@@ -360,11 +385,7 @@ public struct MeetingDetailView: View {
             !viewModel.notes.isEmpty
         }
     }
-}
 
-// MARK: - Chrome sub-views
-
-private extension MeetingDetailView {
     /// Audio transport pinned to the bottom of the panel. Full-width
     /// background (Liquid Glass on macOS 26+, vibrancy material on older);
     /// inner content capped to the readable column width and left-aligned
@@ -396,28 +417,20 @@ private extension MeetingDetailView {
             .frame(maxWidth: .infinity)
         }
         .pinnedBarBackground()
-        .background(GeometryReader { transportProxy in
-            Color.clear
-                .preference(
-                    key: TransportHeightKey.self,
-                    value: transportProxy.size.height
-                )
-        })
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            transportHeight = $0
+        }
     }
 
-    /// Header + tags row + calendar card + tab bar, measured for the
-    /// chrome-height preference key. AudioTransport is now pinned to
-    /// the bottom of the panel (see `pinnedTransportBar`), outside
-    /// this scroll region.
+    /// Header + tags row + calendar card + tab bar, with its height
+    /// measured via `onGeometryChange` for `contentFill`. AudioTransport
+    /// is pinned to the bottom of the panel (see `pinnedTransportBar`),
+    /// outside this scroll region.
     var chrome: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingMD) {
             header
 
             tagsRow
-
-            if viewModel.showReTranscribeAfterCorrection {
-                reTranscribePrompt
-            }
 
             if let card = viewModel.calendarCard {
                 CalendarInfoCard(
@@ -428,13 +441,9 @@ private extension MeetingDetailView {
 
             tabBar
         }
-        .background(GeometryReader { chromeProxy in
-            Color.clear
-                .preference(
-                    key: ChromeHeightKey.self,
-                    value: chromeProxy.size.height
-                )
-        })
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            chromeHeight = $0
+        }
     }
 
     /// The tags row: detail-size pills with hover-remove, followed by
@@ -480,6 +489,15 @@ private extension MeetingDetailView {
 
     var overflowMenu: some View {
         Menu {
+            Button {
+                viewModel.copyMeetingLink()
+            } label: {
+                Label(
+                    "Copy Meeting Link",
+                    systemImage: "link"
+                )
+            }
+
             if viewModel.hasAudioFiles {
                 Button {
                     viewModel.revealInFinder()
@@ -659,39 +677,6 @@ private extension MeetingDetailView {
             onSelect: { id in
                 Task { await viewModel.selectVersion(id) }
             }
-        )
-    }
-
-    var reTranscribePrompt: some View {
-        HStack {
-            Text(
-                "Calendar event changed. Re-transcribe for updated vocabulary?"
-            )
-            .font(.caption)
-            .foregroundStyle(.inkSecondary)
-
-            Spacer()
-
-            if viewModel.canReTranscribe {
-                Button("Re-transcribe") {
-                    Task {
-                        await viewModel.reTranscribeAfterCorrection()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-            }
-
-            Button("Dismiss") {
-                viewModel.dismissReTranscribePrompt()
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.mini)
-        }
-        .padding(Tokens.spacingSM)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentWashSoft)
         )
     }
 }
@@ -1101,22 +1086,6 @@ private extension MeetingDetailView {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Layout preference keys
-
-private struct ChromeHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-private struct TransportHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 

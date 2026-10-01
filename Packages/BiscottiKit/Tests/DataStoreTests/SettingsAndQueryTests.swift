@@ -53,6 +53,21 @@ struct SettingsTests {
         #expect(result.selectedModelID == "")
     }
 
+    @Test("mcpServerEnabled defaults to false")
+    func mcpServerEnabledDefaultsFalse() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.mcpServerEnabled == false)
+    }
+
+    @Test("mcpServerEnabled round-trips through updateSettings")
+    func mcpServerEnabledRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.mcpServerEnabled = true }
+        let result = try await store.settings()
+        #expect(result.mcpServerEnabled == true)
+    }
+
     @Test("selectedModelID round-trips through updateSettings")
     func selectedModelIDRoundTrip() async throws {
         let store = try makeStore()
@@ -88,6 +103,59 @@ struct SettingsTests {
         #expect(result.onboardingComplete == true)
         #expect(result.customVocabulary == ["Biscotti", "WhisperKit"])
         #expect(result.enabledCalendarIDs == Set(["cal1", "cal2"]))
+    }
+
+    @Test("customVocabularyEnabled starts unset and resolves to off (beta)")
+    func customVocabularyEnabledDefault() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        // Unset, not false: the stored tri-state must stay distinguishable
+        // from a deliberate opt-out so the shipped default can be flipped.
+        #expect(result.customVocabularyEnabled == nil)
+        #expect(result.customVocabularyResolved == false)
+    }
+
+    @Test("An unrelated settings write preserves the unset vocabulary toggle")
+    func customVocabularyEnabledSurvivesUnrelatedWrite() async throws {
+        let store = try makeStore()
+
+        // updateSettings does a full read-modify-write of every field. If the
+        // DTO carried a resolved Bool, this would bake today's default into
+        // the store and make the eventual default flip a no-op.
+        try await store.updateSettings { $0.launchAtLogin = true }
+
+        let result = try await store.settings()
+        #expect(result.launchAtLogin == true)
+        #expect(result.customVocabularyEnabled == nil)
+    }
+
+    @Test("Explicitly choosing off is distinguishable from never choosing")
+    func customVocabularyEnabledExplicitOffIsRecorded() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.customVocabularyEnabled = false }
+
+        let result = try await store.settings()
+        #expect(result.customVocabularyEnabled == false)
+        #expect(result.customVocabularyResolved == false)
+    }
+
+    @Test("calendarVocabularyEnabled defaults to true")
+    func calendarVocabularyEnabledDefault() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.calendarVocabularyEnabled == true)
+    }
+
+    @Test("vocabulary toggle fields round-trip through updateSettings")
+    func vocabularyToggleRoundTrip() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { settings in
+            settings.customVocabularyEnabled = false
+            settings.calendarVocabularyEnabled = false
+        }
+        let result = try await store.settings()
+        #expect(result.customVocabularyEnabled == false)
+        #expect(result.calendarVocabularyEnabled == false)
     }
 
     @Test("updateSettings with nil enabledCalendarIDs means all calendars")
@@ -254,6 +322,39 @@ struct TranscriptVersionTests {
         let transcript = try await store.transcript(id: UUID())
         #expect(transcript == nil)
     }
+
+    @Test("transcriptVersions populates vocabularyUsed from record")
+    func transcriptVersionVocabularyUsed() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Vocab Test")
+        let vocab = ["Acme", "Kubernetes", "Parakeet"]
+        _ = try await store.addTranscript(
+            makeResult(method: "v1"),
+            vocabularyUsed: vocab,
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+
+        let versions = try await store.transcriptVersions(meetingID: meetingID)
+        #expect(versions.count == 1)
+        #expect(versions[0].vocabularyUsed == vocab)
+    }
+
+    @Test("transcriptVersions defaults vocabularyUsed to empty")
+    func transcriptVersionVocabularyUsedDefault() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "No Vocab")
+        _ = try await store.addTranscript(
+            makeResult(method: "v1"),
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+
+        let versions = try await store.transcriptVersions(meetingID: meetingID)
+        #expect(versions.count == 1)
+        #expect(versions[0].vocabularyUsed.isEmpty)
+    }
 }
 
 // MARK: - Audio, sort, detail tests
@@ -337,20 +438,20 @@ struct AudioAndSortTests {
 
 // MARK: - searchHits tests
 
-@Suite("DataStore -- searchHits (weighted transcript text search)")
+@Suite("DataStore -- searchHits (bm25-ranked full-text search)")
 struct SearchHitsTests {
-    @Test("searchHits matches title with score 3")
+    @Test("searchHits matches title")
     func searchHitsTitle() async throws {
         let store = try makeStore()
-        _ = try await store.createMeeting(title: "Sprint Planning")
+        let meetingID = try await store.createMeeting(title: "Sprint Planning")
 
         let hits = try await store.searchHits("Sprint", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].score == 3)
-        #expect(hits[0].matchedFields.contains(.title))
+        #expect(hits[0].id == meetingID)
+        #expect(hits[0].title == "Sprint Planning")
     }
 
-    @Test("searchHits matches participant with score 2")
+    @Test("searchHits matches participant")
     func searchHitsParticipant() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Generic Meeting")
@@ -359,11 +460,10 @@ struct SearchHitsTests {
 
         let hits = try await store.searchHits("Alice", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].score == 2)
-        #expect(hits[0].matchedFields.contains(.people))
+        #expect(hits[0].id == meetingID)
     }
 
-    @Test("searchHits matches transcript text with score 1")
+    @Test("searchHits matches transcript text and returns a snippet")
     func searchHitsTranscript() async throws {
         let store = try makeStore()
         let meetingID = try await store.createMeeting(title: "Meeting")
@@ -385,23 +485,42 @@ struct SearchHitsTests {
 
         let hits = try await store.searchHits("refactor", limit: 10)
         #expect(hits.count == 1)
-        #expect(hits[0].matchedFields.contains(.transcript))
-        #expect(hits[0].score == 1)
+        #expect(hits[0].id == meetingID)
+        // The snippet comes from the transcript column, not the title.
+        #expect(hits[0].snippet.contains("refactor"))
+        #expect(hits[0].snippet.contains("database layer"))
     }
 
-    @Test("searchHits combines scores across fields")
-    func searchHitsCombinedScore() async throws {
+    /// The per-column bm25 weights are what make a title match outrank a
+    /// transcript match. Asserted as an *ordering*, not an absolute score --
+    /// bm25 values depend on corpus statistics and are not stable constants.
+    @Test("searchHits ranks a title match above a transcript-only match")
+    func searchHitsTitleOutranksTranscript() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "Sprint Planning")
-        let sprint = try await store.findOrCreatePerson(name: "Sprint Lead", email: nil)
-        try await store.setParticipants([sprint], organizer: nil, for: meetingID)
+        _ = try await store.createMeeting(title: "Budget Review")
+        let titleMatch = try await store.createMeeting(title: "Sprint Planning")
 
-        // "Sprint" matches title (3) + people (2) = 5
+        let bodyMatch = try await store.createMeeting(title: "Weekly Sync")
+        let seg = TranscriptSegment(
+            speakerID: 0, speakerLabel: "Speaker 0",
+            startTime: 0, endTime: 5,
+            text: "we should talk about the sprint at some point",
+            confidence: 0.9, noSpeechProbability: 0.1, words: nil
+        )
+        let result = TranscriptResult(
+            transcriptionMethodId: "v1", language: "en", speakerCount: 1,
+            segments: [seg], processingDuration: 1.0
+        )
+        let txID = try await store.addTranscript(
+            result, vocabularyUsed: [], mappedEventIdentifier: nil, to: bodyMatch
+        )
+        try await store.setPreferredTranscript(txID, for: bodyMatch)
+
         let hits = try await store.searchHits("Sprint", limit: 10)
-        #expect(hits.count == 1)
-        #expect(hits[0].score == 5)
-        #expect(hits[0].matchedFields.contains(.title))
-        #expect(hits[0].matchedFields.contains(.people))
+        #expect(hits.count == 2)
+        #expect(hits[0].id == titleMatch)
+        #expect(hits[1].id == bodyMatch)
+        #expect(hits[0].score > hits[1].score)
     }
 
     @Test("searchHits returns empty for no match")

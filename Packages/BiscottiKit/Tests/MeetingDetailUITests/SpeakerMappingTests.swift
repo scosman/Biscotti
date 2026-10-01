@@ -1,6 +1,7 @@
 import AppKit
 import BiscottiTestSupport
 import DataStore
+import Formatting
 import Foundation
 import Intelligence
 import Testing
@@ -415,7 +416,7 @@ struct TranscriptCacheNameTests {
         // transcript (the path used for display and copy) shows "Speaker 0".
         #expect(viewModel.displayedSpeakerNames[0] == nil)
         let segments1 = try #require(viewModel.displayedTranscript?.segments)
-        let text1 = TranscriptContent.plainText(
+        let text1 = TranscriptTextFormatting.render(
             segments1, names: viewModel.displayedSpeakerNames
         )
         #expect(text1.contains("Speaker 0"))
@@ -434,7 +435,7 @@ struct TranscriptCacheNameTests {
         // shows "Daniel" in place of "Speaker 0".
         #expect(viewModel.displayedSpeakerNames[0] == "Daniel")
         let segments2 = try #require(viewModel.displayedTranscript?.segments)
-        let text2 = TranscriptContent.plainText(
+        let text2 = TranscriptTextFormatting.render(
             segments2, names: viewModel.displayedSpeakerNames
         )
         #expect(text2.contains("Daniel"))

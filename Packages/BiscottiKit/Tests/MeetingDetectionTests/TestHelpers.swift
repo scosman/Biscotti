@@ -132,6 +132,14 @@ private final class ContinuationBox: @unchecked Sendable {
         lock.unlock()
     }
 
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed, let cont = continuation else { return }
+        resumed = true
+        cont.resume()
+    }
+
     func resume(throwing error: Error) {
         lock.lock()
         defer { lock.unlock() }
@@ -189,6 +197,96 @@ struct NeverClock: Clock {
             }
         } onCancel: {
             box.resume(throwing: CancellationError())
+        }
+    }
+}
+
+// MARK: - GateClock
+
+/// A clock whose `sleep` parks until the test opens the gate.
+///
+/// Unlike `ImmediateClock`, a debounce driven by this clock CANNOT
+/// resolve until the test says so. This removes the scheduling race
+/// that made the ImmediateClock flap tests flaky in CI: with an
+/// uncontrolled immediate sleep, the debounce task could run (and
+/// emit) before the observe loop processed the buffered
+/// reappearance snapshot that was supposed to cancel it.
+///
+/// After `open()`, all parked sleepers resume and later sleeps
+/// return immediately (the clock behaves like `ImmediateClock`).
+/// Cancellation always interrupts a parked sleep, so a debounce
+/// cancelled before `open()` can never emit.
+final class GateClock: Clock, @unchecked Sendable {
+    typealias Duration = Swift.Duration
+
+    struct Instant: InstantProtocol {
+        var offset: Swift.Duration
+        static var zero: Instant {
+            Instant(offset: .zero)
+        }
+
+        func advanced(by duration: Swift.Duration) -> Instant {
+            Instant(offset: offset + duration)
+        }
+
+        func duration(to other: Instant) -> Swift.Duration {
+            other.offset - offset
+        }
+
+        static func < (lhs: Instant, rhs: Instant) -> Bool {
+            lhs.offset < rhs.offset
+        }
+    }
+
+    private let lock = NSLock()
+    private var isOpen = false
+    private var sleepers: [ContinuationBox] = []
+
+    var now: Instant {
+        .zero
+    }
+
+    var minimumResolution: Swift.Duration {
+        .zero
+    }
+
+    func sleep(
+        until _: Instant, tolerance _: Swift.Duration?
+    ) async throws {
+        try Task.checkCancellation()
+
+        let box = ContinuationBox()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                box.store(cont)
+                let resumeNow = lock.withLock {
+                    if !isOpen {
+                        sleepers.append(box)
+                    }
+                    return isOpen
+                }
+                if resumeNow {
+                    box.resume()
+                } else if Task.isCancelled {
+                    box.resume(throwing: CancellationError())
+                }
+            }
+        } onCancel: {
+            box.resume(throwing: CancellationError())
+        }
+    }
+
+    /// Opens the gate: resumes all parked sleepers and lets all
+    /// subsequent sleeps return immediately.
+    func open() {
+        let parked = lock.withLock {
+            isOpen = true
+            let boxes = sleepers
+            sleepers.removeAll()
+            return boxes
+        }
+        for box in parked {
+            box.resume()
         }
     }
 }
@@ -336,6 +434,22 @@ func makeNeverDetector(
         catalog: catalog,
         source: source,
         clock: AnyClock(NeverClock())
+    )
+}
+
+/// Creates a detector whose debounce sleeps park until `clock.open()`.
+/// Use for tests that must control exactly when a debounce fires (or
+/// prove a cancelled debounce cannot fire at all).
+@MainActor
+func makeGateDetector(
+    clock: GateClock,
+    catalog: FakeMeetingCatalog,
+    source: FakeActivitySource
+) -> MeetingDetector {
+    MeetingDetector(
+        catalog: catalog,
+        source: source,
+        clock: AnyClock(clock)
     )
 }
 

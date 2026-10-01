@@ -53,7 +53,6 @@ struct CascadeDeleteTests {
             language: "en",
             speakerCount: 2,
             segments: segments,
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
     }

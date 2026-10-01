@@ -456,7 +456,6 @@ private func makeTranscriptResult() -> TranscriptResult {
                 words: nil
             )
         ],
-        speakerEmbeddings: [:],
         processingDuration: 1.0
     )
 }

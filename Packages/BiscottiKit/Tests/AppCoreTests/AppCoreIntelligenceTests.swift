@@ -36,7 +36,6 @@ struct AppCoreIntelligenceTests {
                     noSpeechProbability: 0.15, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 3.0
         )
         let transcriptID = try await store.addTranscript(
@@ -79,7 +78,6 @@ struct AppCoreIntelligenceTests {
                     noSpeechProbability: 0.1, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
         let txID = try await fix.store.addTranscript(

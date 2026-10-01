@@ -268,7 +268,6 @@ private func makeTranscriptResult(speakerCount: Int = 2) -> TranscriptResult {
         language: "en",
         speakerCount: speakerCount,
         segments: [seg1, seg2, seg3],
-        speakerEmbeddings: [:],
         processingDuration: 3.0
     )
 }
@@ -291,7 +290,6 @@ private func makeEmptyTranscriptResult() -> TranscriptResult {
         language: "en",
         speakerCount: 0,
         segments: [],
-        speakerEmbeddings: [:],
         processingDuration: 0.5
     )
 }

@@ -161,7 +161,6 @@ private func makeResult(segments: [TranscriptSegment]) -> TranscriptResult {
         language: "en",
         speakerCount: Set(segments.compactMap(\.speakerID)).count,
         segments: segments,
-        speakerEmbeddings: [:],
         processingDuration: 0
     )
 }

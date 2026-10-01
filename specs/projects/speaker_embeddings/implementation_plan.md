@@ -21,7 +21,7 @@ developer's confirmation first.
   - Add `speakerPLDACentroidEmbeddings` + SDK tests on a `v1.1.0`-based branch,
     pin `Packages/Transcription` to that commit, add the `CLAUDE.md` gotcha,
     open the upstream PR from a `main`-based branch.
-- [ ] Phase 2: Transcription capture — `.trainableOnly`, `embeddingSets` (raw +
+- [x] Phase 2: Transcription capture — `.trainableOnly`, `embeddingSets` (raw +
   PLDA) replacing `speakerEmbeddings`, `speakerSpeechDurations`,
   `SpeakerEmbeddingSpace`, sanitizer pass-through, `SpeakerAnalyzer` + shared
   helpers, test and CLI-output updates, mark `tx_*` manual tests `not-run` (§3).

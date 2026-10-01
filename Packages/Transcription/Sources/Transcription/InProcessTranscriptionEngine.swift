@@ -186,10 +186,8 @@ extension InProcessTranscriptionEngine {
 private extension InProcessTranscriptionEngine {
     func loadAndMergeAudio(
         micPath: String, systemPath: String
-    ) throws -> MergeResult {
-        let micSamples = try loadAudioSamples(fromPath: micPath)
-        let systemSamples = try loadAudioSamples(fromPath: systemPath)
-        return try AudioMerger.merge(mic: micSamples, system: systemSamples)
+    ) throws -> AudioLoading.MergeResult {
+        try AudioLoading.loadAndMerge(micPath: micPath, systemPath: systemPath)
     }
 
     func runSTT(
@@ -232,7 +230,10 @@ private extension InProcessTranscriptionEngine {
             guard let speaker = speakerKit else {
                 throw TranscriptionError.modelLoadFailed("SpeakerKit is nil after loading")
             }
-            return try await speaker.diarize(audioArray: audioArray)
+            return try await speaker.diarize(
+                audioArray: audioArray,
+                options: DiarizationSettings.options
+            )
         } catch let error as TranscriptionError {
             await statusMachine.transition(to: .error(error))
             throw error
@@ -262,13 +263,15 @@ private extension InProcessTranscriptionEngine {
         let language = sttResults.first?.language ?? "unknown"
         let segments = SegmentBuilder.buildSegments(from: speakerSegmentGroups)
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        let spans = SpeakerDurations.spans(from: diarization)
 
         let rawResult = TranscriptResult(
             transcriptionMethodId: method.id,
             language: language,
             speakerCount: diarization.speakerCount,
             segments: segments,
-            speakerEmbeddings: [:],
+            embeddingSets: EmbeddingSetBuilder.build(from: diarization),
+            speakerSpeechDurations: SpeakerDurations.compute(spans),
             processingDuration: elapsed
         )
 
@@ -279,27 +282,6 @@ private extension InProcessTranscriptionEngine {
 // MARK: - Model lifecycle helpers
 
 private extension InProcessTranscriptionEngine {
-    func loadAudioSamples(fromPath path: String) throws -> [Float] {
-        guard FileManager.default.fileExists(atPath: path) else {
-            throw TranscriptionError.invalidInput("Audio file does not exist: \(path)")
-        }
-        do {
-            let samples = try AudioProcessor.loadAudioAsFloatArray(fromPath: path)
-            guard !samples.isEmpty else {
-                throw TranscriptionError.invalidInput(
-                    "Audio file produced zero samples: \(path)"
-                )
-            }
-            return samples
-        } catch let error as TranscriptionError {
-            throw error
-        } catch {
-            throw TranscriptionError.invalidInput(
-                "Failed to load audio from \(path): \(error.localizedDescription)"
-            )
-        }
-    }
-
     func ensureWhisperKitLoaded() async throws {
         if whisperKit == nil {
             Self.log.info("WhisperKit: loading model (first init)")
@@ -416,11 +398,6 @@ private extension InProcessTranscriptionEngine {
 
     /// Build a SpeakerKit (Pyannote) configuration anchored at the shared cache.
     func makeSpeakerConfig(download: Bool, load: Bool) -> PyannoteConfig {
-        PyannoteConfig(
-            downloadBase: ModelStorage.downloadBase.path,
-            download: download,
-            load: load,
-            verbose: false
-        )
+        SpeakerKitConfigFactory.make(download: download, load: load)
     }
 }

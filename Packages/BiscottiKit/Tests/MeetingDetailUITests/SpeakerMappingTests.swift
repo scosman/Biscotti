@@ -34,7 +34,7 @@ private func threeSegmentResult() -> TranscriptResult {
     return TranscriptResult(
         transcriptionMethodId: "test-v1", language: "en",
         speakerCount: 2, segments: segments,
-        speakerEmbeddings: [:], processingDuration: 1.0
+        processingDuration: 1.0
     )
 }
 

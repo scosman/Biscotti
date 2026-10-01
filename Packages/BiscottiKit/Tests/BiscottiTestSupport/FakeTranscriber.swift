@@ -149,7 +149,6 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
                 words: nil
             )
         ],
-        speakerEmbeddings: [:],
         processingDuration: 3.5
     )
 }

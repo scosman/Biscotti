@@ -169,7 +169,7 @@ struct SearchNotesTests {
         )
         let result = TranscriptResult(
             transcriptionMethodId: "v1", language: "en", speakerCount: 1,
-            segments: [seg], speakerEmbeddings: [:], processingDuration: 1.0
+            segments: [seg], processingDuration: 1.0
         )
         let txID = try await store.addTranscript(
             result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID

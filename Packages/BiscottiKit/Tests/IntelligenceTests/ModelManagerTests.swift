@@ -793,7 +793,6 @@ struct ModelManagerIntelligenceIntegrationTests {
                     noSpeechProbability: 0.15, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 3.0
         )
     }

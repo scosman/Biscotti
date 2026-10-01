@@ -136,7 +136,6 @@
                 language: "en",
                 speakerCount: 0,
                 segments: [],
-                speakerEmbeddings: [:],
                 processingDuration: 0
             )
         }

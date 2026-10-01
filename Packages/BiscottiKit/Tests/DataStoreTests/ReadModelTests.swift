@@ -243,7 +243,6 @@ struct ReadModelTests {
             language: "en",
             speakerCount: 2,
             segments: [seg1, seg2, seg3],
-            speakerEmbeddings: [:],
             processingDuration: 5.0
         )
 
@@ -281,7 +280,6 @@ struct ReadModelTests {
             language: "en",
             speakerCount: 2,
             segments: [seg1, seg2],
-            speakerEmbeddings: [:],
             processingDuration: 3.0
         )
     }

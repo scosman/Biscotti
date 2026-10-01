@@ -120,7 +120,6 @@ struct TranscriptionSuccessTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 2.0
         )
         fix.fakeEngine.backing.cannedResult = secondResult

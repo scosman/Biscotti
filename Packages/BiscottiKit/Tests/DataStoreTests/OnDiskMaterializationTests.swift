@@ -43,7 +43,6 @@ struct OnDiskMaterializationTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
     }

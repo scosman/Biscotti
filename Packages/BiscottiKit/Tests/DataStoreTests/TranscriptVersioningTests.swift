@@ -27,7 +27,6 @@ struct TranscriptVersioningTests {
             language: "en",
             speakerCount: 1,
             segments: segments,
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
     }

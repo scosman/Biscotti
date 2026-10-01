@@ -212,6 +212,7 @@ public final class FakeTestNotificationCenter: NotificationCenterProviding,
         public var addedRequests: [UNNotificationRequest] = []
         public var removedPendingIDs: [String] = []
         public var removedDeliveredIDs: [String] = []
+        public var delivered: [DeliveredNotification] = []
         public var registeredCategories: Set<UNNotificationCategory> = []
         public var scriptedAlertStyle: UNAlertStyle = .banner
     }
@@ -230,6 +231,19 @@ public final class FakeTestNotificationCenter: NotificationCenterProviding,
 
     public func add(_ request: UNNotificationRequest) async throws {
         backing.addedRequests.append(request)
+        // Model delivery: replace any existing entry with the same identifier.
+        backing.delivered.removeAll { $0.identifier == request.identifier }
+        var stringInfo: [String: String] = [:]
+        for (key, value) in request.content.userInfo {
+            if let strKey = key as? String, let strVal = value as? String {
+                stringInfo[strKey] = strVal
+            }
+        }
+        backing.delivered.append(DeliveredNotification(
+            identifier: request.identifier,
+            date: Date(),
+            userInfo: stringInfo
+        ))
     }
 
     public func removePendingRequests(withIdentifiers ids: [String]) {
@@ -240,6 +254,12 @@ public final class FakeTestNotificationCenter: NotificationCenterProviding,
         withIdentifiers ids: [String]
     ) {
         backing.removedDeliveredIDs.append(contentsOf: ids)
+        let idSet = Set(ids)
+        backing.delivered.removeAll { idSet.contains($0.identifier) }
+    }
+
+    public func deliveredNotifications() async -> [DeliveredNotification] {
+        backing.delivered
     }
 
     public func setCategories(

@@ -94,7 +94,7 @@ struct CancelAdHocTests {
 
         // Present a meeting-starting notification (not ad-hoc).
         await service.present(
-            .meetingStarting(eventKey: "ev-1", title: "Standup", joinURL: nil)
+            .meetingStarting(eventKey: "ev-1", title: "Standup", joinURL: nil, start: Date())
         )
 
         await service.cancelAdHocDetected()

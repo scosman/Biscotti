@@ -13,7 +13,7 @@ struct ForegroundPresentationTests {
         _ = await service.requestAuthorization()
 
         await service.present(
-            .meetingStarting(eventKey: "k", title: "Standup", joinURL: nil)
+            .meetingStarting(eventKey: "k", title: "Standup", joinURL: nil, start: Date())
         )
 
         let request = fake.addedRequests[0]

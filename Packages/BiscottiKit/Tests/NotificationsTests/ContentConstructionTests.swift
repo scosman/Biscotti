@@ -12,7 +12,7 @@ struct ContentConstructionTests {
         _ = await service.requestAuthorization()
 
         await service.present(
-            .meetingStarting(eventKey: "k", title: "Standup", joinURL: nil)
+            .meetingStarting(eventKey: "k", title: "Standup", joinURL: nil, start: Date())
         )
 
         #expect(fake.addedRequests.count == 1)
@@ -34,7 +34,7 @@ struct ContentConstructionTests {
 
         let url = try #require(URL(string: "https://zoom.us/j/123"))
         await service.present(
-            .meetingStarting(eventKey: "k2", title: "1:1", joinURL: url)
+            .meetingStarting(eventKey: "k2", title: "1:1", joinURL: url, start: Date())
         )
 
         #expect(fake.addedRequests.count == 1)

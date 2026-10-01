@@ -53,4 +53,23 @@ public struct LiveNotificationCenter: NotificationCenterProviding, Sendable {
     public func alertStyle() async -> UNAlertStyle {
         await UNUserNotificationCenter.current().notificationSettings().alertStyle
     }
+
+    public func deliveredNotifications() async -> [DeliveredNotification] {
+        let notifications = await UNUserNotificationCenter.current()
+            .deliveredNotifications()
+        return notifications.map { notification in
+            let content = notification.request.content
+            var stringInfo: [String: String] = [:]
+            for (key, value) in content.userInfo {
+                if let strKey = key as? String, let strVal = value as? String {
+                    stringInfo[strKey] = strVal
+                }
+            }
+            return DeliveredNotification(
+                identifier: notification.request.identifier,
+                date: notification.date,
+                userInfo: stringInfo
+            )
+        }
+    }
 }

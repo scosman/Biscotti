@@ -12,10 +12,10 @@ struct RequestIdentifierTests {
         _ = await service.requestAuthorization()
 
         await service.present(
-            .meetingStarting(eventKey: "abc", title: "A", joinURL: nil)
+            .meetingStarting(eventKey: "abc", title: "A", joinURL: nil, start: Date())
         )
         await service.present(
-            .meetingStarting(eventKey: "xyz", title: "B", joinURL: nil)
+            .meetingStarting(eventKey: "xyz", title: "B", joinURL: nil, start: Date())
         )
 
         #expect(fake.addedRequests.count == 2)

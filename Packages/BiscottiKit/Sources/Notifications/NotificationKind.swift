@@ -3,7 +3,7 @@ import Foundation
 /// The three notification kinds the app can present.
 public enum NotificationKind: Sendable, Equatable {
     /// A calendar-driven meeting is starting (or imminent).
-    case meetingStarting(eventKey: String, title: String, joinURL: URL?)
+    case meetingStarting(eventKey: String, title: String, joinURL: URL?, start: Date)
 
     /// An ad-hoc meeting was detected in a meeting app.
     case adHocDetected(bundleID: String, appName: String)

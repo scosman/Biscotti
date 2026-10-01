@@ -2,6 +2,12 @@ import Foundation
 import os
 import UserNotifications
 
+/// A delivered "offer to record" notification, parsed. Other kinds are not reported.
+public enum DeliveredOfferNotification: Equatable, Sendable {
+    case meetingStarting(eventKey: String, meetingStart: Date)
+    case adHocDetected(bundleID: String)
+}
+
 /// Manages notification lifecycle: authorization, presentation, countdown cancellation,
 /// and the typed action stream consumed by AppCore.
 ///
@@ -135,6 +141,67 @@ public final class NotificationService {
         provider.removePendingRequests(withIdentifiers: ids)
         provider.removeDeliveredNotifications(withIdentifiers: ids)
         presentedAdHocIDs.removeAll()
+    }
+
+    /// C1: removes one calendar notification (pending + delivered).
+    public func cancelMeetingStarting(eventKey: String) async {
+        let identifier = meetingStartRequestIdentifier(eventKey: eventKey)
+        logger.info("cancelMeetingStarting: removing \(identifier)")
+        provider.removePendingRequests(withIdentifiers: [identifier])
+        provider.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    /// C2: removes every delivered/pending calendar notification.
+    public func cancelAllMeetingStarting() async {
+        let delivered = await provider.deliveredNotifications()
+        let ids = delivered
+            .filter { $0.userInfo[UserInfoKey.kind] == KindValue.meetingStarting }
+            .map(\.identifier)
+        guard !ids.isEmpty else { return }
+        logger.info("cancelAllMeetingStarting: removing \(ids)")
+        provider.removePendingRequests(withIdentifiers: ids)
+        provider.removeDeliveredNotifications(withIdentifiers: ids)
+    }
+
+    /// D1: removes one app's "Meeting detected" notification and drops it
+    /// from `presentedAdHocIDs`.
+    public func cancelAdHocDetected(bundleID: String) async {
+        let identifier = adHocRequestIdentifier(bundleID: bundleID)
+        logger.info("cancelAdHocDetected(bundleID:): removing \(identifier)")
+        provider.removePendingRequests(withIdentifiers: [identifier])
+        provider.removeDeliveredNotifications(withIdentifiers: [identifier])
+        presentedAdHocIDs.remove(identifier)
+    }
+
+    /// L1: parsed list of delivered offer notifications.
+    public func deliveredOfferNotifications() async -> [DeliveredOfferNotification] {
+        let delivered = await provider.deliveredNotifications()
+        return delivered.compactMap { notification in
+            let info = notification.userInfo
+            switch info[UserInfoKey.kind] {
+            case KindValue.meetingStarting:
+                guard let eventKey = info[UserInfoKey.eventKey] else {
+                    return nil
+                }
+                let meetingStart: Date = if let raw = info[UserInfoKey.eventStart],
+                                            let epoch = Double(raw)
+                {
+                    Date(timeIntervalSince1970: epoch)
+                } else {
+                    notification.date
+                }
+                return .meetingStarting(
+                    eventKey: eventKey, meetingStart: meetingStart
+                )
+            case KindValue.adHoc:
+                guard let bundleID = info[UserInfoKey.bundleID] else {
+                    return nil
+                }
+                return .adHocDetected(bundleID: bundleID)
+            default:
+                return nil
+            }
+        }
     }
 
     // MARK: - Action stream
@@ -279,9 +346,10 @@ private func makeRequest(for kind: NotificationKind) -> UNNotificationRequest {
     let identifier = requestIdentifier(for: kind)
 
     switch kind {
-    case let .meetingStarting(eventKey, title, joinURL):
+    case let .meetingStarting(eventKey, title, joinURL, start):
         fillMeetingStartContent(
-            content, eventKey: eventKey, title: title, joinURL: joinURL
+            content, eventKey: eventKey, title: title, joinURL: joinURL,
+            start: start
         )
 
     case let .adHocDetected(bundleID, appName):
@@ -310,7 +378,8 @@ private func fillMeetingStartContent(
     _ content: UNMutableNotificationContent,
     eventKey: String,
     title: String,
-    joinURL: URL?
+    joinURL: URL?,
+    start: Date
 ) {
     content.title = title
     content.body = ""
@@ -321,7 +390,8 @@ private func fillMeetingStartContent(
 
     var info: [String: String] = [
         UserInfoKey.kind: KindValue.meetingStarting,
-        UserInfoKey.eventKey: eventKey
+        UserInfoKey.eventKey: eventKey,
+        UserInfoKey.eventStart: String(start.timeIntervalSince1970)
     ]
     if let joinURL {
         info[UserInfoKey.joinURL] = joinURL.absoluteString

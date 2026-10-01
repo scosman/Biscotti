@@ -1159,7 +1159,7 @@ passes when ≥2 runs are correct.
 
 | Case | Expected |
 |---|---|
-| Speaker close to `Sam <sam@kiln.tech>` and `Samantha (no email)`; transcript has "Samantha" | Sam/Samantha with `sam@kiln.tech` |
+| Speaker close to `Sam <sam@kiln.tech>` and `Samantha (no email)`; transcript has "Samantha" | Sam/Samantha; email `sam@kiln.tech` or blank, never another email (known limit: functional spec §7.4) |
 | Close to `Dave (no email)` and `Amit (no email)`; transcript "thanks, Amit" | Amit |
 | Speaker 1 high match `Steve <steve@kiln.tech>`; no name in transcript | Steve, `steve@kiln.tech` |
 

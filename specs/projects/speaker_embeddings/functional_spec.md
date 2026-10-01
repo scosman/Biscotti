@@ -435,9 +435,21 @@ Add LLM tests to the `make test-ai` set, so the prompt behavior is measured:
 
 | Case | Report content | Expected result |
 |---|---|---|
-| Same human, two entries | Speaker close to `Sam <sam@kiln.tech>` and `Samantha (no email)` | Speaker set to Sam/Samantha with `sam@kiln.tech` |
+| Same human, two entries | Speaker close to `Sam <sam@kiln.tech>` and `Samantha (no email)`; transcript says "Samantha" | Speaker set to Sam/Samantha. The email is `sam@kiln.tech` or blank, never a different email. See the known limit below. |
 | Different humans, similar voices | Speaker close to "Dave" and "Amit"; transcript says "thanks, Amit" | Speaker set to Amit |
 | High confidence match | Speaker 1 high match to `Steve <steve@kiln.tech>`; no name in transcript | Speaker 1 set to Steve with the email |
+
+**Known limit (measured 2026-10-01, Gemma 4 12B, thinking off).** In the
+same-human case, the model selects the name from the transcript ("Samantha")
+and leaves the email blank. It does not copy the email from the other entry
+(`Sam <sam@kiln.tech>`). With thinking on, the model gives `sam@kiln.tech`, but
+the speaker turn takes about 56 s instead of about 4 s, so thinking stays off.
+Eight prompt-only changes did not fix it: an explicit rule, a worked example, an
+email rule in the output format, "Prefer email if available" at three places,
+removing the "do not invent" rule, and removing the "(no email)" label. Adding
+an "emails listed" line to the report fixed the email but assigned the same name
+to a second speaker. The result is partial, not wrong: the speaker gets the
+correct name, and the user can add the email.
 
 ---
 

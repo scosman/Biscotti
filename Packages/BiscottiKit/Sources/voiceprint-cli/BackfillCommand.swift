@@ -28,7 +28,7 @@ struct BackfillCommand: AsyncParsableCommand {
     func run() async throws {
         let writer = StandardOutputWriter()
 
-        try await MainActor.run { try AppRunningGuard.check(writer: writer) }
+        try await MainActor.run { try AppRunningGuard.check(storePath: store, writer: writer) }
 
         let dataStore = try StoreLocation.open(path: store, writer: writer)
         let spaces = BackfillRunner.currentSpaces()

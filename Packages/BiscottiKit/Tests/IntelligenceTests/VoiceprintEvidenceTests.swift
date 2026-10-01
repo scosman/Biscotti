@@ -73,7 +73,7 @@ struct VoiceprintEvidenceTests {
         let vector = [Float](repeating: 0.1, count: dim)
         try await store.addVoiceprints(
             [NewVoiceprint(speakerID: 0, vector: vector, speakingDuration: 10)],
-            kind: .plda, space: "test-space", to: transcriptID
+            kind: VoiceprintConfig.default.kind, space: "test-space", to: transcriptID
         )
 
         let detail = try #require(try await store.meetingDetail(id: meetingID))
@@ -97,7 +97,7 @@ struct VoiceprintEvidenceTests {
         let vector1 = [Float](repeating: 0.1, count: dim)
         try await store.addVoiceprints(
             [NewVoiceprint(speakerID: 0, vector: vector1, speakingDuration: 30)],
-            kind: .plda, space: "test-space", to: transcriptID1
+            kind: VoiceprintConfig.default.kind, space: "test-space", to: transcriptID1
         )
 
         let (meetingID2, transcriptID2) = try await makeMeetingWithTranscript(
@@ -106,7 +106,7 @@ struct VoiceprintEvidenceTests {
         let vector2 = [Float](repeating: 0.1, count: dim)
         try await store.addVoiceprints(
             [NewVoiceprint(speakerID: 0, vector: vector2, speakingDuration: 20)],
-            kind: .plda, space: "test-space", to: transcriptID2
+            kind: VoiceprintConfig.default.kind, space: "test-space", to: transcriptID2
         )
 
         let detail = try #require(try await store.meetingDetail(id: meetingID2))

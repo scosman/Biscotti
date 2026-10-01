@@ -2222,12 +2222,14 @@ struct EmptyTranscriptTests {
 
 // MARK: - Voiceprint seeding helper
 
-/// Creates two meetings with PLDA voiceprints in the same space.
+/// Creates two meetings with voiceprints of `kind` in the same space.
+/// The default is the matcher's default kind, so the default path finds them.
 /// The first meeting forms the corpus (with a tagged speaker so
 /// candidates can form); the second is the target.
 /// Returns (targetMeetingID, targetTranscriptID).
 private func seedVoiceprintStore(
-    store: DataStore, dim: Int = 128
+    store: DataStore, dim: Int = 128,
+    kind: VoiceprintKind = VoiceprintConfig.default.kind
 ) async throws -> (UUID, UUID) {
     // Historical meeting with voiceprints (forms the corpus)
     let (_, transcriptID1) = try await makeMeetingWithTranscript(
@@ -2236,7 +2238,7 @@ private func seedVoiceprintStore(
     let vector1 = [Float](repeating: 0.1, count: dim)
     try await store.addVoiceprints(
         [NewVoiceprint(speakerID: 0, vector: vector1, speakingDuration: 30)],
-        kind: .plda, space: "test-space", to: transcriptID1
+        kind: kind, space: "test-space", to: transcriptID1
     )
     // Tag the historical speaker with a person so the matcher can build
     // named candidates (untagged corpus entries produce no candidates).
@@ -2254,7 +2256,7 @@ private func seedVoiceprintStore(
     let vector2 = [Float](repeating: 0.1, count: dim)
     try await store.addVoiceprints(
         [NewVoiceprint(speakerID: 0, vector: vector2, speakingDuration: 20)],
-        kind: .plda, space: "test-space", to: transcriptID2
+        kind: kind, space: "test-space", to: transcriptID2
     )
 
     return (meetingID2, transcriptID2)
@@ -2357,7 +2359,7 @@ struct IntelligenceVoiceprintIntegrationTests {
         @Test("candidates and neighbors for a seeded store")
         @MainActor func candidatesAndNeighbors() async throws {
             let store = try makeStore()
-            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store, kind: .plda)
 
             let fixture = makeIntelligence(store: store)
             let report = await fixture.intel.voiceprintDebug(
@@ -2376,7 +2378,7 @@ struct IntelligenceVoiceprintIntegrationTests {
         @Test("user-tagged speaker still gets candidates")
         @MainActor func userTaggedStillGetsCandidates() async throws {
             let store = try makeStore()
-            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store, kind: .plda)
 
             // Assign speaker 0 to a person (user-tagged)
             let personID = try await store.findOrCreatePerson(
@@ -2401,7 +2403,7 @@ struct IntelligenceVoiceprintIntegrationTests {
         @MainActor func noVoiceprintSpeaker() async throws {
             let store = try makeStore()
             // seedVoiceprintStore only adds voiceprint for speaker 0
-            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store, kind: .plda)
 
             let fixture = makeIntelligence(store: store)
             let report = await fixture.intel.voiceprintDebug(
@@ -2417,7 +2419,7 @@ struct IntelligenceVoiceprintIntegrationTests {
         @MainActor func kindSwitchesResult() async throws {
             let store = try makeStore()
             // Seed with PLDA voiceprints in "test-space"
-            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store, kind: .plda)
 
             let fixture = makeIntelligence(store: store)
 

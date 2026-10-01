@@ -18,4 +18,6 @@ xcuserdata/
 .DS_Store
 __pycache__/
 
+calibration.json
+
 .worktrees/

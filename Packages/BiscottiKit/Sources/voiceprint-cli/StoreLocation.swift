@@ -14,6 +14,16 @@ enum StoreLocation {
         return appSupport.appendingPathComponent("Biscotti").path
     }()
 
+    /// True when `path` (nil = default) resolves to the app's own store directory.
+    static func isDefault(_ path: String?) -> Bool {
+        guard let path else { return true }
+        let given = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let standard = URL(fileURLWithPath: defaultPath)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        return given.path == standard.path
+    }
+
     /// Resolves the store path, validates that `Biscotti.store` exists, and
     /// opens a `DataStore`.
     ///

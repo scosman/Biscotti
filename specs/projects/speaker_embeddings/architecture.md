@@ -476,17 +476,16 @@ public struct KindThresholds: Sendable, Equatable {
 }
 
 public struct VoiceprintConfig: Sendable, Equatable {
-    public var kind: VoiceprintKind = .plda
-    /// Raw anchor: SpeakerKit's intra-file clustering threshold (sdk_findings §2).
-    public var raw  = KindThresholds(acceptRadius: 0.6, highDistance: 0.35, mediumDistance: 0.50)
-    /// No anchor exists for PLDA; same estimates until the calibration pass.
-    public var plda = KindThresholds(acceptRadius: 0.6, highDistance: 0.35, mediumDistance: 0.50)
-    public var bestMeetingsPerPerson = 5          // K
-    public var inferredTagWeight: Float = 0.4
+    // Calibrated values (calibration.md).
+    public var kind: VoiceprintKind = .raw
+    public var raw  = KindThresholds(acceptRadius: 0.50, highDistance: 0.20, mediumDistance: 0.30)
+    public var plda = KindThresholds(acceptRadius: 0.45, highDistance: 0.20, mediumDistance: 0.30)
+    public var bestMeetingsPerPerson = 5          // K, strongest by contribution
+    public var inferredTagWeight: Float = 0.2
     public var fullSpeechSeconds: Double = 60
     public var inviteeBoost: Float = 1.5
     public var ambiguityScoreRatio: Float = 0.6
-    public var ambiguityDistanceGap: Float = 0.05
+    public var ambiguityDistanceGap: Float = 0    // exact tie only
     public var highMarginRatio: Float = 0.35      // high needs S2 ≤ 0.35·S1
     public var highMinMeetings = 3
     public var highMinConfirmed = 2
@@ -612,7 +611,8 @@ unnamedMeetingCount = count of distinct e.meetingID in untagged
 
 for (P, list) in group(hits where e.tag != nil, by: e.tag.personID):
     perMeeting = per meetingID, the entry with smallest d       // one vote per meeting
-    kept       = perMeeting sorted by d ascending, first K      // best K
+    kept       = perMeeting sorted by tagW·speechW·closeness descending
+                 (ties: d ascending, then meetingID), first K   // strongest K
     score = Σ over kept:
               tagW      = e.tag.userSet ? 1.0 : inferredTagWeight
               speechW   = min(1, max(0, e.speakingDuration) / fullSpeechSeconds)
@@ -1008,7 +1008,14 @@ Shared behavior:
 - `AppRunningGuard` (both commands): if `NSWorkspace.shared.runningApplications`
   contains bundle ID `net.scosman.biscotti`, print "Quit Biscotti first" to
   stderr and exit 2. Opening a `ModelContainer` can migrate the store; a CLI
-  built from a newer schema must not do that while the app uses it.
+  built from a newer schema must not do that while the app uses it. The guard
+  applies only when `--store` resolves to the default directory. A copy in a
+  different directory is safe while the app runs.
+- `metrics --same-person "A,B,C"` (repeatable): names or emails of Person
+  records that are the same human. `PersonAliases.resolve` matches each term to
+  a name or email (case is ignored); `VoiceprintCorpusData.mergingPeople`
+  points all their tags to one person ID before the evaluation. Exit with an
+  error if a term matches no person.
 - Progress and messages to **stderr**; results to **stdout**; `--json`
   switches stdout to JSON.
 

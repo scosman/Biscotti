@@ -166,10 +166,11 @@ decisions belong to the developer.
 
 ### 3.6 Which kind the matcher uses
 
-The matcher uses **one kind at a time**. The default is **PLDA**, because it is
-designed for this problem. Raw voiceprints are always saved too, so that the
-`metrics` tool can compare the two kinds on real data, and the default can
-change if raw is better.
+The matcher uses **one kind at a time**. The default is **raw**. The first
+default was PLDA, because PLDA is designed for this problem. The calibration
+pass (§9.3) measured raw as better at separating people on real data (see
+`calibration.md`), so the default changed. Both kinds are always saved, so the
+default can change again when there is more data.
 
 Each kind has its own thresholds (§10). Distances in the two spaces are not on
 the same scale.
@@ -235,15 +236,20 @@ For one new speaker:
    1. **One vote per meeting.** Keep only the closest voiceprint from each
       meeting. Sometimes SpeakerKit splits one human into two diarization
       speakers. This rule stops that meeting from counting two times.
-   2. **Best 5 meetings.** Keep only the 5 closest. Then a person with 200
-      meetings does not win only because of volume.
+   2. **Best 5 meetings.** Keep only the 5 meetings with the highest
+      `weight × closeness` (steps 3 and 4). Then a person with 200 meetings
+      does not win only because of volume.
+
+      The calibration pass (§9.3) changed this from "the 5 closest". With
+      "closest", near inferred tags pushed out the person's confirmed
+      meetings, so `high` (which needs 2 confirmed meetings) did not occur.
    3. **Weight** each kept voiceprint:
 
       ```
       weight = tagWeight × speechWeight
 
       tagWeight    = 1.0  for a confirmed tag
-                   = 0.4  for an inferred tag
+                   = 0.2  for an inferred tag
       speechWeight = min(1, speakingTime / 60 seconds)
       ```
 
@@ -278,7 +284,7 @@ distance decides the confidence level.
 | Level | Condition |
 |---|---|
 | `none` | No voiceprint is inside `R`. |
-| `ambiguous` | `score(P2) ≥ 0.6 × score(P1)`, or the reported distances of `P1` and `P2` are within `0.05`. |
+| `ambiguous` | `score(P2) ≥ 0.6 × score(P1)`, or the reported distances of `P1` and `P2` are the same. |
 | `high` | Reported distance ≤ the high limit, **and** ≥3 meetings counted, **and** ≥2 of them confirmed, **and** `score(P2) ≤ 0.35 × score(P1)`. |
 | `medium` | Reported distance ≤ the medium limit, **and** (≥1 confirmed meeting **or** ≥3 inferred meetings). |
 | `low` | Inside `R`, but not `high` or `medium`. |
@@ -287,7 +293,12 @@ distance decides the confidence level.
 matcher must not claim more than its evidence supports. Only the user's own
 tags are certain.
 
-**All numbers in §5 are first estimates.** For raw voiceprints, the only
+**The calibration pass (§9.3) set the numbers in §5 from real data.** See
+`calibration.md` for the measurements. The distance-gap rule for `ambiguous`
+was `0.05` before calibration. At `0.05`, inferred tags near the user's own
+voice made almost every match ambiguous.
+
+The history before calibration: for raw voiceprints, the only
 measured reference is `R = 0.6`: SpeakerKit uses this number to decide "same
 speaker" inside one recording (see `sdk_findings.md` §2). For PLDA there is no
 reference at all. The first estimates for PLDA are the same numbers as raw.
@@ -314,7 +325,9 @@ with the new speaker.
 The LLM can accept a wrong `medium` match. Then a new inferred tag goes to the
 wrong person, and the next wrong match becomes stronger. The design limits this:
 
-- An inferred tag has a weight of 0.4. A confirmed tag has a weight of 1.0.
+- An inferred tag has a weight of 0.2. A confirmed tag has a weight of 1.0.
+  The calibration pass found this loop in real data: the LLM had put the
+  user's own voice on other names, so the weight went down from 0.4.
 - `high` needs confirmed tags.
 - The `metrics` tool measures only against confirmed tags, so the loop cannot
   make the measurements wrong.
@@ -589,12 +602,13 @@ There are no user settings.
 
 | Constant | Default |
 |---|---|
-| Matcher kind | PLDA |
-| `R` (maximum distance), per kind | `0.6` (both, until §9.3) |
-| `high` distance, per kind | `0.35` |
-| `medium` distance, per kind | `0.50` |
-| Best meetings per person | `5` |
-| Inferred tag weight | `0.4` |
+| Matcher kind | Raw (set by §9.3) |
+| `R` (maximum distance), per kind | raw `0.50`, PLDA `0.45` |
+| `high` distance, per kind | `0.20` |
+| `medium` distance, per kind | `0.30` |
+| Best meetings per person | `5` (highest `weight × closeness`) |
+| Inferred tag weight | `0.2` |
+| Ambiguity distance gap | `0` (same distance only) |
 | Full speaking time | `60s` |
 | Calendar increase | `1.5` |
 | `centroidSource` | `.trainableOnly` |

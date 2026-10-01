@@ -50,6 +50,26 @@ Options:
 - `--kind plda|raw|both` — which embedding kind to evaluate (default: `both`)
 - `--sweep` — show the full radius sweep table (FMR/MMR per radius)
 - `--json` — output machine-readable JSON to stdout
+- `--same-person "A,B,C"` — names or emails of Person records that are the same
+  human (for example `"Steve,steve@kiln.tech,scosman@gmail.com"`). Repeatable.
+  Without this option, alias records count as confusions and as false matches,
+  and almost every match shows as `ambiguous`. Use it for every human with more
+  than one record.
+
+To run `metrics` while Biscotti is open, run it on a copy of the store. The
+"quit Biscotti" guard applies only to the app's own store directory:
+
+```bash
+mkdir -p /tmp/biscotti_snapshot
+sqlite3 "file:$HOME/Library/Application Support/Biscotti/Biscotti.store?mode=ro" \
+  ".backup '/tmp/biscotti_snapshot/Biscotti.store'"
+swift run --package-path Packages/BiscottiKit voiceprint-cli metrics \
+  --store /tmp/biscotti_snapshot --kind both --sweep --same-person "..."
+```
+
+Before you choose values, look at **Suspect tags**. A confirmed voiceprint that
+is far from the person's other voiceprints is usually a wrong tag (for example,
+two speakers with swapped tags). Correct it in the app and run again.
 
 ## Step 3: Choose thresholds
 
@@ -72,38 +92,87 @@ From the metrics output, set per-kind values:
 
 ## Results
 
-_To be filled after running the calibration pass._
+Calibration pass run on 2026-10-01, on the developer's store (a snapshot, after
+backfill).
 
 ### Data summary
 
-- Meetings with preferred transcripts:
-- Meetings with confirmed speaker tags:
-- Distinct confirmed people:
+- Voiceprints: 341 per kind, from 118 meetings.
+- Tagged people: 61. Most tags are LLM-inferred (178 inferred voiceprints,
+  17 confirmed, 146 untagged).
+- Distinct confirmed people: 8, after merging aliases. Only one person (the
+  user) has 3 or more confirmed meetings. Speech is longer than 300 s for 15 of
+  17 confirmed voiceprints.
+- Aliases merged with `--same-person`: the user (4 records: name, two work
+  emails, personal email), Sam, Ellen, Leonard, and Mike (2 or 3 records each).
+- One wrong tag was found (the suspect-tag list): speakers 0 and 1 in
+  "Mike><Steve 1:1" had swapped tags. The developer corrected it before the
+  final run.
 
-### PLDA metrics
+**This is a small sample.** 16 trials, mostly the user's voice, mostly on one
+audio setup. Run the pass again when more people have confirmed tags.
 
-- Trials:
-- Top-1 accuracy:
-- EER radius:
-- High accuracy:
+### Distances between confirmed voiceprints (different meetings)
 
-### Raw metrics
+| Kind | Same person p50 / p90 / max | Different people min / p10 |
+|---|---|---|
+| PLDA | 0.13 / 0.40 / 0.44 | 0.45 / 0.66 |
+| Raw | 0.10 / 0.32 / 0.57 | 0.62 / 0.70 |
 
-- Trials:
-- Top-1 accuracy:
-- EER radius:
-- High accuracy:
+Inferred tags are much less clean. The LLM had put the user's voice on other
+names: the inferred "Mike" and "Sam" clusters were 0.02–0.06 from the user's
+voice.
+
+### Metrics with the chosen values (16 trials, 1 skipped, aliases merged)
+
+| Kind | Top-1 | high | medium | ambiguous | low | EER radius |
+|---|---|---|---|---|---|---|
+| PLDA | 15/16 | 7/7 | 5/5 | 3/3 | 0/1 | 0.45 |
+| Raw | 14/16 | 7/7 | 6/6 | 1/1 | 0/2 | 0.60 |
+
+The EER radius is from the leave-one-meeting-out sweep, which includes
+inferred tags. Their label errors put a floor of about 7% under the false-match
+rate at every radius, so EER is a weak guide here.
+
+Before calibration (values from before calibration, aliases merged, swap fixed):
+PLDA top-1 15/16 with 13 of 14 matches `ambiguous` and no `high`.
 
 ### Chosen thresholds
 
 | Parameter | PLDA | Raw |
 |---|---|---|
-| `acceptRadius` | | |
-| `highDistance` | | |
-| `mediumDistance` | | |
+| `acceptRadius` | 0.45 | 0.50 |
+| `highDistance` | 0.20 | 0.20 |
+| `mediumDistance` | 0.30 | 0.30 |
 
-Default kind:
+Default kind: **raw**.
+
+Other changes:
+
+| Parameter | Before | After |
+|---|---|---|
+| `inferredTagWeight` | 0.4 | 0.2 |
+| `ambiguityDistanceGap` | 0.05 | 0 (exact tie only) |
+| Best-K selection | 5 nearest meetings | 5 meetings with the highest `tagW × speechW × closeness` |
 
 ### Reasoning
 
-_Why these values were chosen._
+- **Default kind raw.** Top-1 is a tie within noise: PLDA's one extra hit is a
+  4-second clip. Raw separates people better: the closest confirmed different
+  person is 0.62, against 0.45 for PLDA, and its false-match rate was lower at
+  every radius. The data has almost no channel variation, which is where PLDA
+  is expected to help. Both kinds are still saved, so we can change back with a
+  one-line config change.
+- **R.** All clean same-person distances are inside R (except one raw 0.57
+  outlier). The closest confirmed different person is outside R. There is a
+  margin for shorter speech, which gives noisier voiceprints.
+- **high 0.20 / medium 0.30.** Same-person p50 is 0.10–0.13, and the user's
+  matches are 0.03–0.08. Every `high` and `medium` match in the trials is
+  correct.
+- **Best-K by contribution.** With "5 nearest", the user's near inferred
+  meetings pushed out all but one confirmed meeting, so `high` (≥2 confirmed)
+  could not occur. With "5 strongest", `high` occurs 7/7, all correct.
+- **Inferred weight 0.2 and gap 0.** Inferred clusters that the LLM put on the
+  user's voice were within 0.05 of the true match. This made almost every match
+  `ambiguous`. With these values, `ambiguous` shows only when the scores are
+  really close.

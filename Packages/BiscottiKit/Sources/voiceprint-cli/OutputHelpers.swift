@@ -22,8 +22,12 @@ enum AppRunningGuard {
 
     /// Checks whether the Biscotti app is running. If so, prints a message
     /// to stderr and throws `ExitCode(2)`.
+    ///
+    /// Only the app's own store needs the guard. A `--store` that points to a
+    /// different directory (for example a copy) is safe while the app runs.
     @MainActor
-    static func check(writer: StandardOutputWriter) throws {
+    static func check(storePath: String?, writer: StandardOutputWriter) throws {
+        guard StoreLocation.isDefault(storePath) else { return }
         let running = NSWorkspace.shared.runningApplications.contains {
             $0.bundleIdentifier == biscottiBundleID
         }

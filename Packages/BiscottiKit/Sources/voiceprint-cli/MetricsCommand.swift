@@ -22,10 +22,19 @@ struct MetricsCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Output results as JSON to stdout.")
     var json: Bool = false
 
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Comma-separated names or emails that are the same human. Repeatable.",
+            discussion: "Example: --same-person \"Steve,steve@kiln.tech,scosman@gmail.com\""
+        )
+    )
+    var samePerson: [String] = []
+
     func run() async throws {
         let writer = StandardOutputWriter()
 
-        try await MainActor.run { try AppRunningGuard.check(writer: writer) }
+        try await MainActor.run { try AppRunningGuard.check(storePath: store, writer: writer) }
 
         let dataStore = try StoreLocation.open(path: store, writer: writer)
 
@@ -38,9 +47,10 @@ struct MetricsCommand: AsyncParsableCommand {
             )
             writer.writeStderr("Loading \(voiceprintKind.rawValue) corpus (space: \(space))...")
 
-            let corpus = try await dataStore.voiceprintCorpus(
+            let loaded = try await dataStore.voiceprintCorpus(
                 kind: voiceprintKind, space: space, excludingMeetingID: nil
             )
+            let corpus = try mergeAliases(loaded, writer: writer)
 
             writer.writeStderr(
                 "  \(corpus.entries.count) voiceprints, "
@@ -68,6 +78,25 @@ struct MetricsCommand: AsyncParsableCommand {
             let text = MetricsFormatter.text(results, includeSweep: sweep)
             writer.writeStdout(text)
         }
+    }
+
+    /// Applies `--same-person` groups. Fails when a term matches no person.
+    private func mergeAliases(
+        _ corpus: VoiceprintCorpusData, writer: StandardOutputWriter
+    ) throws -> VoiceprintCorpusData {
+        guard !samePerson.isEmpty else { return corpus }
+        let groups = samePerson.map { $0.split(separator: ",").map(String.init) }
+        let resolved = PersonAliases.resolve(groups, people: corpus.people)
+        guard resolved.unmatched.isEmpty else {
+            throw ValidationError(
+                "--same-person: no person matches: \(resolved.unmatched.joined(separator: ", "))"
+            )
+        }
+        for group in resolved.groups {
+            let names = group.map { corpus.people[$0]?.name ?? $0.uuidString }
+            writer.writeStderr("  Same person: \(names.joined(separator: ", "))")
+        }
+        return corpus.mergingPeople(resolved.groups)
     }
 }
 

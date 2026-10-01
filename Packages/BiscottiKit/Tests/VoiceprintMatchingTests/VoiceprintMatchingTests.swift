@@ -323,6 +323,31 @@ struct MatcherTests {
         #expect(result[0]?.candidates.first?.countedMeetings == 5)
     }
 
+    @Test func bestKKeepsStrongestNotNearest() {
+        // 5 inferred meetings very close, 2 confirmed meetings a little farther.
+        // Keeping the 5 nearest would drop both confirmed meetings; keeping the
+        // 5 strongest (tag x speech x closeness) keeps them.
+        let inferred = (0 ..< 5).map { _ in
+            makeEntry(
+                meetingID: UUID(), vector: vectorAtAngle(1), speakingDuration: 120,
+                tag: SpeakerTagData(personID: personA, userSet: false)
+            )
+        }
+        let confirmed = (0 ..< 2).map { _ in
+            makeEntry(
+                meetingID: UUID(), vector: vectorAtAngle(15), speakingDuration: 120,
+                tag: SpeakerTagData(personID: personA, userSet: true)
+            )
+        }
+        let corpus = makeCorpus(entries: inferred + confirmed, people: peopleMap)
+
+        let matcher = VoiceprintMatcher()
+        let result = matcher.match(query: [0: vectorAtAngle(0)], corpus: PreparedCorpus(corpus), invitees: .none)
+        let best = result[0]?.candidates.first
+        #expect(best?.countedMeetings == 5)
+        #expect(best?.confirmedCountedMeetings == 2)
+    }
+
     @Test func inferredTagWeight() {
         // Person A with confirmed tags vs person B with inferred tags at same distance
         // Confirmed should outscore inferred
@@ -956,6 +981,65 @@ struct EvaluatorTests {
         // Both people appear in only one meeting each; hiding their meeting removes them
         #expect(metrics.trialsWithoutHistory == 2)
         #expect(metrics.trials == 0)
+    }
+}
+
+// MARK: - PersonAliases tests
+
+@Suite("PersonAliases")
+struct PersonAliasesTests {
+    let steve = UUID()
+    let steveWork = UUID()
+    let bob = UUID()
+
+    var people: [UUID: PersonData] {
+        [
+            steve: PersonData(id: steve, name: "Steve"),
+            steveWork: PersonData(id: steveWork, name: "steve@kiln.tech", email: "steve@kiln.tech"),
+            bob: PersonData(id: bob, name: "Bob")
+        ]
+    }
+
+    @Test func resolvesByNameOrEmailCaseInsensitive() {
+        let result = PersonAliases.resolve([["steve", "STEVE@kiln.tech"]], people: people)
+        #expect(result.unmatched.isEmpty)
+        #expect(result.groups.count == 1)
+        #expect(Set(result.groups[0]) == [steve, steveWork])
+    }
+
+    @Test func reportsUnmatchedAndDropsSingletons() {
+        let result = PersonAliases.resolve([["Bob", "nobody@x.com"]], people: people)
+        #expect(result.unmatched == ["nobody@x.com"])
+        #expect(result.groups.isEmpty)
+    }
+
+    @Test func mergedAliasesAreNotConfused() throws {
+        // Steve's two records share one voice. Unmerged, trials confuse them;
+        // merged, every trial is correct and no alias pair is an impostor.
+        let mids = (0 ..< 4).map { _ in UUID() }
+        let entries = [
+            makeEntry(meetingID: mids[0], vector: vectorAtAngle(0),
+                      tag: SpeakerTagData(personID: steve, userSet: true)),
+            makeEntry(meetingID: mids[1], vector: vectorAtAngle(1),
+                      tag: SpeakerTagData(personID: steveWork, userSet: true)),
+            makeEntry(meetingID: mids[2], vector: vectorAtAngle(2),
+                      tag: SpeakerTagData(personID: steve, userSet: true)),
+            makeEntry(meetingID: mids[3], vector: vectorAtAngle(3),
+                      tag: SpeakerTagData(personID: steveWork, userSet: true))
+        ]
+        let corpus = makeCorpus(entries: entries, people: people)
+        let evaluator = VoiceprintEvaluator(sweep: [0.1])
+
+        let before = evaluator.evaluate(corpus)
+        #expect(before.top1Correct < before.trials)
+
+        let groups = PersonAliases.resolve([["Steve", "steve@kiln.tech"]], people: people).groups
+        let after = evaluator.evaluate(corpus.mergingPeople(groups))
+        #expect(after.trials == 4)
+        #expect(after.top1Correct == 4)
+        #expect(after.confusedPairs.isEmpty)
+        let row = try #require(after.sweep.first)
+        #expect(row.falseMatchRate == 0)
     }
 }
 

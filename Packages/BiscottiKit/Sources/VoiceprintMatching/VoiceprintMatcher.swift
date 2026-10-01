@@ -269,31 +269,12 @@ private extension VoiceprintMatcher {
         invitees: Invitees, corpus: PreparedCorpus,
         acceptR: Float
     ) -> PersonCandidate {
-        // One vote per meeting: keep the closest voiceprint from each meeting
-        var perMeeting: [UUID: DistanceEntry] = [:]
-        for hit in hits {
-            let mid = hit.entry.meetingID
-            if let existing = perMeeting[mid] {
-                if hit.distance < existing.distance {
-                    perMeeting[mid] = hit
-                }
-            } else {
-                perMeeting[mid] = hit
-            }
-        }
-
-        // Best K meetings, sorted by distance ascending
-        let kept = perMeeting.values
-            .sorted { $0.distance < $1.distance }
-            .prefix(config.bestMeetingsPerPerson)
+        let kept = strongestMeetings(hits: hits, acceptR: acceptR)
 
         // Score
         var totalScore: Float = 0
         for item in kept {
-            let tagW: Float = (item.entry.tag?.userSet ?? false) ? 1.0 : config.inferredTagWeight
-            let speechW = Float(min(1, max(0, item.entry.speakingDuration) / config.fullSpeechSeconds))
-            let closeness = 1 - item.distance / acceptR
-            totalScore += tagW * speechW * closeness
+            totalScore += contribution(of: item, acceptR: acceptR)
         }
 
         // Invitee boost
@@ -328,6 +309,36 @@ private extension VoiceprintMatcher {
             confirmedCountedMeetings: confirmedKept.count,
             isInvitee: isInvitee
         )
+    }
+
+    /// One vote per meeting (the closest voiceprint), then the best K meetings
+    /// by contribution. Sorting by distance alone let close inferred tags push
+    /// out the person's confirmed meetings (calibration pass, calibration.md).
+    func strongestMeetings(hits: [DistanceEntry], acceptR: Float) -> [DistanceEntry] {
+        var perMeeting: [UUID: DistanceEntry] = [:]
+        for hit in hits {
+            let mid = hit.entry.meetingID
+            if let existing = perMeeting[mid], existing.distance <= hit.distance { continue }
+            perMeeting[mid] = hit
+        }
+
+        return perMeeting.values
+            .map { item in (item: item, contribution: contribution(of: item, acceptR: acceptR)) }
+            .sorted { lhs, rhs in
+                if lhs.contribution != rhs.contribution { return lhs.contribution > rhs.contribution }
+                if lhs.item.distance != rhs.item.distance { return lhs.item.distance < rhs.item.distance }
+                return lhs.item.entry.meetingID.uuidString < rhs.item.entry.meetingID.uuidString
+            }
+            .prefix(config.bestMeetingsPerPerson)
+            .map(\.item)
+    }
+
+    /// One meeting's share of a person's score: tag weight x speech weight x closeness.
+    func contribution(of item: DistanceEntry, acceptR: Float) -> Float {
+        let tagW: Float = (item.entry.tag?.userSet ?? false) ? 1.0 : config.inferredTagWeight
+        let speechW = Float(min(1, max(0, item.entry.speakingDuration) / config.fullSpeechSeconds))
+        let closeness = 1 - item.distance / acceptR
+        return tagW * speechW * closeness
     }
 
     func determineLevel(

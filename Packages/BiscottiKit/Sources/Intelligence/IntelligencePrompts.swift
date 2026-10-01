@@ -83,6 +83,25 @@ public enum IntelligencePrompts {
     invitee so we capture their email. If a speaker cannot be confidently \
     identified, omit them.
 
+    If a <voiceprint_matches> section is provided, it compares each speaker's voice \
+    with speakers from earlier meetings. Voice evidence and transcript evidence are \
+    independent. When they agree, that is strong evidence. A high confidence match \
+    with an email is normally correct. A speaker with no match is probably new; \
+    identify them from the transcript. Do not invent an email that is not listed.
+
+    The known-people list can contain more than one entry for the same human. For \
+    example, one meeting can record only a first name, and another meeting can \
+    record a full name with an email.
+
+    When a speaker's voice is close to more than one known person, use the names \
+    to decide:
+    - If the names can refer to the same human (a short form, a nickname, or a \
+    name and a matching email), treat them as one person and use the entry that \
+    has an email.
+    - If the names clearly refer to different people, their voices are only \
+    similar. Use the transcript to choose between them, or leave the speaker \
+    unassigned.
+
     If a <user_speaker_person_mapping> section is provided above, those speakers \
     are already correctly assigned -- do not change them. Only assign the \
     currently unassigned speakers.
@@ -141,6 +160,7 @@ public enum IntelligencePrompts {
     public static func analysisFirstUser(
         detail: MeetingDetailData,
         human: [Int: PersonData],
+        voiceprintBlock: String = "",
         transcriptSpeakerLabeled: String
     ) -> String {
         var parts: [String] = []
@@ -150,6 +170,8 @@ public enum IntelligencePrompts {
 
         let mapping = userSpeakerMappingBlock(human)
         if !mapping.isEmpty { parts.append(mapping) }
+
+        if !voiceprintBlock.isEmpty { parts.append(voiceprintBlock) }
 
         parts.append("<transcript>\n\(transcriptSpeakerLabeled)\n</transcript>")
         parts.append(speakerTaskInstructions)
@@ -250,26 +272,29 @@ public enum IntelligencePrompts {
     ) -> String {
         guard let calendar = detail.calendar else { return "" }
 
-        var invitees: [(name: String, email: String?)] = []
+        var people: [PersonData] = []
 
-        // Organizer first
         if let organizer = calendar.organizer {
-            invitees.append((name: organizer.name, email: organizer.email))
+            people.append(organizer)
         }
 
-        // Then attendees, deduped against organizer
         let organizerID = calendar.organizer?.id
         for attendee in calendar.attendees where attendee.id != organizerID {
-            invitees.append((name: attendee.name, email: attendee.email))
+            people.append(attendee)
         }
 
-        guard !invitees.isEmpty else { return "" }
+        guard !people.isEmpty else { return "" }
 
-        let lines = invitees.map { invitee in
-            if let email = invitee.email, !email.isEmpty {
-                return "- \(invitee.name) <\(email)>"
+        let lines = people.map { person in
+            var line = if let email = person.email, !email.isEmpty {
+                "- \(person.name) <\(email)>"
+            } else {
+                "- \(person.name)"
             }
-            return "- \(invitee.name)"
+            if person.isCurrentUser {
+                line += " (the person who recorded this meeting)"
+            }
+            return line
         }
         return "Invitees:\n\(lines.joined(separator: "\n"))"
     }

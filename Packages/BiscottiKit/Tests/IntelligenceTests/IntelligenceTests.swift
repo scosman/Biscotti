@@ -3,6 +3,7 @@ import Foundation
 import LocalLLM
 import Testing
 import Transcription
+import VoiceprintMatching
 @testable import Intelligence
 
 // MARK: - Fakes
@@ -2218,3 +2219,225 @@ struct EmptyTranscriptTests {
         #expect(MeetingAnalyzer.emptyTranscriptTitle == "Empty Meeting")
     }
 }
+
+// MARK: - Voiceprint seeding helper
+
+/// Creates two meetings with PLDA voiceprints in the same space.
+/// The first meeting forms the corpus (with a tagged speaker so
+/// candidates can form); the second is the target.
+/// Returns (targetMeetingID, targetTranscriptID).
+private func seedVoiceprintStore(
+    store: DataStore, dim: Int = 128
+) async throws -> (UUID, UUID) {
+    // Historical meeting with voiceprints (forms the corpus)
+    let (_, transcriptID1) = try await makeMeetingWithTranscript(
+        store: store, title: "Historical Meeting"
+    )
+    let vector1 = [Float](repeating: 0.1, count: dim)
+    try await store.addVoiceprints(
+        [NewVoiceprint(speakerID: 0, vector: vector1, speakingDuration: 30)],
+        kind: .plda, space: "test-space", to: transcriptID1
+    )
+    // Tag the historical speaker with a person so the matcher can build
+    // named candidates (untagged corpus entries produce no candidates).
+    let personID = try await store.findOrCreatePerson(
+        name: "CorpusAlice", email: "corpus.alice@example.com"
+    )
+    try await store.setSpeakerAssignment(
+        speakerID: 0, personID: personID, for: transcriptID1
+    )
+
+    // Target meeting with voiceprints (query vectors)
+    let (meetingID2, transcriptID2) = try await makeMeetingWithTranscript(
+        store: store, title: "Target Meeting"
+    )
+    let vector2 = [Float](repeating: 0.1, count: dim)
+    try await store.addVoiceprints(
+        [NewVoiceprint(speakerID: 0, vector: vector2, speakingDuration: 20)],
+        kind: .plda, space: "test-space", to: transcriptID2
+    )
+
+    return (meetingID2, transcriptID2)
+}
+
+// MARK: - Intelligence voiceprint integration
+
+@Suite("Intelligence voiceprint integration")
+struct IntelligenceVoiceprintIntegrationTests {
+    @Test("speaker turn contains voiceprint block from seeded store")
+    @MainActor func speakerTurnContainsBlock() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await seedVoiceprintStore(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Speaker turn should have fired
+        #expect(session.generateCalls.count >= 1)
+        let speakerUserMsg = session.generateCalls[0].first { $0.role == .user }
+        #expect(speakerUserMsg != nil)
+        #expect(speakerUserMsg?.content.contains("<voiceprint_matches>") == true)
+        #expect(speakerUserMsg?.content.contains("</voiceprint_matches>") == true)
+    }
+
+    @Test("context-sizing content equals sent content structure")
+    @MainActor func contextSizingParity() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await seedVoiceprintStore(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        #expect(session.generateCalls.count >= 1)
+        let sentUserContent = session.generateCalls[0].first { $0.role == .user }?.content ?? ""
+
+        // The sent content must contain all the structural pieces that
+        // analysisFirstUser assembles (and that context-sizing measures):
+        // meeting details, voiceprint block, transcript, speaker instructions.
+        #expect(sentUserContent.contains("<meeting_details>"))
+        #expect(sentUserContent.contains("<voiceprint_matches>"))
+        #expect(sentUserContent.contains("<transcript>"))
+        #expect(sentUserContent.contains("Match diarization speakers"))
+
+        // Verify ordering: voiceprint block before transcript
+        let vpRange = sentUserContent.range(of: "<voiceprint_matches>")
+        let txRange = sentUserContent.range(of: "<transcript>")
+        #expect(vpRange != nil)
+        #expect(txRange != nil)
+        if let vpStart = vpRange, let txStart = txRange {
+            #expect(vpStart.lowerBound < txStart.lowerBound)
+        }
+    }
+
+    @Test("no voiceprint history gives prompt without voiceprint block")
+    @MainActor func noHistoryNoBlock() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(store: store)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Speaker turn ran (unmapped speakers exist)
+        #expect(session.generateCalls.count >= 1)
+        let userContent = session.generateCalls[0].first { $0.role == .user }?.content ?? ""
+
+        // No voiceprint block because the corpus has no history.
+        // Note: speakerTaskInstructions mentions "<voiceprint_matches>"
+        // in its guidance text, so check for the rendered block's unique
+        // content line instead.
+        #expect(!userContent.contains("Voiceprint history:"))
+
+        // But the rest of the prompt is intact
+        #expect(userContent.contains("<transcript>"))
+        #expect(userContent.contains("Match diarization speakers"))
+
+        // Run completed successfully
+        #expect(fixture.intel.jobs[meetingID] == .completed)
+    }
+}
+
+// MARK: - Intelligence voiceprintDebug
+
+#if DEBUG
+
+    @Suite("Intelligence voiceprintDebug")
+    struct IntelligenceVoiceprintDebugTests {
+        @Test("candidates and neighbors for a seeded store")
+        @MainActor func candidatesAndNeighbors() async throws {
+            let store = try makeStore()
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+
+            let fixture = makeIntelligence(store: store)
+            let report = await fixture.intel.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcriptID,
+                speakerID: 0, kind: .plda
+            )
+
+            #expect(report.hasVoiceprint == true)
+            #expect(!report.candidates.isEmpty)
+            #expect(!report.neighbors.isEmpty)
+            #expect(report.errorMessage == nil)
+            #expect(report.speakerID == 0)
+            #expect(report.kind == .plda)
+        }
+
+        @Test("user-tagged speaker still gets candidates")
+        @MainActor func userTaggedStillGetsCandidates() async throws {
+            let store = try makeStore()
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+
+            // Assign speaker 0 to a person (user-tagged)
+            let personID = try await store.findOrCreatePerson(
+                name: "Alice", email: "alice@example.com"
+            )
+            try await store.setSpeakerAssignment(
+                speakerID: 0, personID: personID, for: transcriptID
+            )
+
+            let fixture = makeIntelligence(store: store)
+            let report = await fixture.intel.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcriptID,
+                speakerID: 0, kind: .plda
+            )
+
+            // Debug always runs matching regardless of assignments
+            #expect(report.hasVoiceprint == true)
+            #expect(!report.candidates.isEmpty)
+        }
+
+        @Test("no-voiceprint speaker gives hasVoiceprint false")
+        @MainActor func noVoiceprintSpeaker() async throws {
+            let store = try makeStore()
+            // seedVoiceprintStore only adds voiceprint for speaker 0
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+
+            let fixture = makeIntelligence(store: store)
+            let report = await fixture.intel.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcriptID,
+                speakerID: 1, kind: .plda
+            )
+
+            #expect(report.hasVoiceprint == false)
+            #expect(report.candidates.isEmpty)
+        }
+
+        @Test("kind parameter switches the result")
+        @MainActor func kindSwitchesResult() async throws {
+            let store = try makeStore()
+            // Seed with PLDA voiceprints in "test-space"
+            let (meetingID, transcriptID) = try await seedVoiceprintStore(store: store)
+
+            let fixture = makeIntelligence(store: store)
+
+            // PLDA: should have corpus data
+            let pldaReport = await fixture.intel.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcriptID,
+                speakerID: 0, kind: .plda
+            )
+            #expect(pldaReport.hasVoiceprint == true)
+            #expect(pldaReport.corpusMeetings > 0)
+
+            // Raw: no voiceprints of that kind were seeded
+            let rawReport = await fixture.intel.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcriptID,
+                speakerID: 0, kind: .raw
+            )
+            // No raw voiceprints exist, so no voiceprint for this speaker
+            #expect(rawReport.hasVoiceprint == false)
+            #expect(rawReport.corpusMeetings == 0)
+        }
+    }
+
+#endif

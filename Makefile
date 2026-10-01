@@ -86,6 +86,7 @@ test: ## GATING: run package tests
 test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
+	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/BiscottiKit --filter IntelligenceAITests
 
 lint: $(SWIFTLINT) $(SWIFTFORMAT) ## Check formatting + lint (non-mutating)
 	$(SWIFTFORMAT) $(LINT_PATHS) --lint --quiet --cache ignore

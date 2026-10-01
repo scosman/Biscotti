@@ -32,7 +32,7 @@ developer's confirmation first.
 - [x] Phase 4: `VoiceprintMatching` module — config, vector math, prepared
   corpus, matcher + `explain`, backfill speaker mapper, evaluator, metrics
   formatter (§5).
-- [ ] Phase 5: LLM integration and debug window — prompt changes, report
+- [x] Phase 5: LLM integration and debug window — prompt changes, report
   rendering, evidence builder, `runAnalysisSession` wiring, `#if DEBUG` debug
   report + `VoiceprintDebugView`, `IntelligenceAITests` + `make test-ai` (§6, §8,
   §10).

@@ -1,6 +1,7 @@
 import DataStore
 import Foundation
 import LocalLLM
+import VoiceprintMatching
 
 /// The in-process owner of all Biscotti LLM scenario logic.
 ///
@@ -21,7 +22,7 @@ public final class Intelligence {
 
     // MARK: - Dependencies
 
-    private let store: DataStore
+    let store: DataStore
     private let llm: any LLMRunning
     private let modelManager: ModelManager
     private let settingsProvider: @Sendable () async -> AISettings
@@ -210,25 +211,25 @@ public final class Intelligence {
         summaryInstructions: String = IntelligencePrompts.defaultSummaryPrompt,
         markSummaryEdited: Bool = false
     ) async throws {
-        let human = await (try? store.humanSetSpeakerMappings(
-            for: transcript.id
-        )) ?? [:]
-        let allIDs = Set(
-            transcript.segments.compactMap(\.speakerID)
-        )
-        let doSpeakers = !allIDs.subtracting(Set(human.keys)).isEmpty
-
-        // Title generation: only when the meeting still has the default
-        // title and the user has not renamed it. Independent of `force`.
-        let doTitle = detail.title == Meeting.defaultTitle
-            && !detail.editedTitle
+        let human = await (try? store.humanSetSpeakerMappings(for: transcript.id)) ?? [:]
+        let unmappedSpeakers = Set(transcript.segments.compactMap(\.speakerID)).subtracting(human.keys)
+        let doSpeakers = !unmappedSpeakers.isEmpty
+        let doTitle = detail.title == Meeting.defaultTitle && !detail.editedTitle
 
         // Nothing to do: all tasks skipped
         guard doSpeakers || doSummary || doTitle else { return }
 
+        let voiceprintBlock = doSpeakers
+            ? await VoiceprintEvidence.block(
+                store: store, meetingID: meetingID,
+                transcript: transcript, detail: detail, human: human
+            )
+            : ""
+
         let firstUser = buildFirstUserContent(
             doSpeakers: doSpeakers, doSummary: doSummary,
             detail: detail, transcript: transcript, human: human,
+            voiceprintBlock: voiceprintBlock,
             summaryInstructions: summaryInstructions
         )
         let followUpUsers = contextBudgetFollowUps(
@@ -256,6 +257,7 @@ public final class Intelligence {
                 transcript: transcript, human: human,
                 doSpeakers: doSpeakers, doSummary: doSummary,
                 doTitle: doTitle,
+                voiceprintBlock: voiceprintBlock,
                 summaryInstructions: summaryInstructions,
                 markSummaryEdited: markSummaryEdited,
                 store: self.store,
@@ -299,12 +301,14 @@ public final class Intelligence {
         detail: MeetingDetailData,
         transcript: TranscriptData,
         human: [Int: PersonData],
+        voiceprintBlock: String = "",
         summaryInstructions: String = IntelligencePrompts.defaultSummaryPrompt
     ) -> String {
         if doSpeakers {
             let plain = TranscriptFormatter.plain(transcript, names: [:])
             return IntelligencePrompts.analysisFirstUser(
                 detail: detail, human: human,
+                voiceprintBlock: voiceprintBlock,
                 transcriptSpeakerLabeled: plain
             )
         } else if doSummary {

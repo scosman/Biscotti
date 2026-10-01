@@ -248,7 +248,8 @@ let package = Package(
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
-                "TranscriptionService"
+                "TranscriptionService",
+                "VoiceprintMatching"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -265,6 +266,7 @@ let package = Package(
                 "Permissions",
                 "Recording",
                 "TranscriptionService",
+                "VoiceprintMatching",
                 .product(name: "AudioCapture", package: "AudioCapture"),
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
@@ -508,6 +510,7 @@ let package = Package(
             name: "Intelligence",
             dependencies: [
                 "DataStore",
+                "VoiceprintMatching",
                 .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors
@@ -517,6 +520,18 @@ let package = Package(
             dependencies: [
                 "Intelligence",
                 "DataStore",
+                "VoiceprintMatching",
+                .product(name: "LocalLLM", package: "LocalLLM"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "IntelligenceAITests",
+            dependencies: [
+                "Intelligence",
+                "DataStore",
+                "VoiceprintMatching",
                 .product(name: "LocalLLM", package: "LocalLLM"),
                 .product(name: "Transcription", package: "Transcription")
             ],

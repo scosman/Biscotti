@@ -77,6 +77,10 @@ struct TranscriptListView<Header: View>: View {
     /// to open the speaker-mapping sheet.
     var onSpeaker: (Int) -> Void = { _ in }
 
+    /// Callback when the user opens the voiceprint debug window for a
+    /// speaker (right-click context menu, `#if DEBUG` only).
+    var onVoiceprintDebug: (Int) -> Void = { _ in }
+
     /// Non-recycled header view (page chrome) placed before the
     /// recycled transcript rows. Pass `EmptyView()` when no header
     /// is needed.
@@ -110,7 +114,8 @@ struct TranscriptListView<Header: View>: View {
                     ),
                     canSeek: canSeek,
                     onSeek: onSeek,
-                    onSpeaker: onSpeaker
+                    onSpeaker: onSpeaker,
+                    onVoiceprintDebug: onVoiceprintDebug
                 )
                 .equatable()
                 .readableRowWidth()
@@ -146,6 +151,8 @@ struct TranscriptSegmentRow: View, Equatable {
     let onSeek: (TimeInterval) -> Void
     /// Tapped with the segment's speaker ID to open the mapping sheet.
     let onSpeaker: (Int) -> Void
+    /// Callback for the voiceprint debug context menu (`#if DEBUG` only).
+    let onVoiceprintDebug: (Int) -> Void
 
     nonisolated static func == (lhs: TranscriptSegmentRow, rhs: TranscriptSegmentRow) -> Bool {
         lhs.segment == rhs.segment
@@ -176,6 +183,13 @@ struct TranscriptSegmentRow: View, Equatable {
             }
             .buttonStyle(.plain)
             .cursor(.pointingHand)
+            #if DEBUG
+                .contextMenu {
+                    Button("Voiceprint Debug\u{2026}") {
+                        onVoiceprintDebug(speakerID)
+                    }
+                }
+            #endif
         } else {
             Text(speakerName)
                 .font(.system(size: 14, weight: .semibold))

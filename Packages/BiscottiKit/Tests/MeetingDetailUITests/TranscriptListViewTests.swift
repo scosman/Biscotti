@@ -46,7 +46,8 @@ struct TranscriptListViewTests {
             speakerColor: speakerColor,
             canSeek: canSeek,
             onSeek: { _ in },
-            onSpeaker: { _ in }
+            onSpeaker: { _ in },
+            onVoiceprintDebug: { _ in }
         )
     }
 

@@ -28,7 +28,8 @@ let package = Package(
         .library(name: "MarkdownEditorUI", targets: ["MarkdownEditorUI"]),
         .library(name: "Intelligence", targets: ["Intelligence"]),
         .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
-        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"])
+        .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"]),
+        .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
@@ -555,6 +556,18 @@ let package = Package(
             dependencies: [
                 "SummaryPromptUI"
             ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "VoiceprintMatching",
+            dependencies: [
+                "DataStore"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "VoiceprintMatchingTests",
+            dependencies: ["VoiceprintMatching", "DataStore"],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

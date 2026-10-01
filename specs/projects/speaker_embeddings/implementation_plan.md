@@ -29,7 +29,7 @@ developer's confirmation first.
   query / backfill reads, `currentUserPersonID` on `CalendarSnapshot`,
   `setParticipants(currentUser:)`, `calendarContext` marker, AppCore
   `persistSnapshot` (§4, §7).
-- [ ] Phase 4: `VoiceprintMatching` module — config, vector math, prepared
+- [x] Phase 4: `VoiceprintMatching` module — config, vector math, prepared
   corpus, matcher + `explain`, backfill speaker mapper, evaluator, metrics
   formatter (§5).
 - [ ] Phase 5: LLM integration and debug window — prompt changes, report

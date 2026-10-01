@@ -52,6 +52,14 @@ import SwiftData
     /// Platform identifier, e.g. "zoom", "meet", "teams".
     public var conferencePlatform: String?
 
+    // MARK: Current user
+
+    /// The `Person.id` of the attendee who recorded this meeting
+    /// (`EKParticipant.isCurrentUser`). Set by `persistSnapshot` when
+    /// the calendar event has participants. `nil` when no participant
+    /// is the current user, or when no calendar data exists.
+    public var currentUserPersonID: UUID?
+
     // MARK: Metadata
 
     /// When this snapshot was captured.

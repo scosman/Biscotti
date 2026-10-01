@@ -11,7 +11,8 @@ import SwiftData
     /// Key field for dedup (may be nil for people without a known email).
     public var email: String?
 
-    // Reserved for P2: voiceprint/centroid embeddings, an "isMe" flag.
+    // Voiceprints live on TranscriptRecord (one row per speaker per kind).
+    // There is no "isMe" flag; the user tags themselves like any other person.
 
     @Relationship(inverse: \Meeting.participants)
     public var meetings: [Meeting] = []

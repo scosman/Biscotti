@@ -1411,8 +1411,7 @@ extension AppCore {
         let snapshot = CalendarSnapshot(
             eventIdentifier: input.eventIdentifier,
             calendarItemIdentifier: input.calendarItemIdentifier,
-            calendarItemExternalIdentifier: input
-                .calendarItemExternalIdentifier,
+            calendarItemExternalIdentifier: input.calendarItemExternalIdentifier,
             occurrenceStartDate: input.occurrenceStartDate,
             compositeKey: input.compositeKey,
             title: input.title,
@@ -1430,40 +1429,45 @@ extension AppCore {
             conferenceURL: input.conferenceURL,
             conferencePlatform: input.conferencePlatform
         )
-
         try await store.setSnapshot(snapshot, for: meetingID)
-
-        var personIDs: [UUID] = []
-        var organizerID: UUID?
-
-        if let org = input.organizer {
-            let pid = try await store.findOrCreatePerson(
-                name: org.name ?? "Unknown",
-                email: org.email
-            )
-            organizerID = pid
-        }
-        for attendee in input.attendees {
-            let pid = try await store.findOrCreatePerson(
-                name: attendee.name ?? "Unknown",
-                email: attendee.email
-            )
-            personIDs.append(pid)
-        }
-
-        try await store.setParticipants(
-            personIDs,
-            organizer: organizerID,
-            for: meetingID
-        )
+        try await persistParticipants(from: input, for: meetingID)
 
         // Apply the event title to the meeting (unless the user
         // has manually edited the title).
         if !input.title.isEmpty {
-            try await store.applyEventTitle(
-                input.title, for: meetingID
-            )
+            try await store.applyEventTitle(input.title, for: meetingID)
         }
+    }
+
+    /// Creates or resolves Person rows from the input's participants and sets
+    /// them on the meeting, including the current-user marker.
+    private func persistParticipants(
+        from input: CalendarSnapshotInput,
+        for meetingID: UUID
+    ) async throws {
+        var personIDs: [UUID] = []
+        var organizerID: UUID?
+        var currentUserID: UUID?
+
+        if let org = input.organizer {
+            let pid = try await store.findOrCreatePerson(
+                name: org.name ?? "Unknown", email: org.email
+            )
+            organizerID = pid
+            if org.isCurrentUser { currentUserID = pid }
+        }
+        for attendee in input.attendees {
+            let pid = try await store.findOrCreatePerson(
+                name: attendee.name ?? "Unknown", email: attendee.email
+            )
+            personIDs.append(pid)
+            if currentUserID == nil, attendee.isCurrentUser { currentUserID = pid }
+        }
+
+        try await store.setParticipants(
+            personIDs, organizer: organizerID,
+            currentUser: currentUserID, for: meetingID
+        )
     }
 }
 

@@ -910,6 +910,141 @@ struct AppCoreCalendarAssociationTests {
     }
 }
 
+// MARK: - persistSnapshot current-user wiring
+
+@Suite("AppCore -- persistSnapshot current-user wiring")
+struct PersistSnapshotCurrentUserTests {
+    /// Helper: builds an EKEventDTO whose attendees include an isCurrentUser marker.
+    private static func makeDTOWithAttendees(
+        start: Date,
+        end: Date,
+        currentUserIsOrganizer: Bool = false,
+        currentUserIsAttendee: Bool = false,
+        includeNonCurrentAttendees: Bool = true
+    ) -> EKEventDTO {
+        let organizer = AttendeeDTO(
+            name: "Organizer", participantURL: URL(string: "mailto:org@example.com"),
+            isCurrentUser: currentUserIsOrganizer,
+            role: "chair", status: "accepted", type: "person"
+        )
+        var attendees: [AttendeeDTO] = []
+        if includeNonCurrentAttendees {
+            attendees.append(AttendeeDTO(
+                name: "Alice", participantURL: URL(string: "mailto:alice@example.com"),
+                isCurrentUser: false, role: "required", status: "accepted", type: "person"
+            ))
+        }
+        if currentUserIsAttendee {
+            attendees.append(AttendeeDTO(
+                name: "Me", participantURL: URL(string: "mailto:me@example.com"),
+                isCurrentUser: true, role: "required", status: "accepted", type: "person"
+            ))
+        }
+        return EKEventDTO(
+            eventIdentifier: "ev-cu", calendarItemIdentifier: "ci-ev-cu",
+            calendarItemExternalIdentifier: "ext-ev-cu", occurrenceDate: start,
+            title: "Current User Test", startDate: start, endDate: end,
+            isAllDay: false, location: nil, url: nil, timeZone: nil,
+            notes: nil, status: nil, availability: nil,
+            calendarIdentifier: "cal-1", calendarTitle: "Work",
+            calendarColorHex: "#0066CC", calendarSourceTitle: "iCloud",
+            birthdayContactIdentifier: nil,
+            attendeeCount: attendees.count + 1,
+            attendees: attendees, organizer: organizer
+        )
+    }
+
+    @Test("attendee with isCurrentUser flows through to calendarContext")
+    @MainActor
+    func attendeeCurrentUser() async throws {
+        let now = Date()
+        let dto = Self.makeDTOWithAttendees(
+            start: now.addingTimeInterval(-300), end: now.addingTimeInterval(1500),
+            currentUserIsAttendee: true
+        )
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto], calendarRefreshResult: dto,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+        await fix.core.startRecording()
+
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let calendar = try #require(detail?.calendar)
+
+        // The attendee named "Me" should be marked as current user
+        let meAttendee = calendar.attendees.first { $0.name == "Me" }
+        #expect(meAttendee?.isCurrentUser == true)
+
+        // Other attendees and organizer should not be current user
+        let alice = calendar.attendees.first { $0.name == "Alice" }
+        #expect(alice?.isCurrentUser == false)
+        #expect(calendar.organizer?.isCurrentUser == false)
+    }
+
+    @Test("organizer with isCurrentUser flows through to calendarContext")
+    @MainActor
+    func organizerCurrentUser() async throws {
+        let now = Date()
+        let dto = Self.makeDTOWithAttendees(
+            start: now.addingTimeInterval(-300), end: now.addingTimeInterval(1500),
+            currentUserIsOrganizer: true
+        )
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto], calendarRefreshResult: dto,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+        await fix.core.startRecording()
+
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let calendar = try #require(detail?.calendar)
+
+        // The organizer should be marked as current user
+        #expect(calendar.organizer?.isCurrentUser == true)
+
+        // Attendees should not be current user
+        let alice = calendar.attendees.first { $0.name == "Alice" }
+        #expect(alice?.isCurrentUser == false)
+    }
+
+    @Test("no isCurrentUser participant leaves all persons unmarked")
+    @MainActor
+    func noCurrentUser() async throws {
+        let now = Date()
+        let dto = Self.makeDTOWithAttendees(
+            start: now.addingTimeInterval(-300), end: now.addingTimeInterval(1500)
+        )
+        let fix = try makeCoreFixture(
+            calendarEventDTOs: [dto], calendarRefreshResult: dto,
+            testName: "AppCoreTests"
+        )
+        defer { fix.cleanup() }
+
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
+        await fix.core.onLaunch()
+        await fix.core.startRecording()
+
+        let meetingID = try #require(fix.core.recording.state.meetingID)
+        let detail = try await fix.store.meetingDetail(id: meetingID)
+        let calendar = try #require(detail?.calendar)
+
+        // No person should be marked as current user
+        #expect(calendar.organizer?.isCurrentUser == false)
+        for attendee in calendar.attendees {
+            #expect(attendee.isCurrentUser == false)
+        }
+    }
+}
+
 // MARK: - Calendar navigation tests
 
 @Suite("AppCore -- calendar navigation")

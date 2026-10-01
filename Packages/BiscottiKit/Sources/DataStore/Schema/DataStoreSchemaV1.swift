@@ -15,7 +15,8 @@ public enum DataStoreSchemaV1: VersionedSchema {
             TranscriptWordRecord.self,
             AudioFileRef.self,
             CalendarSnapshot.self,
-            AppSettings.self
+            AppSettings.self,
+            Voiceprint.self
         ]
     }
 }

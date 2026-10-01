@@ -25,7 +25,7 @@ developer's confirmation first.
   PLDA) replacing `speakerEmbeddings`, `speakerSpeechDurations`,
   `SpeakerEmbeddingSpace`, sanitizer pass-through, `SpeakerAnalyzer` + shared
   helpers, test and CLI-output updates, mark `tx_*` manual tests `not-run` (§3).
-- [ ] Phase 3: Storage — `Voiceprint` model, `addTranscript` writes, corpus /
+- [x] Phase 3: Storage — `Voiceprint` model, `addTranscript` writes, corpus /
   query / backfill reads, `currentUserPersonID` on `CalendarSnapshot`,
   `setParticipants(currentUser:)`, `calendarContext` marker, AppCore
   `persistSnapshot` (§4, §7).

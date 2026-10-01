@@ -1,6 +1,9 @@
 import Foundation
+import os
 import SwiftData
 import Transcription
+
+private let logger = Logger(subsystem: "net.scosman.biscotti", category: "DataStore")
 
 // Phase 3.2 extensions: transcripts, audio refs, calendar snapshots,
 // association, and search.
@@ -33,7 +36,16 @@ public extension DataStore {
         )
         context.insert(record)
 
-        // Map segments with index for stable ordering
+        mapSegments(from: result, to: record)
+        mapVoiceprints(from: result, to: record)
+
+        meeting.transcripts.append(record)
+        try save()
+        return record.id
+    }
+
+    /// Maps `TranscriptResult` segments (with words) into `TranscriptSegmentRecord` rows.
+    private func mapSegments(from result: TranscriptResult, to record: TranscriptRecord) {
         for (segIndex, segment) in result.segments.enumerated() {
             let segRecord = TranscriptSegmentRecord(
                 id: segment.id,
@@ -47,7 +59,6 @@ public extension DataStore {
             )
             context.insert(segRecord)
 
-            // Map words with index for stable ordering
             if let words = segment.words {
                 for (wordIndex, word) in words.enumerated() {
                     let wordRecord = TranscriptWordRecord(
@@ -65,10 +76,34 @@ public extension DataStore {
 
             record.segments.append(segRecord)
         }
+    }
 
-        meeting.transcripts.append(record)
-        try save()
-        return record.id
+    /// Creates `Voiceprint` rows from `TranscriptResult.embeddingSets`.
+    private func mapVoiceprints(from result: TranscriptResult, to record: TranscriptRecord) {
+        for embeddingSet in result.embeddingSets {
+            let kind: VoiceprintKind = switch embeddingSet.kind {
+            case .raw: .raw
+            case .plda: .plda
+            }
+            for (speakerID, vector) in embeddingSet.vectors {
+                guard !vector.isEmpty else { continue }
+                guard vector.allSatisfy(\.isFinite) else {
+                    logger.warning(
+                        "Skipping non-finite voiceprint for speaker \(speakerID) kind \(embeddingSet.kind.rawValue)"
+                    )
+                    continue
+                }
+                let voiceprint = Voiceprint(
+                    speakerID: speakerID,
+                    kind: kind,
+                    embeddingSpace: embeddingSet.space,
+                    vector: vector,
+                    speakingDuration: result.speakerSpeechDurations[speakerID] ?? 0
+                )
+                context.insert(voiceprint)
+                record.voiceprints.append(voiceprint)
+            }
+        }
     }
 
     /// Sets the preferred (current) transcript version for a meeting.

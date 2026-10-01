@@ -13,7 +13,9 @@ let package = Package(
         .executable(name: "transcribe-cli", targets: ["transcribe-cli"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.1.0"),
+        // TEMPORARY: fork with speakerPLDACentroidEmbeddings (upstream PR pending).
+        // Return to argmaxinc/argmax-oss-swift once a release contains it.
+        .package(url: "https://github.com/scosman/argmax-oss-swift.git", revision: "0475cca"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [

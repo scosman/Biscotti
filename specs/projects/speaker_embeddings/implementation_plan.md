@@ -10,7 +10,7 @@ developer's confirmation first.
 
 ## Phases
 
-- [ ] Phase 1: SpeakerKit fork (§2).
+- [x] Phase 1: SpeakerKit fork (§2).
   - **First step:** use the developer's existing fork,
     `https://github.com/scosman/WhisperKit` (the repo's old name, about two
     years old). Sync its `main` with upstream `argmaxinc/argmax-oss-swift`

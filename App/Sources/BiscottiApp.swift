@@ -48,7 +48,7 @@ struct BiscottiApp: App {
         // Single-instance Window (not WindowGroup) so `openWindow(id: "main")`
         // is idempotent — it reopens the one window, never spawns duplicates.
         // This is the right primitive for a single-main-window menu-bar app.
-        Window("", id: "main") {
+        Window("Biscotti", id: "main") {
             WindowRootView(launchState: appDelegate.launchState)
                 .frame(minWidth: 640, minHeight: 400)
                 .onReceive(NotificationCenter.default.publisher(
@@ -683,7 +683,9 @@ extension AppDelegate {
 // MARK: - Window title hider
 
 /// An `NSViewRepresentable` that hides the hosting window's title text
-/// while preserving the toolbar, traffic lights, and draggable title bar.
+/// from the title bar while preserving the toolbar, traffic lights,
+/// draggable title bar, and the programmatic `window.title` (so other
+/// apps can still read the window name via Accessibility / AppleScript).
 /// Placed as a `.background` on `WindowRootView` so it fires once the
 /// view is installed in a window.
 ///
@@ -701,7 +703,6 @@ private struct WindowTitleHider: NSViewRepresentable {
     func updateNSView(_ nsView: TitleHiderView, context _: Context) {
         // Re-apply in case the window was recreated (e.g. reopen from Dock).
         nsView.window?.titleVisibility = .hidden
-        nsView.window?.title = ""
     }
 
     /// Custom NSView that hides the window title synchronously as soon
@@ -710,7 +711,6 @@ private struct WindowTitleHider: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             window?.titleVisibility = .hidden
-            window?.title = ""
         }
     }
 }

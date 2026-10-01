@@ -29,13 +29,15 @@ let package = Package(
         .library(name: "Intelligence", targets: ["Intelligence"]),
         .library(name: "ModelManagementUI", targets: ["ModelManagementUI"]),
         .library(name: "SummaryPromptUI", targets: ["SummaryPromptUI"]),
-        .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"])
+        .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"]),
+        .executable(name: "voiceprint-cli", targets: ["voiceprint-cli"])
     ],
     dependencies: [
         .package(name: "Transcription", path: "../Transcription"),
         .package(name: "AudioCapture", path: "../AudioCapture"),
         .package(name: "LocalLLM", path: "../LocalLLM"),
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1")
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", from: "0.7.1"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -583,6 +585,16 @@ let package = Package(
         .testTarget(
             name: "VoiceprintMatchingTests",
             dependencies: ["VoiceprintMatching", "DataStore"],
+            swiftSettings: warningsAsErrors
+        ),
+        .executableTarget(
+            name: "voiceprint-cli",
+            dependencies: [
+                "DataStore",
+                "VoiceprintMatching",
+                .product(name: "Transcription", package: "Transcription"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
             swiftSettings: warningsAsErrors
         ),
         .executableTarget(

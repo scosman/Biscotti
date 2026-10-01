@@ -127,16 +127,13 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 - **Depends on:** Project 4 (transcripts), Project 3. **Note:** the `LocalLLM` runtime and `BiscottiLLM.xpc` service are already graduated and hardware-validated (via the `graduate_llm_package` spec project).
 - **Risk:** **medium** (core features built; remaining work is the provider abstraction and vocab extraction).
 
-### Project 11 — Auto-Speaker Identification  ·  [P2]
+### Project 11 — Auto-Speaker Identification  ·  [partially built]
 - **Archetype:** library + feature (deepens Transcription's speaker smarts).
 - **Delivers:** automatically work out *who* each speaker is — pin "me" and recognize recurring people across meetings — without manual labeling. **Signal-based; distinct from and complementary to Project 10's LLM name-inference.**
-- **In scope (the two methods):**
-  - **Stream-timing correlation** (Transcription) — align mic-stream vs system-stream volume against transcript timestamps to identify "me" (mic) vs the other party/parties (system) within a recording.
-  - **Cross-recording voiceprints** (Transcription) — use the SDK's speaker **centroid embeddings** (now exposed) to match speakers across recordings (recognize "me" and known people over time).
-  - **Identity store** (DataStore) — persist per-recording embeddings + a known-speaker/voiceprint store; map diarization labels → identities.
-  - **Confirm/correct UI** (MeetingDetailUI) — user confirms or fixes an identity, feeding the voiceprint store.
+- **Status:** The **`speaker_embeddings` spec project** built the voiceprint half: PLDA centroid embeddings via a SpeakerKit fork (upstream PR pending), voiceprint storage on `TranscriptRecord`, the `VoiceprintMatching` module (matcher with confidence levels, evaluator, backfill speaker mapper, metrics formatter), LLM prompt integration (`<voiceprint_matches>` report in the speaker turn), current-user fact from EventKit, `#if DEBUG` voiceprint debug window, `voiceprint-cli` (backfill + metrics), and AI tests. Calibration on real data is the developer's next step.
+- **Remaining scope:** stream-timing correlation (mic vs. system volume for "me" identification), confirm/correct UI polish.
 - **Depends on:** Project 1 (Transcription — owns the audio smarts + embeddings), Project 3 (DataStore), Project 4 (a corpus of recordings). Pairs with Project 10 (LLM naming).
-- **Risk:** **high** (signal heuristics + embedding-distance thresholds).
+- **Risk:** **medium** (voiceprint infrastructure built and tested; remaining work is the stream-timing heuristic).
 
 ### Project 12 — iCloud Sync  ·  [P2]
 - **Archetype:** feature/integration.
@@ -179,7 +176,7 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 | 8 | Onboarding / Settings / Vocab | feature/integration | yes | 4,5,1 | medium |
 | 9 | Distribution & Release | release-enablement | ships | 4 | medium · post-MVP |
 | 10 | Intelligence (LLM) | library+feature | yes | 4,3 | medium · partially built |
-| 11 | Auto-Speaker Identification | library+feature | yes | 1,3,4 | high · P2 |
+| 11 | Auto-Speaker Identification | library+feature | yes | 1,3,4 | medium · partially built |
 | 12 | iCloud Sync | feature/integration | yes | 3,4 | med-high · P2 |
 | 13 | Power-User & Storage Polish | feature/integration | yes | 4 | low-med · P2/P3 |
 | 14 | Custom Vocabularies | feature/integration | yes | 1,4,8 | low · P2 |

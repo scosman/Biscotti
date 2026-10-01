@@ -36,6 +36,6 @@ developer's confirmation first.
   rendering, evidence builder, `runAnalysisSession` wiring, `#if DEBUG` debug
   report + `VoiceprintDebugView`, `IntelligenceAITests` + `make test-ai` (§6, §8,
   §10).
-- [ ] Phase 6: CLI, docs, calibration — `voiceprint-cli backfill` and `metrics`
+- [x] Phase 6: CLI, docs, calibration — `voiceprint-cli backfill` and `metrics`
   (§9), documentation updates (§13), then the developer's calibration pass and
   `calibration.md` (§12).

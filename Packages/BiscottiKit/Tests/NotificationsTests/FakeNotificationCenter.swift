@@ -17,6 +17,7 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
         var addedRequests: [UNNotificationRequest] = []
         var removedPendingIDs: [[String]] = []
         var removedDeliveredIDs: [[String]] = []
+        var delivered: [DeliveredNotification] = []
         var authRequestCount = 0
         var authorizationGranted = true
         var currentStatus: UNAuthorizationStatus = .authorized
@@ -38,6 +39,19 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
 
     func add(_ request: UNNotificationRequest) async throws {
         backing.addedRequests.append(request)
+        // Model delivery: replace any existing entry with the same identifier.
+        backing.delivered.removeAll { $0.identifier == request.identifier }
+        var stringInfo: [String: String] = [:]
+        for (key, value) in request.content.userInfo {
+            if let strKey = key as? String, let strVal = value as? String {
+                stringInfo[strKey] = strVal
+            }
+        }
+        backing.delivered.append(DeliveredNotification(
+            identifier: request.identifier,
+            date: Date(),
+            userInfo: stringInfo
+        ))
     }
 
     func removePendingRequests(withIdentifiers ids: [String]) {
@@ -46,6 +60,12 @@ final class FakeNotificationCenter: NotificationCenterProviding, @unchecked Send
 
     func removeDeliveredNotifications(withIdentifiers ids: [String]) {
         backing.removedDeliveredIDs.append(ids)
+        let idSet = Set(ids)
+        backing.delivered.removeAll { idSet.contains($0.identifier) }
+    }
+
+    func deliveredNotifications() async -> [DeliveredNotification] {
+        backing.delivered
     }
 
     func authorizationStatus() async -> UNAuthorizationStatus {

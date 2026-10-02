@@ -28,6 +28,7 @@ enum UserInfoKey {
     static let bundleID = "biscotti.bundleID"
     static let joinURL = "biscotti.joinURL"
     static let meetingID = "biscotti.meetingID"
+    static let eventStart = "biscotti.eventStart"
 }
 
 // MARK: - Kind string values stored in userInfo
@@ -46,13 +47,25 @@ enum KindValue {
 /// notification in-place (UNNotificationRequest semantics).
 func requestIdentifier(for kind: NotificationKind) -> String {
     switch kind {
-    case let .meetingStarting(eventKey, _, _):
-        "biscotti.notif.meeting-start.\(eventKey)"
+    case let .meetingStarting(eventKey, _, _, _):
+        meetingStartRequestIdentifier(eventKey: eventKey)
     case let .adHocDetected(bundleID, _):
-        "biscotti.notif.adhoc.\(bundleID)"
+        adHocRequestIdentifier(bundleID: bundleID)
     case let .stopCountdown(meetingID, _):
         countdownRequestIdentifier(meetingID: meetingID)
     }
+}
+
+/// Standalone meeting-start ID builder for cancel methods that
+/// don't receive a full `NotificationKind`.
+func meetingStartRequestIdentifier(eventKey: String) -> String {
+    "biscotti.notif.meeting-start.\(eventKey)"
+}
+
+/// Standalone ad-hoc ID builder for cancel methods that
+/// don't receive a full `NotificationKind`.
+func adHocRequestIdentifier(bundleID: String) -> String {
+    "biscotti.notif.adhoc.\(bundleID)"
 }
 
 /// Standalone countdown ID builder for `cancelCountdown` which

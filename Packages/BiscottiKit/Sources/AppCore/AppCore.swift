@@ -326,6 +326,11 @@ public final class AppCore {
     /// Calendar-start notification timer tasks, keyed by event composite key.
     private var calendarTimerTasks: [String: Task<Void, Never>] = [:]
 
+    /// Removal timers for posted calendar notifications, keyed by event key.
+    /// Separate from `calendarTimerTasks` so `scheduleCalendarTimers()` (which
+    /// runs on every calendar refresh) never cancels them (C1).
+    private var calendarNotificationExpiryTasks: [String: Task<Void, Never>] = [:]
+
     /// Background tasks for consuming detector events and notification actions.
     private var detectorConsumerTask: Task<Void, Never>?
     private var notificationConsumerTask: Task<Void, Never>?
@@ -468,6 +473,10 @@ public final class AppCore {
         upcoming = calendar.upcoming
         logger.info("startBackgroundServices: calendar done")
 
+        // L1: clean up stale notifications from previous process before
+        // detection starts (so a fresh ad-hoc can't race the sweep).
+        await cleanUpStaleNotificationsOnLaunch()
+
         logger.info("startBackgroundServices: detector start")
         detector.start()
 
@@ -519,6 +528,10 @@ public final class AppCore {
         // Dismiss any lingering meeting-detected banners so they don't
         // persist on screen during an active recording.
         await notifications.cancelAdHocDetected()
+
+        // C2: remove all calendar notifications on recording start.
+        cancelAllCalendarNotificationExpiryTasks()
+        await notifications.cancelAllMeetingStarting()
 
         // Stash the eventKey/title so retry can re-use them.
         pendingStartupEventKey = eventKey
@@ -1215,7 +1228,7 @@ extension AppCore {
             case let .started(app):
                 await handleDetectionStarted(app: app)
             case let .stopped(app):
-                handleDetectionStopped(app: app)
+                await handleDetectionStopped(app: app)
             case .allMicUsersStopped:
                 handleAllMicUsersStopped()
             }
@@ -1274,7 +1287,12 @@ extension AppCore {
         runState = .detectedPending
     }
 
-    private func handleDetectionStopped(app: DetectedApp) {
+    private func handleDetectionStopped(app: DetectedApp) async {
+        // D1: remove the stopped app's ad-hoc notification regardless of
+        // run state. This is a no-op when the notification was already
+        // dismissed or removed by a recording start.
+        await notifications.cancelAdHocDetected(bundleID: app.bundleID)
+
         // If pending detection and the stopped app matches, revert to idle
         if runState == .detectedPending,
            activeDetectedBundleID == app.bundleID
@@ -1378,6 +1396,9 @@ extension AppCore {
 // MARK: - Calendar-start timers
 
 extension AppCore {
+    /// How long a calendar notification stays after the meeting starts (C1).
+    nonisolated static let calendarNotificationLifetime: TimeInterval = 300
+
     /// Filters upcoming events by the calendar notification mode.
     /// Pure and testable.
     nonisolated static func eventsToNotify(
@@ -1432,15 +1453,70 @@ extension AppCore {
         guard runState == .idle || runState == .detectedPending
         else { return }
 
+        // Skip if the Mac slept through start + lifetime (notification
+        // would already be expired).
+        guard Self.shouldPostCalendarNotification(
+            eventStart: event.start, now: Date()
+        ) else {
+            logger.info(
+                "handleCalendarTimerFired: skipped expired notification for \(event.id)"
+            )
+            return
+        }
+
         lastCalendarNotificationDate = Date()
 
         await notifications.present(
             .meetingStarting(
                 eventKey: event.id,
                 title: event.title,
-                joinURL: event.conferenceURL
+                joinURL: event.conferenceURL,
+                start: event.start
             )
         )
+
+        let expiry = event.start.addingTimeInterval(
+            Self.calendarNotificationLifetime
+        )
+        scheduleCalendarNotificationExpiry(
+            eventKey: event.id, at: expiry
+        )
+    }
+
+    /// False once the notification would already be expired
+    /// (now >= start + lifetime).
+    nonisolated static func shouldPostCalendarNotification(
+        eventStart: Date, now: Date
+    ) -> Bool {
+        let expiry = eventStart.addingTimeInterval(
+            calendarNotificationLifetime
+        )
+        return now < expiry
+    }
+
+    private func scheduleCalendarNotificationExpiry(
+        eventKey: String, at expiry: Date
+    ) {
+        calendarNotificationExpiryTasks[eventKey]?.cancel()
+        let delay = expiry.timeIntervalSinceNow
+        let sched = scheduler
+        calendarNotificationExpiryTasks[eventKey] = Task { [weak self] in
+            if delay > 0 {
+                do {
+                    try await sched.sleep(for: .seconds(delay))
+                } catch { return }
+            }
+            guard let self, !Task.isCancelled else { return }
+            calendarNotificationExpiryTasks[eventKey] = nil
+            await notifications.cancelMeetingStarting(eventKey: eventKey)
+        }
+    }
+
+    private func cancelAllCalendarNotificationExpiryTasks() {
+        for (_, task) in calendarNotificationExpiryTasks {
+            task.cancel()
+        }
+        calendarNotificationExpiryTasks.removeAll()
     }
 
     /// Mirrors `calendar.upcoming` into `self.upcoming` and reschedules
@@ -1513,6 +1589,73 @@ extension AppCore {
     /// tests can verify filtering/label recomputation without real delays.
     package func setMinuteTick(_ date: Date) {
         minuteTick = date
+    }
+}
+
+// MARK: - Notification cleanup (L1)
+
+extension AppCore {
+    struct ScheduledExpiry: Equatable {
+        let eventKey: String
+        let expiry: Date
+    }
+
+    struct LaunchNotificationCleanupPlan: Equatable {
+        var adHocBundleIDsToRemove: [String] = []
+        var meetingEventKeysToRemove: [String] = []
+        var meetingExpiriesToSchedule: [ScheduledExpiry] = []
+    }
+
+    nonisolated static func launchNotificationCleanupPlan(
+        _ delivered: [DeliveredOfferNotification], now: Date
+    ) -> LaunchNotificationCleanupPlan {
+        var plan = LaunchNotificationCleanupPlan()
+        for item in delivered {
+            switch item {
+            case let .adHocDetected(bundleID):
+                plan.adHocBundleIDsToRemove.append(bundleID)
+            case let .meetingStarting(eventKey, meetingStart):
+                let expiry = meetingStart.addingTimeInterval(
+                    calendarNotificationLifetime
+                )
+                if expiry <= now {
+                    plan.meetingEventKeysToRemove.append(eventKey)
+                } else {
+                    plan.meetingExpiriesToSchedule.append(
+                        ScheduledExpiry(
+                            eventKey: eventKey, expiry: expiry
+                        )
+                    )
+                }
+            }
+        }
+        return plan
+    }
+
+    private func cleanUpStaleNotificationsOnLaunch() async {
+        let delivered = await notifications
+            .deliveredOfferNotifications()
+        let plan = Self.launchNotificationCleanupPlan(
+            delivered, now: Date()
+        )
+        logger.info(
+            "L1 cleanup: \(plan.adHocBundleIDsToRemove.count) ad-hoc, \(plan.meetingEventKeysToRemove.count) expired cal, \(plan.meetingExpiriesToSchedule.count) deferred cal"
+        )
+        for bundleID in plan.adHocBundleIDsToRemove {
+            await notifications.cancelAdHocDetected(
+                bundleID: bundleID
+            )
+        }
+        for eventKey in plan.meetingEventKeysToRemove {
+            await notifications.cancelMeetingStarting(
+                eventKey: eventKey
+            )
+        }
+        for item in plan.meetingExpiriesToSchedule {
+            scheduleCalendarNotificationExpiry(
+                eventKey: item.eventKey, at: item.expiry
+            )
+        }
     }
 }
 

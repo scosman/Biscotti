@@ -25,4 +25,25 @@ public protocol NotificationCenterProviding: Sendable {
 
     /// Current on-screen alert style (banner vs. alert vs. none).
     func alertStyle() async -> UNAlertStyle
+
+    /// Notifications currently in Notification Center for this app.
+    func deliveredNotifications() async -> [DeliveredNotification]
+}
+
+/// A delivered notification snapshot, safe to send across isolation boundaries.
+///
+/// Maps from `UNNotification` (a non-Sendable class) so nothing non-Sendable
+/// leaves `LiveNotificationCenter`.
+public struct DeliveredNotification: Sendable, Equatable {
+    public let identifier: String
+    public let date: Date
+    public let userInfo: [String: String]
+
+    public init(
+        identifier: String, date: Date, userInfo: [String: String]
+    ) {
+        self.identifier = identifier
+        self.date = date
+        self.userInfo = userInfo
+    }
 }

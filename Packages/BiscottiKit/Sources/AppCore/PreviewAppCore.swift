@@ -197,6 +197,10 @@
         func alertStyle() async -> UNAlertStyle {
             .banner
         }
+
+        func deliveredNotifications() async -> [DeliveredNotification] {
+            []
+        }
     }
 
     /// No-op LLM runner for previews.

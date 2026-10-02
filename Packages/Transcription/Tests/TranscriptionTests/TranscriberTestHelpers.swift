@@ -125,7 +125,6 @@ func makeFixtureResult(transcriptionMethodId: String = "v1") -> TranscriptResult
                 words: nil
             )
         ],
-        speakerEmbeddings: [:],
         processingDuration: 0.5
     )
 }

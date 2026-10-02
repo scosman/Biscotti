@@ -240,10 +240,12 @@ public actor DataStore {
     }
 
     /// Sets the participants (many-to-many) and organizer (to-one) for a meeting.
-    /// Replaces any existing participants/organizer.
+    /// Replaces any existing participants/organizer. Optionally marks one person
+    /// as the current user on the meeting's calendar snapshot.
     public func setParticipants(
         _ personIDs: [UUID],
         organizer organizerID: UUID?,
+        currentUser currentUserID: UUID? = nil,
         for meetingID: UUID
     ) throws {
         guard let meeting = try meeting(id: meetingID) else {
@@ -274,8 +276,19 @@ public actor DataStore {
             organizerPerson = person
         }
 
+        // Validate current user if provided
+        if let currentUserID {
+            let descriptor = FetchDescriptor<Person>(
+                predicate: #Predicate { $0.id == currentUserID }
+            )
+            guard try context.fetch(descriptor).first != nil else {
+                throw DataStoreError.notFound(currentUserID)
+            }
+        }
+
         meeting.participants = people
         meeting.organizer = organizerPerson
+        meeting.calendarSnapshot?.currentUserPersonID = currentUserID
         try save()
     }
 

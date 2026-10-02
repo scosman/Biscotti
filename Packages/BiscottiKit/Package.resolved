@@ -4,10 +4,10 @@
     {
       "identity" : "argmax-oss-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/argmaxinc/argmax-oss-swift.git",
+      "location" : "https://github.com/scosman/argmax-oss-swift.git",
       "state" : {
-        "revision" : "1e2a163736dfa5a198e637ae44c114e1c6d5cc2d",
-        "version" : "1.1.0"
+        "branch" : "0475cca",
+        "revision" : "0475ccae2f0f8e3342c519e2474d3f183c2aef45"
       }
     },
     {

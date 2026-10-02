@@ -62,7 +62,6 @@ private func twoSpeakerResult(
                 words: nil
             )
         },
-        speakerEmbeddings: [:],
         processingDuration: 1.0
     )
 }

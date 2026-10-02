@@ -64,8 +64,9 @@ L3a Screens         HomeUI · RecordingUI · MeetingDetailUI · MeetingListUI
     Shared UI       ModelManagementUI  (used by SettingsUI + OnboardingUI)
 L2  Coordination    AppCore  (the headless "background app" engine)
 L1  Services        Recording · MeetingDetection · TranscriptionService · Calendar · Notifications · Vocabulary · MCPServer
-L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem · Intelligence
+L0  Foundation      DataStore · Permissions · RemoteConfig · DesignSystem · Intelligence · VoiceprintMatching
         engines     AudioCapture(pkg) · Transcription(pkg) · LocalLLM(pkg)
+        dev tools   voiceprint-cli  (executable in BiscottiKit; not part of the app)
 ```
 
 ---
@@ -402,7 +403,7 @@ Not components — conventions every component follows, recorded so they don't f
 | Audio file-usage view + deletion | **SettingsUI** + DataStore/Recording | File accounting. |
 | Contacts enrichment | **Calendar** | Measured in research; deferred. |
 | Opus encoding (smaller files) | **AudioCapture** | Revisit at macOS 16+ (`kAudioFormatOpus`); ~½ size. |
-| Auto speaker identification (who is who, incl. "me") | **Transcription** + DataStore (identity/voiceprint store) + MeetingDetailUI (confirm/correct) | Two signal methods: mic/system **stream-timing** ("me") + cross-recording **centroid voiceprints** (SDK does **not** expose centroid embeddings in v1.0.0 — see `research/argmax` §6 erratum; reserved for a future SDK version). Complements LLM name-inference. P2. |
+| Auto speaker identification (who is who, incl. "me") | **Transcription** + DataStore + VoiceprintMatching + Intelligence + MeetingDetailUI | **Voiceprint half built** by the `speaker_embeddings` spec project: cross-recording centroid voiceprints (raw 256-dim + PLDA 128-dim via SpeakerKit fork), voiceprint storage on TranscriptRecord, `VoiceprintMatching` module (matcher, evaluator, backfill mapper, metrics), LLM prompt integration (`<voiceprint_matches>` report), `#if DEBUG` debug window, `voiceprint-cli` (backfill + metrics). **Remaining:** mic/system stream-timing ("me" signal), confirm/correct UI polish. P2. |
 | App auto-update | **Distribution project** (TBD) | May never self-distribute (could be App Store); manual update is fine for V1. Decide if/when we ship Developer-ID. |
 
 Every post-V1 capability has a home in the shape above — none forces a re-topology.

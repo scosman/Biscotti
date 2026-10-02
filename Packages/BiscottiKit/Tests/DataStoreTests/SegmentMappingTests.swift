@@ -36,7 +36,6 @@ struct SegmentMappingTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 2.0
         )
     }
@@ -106,7 +105,6 @@ struct SegmentMappingTests {
                     words: words
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
 
@@ -161,7 +159,6 @@ struct SegmentMappingTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 0.5
         )
 
@@ -202,7 +199,6 @@ struct SegmentMappingTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 0.5
         )
 
@@ -231,7 +227,6 @@ struct SegmentMappingTests {
             language: "fr",
             speakerCount: 3,
             segments: [],
-            speakerEmbeddings: [:],
             processingDuration: 5.0
         )
 

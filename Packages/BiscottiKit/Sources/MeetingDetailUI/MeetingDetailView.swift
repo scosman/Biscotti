@@ -218,6 +218,21 @@ public struct MeetingDetailView: View {
                 )
             }
         }
+        #if DEBUG
+        .sheet(item: $viewModel.voiceprintDebug) { model in
+                VoiceprintDebugView(
+                    report: model.report,
+                    onKindChange: { kind in
+                        Task {
+                            await viewModel.reloadVoiceprintDebug(
+                                kind: kind
+                            )
+                        }
+                    },
+                    onDismiss: { viewModel.voiceprintDebug = nil }
+                )
+            }
+        #endif
     }
 
     // MARK: - Loaded content
@@ -980,6 +995,15 @@ private extension MeetingDetailView {
                             speakerID: speakerID
                         )
                     }
+                },
+                onVoiceprintDebug: { speakerID in
+                    #if DEBUG
+                        Task {
+                            await viewModel.openVoiceprintDebug(
+                                speakerID: speakerID
+                            )
+                        }
+                    #endif
                 },
                 header: transcriptListHeader
             )

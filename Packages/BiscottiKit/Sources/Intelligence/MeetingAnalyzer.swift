@@ -42,6 +42,7 @@ enum MeetingAnalyzer {
         let doSpeakers: Bool
         let doSummary: Bool
         let doTitle: Bool
+        let voiceprintBlock: String
         let summaryInstructions: String
         let markSummaryEdited: Bool
         let store: DataStore
@@ -97,6 +98,7 @@ enum MeetingAnalyzer {
         )
         let userContent = IntelligencePrompts.analysisFirstUser(
             detail: ctx.detail, human: ctx.human,
+            voiceprintBlock: ctx.voiceprintBlock,
             transcriptSpeakerLabeled: transcript
         )
         messages.append(.user(userContent))

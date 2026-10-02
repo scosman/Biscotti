@@ -10,6 +10,7 @@ import Intelligence
 import SummaryPromptUI
 import TranscriptionService
 import Vocabulary
+import VoiceprintMatching
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
@@ -175,6 +176,17 @@ public final class MeetingDetailViewModel {
 
     /// Whether the tag picker popover is open.
     public var tagPickerOpen: Bool = false
+
+    // MARK: - Voiceprint debug (`#if DEBUG`)
+
+    #if DEBUG
+        public struct VoiceprintDebugModel: Identifiable {
+            public let id = UUID()
+            public var report: VoiceprintDebugReport
+        }
+
+        public var voiceprintDebug: VoiceprintDebugModel?
+    #endif
 
     // MARK: - Speaker mapping sheet
 
@@ -1587,6 +1599,32 @@ public extension MeetingDetailViewModel {
         }
     }
 }
+
+// MARK: - Voiceprint debug actions (`#if DEBUG`)
+
+#if DEBUG
+    public extension MeetingDetailViewModel {
+        func openVoiceprintDebug(speakerID: Int) async {
+            guard let transcript = displayedTranscript else { return }
+            let report = await core.intelligence.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcript.id,
+                speakerID: speakerID, kind: VoiceprintConfig.default.kind
+            )
+            voiceprintDebug = VoiceprintDebugModel(report: report)
+        }
+
+        func reloadVoiceprintDebug(kind: VoiceprintKind) async {
+            guard let transcript = displayedTranscript,
+                  let current = voiceprintDebug
+            else { return }
+            let report = await core.intelligence.voiceprintDebug(
+                meetingID: meetingID, transcriptID: transcript.id,
+                speakerID: current.report.speakerID, kind: kind
+            )
+            voiceprintDebug = VoiceprintDebugModel(report: report)
+        }
+    }
+#endif
 
 // MARK: - Speaker mapping sheet DTOs
 

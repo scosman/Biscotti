@@ -320,8 +320,9 @@ public struct PersonData: Sendable, Identifiable, Equatable {
     public let id: UUID
     public let name: String
     public let email: String?
-    /// Whether this person is the current user. Not yet populated -- always
-    /// `false` until the Calendar module wires account-matching in a later phase.
+    /// Whether this person is the current user (the one who recorded the meeting).
+    /// Populated from `CalendarSnapshot.currentUserPersonID` via EventKit's
+    /// `EKParticipant.isCurrentUser`.
     public let isCurrentUser: Bool
 
     public init(id: UUID, name: String, email: String? = nil, isCurrentUser: Bool = false) {
@@ -683,12 +684,16 @@ public extension DataStore {
               let snapshot = meeting.calendarSnapshot
         else { return nil }
 
+        let currentUserPID = snapshot.currentUserPersonID
+
         let organizerData: PersonData? = meeting.organizer.map {
-            PersonData(id: $0.id, name: $0.name, email: $0.email)
+            PersonData(id: $0.id, name: $0.name, email: $0.email,
+                       isCurrentUser: $0.id == currentUserPID)
         }
 
         let attendeeData = meeting.participants.map {
-            PersonData(id: $0.id, name: $0.name, email: $0.email)
+            PersonData(id: $0.id, name: $0.name, email: $0.email,
+                       isCurrentUser: $0.id == currentUserPID)
         }
 
         let notes = snapshot.eventNotes.isEmpty ? nil : snapshot.eventNotes

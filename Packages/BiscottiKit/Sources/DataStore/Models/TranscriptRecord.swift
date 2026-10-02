@@ -78,6 +78,9 @@ public struct SpeakerAssignmentEntry: Codable, Equatable, Sendable {
     @Relationship(deleteRule: .cascade)
     public var segments: [TranscriptSegmentRecord] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Voiceprint.transcript)
+    public var voiceprints: [Voiceprint] = []
+
     public init(
         id: UUID = UUID(),
         createdAt: Date = Date(),

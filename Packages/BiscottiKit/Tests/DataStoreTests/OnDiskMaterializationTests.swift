@@ -43,7 +43,6 @@ struct OnDiskMaterializationTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
     }
@@ -157,6 +156,69 @@ struct OnDiskMaterializationTests {
                 #expect(fetched != nil)
                 #expect(fetched?.customVocabulary == [])
             }
+        }
+    }
+
+    // MARK: - Voiceprint round-trip
+
+    @Test("voiceprint vectors round-trip through on-disk store")
+    func voiceprintOnDiskRoundTrip() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let rawVector: [Float] = [1.0, -2.5, 3.14, 0.0]
+        let pldaVector: [Float] = [0.1, 0.2]
+        let meetingID: UUID
+        let transcriptID: UUID
+
+        // Write: create store, insert a transcript with voiceprints.
+        do {
+            let store = try DataStore(storage: .onDisk(dir))
+            meetingID = try await store.createMeeting(title: "Voiceprint disk test")
+            let result = TranscriptResult(
+                transcriptionMethodId: "v1", language: "en", speakerCount: 1,
+                segments: [
+                    TranscriptSegment(
+                        speakerID: 0, speakerLabel: "Speaker 0",
+                        startTime: 0, endTime: 5, text: "Hello",
+                        confidence: 0.9, noSpeechProbability: 0.01, words: nil
+                    )
+                ],
+                embeddingSets: [
+                    SpeakerEmbeddingSet(kind: .raw, space: "test/raw", vectors: [0: rawVector]),
+                    SpeakerEmbeddingSet(kind: .plda, space: "test/plda", vectors: [0: pldaVector])
+                ],
+                speakerSpeechDurations: [0: 42.5],
+                processingDuration: 1.0
+            )
+            transcriptID = try await store.addTranscript(
+                result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+            )
+        }
+
+        // Read: open a fresh DataStore, verify voiceprints survived.
+        do {
+            let store2 = try DataStore(storage: .onDisk(dir))
+            try await store2.read { store in
+                let voiceprints = try store.fetchAllVoiceprints()
+                #expect(voiceprints.count == 2)
+
+                let rawEntry = try #require(voiceprints.first { $0.kindRaw == "raw" })
+                #expect(rawEntry.dimension == 4)
+                #expect(rawEntry.speakingDuration == 42.5)
+                #expect(rawEntry.embeddingSpace == "test/raw")
+                let decodedRaw = VectorCoding.decode(rawEntry.vectorData, dimension: rawEntry.dimension)
+                #expect(decodedRaw == rawVector)
+
+                let pldaEntry = try #require(voiceprints.first { $0.kindRaw == "plda" })
+                let decodedPlda = VectorCoding.decode(pldaEntry.vectorData, dimension: pldaEntry.dimension)
+                #expect(decodedPlda == pldaVector)
+            }
+
+            // Also verify the query read-model path works
+            let query = try await store2.voiceprintQuery(transcriptID: transcriptID, kind: .raw)
+            #expect(query?.vectors[0] == rawVector)
+            #expect(query?.speakingDurations[0] == 42.5)
         }
     }
 

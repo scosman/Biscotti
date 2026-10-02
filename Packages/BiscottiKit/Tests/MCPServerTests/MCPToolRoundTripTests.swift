@@ -164,7 +164,6 @@ struct MCPToolRoundTripTests {
                     confidence: 0.9, noSpeechProbability: 0.1, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1
         )
         let transcriptID = try await store.addTranscript(

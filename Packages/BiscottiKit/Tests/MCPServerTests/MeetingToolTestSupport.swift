@@ -65,7 +65,6 @@ enum ToolTestSupport {
             language: "en",
             speakerCount: speakerCount,
             segments: segments,
-            speakerEmbeddings: [:],
             processingDuration: 1
         )
         let transcriptID = try await store.addTranscript(

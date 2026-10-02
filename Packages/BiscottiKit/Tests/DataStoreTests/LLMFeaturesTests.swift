@@ -30,7 +30,6 @@ private func makeTranscriptResult() -> TranscriptResult {
         language: "en",
         speakerCount: 2,
         segments: [seg1, seg2, seg3],
-        speakerEmbeddings: [:],
         processingDuration: 3.0
     )
 }
@@ -316,7 +315,7 @@ struct SegmentDataSpeakerIDTests {
         )
         let result = TranscriptResult(
             transcriptionMethodId: "v1", language: "en", speakerCount: 0,
-            segments: [seg], speakerEmbeddings: [:], processingDuration: 1.0
+            segments: [seg], processingDuration: 1.0
         )
         let txID = try await store.addTranscript(
             result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID

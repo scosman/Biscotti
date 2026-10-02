@@ -89,6 +89,36 @@ public struct TranscriptSegment: Sendable, Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Embedding Types
+
+/// The kind of speaker centroid vector.
+public enum EmbeddingKind: String, Sendable, Codable, CaseIterable {
+    /// Raw embedder output (256-dim for pyannote-v3).
+    case raw
+    /// PLDA-projected vector (128-dim for pyannote-v4), designed to separate
+    /// speaker identity from recording conditions.
+    case plda
+}
+
+/// One kind of per-speaker centroid vectors from one diarization run.
+public struct SpeakerEmbeddingSet: Sendable, Codable, Equatable {
+    /// Which projection produced these vectors.
+    public let kind: EmbeddingKind
+
+    /// Embedding space key; see ``SpeakerEmbeddingSpace``.
+    public let space: String
+
+    /// Raw (not normalized) vectors by diarization speaker ID.
+    /// Speakers can be absent (e.g. under `.trainableOnly` centroid source).
+    public let vectors: [Int: [Float]]
+
+    public init(kind: EmbeddingKind, space: String, vectors: [Int: [Float]]) {
+        self.kind = kind
+        self.space = space
+        self.vectors = vectors
+    }
+}
+
 // MARK: - TranscriptResult
 
 /// The complete result of processing an audio file through STT + diarization.
@@ -112,10 +142,13 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     /// Ordered transcript segments with speaker attribution.
     public let segments: [TranscriptSegment]
 
-    /// Centroid embedding vectors per speaker ID, for cross-file speaker matching.
-    /// Key is the speaker cluster ID; value is the embedding vector.
-    /// Reserved (empty) in v1 -- populated in a future release.
-    public let speakerEmbeddings: [Int: [Float]]
+    /// Per-kind centroid embedding sets from diarization (typically raw + PLDA).
+    /// Each set contains vectors keyed by diarization speaker ID. Empty when
+    /// diarization produced no centroids.
+    public let embeddingSets: [SpeakerEmbeddingSet]
+
+    /// Sum of each diarization speaker's time ranges, in seconds.
+    public let speakerSpeechDurations: [Int: TimeInterval]
 
     /// Wall-clock time spent processing (STT + diarization + merging).
     public let processingDuration: TimeInterval
@@ -127,7 +160,8 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
         language: String,
         speakerCount: Int,
         segments: [TranscriptSegment],
-        speakerEmbeddings: [Int: [Float]],
+        embeddingSets: [SpeakerEmbeddingSet] = [],
+        speakerSpeechDurations: [Int: TimeInterval] = [:],
         processingDuration: TimeInterval
     ) {
         self.id = id
@@ -136,7 +170,8 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
         self.language = language
         self.speakerCount = speakerCount
         self.segments = segments
-        self.speakerEmbeddings = speakerEmbeddings
+        self.embeddingSets = embeddingSets
+        self.speakerSpeechDurations = speakerSpeechDurations
         self.processingDuration = processingDuration
     }
 }

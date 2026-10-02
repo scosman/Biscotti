@@ -312,7 +312,6 @@ struct VocabEvaluatorTests {
                     confidence: 0, noSpeechProbability: 0, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 0
         )
         let eval = VocabGroundTruth.evaluate(result)
@@ -391,7 +390,6 @@ private func makeDiarizationResult(
         language: "en",
         speakerCount: Set(segmentData.map(\.speaker)).count,
         segments: segments,
-        speakerEmbeddings: [:],
         processingDuration: 0
     )
 }
@@ -414,7 +412,6 @@ private func makeVocabResult(text: String) -> TranscriptResult {
                 words: nil
             )
         ],
-        speakerEmbeddings: [:],
         processingDuration: 0
     )
 }

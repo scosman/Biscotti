@@ -121,7 +121,6 @@ struct TranscriptionSuccessTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 2.0
         )
         fix.fakeEngine.backing.cannedResult = secondResult
@@ -867,7 +866,6 @@ struct TranscriptionVocabularyTests {
             language: "en",
             speakerCount: 1,
             segments: [],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
 

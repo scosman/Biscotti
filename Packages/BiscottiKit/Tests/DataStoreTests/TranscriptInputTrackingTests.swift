@@ -26,7 +26,6 @@ struct TranscriptInputTrackingTests {
                     words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
     }

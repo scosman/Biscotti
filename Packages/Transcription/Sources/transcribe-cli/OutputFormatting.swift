@@ -63,11 +63,12 @@ func formatResultText(_ result: TranscriptResult) -> String {
     lines.append("Created:    \(result.createdAt)")
     lines.append("")
 
-    if !result.speakerEmbeddings.isEmpty {
+    if !result.embeddingSets.isEmpty {
         lines.append("Speaker Embeddings")
         lines.append("------------------")
-        for (speakerID, embedding) in result.speakerEmbeddings.sorted(by: { $0.key < $1.key }) {
-            lines.append("  Speaker \(speakerID): \(embedding.count)-dim vector")
+        for set in result.embeddingSets {
+            let dim = set.vectors.values.first?.count ?? 0
+            lines.append("  \(set.kind.rawValue) (\(set.space)): \(set.vectors.count) speakers x \(dim) dims")
         }
         lines.append("")
     }

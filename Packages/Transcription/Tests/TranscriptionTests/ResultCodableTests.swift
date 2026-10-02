@@ -113,6 +113,35 @@ struct ResultCodableTests {
         let _: UUID = segment.id
     }
 
+    // MARK: - Embedding types
+
+    @Test("EmbeddingKind round-trips through JSON")
+    func embeddingKindCodable() throws {
+        for kind in EmbeddingKind.allCases {
+            let data = try JSONEncoder().encode(kind)
+            let decoded = try JSONDecoder().decode(EmbeddingKind.self, from: data)
+            #expect(decoded == kind)
+        }
+    }
+
+    @Test("SpeakerEmbeddingSet round-trips through JSON")
+    func embeddingSetCodable() throws {
+        let set = SpeakerEmbeddingSet(
+            kind: .plda,
+            space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
+            vectors: [0: [0.1, 0.2], 1: [0.3, 0.4]]
+        )
+
+        let data = try JSONEncoder().encode(set)
+        let decoded = try JSONDecoder().decode(SpeakerEmbeddingSet.self, from: data)
+
+        #expect(decoded.kind == .plda)
+        #expect(decoded.space == "pyannote-v3/W8A16+plda:pyannote-v4/W32A32")
+        #expect(decoded.vectors.count == 2)
+        #expect(decoded.vectors[0] == [0.1, 0.2])
+        #expect(decoded.vectors[1] == [0.3, 0.4])
+    }
+
     // MARK: - TranscriptResult
 
     @Test("TranscriptResult round-trips through JSON")
@@ -128,12 +157,24 @@ struct ResultCodableTests {
             words: nil
         )
 
+        let sets = [
+            SpeakerEmbeddingSet(
+                kind: .raw, space: "pyannote-v3/W8A16",
+                vectors: [0: [0.1, 0.2, 0.3], 1: [0.4, 0.5, 0.6]]
+            ),
+            SpeakerEmbeddingSet(
+                kind: .plda, space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
+                vectors: [0: [0.7, 0.8], 1: [0.9, 1.0]]
+            )
+        ]
+
         let result = TranscriptResult(
             transcriptionMethodId: "large-v3_turbo",
             language: "en",
             speakerCount: 2,
             segments: [segment],
-            speakerEmbeddings: [0: [0.1, 0.2, 0.3], 1: [0.4, 0.5, 0.6]],
+            embeddingSets: sets,
+            speakerSpeechDurations: [0: 45.0, 1: 120.5],
             processingDuration: 12.5
         )
 
@@ -146,33 +187,12 @@ struct ResultCodableTests {
         #expect(decoded.speakerCount == 2)
         #expect(decoded.segments.count == 1)
         #expect(decoded.segments[0].text == "Hello world")
+        #expect(decoded.embeddingSets.count == 2)
+        #expect(decoded.embeddingSets[0].kind == .raw)
+        #expect(decoded.embeddingSets[1].kind == .plda)
+        #expect(decoded.speakerSpeechDurations[0] == 45.0)
+        #expect(decoded.speakerSpeechDurations[1] == 120.5)
         #expect(decoded.processingDuration == 12.5)
-    }
-
-    @Test("Speaker embeddings dictionary survives Codable round-trip")
-    func speakerEmbeddingsCodable() throws {
-        let embeddings: [Int: [Float]] = [
-            0: [0.1, 0.2, 0.3, 0.4, 0.5],
-            1: [-0.1, -0.2, -0.3, -0.4, -0.5],
-            2: [1.0, 0.0, -1.0, 0.5, -0.5]
-        ]
-
-        let result = TranscriptResult(
-            transcriptionMethodId: "test",
-            language: "en",
-            speakerCount: 3,
-            segments: [],
-            speakerEmbeddings: embeddings,
-            processingDuration: 0
-        )
-
-        let data = try JSONEncoder().encode(result)
-        let decoded = try JSONDecoder().decode(TranscriptResult.self, from: data)
-
-        #expect(decoded.speakerEmbeddings.count == 3)
-        #expect(decoded.speakerEmbeddings[0] == [0.1, 0.2, 0.3, 0.4, 0.5])
-        #expect(decoded.speakerEmbeddings[1] == [-0.1, -0.2, -0.3, -0.4, -0.5])
-        #expect(decoded.speakerEmbeddings[2] == [1.0, 0.0, -1.0, 0.5, -0.5])
     }
 
     @Test("TranscriptResult conforms to Identifiable")
@@ -182,21 +202,19 @@ struct ResultCodableTests {
             language: "en",
             speakerCount: 0,
             segments: [],
-            speakerEmbeddings: [:],
             processingDuration: 0
         )
 
         let _: UUID = result.id
     }
 
-    @Test("TranscriptResult with empty segments round-trips")
-    func emptySegmentsRoundTrip() throws {
+    @Test("TranscriptResult with empty sets and durations round-trips")
+    func emptyEmbeddingSetsRoundTrip() throws {
         let result = TranscriptResult(
             transcriptionMethodId: "large-v3_turbo_1307MB",
             language: "fr",
             speakerCount: 0,
             segments: [],
-            speakerEmbeddings: [:],
             processingDuration: 0.5
         )
 
@@ -204,7 +222,8 @@ struct ResultCodableTests {
         let decoded = try JSONDecoder().decode(TranscriptResult.self, from: data)
 
         #expect(decoded.segments.isEmpty)
-        #expect(decoded.speakerEmbeddings.isEmpty)
+        #expect(decoded.embeddingSets.isEmpty)
+        #expect(decoded.speakerSpeechDurations.isEmpty)
         #expect(decoded.language == "fr")
     }
 
@@ -215,7 +234,10 @@ struct ResultCodableTests {
             language: "en",
             speakerCount: 1,
             segments: [],
-            speakerEmbeddings: [:],
+            embeddingSets: [
+                SpeakerEmbeddingSet(kind: .raw, space: "test", vectors: [0: [1.0]])
+            ],
+            speakerSpeechDurations: [0: 30.0],
             processingDuration: 1.0
         )
 
@@ -226,7 +248,8 @@ struct ResultCodableTests {
         #expect(jsonString.contains("\"language\""))
         #expect(jsonString.contains("\"speakerCount\""))
         #expect(jsonString.contains("\"segments\""))
-        #expect(jsonString.contains("\"speakerEmbeddings\""))
+        #expect(jsonString.contains("\"embeddingSets\""))
+        #expect(jsonString.contains("\"speakerSpeechDurations\""))
         #expect(jsonString.contains("\"processingDuration\""))
         #expect(jsonString.contains("\"createdAt\""))
     }

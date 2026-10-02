@@ -489,7 +489,7 @@ struct DataStoreFTS5Tests {
         )
         let result = TranscriptResult(
             transcriptionMethodId: "v1", language: "en", speakerCount: 1,
-            segments: [seg], speakerEmbeddings: [:], processingDuration: 1.0
+            segments: [seg], processingDuration: 1.0
         )
         let txID = try await store.addTranscript(
             result, vocabularyUsed: [], mappedEventIdentifier: nil,
@@ -1234,7 +1234,7 @@ struct DeleteCoverageTests {
         let result = TranscriptResult(
             transcriptionMethodId: method, language: "en",
             speakerCount: 1, segments: [seg],
-            speakerEmbeddings: [:], processingDuration: 1.0
+            processingDuration: 1.0
         )
         return try await store.addTranscript(
             result, vocabularyUsed: [],

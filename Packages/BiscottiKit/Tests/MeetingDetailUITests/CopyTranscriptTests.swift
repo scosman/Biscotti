@@ -50,7 +50,6 @@ private func makeTwoSpeakerResult() -> TranscriptResult {
                 confidence: 0.95, noSpeechProbability: 0.01, words: nil
             )
         ],
-        speakerEmbeddings: [:],
         processingDuration: 1.0
     )
 }
@@ -195,7 +194,6 @@ struct HasDisplayableTranscriptTests {
                     confidence: 0.9, noSpeechProbability: 0.01, words: nil
                 )
             ],
-            speakerEmbeddings: [:],
             processingDuration: 1.0
         )
         let id2 = try await fix.store.addTranscript(

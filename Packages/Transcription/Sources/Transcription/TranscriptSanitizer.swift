@@ -63,7 +63,8 @@ public enum TranscriptSanitizer {
             language: result.language,
             speakerCount: result.speakerCount,
             segments: segments,
-            speakerEmbeddings: result.speakerEmbeddings,
+            embeddingSets: result.embeddingSets,
+            speakerSpeechDurations: result.speakerSpeechDurations,
             processingDuration: result.processingDuration
         )
     }

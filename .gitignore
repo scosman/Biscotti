@@ -19,5 +19,6 @@ xcuserdata/
 __pycache__/
 
 calibration.json
+clean-worktree*
 
 .worktrees/

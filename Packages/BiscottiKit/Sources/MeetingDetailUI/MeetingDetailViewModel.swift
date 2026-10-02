@@ -10,6 +10,7 @@ import Intelligence
 import SummaryPromptUI
 import TranscriptionService
 import Vocabulary
+import VoiceprintMatching
 
 /// The three display states of the Meeting Detail screen.
 public enum MeetingDetailState: Sendable, Equatable {
@@ -1607,7 +1608,7 @@ public extension MeetingDetailViewModel {
             guard let transcript = displayedTranscript else { return }
             let report = await core.intelligence.voiceprintDebug(
                 meetingID: meetingID, transcriptID: transcript.id,
-                speakerID: speakerID, kind: .plda
+                speakerID: speakerID, kind: VoiceprintConfig.default.kind
             )
             voiceprintDebug = VoiceprintDebugModel(report: report)
         }

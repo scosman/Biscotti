@@ -5,6 +5,7 @@
     import Foundation
     import Testing
     import Transcription
+    import VoiceprintMatching
     @testable import AppCore
     @testable import Intelligence
     @testable import MeetingDetailUI
@@ -36,7 +37,7 @@
 
             let model = try #require(viewModel.voiceprintDebug)
             #expect(model.report.speakerID == 0)
-            #expect(model.report.kind == .plda)
+            #expect(model.report.kind == VoiceprintConfig.default.kind)
         }
 
         @Test("reloadVoiceprintDebug replaces report with new kind")
@@ -58,16 +59,16 @@
             let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
             await viewModel.load()
 
-            // Open with default kind (.plda)
+            // Open with default kind (.raw per VoiceprintConfig.default)
             await viewModel.openVoiceprintDebug(speakerID: 0)
             let firstID = viewModel.voiceprintDebug?.id
-            #expect(viewModel.voiceprintDebug?.report.kind == .plda)
+            #expect(viewModel.voiceprintDebug?.report.kind == VoiceprintConfig.default.kind)
 
-            // Reload with .raw
-            await viewModel.reloadVoiceprintDebug(kind: .raw)
+            // Reload with .plda (the non-default kind)
+            await viewModel.reloadVoiceprintDebug(kind: .plda)
 
             let reloaded = try #require(viewModel.voiceprintDebug)
-            #expect(reloaded.report.kind == .raw)
+            #expect(reloaded.report.kind == .plda)
             #expect(reloaded.report.speakerID == 0)
             // New model has a new ID (replaced, not mutated)
             #expect(reloaded.id != firstID)

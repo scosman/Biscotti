@@ -60,6 +60,7 @@ struct StartAlignmentTests {
         ctx.deviceChangeProvider.finish()
     }
 
+    /// A thrown hardware error must be preserved while cleaning up mic resources.
     @Test("If mic start fails, system engine is not started")
     func micFailureDoesNotStartSystem() async throws {
         let ctx = try TestRecorderFactory.make()
@@ -72,7 +73,9 @@ struct StartAlignmentTests {
             Issue.record("Expected start to throw")
         } catch {
             // Mic failed before system was started -- system untouched.
+            #expect(error as? CaptureError == .micEngineFailed("test"))
             #expect(ctx.micEngine.startCount == 1)
+            #expect(ctx.micEngine.stopCount == 1)
             #expect(ctx.systemEngine.startCount == 0)
             #expect(ctx.systemEngine.stopCount == 0)
         }
@@ -98,19 +101,91 @@ struct StartAlignmentTests {
         }
     }
 
-    @Test("Mic anchor is forwarded to system engine")
-    func micAnchorForwardedToSystem() async throws {
+    /// A zero timestamp is a valid delivered anchor, distinct from a missing buffer.
+    @Test("Mic anchor is forwarded to system engine, including a valid zero anchor", arguments: [0.0, 42.5])
+    func micAnchorForwardedToSystem(anchor: Double) async throws {
         let ctx = try TestRecorderFactory.make()
         defer { TestRecorderFactory.cleanup(ctx) }
 
-        ctx.micEngine.setFirstBufferAnchor(42.5)
+        ctx.micEngine.setFirstBufferAnchor(anchor)
 
         try await ctx.recorder.start(paths: ctx.paths)
 
         // The mic anchor should have been forwarded to the system engine.
-        #expect(ctx.systemEngine.micAnchor == 42.5)
+        #expect(ctx.systemEngine.micAnchor == anchor)
+        #expect(ctx.micEngine.startCount == 1)
 
         ctx.deviceChangeProvider.finish()
+    }
+
+    // MARK: - Mic startup recovery
+
+    /// Exhausted startup must remain idle, release both attempts and allow a retry.
+    @Test("A mic that never delivers buffers fails startup instead of recording an empty track")
+    func stalledMicFailsStartup() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+        ctx.micEngine.suppressFirstBuffer(forStarts: 2)
+
+        do {
+            try await ctx.recorder.start(paths: ctx.paths)
+            Issue.record("Expected microphone startup to fail")
+        } catch {
+            guard case .micEngineFailed = error as? CaptureError else {
+                Issue.record("Expected micEngineFailed, got \(error)")
+                return
+            }
+        }
+
+        #expect(ctx.micEngine.startCount == 2)
+        #expect(ctx.micEngine.stopCount == 2)
+        #expect(ctx.systemEngine.startCount == 0)
+        for await state in await ctx.recorder.stateStream() {
+            #expect(!state.isRecording)
+            break
+        }
+
+        // A failed startup must leave the recorder retryable.
+        try await ctx.recorder.start(paths: ctx.paths)
+        #expect(ctx.systemEngine.startCount == 1)
+        await ctx.recorder.stop()
+    }
+
+    /// Only the successful retry's timestamp may align the system recording.
+    @Test("A stalled mic is restarted before system capture and uses the recovered anchor")
+    func stalledMicRecovers() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+        ctx.micEngine.suppressFirstBuffer(forStarts: 1)
+        ctx.micEngine.setFirstBufferAnchor(42.5)
+
+        try await ctx.recorder.start(paths: ctx.paths)
+
+        #expect(ctx.micEngine.startCount == 2)
+        #expect(ctx.micEngine.stopCount == 1)
+        #expect(ctx.systemEngine.startCount == 1)
+        #expect(ctx.systemEngine.micAnchor == 42.5)
+        await ctx.recorder.stop()
+    }
+
+    /// Cancellation must release the waiting attempt without advancing to system audio.
+    @Test("Cancellation while waiting for the mic stops capture without starting system audio")
+    func cancelledMicStartup() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+        ctx.micEngine.suppressFirstBuffer(forStarts: 2)
+        let started = AsyncStream<Void>.makeStream()
+        ctx.micEngine.onStart = { started.continuation.yield(()) }
+        let task = Task { try await ctx.recorder.start(paths: ctx.paths) }
+        for await _ in started.stream {
+            break
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(ctx.micEngine.startCount == 1)
+        #expect(ctx.micEngine.stopCount == 1)
+        #expect(ctx.systemEngine.startCount == 0)
+        started.continuation.finish()
     }
 
     // MARK: - System start retry

@@ -186,3 +186,117 @@ struct LeadingSilenceFrameCountTests {
         #expect(frames == 0)
     }
 }
+
+// MARK: - micGapSilenceFrameCount
+
+@Suite("micGapSilenceFrameCount")
+struct MicGapSilenceFrameCountTests {
+    private let rate = 24000.0
+
+    @Test("positive gap above threshold returns correct frame count")
+    func positiveGapAboveThreshold() {
+        // Gap = 2.0 s at 24 kHz => 48_000 frames
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 3_000_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 48000)
+    }
+
+    @Test("gap below threshold returns 0")
+    func gapBelowThreshold() {
+        // Gap = 3 ms, threshold = 5 ms
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 1_003_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("gap exactly at threshold returns frames")
+    func gapAtThreshold() {
+        // Gap = 5 ms, threshold = 5 ms => should fill
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 1_005_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 120) // 0.005 * 24000 = 120
+    }
+
+    @Test("negative gap returns 0")
+    func negativeGap() {
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 3_000_000_000,
+            actualHostNanos: 1_000_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("zero gap returns 0")
+    func zeroGap() {
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 1_000_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("zero expected host time returns 0")
+    func zeroExpected() {
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 0,
+            actualHostNanos: 1_000_000_000,
+            sampleRate: rate
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("zero actual host time returns 0")
+    func zeroActual() {
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 0,
+            sampleRate: rate
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("zero sample rate returns 0")
+    func zeroSampleRate() {
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 3_000_000_000,
+            sampleRate: 0
+        )
+        #expect(frames == 0)
+    }
+
+    @Test("maxFillSeconds caps large gaps")
+    func maxFillCaps() {
+        // Gap = 600 s, max = 300 s => 300 * 24000 = 7_200_000 frames
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 601_000_000_000,
+            sampleRate: rate,
+            maxFillSeconds: 300
+        )
+        #expect(frames == 7_200_000)
+    }
+
+    @Test("custom threshold is respected")
+    func customThreshold() {
+        // Gap = 50 ms, custom threshold = 100 ms => 0
+        let frames = micGapSilenceFrameCount(
+            expectedNextHostNanos: 1_000_000_000,
+            actualHostNanos: 1_050_000_000,
+            sampleRate: rate,
+            thresholdSeconds: 0.1
+        )
+        #expect(frames == 0)
+    }
+}

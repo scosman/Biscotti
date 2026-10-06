@@ -26,6 +26,19 @@ final class MicCaptureSession: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var converterSourceFormat: AVAudioFormat?
 
+    /// Host-clock nanoseconds when the next sample is expected: last
+    /// written buffer's host time + its duration. Zero until the first
+    /// buffer is written. Protected by `lock`.
+    private var expectedNextHostNanos: UInt64 = 0
+
+    /// Pre-allocated silence buffer reused across gap fills, sized at
+    /// `gapFillChunkFrames`. Created lazily on the first gap fill so
+    /// the audio callback path does no heap allocation. Protected by `lock`.
+    private var silenceBuffer: AVAudioPCMBuffer?
+
+    /// Chunk size for gap-fill silence writes (frames per write call).
+    private static let gapFillChunkFrames: AVAudioFrameCount = 8192
+
     /// Opens a new file and captures this attempt's callback immutably. A later
     /// recorder retry cannot redirect an old tap to its own file or callback.
     init(url: URL, encoder: EncoderSettings, onFirstBuffer: (@Sendable (Double) -> Void)?) throws {
@@ -56,6 +69,8 @@ final class MicCaptureSession: @unchecked Sendable {
         deliveredBuffer.store(false, ordering: .releasing)
         converter = nil
         converterSourceFormat = nil
+        // Keep expectedNextHostNanos across tap replacements so gap
+        // detection spans reconnects within the same session/file.
         lock.unlock()
         return { [self, tap] buffer, when in
             handleTap(buffer: buffer, when: when, tap: tap)
@@ -118,14 +133,88 @@ final class MicCaptureSession: @unchecked Sendable {
             else { return nil }
             bufferToWrite = converted
         }
-        guard VPIOBufferHelper.writeBuffer(bufferToWrite, to: file) == noErr,
-              !didNotifyFirstBuffer else { return nil }
+
+        // Fill any gap since the last written buffer with silence so the
+        // mic track stays aligned with wall-clock time after reconnects.
+        let actualHostNanos: UInt64 = when.isHostTimeValid
+            ? AudioConvertHostTimeToNanos(when.hostTime) : 0
+        if expectedNextHostNanos > 0, actualHostNanos > 0 {
+            fillGapWithSilence(
+                expectedNextHostNanos: expectedNextHostNanos,
+                actualHostNanos: actualHostNanos,
+                file: file
+            )
+        }
+
+        guard VPIOBufferHelper.writeBuffer(bufferToWrite, to: file) == noErr else {
+            return nil
+        }
+
+        // Update expected-next for the next buffer.
+        if actualHostNanos > 0 {
+            let durationNanos = UInt64(
+                Double(bufferToWrite.frameLength) / processingFormat.sampleRate * 1_000_000_000
+            )
+            expectedNextHostNanos = actualHostNanos + durationNanos
+        }
+
+        guard !didNotifyFirstBuffer else { return nil }
         didNotifyFirstBuffer = true
-        let anchor = when.isHostTimeValid
-            ? Double(AudioConvertHostTimeToNanos(when.hostTime)) / 1_000_000_000
+        let anchor = actualHostNanos > 0
+            ? Double(actualHostNanos) / 1_000_000_000
             : 0
         logger.notice("First mic buffer delivered -- anchor=\(anchor, privacy: .public)s")
         return anchor
+    }
+
+    /// Writes silence for the gap between the expected and actual host times.
+    /// Requires `lock`. Uses the pre-allocated silence buffer, chunking large
+    /// fills to avoid unbounded allocation on the audio callback path.
+    private func fillGapWithSilence(
+        expectedNextHostNanos: UInt64,
+        actualHostNanos: UInt64,
+        file: ExtAudioFileRef
+    ) {
+        var framesRemaining = micGapSilenceFrameCount(
+            expectedNextHostNanos: expectedNextHostNanos,
+            actualHostNanos: actualHostNanos,
+            sampleRate: processingFormat.sampleRate
+        )
+        guard framesRemaining > 0 else { return }
+
+        let gapSeconds = Double(actualHostNanos - expectedNextHostNanos) / 1_000_000_000
+        logger.notice("Mic gap fill: \(gapSeconds, privacy: .public)s (\(framesRemaining, privacy: .public) frames)")
+
+        let chunk = Self.gapFillChunkFrames
+        let buf = silenceBufferForFill()
+
+        while framesRemaining > 0 {
+            let count = AVAudioFrameCount(min(framesRemaining, Int(chunk)))
+            buf.frameLength = count
+            // Zero the buffer data for the active frame count.
+            if let data = buf.floatChannelData?[0] {
+                memset(data, 0, Int(count) * MemoryLayout<Float>.size)
+            }
+            if VPIOBufferHelper.writeBuffer(buf, to: file) != noErr {
+                logger.error("Mic gap-fill write failed -- aborting fill")
+                return
+            }
+            framesRemaining -= Int(count)
+        }
+    }
+
+    /// Returns the pre-allocated silence buffer, creating it on first use.
+    /// Requires `lock`.
+    private func silenceBufferForFill() -> AVAudioPCMBuffer {
+        if let silenceBuffer { return silenceBuffer }
+        guard let buf = AVAudioPCMBuffer(
+            pcmFormat: processingFormat,
+            frameCapacity: Self.gapFillChunkFrames
+        ) else {
+            preconditionFailure("Failed to allocate silence buffer for gap fill")
+        }
+        silenceBuffer = buf
+        return buf
     }
 
     /// Reuses conversion state only within the active tap and matching format.

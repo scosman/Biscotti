@@ -8,6 +8,7 @@ For capturing meeting audio on macOS 15+, we recommend a **dual-API approach**: 
 > - [`display_audio_startup_failure.md`](display_audio_startup_failure.md) — stopped-engine startup with external displays and a Bluetooth headset; same-engine recovery validated on the affected hardware.
 > - [`phase9_validation_findings.md`](phase9_validation_findings.md) — what changed after real-hardware validation.
 > - [`mic_capture_level_findings.md`](mic_capture_level_findings.md) — **why the built-in mic records near-silent audio during meetings** (the raw beamformer array has tiny gain; it's meant for Apple's VPIO stream processing, not general taps) and the ranked plan to fix it (VPIO → software gain → Audio-Hijack-style taps).
+> - **Mic reconnect gap silence fill** — when the mic stream stops and resumes during a session (device unplug/replug, config-change rebuild), `MicCaptureSession` now writes silence for the gap duration so the mic track stays aligned with wall-clock time. Gap is measured from host-clock timestamps (last buffer end vs. new buffer start), with a 5 ms jitter threshold and a 300 s per-fill cap. The system engine (`LiveSystemCaptureEngine`) has the same gap bug on output-device reconnects but is not yet patched (tracked as a follow-up).
 
 ## Key Questions & Findings
 

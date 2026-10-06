@@ -37,6 +37,11 @@ final class MicCaptureSession: @unchecked Sendable {
     }
 
     /// Whether the currently installed tap has received nonempty hardware audio.
+    /// This signals hardware liveness (a buffer arrived from the tap), not that a
+    /// buffer was successfully converted and written. MicEngine uses it to choose
+    /// between a lightweight same-engine restart (pre-delivery) and a full rebuild
+    /// (post-delivery) on configuration changes. `onFirstBuffer` is the separate
+    /// signal that confirms startup to AudioRecorder.
     /// Replacing the tap resets this without resetting the session's first anchor.
     var hasDeliveredBuffer: Bool {
         deliveredBuffer.load(ordering: .acquiring)
@@ -99,6 +104,9 @@ final class MicCaptureSession: @unchecked Sendable {
     /// rejected, empty, unconvertible or failed buffers cannot confirm startup.
     private func writeBufferIfCurrent(_ buffer: AVAudioPCMBuffer, when: AVAudioTime, tap: Tap) -> Double? {
         guard activeTap === tap, let file else { return nil }
+        // Intentionally set before extraction/conversion/write: this signals
+        // hardware liveness (selects the full-rebuild path in MicEngine),
+        // not successful file output. onFirstBuffer confirms startup.
         deliveredBuffer.store(true, ordering: .releasing)
         guard let mono = VPIOBufferHelper.extractChannel0(buffer) else { return nil }
         let bufferToWrite: AVAudioPCMBuffer

@@ -242,12 +242,11 @@ public actor AudioRecorder {
                 throw error
             }
 
-            logger.error("Mic first-buffer timeout: attempt \(attempt, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public)")
+            logger.warning("Mic first-buffer timeout: attempt \(attempt, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public)")
             await micEngine.stop()
         }
-        throw CaptureError.micEngineFailed(
-            "The microphone did not deliver audio. Check the macOS sound input device and try recording again."
-        )
+        logger.error("All mic startup attempts exhausted (\(Self.micStartMaxAttempts, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public))")
+        throw CaptureError.micEngineFailed("Microphone did not deliver audio. Check the macOS sound input device and try again.")
     }
 
     /// Binds one startup attempt to its own anchor stream and releases that

@@ -89,3 +89,19 @@ verify the resulting AAC files, and check that valid replacement taps preserve
 recorded audio and the session's original anchor. These tests do not activate audio
 hardware. The same-engine/VPIO recovery sequence is retained, but this follow-up
 has not yet been rerun on the Bose-and-displays setup.
+
+## Second confirmed setup: USB mic + USB DAC (no Bluetooth)
+
+A separate setup on macOS (Darwin 24.6) reproduced the same failure signature
+without Bluetooth: Samson C01U USB microphone input, NuForce µDAC 2 USB DAC
+output. Evidence collected 2026-10-01 to 2026-10-06 on `main` (before PR #94):
+
+- Every 0-byte `mic.aac` had its mtime at recording start.
+- Unified log showed `AVAudioEngine start` → ~300 ms later `iounit configuration
+  changed > stopping the engine` → ~110 ms later `posting notification` → 3 s
+  later `Mic first-buffer timeout`, and at stop `stop, was running 0`.
+- Failures were intermittent (approximately half of recordings on affected days).
+
+After PR #94, five test recordings on this setup all contained mic audio. However,
+the startup engine-stop did not occur in any of them, so the same-engine restart
+path has not yet been exercised on this hardware.

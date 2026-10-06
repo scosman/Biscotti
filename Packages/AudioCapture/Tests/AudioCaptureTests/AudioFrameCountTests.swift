@@ -206,10 +206,10 @@ struct MicGapSilenceFrameCountTests {
 
     @Test("gap below threshold returns 0")
     func gapBelowThreshold() {
-        // Gap = 3 ms, threshold = 5 ms
+        // Gap = 50 ms, default threshold = 100 ms
         let frames = micGapSilenceFrameCount(
             expectedNextHostNanos: 1_000_000_000,
-            actualHostNanos: 1_003_000_000,
+            actualHostNanos: 1_050_000_000,
             sampleRate: rate
         )
         #expect(frames == 0)
@@ -217,13 +217,13 @@ struct MicGapSilenceFrameCountTests {
 
     @Test("gap exactly at threshold returns frames")
     func gapAtThreshold() {
-        // Gap = 5 ms, threshold = 5 ms => should fill
+        // Gap = 100 ms, threshold = 100 ms => should fill
         let frames = micGapSilenceFrameCount(
             expectedNextHostNanos: 1_000_000_000,
-            actualHostNanos: 1_005_000_000,
+            actualHostNanos: 1_100_000_000,
             sampleRate: rate
         )
-        #expect(frames == 120) // 0.005 * 24000 = 120
+        #expect(frames == 2400) // 0.1 * 24000 = 2400
     }
 
     @Test("negative gap returns 0")
@@ -290,12 +290,12 @@ struct MicGapSilenceFrameCountTests {
 
     @Test("custom threshold is respected")
     func customThreshold() {
-        // Gap = 50 ms, custom threshold = 100 ms => 0
+        // Gap = 150 ms, custom threshold = 200 ms => 0
         let frames = micGapSilenceFrameCount(
             expectedNextHostNanos: 1_000_000_000,
-            actualHostNanos: 1_050_000_000,
+            actualHostNanos: 1_150_000_000,
             sampleRate: rate,
-            thresholdSeconds: 0.1
+            thresholdSeconds: 0.2
         )
         #expect(frames == 0)
     }

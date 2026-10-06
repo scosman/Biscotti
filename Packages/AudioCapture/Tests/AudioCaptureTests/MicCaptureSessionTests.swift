@@ -177,7 +177,7 @@ struct MicCaptureSessionTests {
         // First buffer at t=1 s.
         tap(buffer, timestamp(seconds: 1))
 
-        // Second buffer 1 ms after expected (jitter, well below 5 ms threshold).
+        // Second buffer 1 ms after expected (jitter, well below 100 ms threshold).
         let secondTimeSec = 1.0 + bufferDurationSec + 0.001
         let secondTimeNanos = UInt64(secondTimeSec * 1_000_000_000)
         let secondTimestamp = AVAudioTime(hostTime: AudioConvertNanosToHostTime(secondTimeNanos))
@@ -234,24 +234,172 @@ struct MicCaptureSessionTests {
                 "File duration \(fileDurationSec)s should be close to \(expectedDurationSec)s after reconnect gap fill")
     }
 
+    // MARK: - Helpers
+
     /// Uses a unique file without activating a microphone or requiring permission.
     private func temporaryRecording() -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("mic-session-\(UUID()).aac")
+        MicCaptureTestHelpers.temporaryRecording()
     }
 
     /// Supplies enough nonzero PCM frames to exercise real AAC encoding and flush.
     private func toneBuffer() throws -> AVAudioPCMBuffer {
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: EncoderSettings.voice.processingFormat, frameCapacity: 8192))
-        buffer.frameLength = buffer.frameCapacity
+        try MicCaptureTestHelpers.toneBuffer()
+    }
+
+    /// Makes deterministic host-clock anchors independently of wall-clock time.
+    private func timestamp(seconds: UInt64) -> AVAudioTime {
+        MicCaptureTestHelpers.timestamp(seconds: seconds)
+    }
+}
+
+// MARK: - Resampling regression tests (48 kHz → 24 kHz converter path)
+
+@Suite("Mic capture resampling gap fill")
+struct MicCaptureResamplingTests {
+    /// Sends a continuous run of 48 kHz mono buffers (realistic tap sizes,
+    /// contiguous host times) through the converter path into a 24 kHz AAC
+    /// file. Asserts zero gap fills and a file duration matching the total
+    /// host-time span within AAC priming/padding tolerance.
+    @Test("Continuous 48 kHz buffers produce no false gap fills")
+    func continuousResampledBuffersNoGapFill() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        defer { session.close() }
+        let tap = session.makeTapHandler()
+
+        let sourceRate = 48000.0
+        let bufferFrames: AVAudioFrameCount = 4800 // 100 ms at 48 kHz
+        let bufferCount = 50 // 5 s of audio
+        var hostNanos: UInt64 = 1_000_000_000 // start at t=1 s
+
+        for _ in 0 ..< bufferCount {
+            let buf = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+            let time = AVAudioTime(hostTime: AudioConvertNanosToHostTime(hostNanos))
+            tap(buf, time)
+            let durationNanos = UInt64(Double(bufferFrames) / sourceRate * 1_000_000_000)
+            hostNanos += durationNanos
+        }
+
+        session.close()
+
+        let totalInputDurationSec = Double(bufferFrames) * Double(bufferCount) / sourceRate
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / outputRate
+
+        // File duration should closely match the input span. AAC padding
+        // adds ~2048 frames = ~0.085 s at 24 kHz. Allow 0.15 s tolerance.
+        #expect(abs(fileDurationSec - totalInputDurationSec) < 0.15,
+                "File \(fileDurationSec)s vs expected \(totalInputDurationSec)s — false gap fills inflated the file")
+    }
+
+    /// Sends 48 kHz buffers with a real multi-second gap and confirms the
+    /// gap is still filled with silence through the converter path.
+    @Test("Real gap is filled with silence through the 48 kHz converter path")
+    func realGapFilledThroughConverter() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        defer { session.close() }
+        let tap = session.makeTapHandler()
+
+        let sourceRate = 48000.0
+        let bufferFrames: AVAudioFrameCount = 4800 // 100 ms at 48 kHz
+        let bufferDurationSec = Double(bufferFrames) / sourceRate
+        let gapSeconds = 2.5
+
+        let buf1 = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+        tap(buf1, MicCaptureTestHelpers.timestampNanos(1_000_000_000))
+
+        let secondNanos = UInt64((1.0 + bufferDurationSec + gapSeconds) * 1_000_000_000)
+        let buf2 = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+        tap(buf2, MicCaptureTestHelpers.timestampNanos(secondNanos))
+
+        session.close()
+
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / outputRate
+        let expectedDurationSec = bufferDurationSec * 2 + gapSeconds
+
+        #expect(abs(fileDurationSec - expectedDurationSec) < 0.15,
+                "File \(fileDurationSec)s vs expected \(expectedDurationSec)s — gap fill missing")
+    }
+
+    /// Sends 48 kHz buffers with a real gap that spans a tap replacement
+    /// (reconnect). Confirms the gap is filled correctly.
+    @Test("Real gap across reconnect is filled through the converter path")
+    func realGapAcrossReconnectThroughConverter() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        defer { session.close() }
+
+        let sourceRate = 48000.0
+        let bufferFrames: AVAudioFrameCount = 4800
+        let bufferDurationSec = Double(bufferFrames) / sourceRate
+        let gapSeconds = 1.5
+
+        let tap1 = session.makeTapHandler()
+        try tap1(MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames),
+                 MicCaptureTestHelpers.timestampNanos(1_000_000_000))
+
+        session.invalidateTap()
+        let tap2 = session.makeTapHandler()
+
+        let secondNanos = UInt64((1.0 + bufferDurationSec + gapSeconds) * 1_000_000_000)
+        try tap2(MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames),
+                 MicCaptureTestHelpers.timestampNanos(secondNanos))
+
+        session.close()
+
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / outputRate
+        let expectedDurationSec = bufferDurationSec * 2 + gapSeconds
+
+        #expect(abs(fileDurationSec - expectedDurationSec) < 0.15,
+                "File \(fileDurationSec)s vs expected \(expectedDurationSec)s after reconnect gap fill")
+    }
+}
+
+// MARK: - Shared test helpers
+
+enum MicCaptureTestHelpers {
+    static func temporaryRecording() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("mic-session-\(UUID()).aac")
+    }
+
+    /// Creates a mono PCM buffer at the processing rate (24 kHz).
+    static func toneBuffer() throws -> AVAudioPCMBuffer {
+        try toneBuffer(sampleRate: EncoderSettings.voice.processingFormat.sampleRate, frameCount: 8192)
+    }
+
+    /// Creates a mono PCM buffer at the given sample rate and frame count,
+    /// filled with a simple tone. For rates other than the processing rate
+    /// (24 kHz), this exercises the AVAudioConverter resampling path.
+    static func toneBuffer(sampleRate: Double, frameCount: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: 1,
+            interleaved: false
+        ))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount))
+        buffer.frameLength = frameCount
         let samples = try #require(buffer.floatChannelData?[0])
-        for frame in 0 ..< Int(buffer.frameLength) {
+        for frame in 0 ..< Int(frameCount) {
             samples[frame] = 0.2 * sin(Float(frame) * 0.1)
         }
         return buffer
     }
 
-    /// Makes deterministic host-clock anchors independently of wall-clock time.
-    private func timestamp(seconds: UInt64) -> AVAudioTime {
+    static func timestamp(seconds: UInt64) -> AVAudioTime {
         AVAudioTime(hostTime: AudioConvertNanosToHostTime(seconds * 1_000_000_000))
+    }
+
+    static func timestampNanos(_ nanos: UInt64) -> AVAudioTime {
+        AVAudioTime(hostTime: AudioConvertNanosToHostTime(nanos))
     }
 }

@@ -32,8 +32,9 @@ final class MicCaptureSession: @unchecked Sendable {
     private var expectedNextHostNanos: UInt64 = 0
 
     /// Pre-allocated silence buffer reused across gap fills, sized at
-    /// `gapFillChunkFrames`. Created lazily on the first gap fill so
-    /// the audio callback path does no heap allocation. Protected by `lock`.
+    /// `gapFillChunkFrames`. Created lazily on the first gap fill (one
+    /// allocation); subsequent fills reuse the same buffer. Protected
+    /// by `lock`.
     private var silenceBuffer: AVAudioPCMBuffer?
 
     /// Chunk size for gap-fill silence writes (frames per write call).
@@ -146,16 +147,21 @@ final class MicCaptureSession: @unchecked Sendable {
             )
         }
 
-        guard VPIOBufferHelper.writeBuffer(bufferToWrite, to: file) == noErr else {
-            return nil
-        }
-
-        // Update expected-next for the next buffer.
+        // Advance expected-next from the *input* tap buffer (not the
+        // resampled output). The converter may hold back or emit extra
+        // frames between calls, so `bufferToWrite.frameLength` does not
+        // match the input's host-time span — using it would create
+        // false positive gaps. Update before the write so silence is
+        // not re-inserted if the write fails on the next call.
         if actualHostNanos > 0 {
             let durationNanos = UInt64(
-                Double(bufferToWrite.frameLength) / processingFormat.sampleRate * 1_000_000_000
+                Double(buffer.frameLength) / Double(buffer.format.sampleRate) * 1_000_000_000
             )
             expectedNextHostNanos = actualHostNanos + durationNanos
+        }
+
+        guard VPIOBufferHelper.writeBuffer(bufferToWrite, to: file) == noErr else {
+            return nil
         }
 
         guard !didNotifyFirstBuffer else { return nil }

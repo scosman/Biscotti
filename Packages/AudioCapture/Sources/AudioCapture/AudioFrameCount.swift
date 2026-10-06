@@ -60,7 +60,9 @@ public func leadingSilenceFrameCount(
 ///     after the gap.
 ///   - sampleRate: the file's processing sample rate (Hz).
 ///   - thresholdSeconds: positive gaps smaller than this are treated as
-///     jitter and ignored (default 0.005 s = 5 ms).
+///     jitter and ignored (default 0.1 s = 100 ms). The threshold must
+///     be well above callback/resampler scheduling jitter (~10 ms) but
+///     well below real reconnect gaps (≥1 s). 100 ms satisfies both.
 ///   - maxFillSeconds: absolute cap on a single silence fill (default
 ///     300 s). Prevents a bad timestamp from producing a huge file.
 ///
@@ -70,7 +72,7 @@ public func micGapSilenceFrameCount(
     expectedNextHostNanos: UInt64,
     actualHostNanos: UInt64,
     sampleRate: Double,
-    thresholdSeconds: Double = 0.005,
+    thresholdSeconds: Double = 0.1,
     maxFillSeconds: Double = 300
 ) -> Int {
     guard expectedNextHostNanos > 0, actualHostNanos > 0, sampleRate > 0 else { return 0 }

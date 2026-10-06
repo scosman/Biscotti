@@ -1,0 +1,43 @@
+name: Release check
+
+# The README's download link points at releases/latest/download/Biscotti.dmg,
+# so whatever release GitHub currently resolves as "latest" must carry that
+# asset. GitHub has no "marked as latest" event: `released` covers publishing
+# a full release (latest by default) and `edited` covers re-marking an older
+# release as latest. Either way we inspect the *current* latest release, not
+# the release in the event payload.
+#
+# Attach the DMG before publishing — publishing first and uploading after will
+# (correctly) fail this check; re-run it via workflow_dispatch once uploaded.
+on:
+  release:
+    types: [released, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-release-has-dmg:
+    name: Latest release has Biscotti.dmg
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check latest release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRED_ASSET: Biscotti.dmg
+        run: |
+          if ! release_json=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName,assets); then
+            echo "::error::Could not resolve the latest release of $GITHUB_REPOSITORY (no release, or API error); cannot verify the README's $REQUIRED_ASSET download link."
+            exit 1
+          fi
+
+          tag=$(jq -r '.tagName' <<<"$release_json")
+
+          if jq -e --arg name "$REQUIRED_ASSET" 'any(.assets[]; .name == $name)' <<<"$release_json" >/dev/null; then
+            echo "Latest release $tag has $REQUIRED_ASSET attached."
+          else
+            echo "::error::Latest release $tag has no $REQUIRED_ASSET asset; the README download link (releases/latest/download/$REQUIRED_ASSET) is broken. Attach it to $tag."
+            exit 1
+          fi

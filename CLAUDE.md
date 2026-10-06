@@ -113,6 +113,8 @@ CI pins **Xcode 26.3** via `DEVELOPER_DIR` in `ci.yml` while targeting the **mac
 - **`app-tier`** (non-gating, `continue-on-error`): runs `make build-app` on `macos-15`. Reported on the PR for visibility but never blocks merge.
 - **`manual-tests-check`** (non-gating, `continue-on-error`): runs `make manual-tests-check` on `macos-15`. Expected RED until Phase 4.5 (when a human runs the manual tests on real hardware). Informational only — never blocks merge.
 
+Separately, **`release-check.yml`** (non-gating, standalone) runs on release `released`/`edited` events and `workflow_dispatch`, and fails if the *current latest* release lacks a `Biscotti.dmg` asset (the README links to `releases/latest/download/Biscotti.dmg`). Attach the DMG before publishing a release.
+
 ### Agent command surface (hooks-mcp)
 
 Agents use the `hooks-mcp` MCP server as their primary command surface. It wraps each Makefile target as a named tool: `mcp__hooks-mcp__build`, `mcp__hooks-mcp__test`, `mcp__hooks-mcp__lint`, `mcp__hooks-mcp__format`, `mcp__hooks-mcp__precommit_checks`, `mcp__hooks-mcp__build_app`, `mcp__hooks-mcp__generate`, `mcp__hooks-mcp__bootstrap`, `mcp__hooks-mcp__test_app`, `mcp__hooks-mcp__manual_tests_check`. These run outside the Bash sandbox, which is required for anything that compiles (see the sandbox note above).

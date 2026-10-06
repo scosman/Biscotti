@@ -13,7 +13,8 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// after this anchor is known and prepends leading silence equal to the gap
 /// between its own first frame and the mic anchor. Both clocks are the same
 /// mach host clock, so the gap is precise. A timeout (~3 s) prevents a
-/// hung mic from blocking start indefinitely.
+/// hung mic from blocking start indefinitely. Startup retries once, then fails
+/// if the mic still delivers no audio; an empty track is never a successful start.
 ///
 /// Each stream writes ADTS AAC directly during capture via `ExtAudioFile` —
 /// no post-recording encode step. Route-change events are handled by
@@ -59,6 +60,8 @@ public actor AudioRecorder {
     /// proceeding to start the system engine (seconds). Prevents a
     /// VPIO DSP fault from hanging start() indefinitely.
     static let micFirstBufferTimeout: Duration = .seconds(3)
+
+    private static let micStartMaxAttempts = 2
 
     /// Maximum number of retry attempts for system engine start failures.
     /// The system engine (Core Audio process tap) can fail intermittently
@@ -224,70 +227,76 @@ public actor AudioRecorder {
         startRouteChangeListener()
     }
 
-    /// Starts the mic engine, then waits for its `onFirstBuffer` signal
-    /// with a bounded timeout. Returns the host-clock anchor (seconds),
-    /// or 0 if the timeout expires (alignment simply degrades to "both
-    /// start ~now"). On start failure, re-throws.
+    /// Requires a delivered buffer, not just a successful engine.start().
+    /// A stalled startup is fully stopped and retried once. Only unconfirmed
+    /// startup audio can be replaced: the session is not recording yet.
     private func startMicAndWaitForAnchor(path: URL) async throws -> Double {
+        for attempt in 1 ... Self.micStartMaxAttempts {
+            do {
+                try Task.checkCancellation()
+                let anchor = try await startMicAttempt(path: path)
+                try Task.checkCancellation()
+                if let anchor { return anchor }
+            } catch {
+                await micEngine.stop()
+                throw error
+            }
+
+            logger.error("Mic first-buffer timeout: attempt \(attempt, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public)")
+            await micEngine.stop()
+        }
+        throw CaptureError.micEngineFailed(
+            "The microphone did not deliver audio. Check the macOS sound input device and try recording again."
+        )
+    }
+
+    /// Binds one startup attempt to its own anchor stream and releases that
+    /// registration on success, timeout, cancellation or engine failure.
+    private func startMicAttempt(path: URL) async throws -> Double? {
         // Create a one-shot async stream: the callback yields the anchor,
         // and we read it (with timeout) after start returns.
         let stream = AsyncStream<Double>.makeStream()
+        defer {
+            micEngine.setOnFirstBuffer(nil)
+            stream.continuation.finish()
+        }
 
         micEngine.setOnFirstBuffer { anchor in
             stream.continuation.yield(anchor)
             stream.continuation.finish()
         }
 
-        do {
-            try await micEngine.start(writingTo: path)
-        } catch {
-            micEngine.setOnFirstBuffer(nil)
-            stream.continuation.finish()
-            logger.error("Mic engine start failed: \(error.localizedDescription, privacy: .public)")
-            throw error
-        }
+        try await micEngine.start(writingTo: path)
 
         // Wait for the first buffer or timeout. On real hardware the
         // first buffer arrives from the real-time audio thread after
         // start returns; for fakes it fires during start() and the
         // stream already has a value.
-        let anchor = await waitForFirstValue(
+        return await waitForFirstValue(
             from: stream.stream, timeout: Self.micFirstBufferTimeout
         )
-
-        micEngine.setOnFirstBuffer(nil)
-        return anchor
     }
 
-    /// Returns the first value from the stream, or 0 if the timeout
+    /// Returns the first value from the stream, or nil if the timeout
     /// expires before any value arrives.
     private func waitForFirstValue(
         from stream: AsyncStream<Double>, timeout: Duration
-    ) async -> Double {
+    ) async -> Double? {
         await withTaskGroup(of: Double?.self) { group in
             group.addTask {
-                for await value in stream {
-                    return value
-                }
-                return nil
+                var iterator = stream.makeAsyncIterator()
+                return await iterator.next()
             }
             group.addTask {
                 try? await Task.sleep(for: timeout)
                 return nil
             }
 
-            // The first task to finish wins.
-            if let result = await group.next(), let anchor = result {
-                group.cancelAll()
-                return anchor
-            }
-
-            // Timeout fired first or stream finished empty.
+            // First buffer, timeout, or cancellation wins. A zero-valued anchor
+            // is valid; only nil means no buffer was delivered.
+            let anchor = await group.next() ?? nil
             group.cancelAll()
-            logger.warning(
-                "Mic first-buffer timeout (\(timeout)) -- proceeding without alignment anchor"
-            )
-            return 0
+            return anchor
         }
     }
 

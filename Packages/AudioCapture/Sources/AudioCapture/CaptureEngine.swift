@@ -26,14 +26,15 @@ public protocol CaptureEngine: Sendable {
     /// must override to preserve audio.
     func reconnect() async throws
 
-    /// Registers a callback fired exactly once when the engine delivers its
+    /// Registers a callback fired exactly once when the engine writes its
     /// first audio buffer. The argument is the host-clock anchor (seconds,
     /// derived from `AudioConvertHostTimeToNanos`). Used by the mic engine
     /// to signal the recording's t=0 so the system track can be aligned.
     ///
-    /// Called by `AudioRecorder` before `start()`. Engines that don't produce
-    /// an anchor (system, fakes) can ignore it — the default is a no-op.
-    /// Pass `nil` to clear a previously registered callback.
+    /// Called by `AudioRecorder` before `start()`. Mic engines must provide this
+    /// signal for startup to succeed. System engines can use the no-op default.
+    /// Pass `nil` to clear the registration for future starts. Callbacks already
+    /// installed for an attempt remain bound to that attempt, never to a retry.
     func setOnFirstBuffer(_ callback: (@Sendable (Double) -> Void)?)
 
     /// Sets the mic's first-buffer host-clock anchor (seconds) so the

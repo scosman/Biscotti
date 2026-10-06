@@ -41,3 +41,15 @@ jobs:
             echo "::error::Latest release $tag has no $REQUIRED_ASSET asset; the README download link (releases/latest/download/$REQUIRED_ASSET) is broken. Attach it to $tag."
             exit 1
           fi
+
+      # Hit the exact URL the README links to (see README.md). The asset CDN
+      # rejects HEAD on its signed URLs, so fetch a single byte instead.
+      - name: README download URL resolves
+        env:
+          DMG_URL: https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg
+        run: |
+          if ! status=$(curl -sSL --fail --retry 3 --range 0-0 -o /dev/null -w '%{http_code}' "$DMG_URL"); then
+            echo "::error::README download URL $DMG_URL failed (HTTP ${status:-none})"
+            exit 1
+          fi
+          echo "$DMG_URL -> HTTP $status"

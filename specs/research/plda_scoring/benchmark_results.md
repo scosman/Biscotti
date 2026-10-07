@@ -4,6 +4,13 @@ Date: 2026-10-07. Data: developer store snapshot (367 voiceprints per kind,
 135 meetings, 89 persons, 18 confirmed-tag trials after alias merging and
 trials-without-history skipping).
 
+> **Correction (2026-10-07, after review):** the "swapped tags" diagnosis for
+> the Mike/Steve 1:1 meeting below is wrong — the tags were checked by ear and
+> are correct. The misses come from wrong LLM-inferred Mike/Steve tags in other
+> meetings, and the nearest-neighbour top-1 here ignores tag kind, so it carries
+> inferred-label noise. The verdict is unchanged. See
+> `specs/projects/plda_v2/project_overview.md` for the corrections and the plan.
+
 ## Question
 
 Does PLDA LLR (log-likelihood ratio) scoring beat cosine distance for

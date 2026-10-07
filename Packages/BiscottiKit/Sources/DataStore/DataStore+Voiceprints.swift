@@ -331,28 +331,6 @@ public extension DataStore {
     }
 }
 
-// MARK: - PLDA Cleanup
-
-public extension DataStore {
-    /// Deletes all voiceprint rows with `kindRaw == "plda"`. These are legacy
-    /// rows from when Biscotti stored PLDA-projected embeddings alongside raw
-    /// embeddings. Raw voiceprints already cover the same speakers, so no data
-    /// is lost. Returns the number of rows deleted.
-    @discardableResult
-    func deletePLDAVoiceprints() throws -> Int {
-        let all = try context.fetch(FetchDescriptor<Voiceprint>())
-        let plda = all.filter { $0.kindRaw == "plda" }
-        for voiceprint in plda {
-            context.delete(voiceprint)
-        }
-        if !plda.isEmpty {
-            try save()
-            logger.info("Deleted \(plda.count) legacy PLDA voiceprint(s)")
-        }
-        return plda.count
-    }
-}
-
 // MARK: - Test Helpers
 
 public extension DataStore {
@@ -367,22 +345,6 @@ public extension DataStore {
     func deletePerson(id personID: UUID) throws {
         guard let person = try fetchPerson(id: personID) else { return }
         context.delete(person)
-        try save()
-    }
-
-    /// Inserts a voiceprint with an arbitrary `kindRaw` string. Used by tests
-    /// to create legacy PLDA rows without the (removed) `.plda` enum case.
-    func insertLegacyVoiceprint(
-        speakerID: Int, kindRaw: String, space: String,
-        vector: [Float], transcript: TranscriptRecord
-    ) throws {
-        let voiceprint = Voiceprint(
-            speakerID: speakerID, kind: .raw, embeddingSpace: space,
-            vector: vector, speakingDuration: 10
-        )
-        voiceprint.kindRaw = kindRaw
-        voiceprint.transcript = transcript
-        context.insert(voiceprint)
         try save()
     }
 }

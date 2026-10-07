@@ -35,7 +35,7 @@ Each roadmap entry is sized so it's a sensible unit of work — not so wide it c
 - **Foundation/library Projects** — one complex, critical component built deep (e.g. the transcription library, the audio-recording library). Each gets its **own** Project with many internal phases; never rolled into a broader feature Project (too wide a scope). Validated by tests + a manual test-app/CLI harness (the `/experiments/` pattern) — these are the front-loaded, risk-reducing enablers and do **not** ship a runnable app on their own.
 - **Feature/integration Projects** — deliver a self-standing, runnable app increment by wiring already-built components + UI. The first is the MVP (e.g. "record & transcribe app + UI"), runnable once its foundation-library deps land. Subsequent ones layer vertical features (notifications, calendar, search, onboarding, intelligence, …); a smaller feature spans several components but stays a **single** Project with internal phases — not over-subdivided.
 
-**Note:** `architecture.md` and `implementation_plan.md` have been **promoted to `specs/projects/initial_implementation/`** (`specs/projects/initial_implementation/architecture.md`, `specs/projects/initial_implementation/implementation_plan.md`) as the durable master roadmap. This spec folder keeps the planning record (`project_overview.md`, `functional_spec.md`).
+**Note:** `architecture.md` and `implementation_plan.md` have been **moved to `specs/projects/initial_implementation/`** (`specs/projects/initial_implementation/architecture.md`, `specs/projects/initial_implementation/implementation_plan.md`) as the point-in-time initial roadmap. This spec folder keeps the planning record (`project_overview.md`, `functional_spec.md`).
 
 ## The Depth Contract
 

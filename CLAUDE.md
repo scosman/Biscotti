@@ -32,14 +32,14 @@ specs/projects/initial_implementation/
 ```
 
 ### Product & vision (the "what" and "why")
-- **`specs/projects/initial_implementation/project_overview.md`** — the master product spec (formerly `app_overview.md`). Every feature, the UX intent, "Misc App Reqs," design style, and the stack/testing philosophy (Swift-package-first, thin app target). **Source of truth for product intent.** Read when you need to know what a feature is supposed to do.
+- **`specs/projects/initial_implementation/project_overview.md`** — the original master product spec (formerly `app_overview.md`). Every feature, the UX intent, "Misc App Reqs," design style, and the stack/testing philosophy (Swift-package-first, thin app target). **Baseline for product intent** (later spec projects may refine it). Read when you need to know what a feature is supposed to do.
 - **`specs/projects/initial_implementation/plan.md`** — the high-level staging (Research → Scaffolding → Library Building → App). Short; gives the big-picture sequence. `specs/projects/initial_implementation/implementation_plan.md` is the detailed version of this.
 
-### The design — master roadmap (the "where" and "in what order")
+### The design — initial roadmap (the "where" and "in what order")
 - **`specs/projects/initial_implementation/architecture.md`** — the **static topology**: every component (package vs. module vs. app-glue), its responsibilities (as outcomes, not interfaces), dependency DAG, granularity rationale, thin-app composition, cross-cutting conventions, and P2/P3 placement. **Deliberately shape-level — it designs *no* concrete interfaces/schemas.** Read before building or modifying any component to know its home, boundaries, and dependencies.
 - **`specs/projects/initial_implementation/implementation_plan.md`** — the **build roadmap**: an ordered list of ~14 Projects (each a future `/spec new project`), with a contents list, dependencies, and risk per Project — but no internal phases (those are decided when each Project is spec'd). Read to pick/scope the next Project. Project 0 (Scaffolding) is the first.
 
-These were authored in the `library_design` spec project. The spec skill has no top-level spec concept, so these app-level docs live in the `initial_implementation` project. They are still the living roadmap — keep them updated as the build progresses.
+These were authored in the `library_design` spec project. The spec skill has no top-level spec concept, so these app-level docs live in the `initial_implementation` project. Like every spec project, they are a **point-in-time record** of the initial design — **don't edit them to track later work.** Later changes to product intent, topology, or build order are captured in the spec project that makes them (`specs/projects/<name>/`); where a later project contradicts these docs, the later project wins.
 
 ### Validated research (the "how" — already proven, don't re-litigate)
 - **`specs/research/README.md`** — one-page summary of all technical decisions (audio API, format, models, isolation, permissions, distribution) with a recommendations table. Start here for any technical area.
@@ -59,7 +59,7 @@ Each is an independent, throwaway app/package that proves a technique and leaves
 
 ### Process & planning records — `specs/projects/`
 Spec-driven-development artifacts (see the `spec` skill). Mostly historical context.
-- **`specs/projects/initial_implementation/`** — the app-level product and design docs: `project_overview.md` (master product spec, formerly `app_overview.md`), `architecture.md` (codebase topology), `implementation_plan.md` (build roadmap), and `plan.md` (high-level staging). These are living documents — update them as the build progresses.
+- **`specs/projects/initial_implementation/`** — the app-level product and design docs: `project_overview.md` (master product spec, formerly `app_overview.md`), `architecture.md` (codebase topology), `implementation_plan.md` (build roadmap), and `plan.md` (high-level staging). Point-in-time — don't edit to track later work (see above).
 - **`specs/projects/library_design/`** — how the architecture and implementation plan were produced: `project_overview.md` and **`functional_spec.md`** (the design brief: depth contract, design goals, capability catalog). Read `functional_spec.md` to understand the *rules* the architecture follows.
 - **`specs/projects/research/`** — the completed research meta-project's specs (overview/functional/architecture/implementation + phase plans). Historical; the *outputs* live in `specs/research/` and `experiments/`.
 - **`specs/projects/manual_test_app/`** — a **planned** future project: a manual-test harness app (one tab per library, interactive pass/fail scripts saved to the repo) for hardware/system things unit tests can't cover. Overview only so far; not built.
@@ -139,7 +139,7 @@ The `precommit_checks` run must be the **last thing before the commit** — if y
 
 ## When you change things
 
-- Updating product intent → `specs/projects/initial_implementation/project_overview.md`. Updating the topology → `specs/projects/initial_implementation/architecture.md`. Re-ordering/scoping work → `specs/projects/initial_implementation/implementation_plan.md`. Correcting a technical finding → the relevant `specs/research/<area>/README.md`.
+- Changing product intent, topology, or build order → capture it in the spec project doing the work (`specs/projects/<name>/`), not in `specs/projects/initial_implementation/` (a point-in-time record). Correcting a technical finding → the relevant `specs/research/<area>/README.md`.
 - **Manual test staleness rule:** when you touch `Packages/Transcription`, `Packages/AudioCapture`, `Packages/LocalLLM` (including `XPCServices/BiscottiLLM`), or `Packages/BiscottiKit/Sources/MCPServer`, mark that library's manual tests as `not-run` in `ManualTestApp/Results/manual_test_results.json`. Either hand-edit the file (set `"status": "not-run"` for each step with the matching prefix: `ac_*` for AudioCapture, `tx_*` for Transcription, `llm_*` for LocalLLM, `mcp_*` for MCPServer) or use `ResultsStore.markScriptNotRun(scriptID:allStepIDs:)` from `ManualTestKit`. This causes `make manual-tests-check` (and its CI gate) to fail until a human re-runs the affected tests on real hardware and commits the updated results. **Only recordable steps belong in the file** — `.instruction` steps (setup/sequence text the human just reads, e.g. `ac_timed_capture`, `ac_mega_setup`, `ac_crash_safety_setup`, `mcp_connect`) have no pass/fail, are excluded from the gate (`TestStep.isRecordable` / `ResultsStore.recordableStepIDs`), and must not be written back. Pass `recordableStepIDs(in:)` to `markScriptNotRun`, or skip those IDs when hand-editing.
 
 ---

@@ -181,7 +181,7 @@ final class MicCaptureSession: @unchecked Sendable {
         actualHostNanos: UInt64,
         file: ExtAudioFileRef
     ) {
-        var framesRemaining = micGapSilenceFrameCount(
+        var framesRemaining = gapSilenceFrameCount(
             expectedNextHostNanos: expectedNextHostNanos,
             actualHostNanos: actualHostNanos,
             sampleRate: processingFormat.sampleRate

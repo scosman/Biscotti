@@ -50,8 +50,11 @@ public func leadingSilenceFrameCount(
     return Int((cappedSeconds * sampleRate).rounded())
 }
 
-/// Computes the number of silent frames to insert when the mic stream
+/// Computes the number of silent frames to insert when an audio stream
 /// resumes after a gap (device reconnect, config-change rebuild, etc.).
+///
+/// Used by both the mic and system tracks to keep each track aligned
+/// with wall-clock time after reconnects.
 ///
 /// - Parameters:
 ///   - expectedNextHostNanos: host-clock nanoseconds when the next
@@ -68,7 +71,7 @@ public func leadingSilenceFrameCount(
 ///
 /// Returns 0 if the gap is non-positive, below the threshold, or any
 /// input is invalid (zero host times, zero sample rate).
-public func micGapSilenceFrameCount(
+public func gapSilenceFrameCount(
     expectedNextHostNanos: UInt64,
     actualHostNanos: UInt64,
     sampleRate: Double,

@@ -70,3 +70,45 @@ log-likelihood ratio (LLR). Andrey (argmax) said the same in
 4. Ship only if it beats raw on the pairwise separation and the production
    matcher. Then calibrate LLR scores (logistic regression) to fit the
    confidence levels.
+
+## Cross-mic test (2026-10-07, "New Mic Test" meeting)
+
+PLDA's main claim is robustness to mic/room (channel) changes, and the library
+benchmark cannot test that: ~98% of recordings use the same mic and room. So we
+recorded one meeting with a very different mic and room and scored the new
+Steve print (19 s of speech) against the 10 confirmed Steve prints and 11
+confirmed other-person prints from the usual setup.
+
+| Method | d′ (Steve vs others) | Rank of best Steve print (confirmed) |
+|---|---|---|
+| Raw cosine | 1.64 | 1st (narrowly: 0.759 vs 0.761) |
+| PLDA cosine | 0.41 | 3rd (nearest is another person, 0.656) |
+| PLDA LLR (4 variants) | 0.17–0.39 | 3rd–4th |
+| Phi-weighted cosine | 0.10 | 4th |
+| Control: usual-room Steve prints | 7.4–11.1 (all methods) | 1st (all methods) |
+
+- **PLDA is worse than raw in the new room, not better.** Neither recognizes the
+  speaker: raw Steve↔Steve goes from ~0.10 (same room) to 0.76–0.81 (cross
+  room), the same as other people. Both are far outside the accept radius, so
+  production returns "no match" (the safe failure).
+- **Short speech does not explain it:** a 5 s clip in the usual setup is still
+  0.41–0.53 from the same person.
+- **The channel dominates raw space:** the two different people in the new room
+  are 0.41 apart in raw (nearer than Steve to himself across rooms). PLDA
+  separates them more (0.57) — it suppresses the shared channel somewhat — but
+  does not bring Steve's prints from different rooms together.
+- Limits: one meeting, 19 s of speech, possible mixed content from diarization,
+  and "different mic" may also mean a different capture path (VPIO or not).
+
+## Summary and next test
+
+- **Make a variety of recordings with different mics/rooms/capture paths and
+  test there.** That is the real use case PLDA exists for, and it is the only
+  test that can show a PLDA win. Include several people, several setups each,
+  and enough speech per speaker.
+- **The backfill and benchmark against the whole library are important but are
+  not the whole signal**, because the library is heavily weighted to one mic.
+  Report cross-setup results separately from the library-wide numbers.
+- Until a cross-setup test shows a win, PLDA stays out of main. More enrollment
+  (confirmed tags from each setup, picked up by best-K matching) is the likely
+  fix for cross-setup matching, not PLDA.

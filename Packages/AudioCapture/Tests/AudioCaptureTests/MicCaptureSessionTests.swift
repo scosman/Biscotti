@@ -76,6 +76,7 @@ struct MicCaptureSessionTests {
         oldTap(buffer, timestamp(seconds: 1))
         firstTap(buffer, timestamp(seconds: 2))
         #expect(session.hasDeliveredBuffer)
+        session.flushWriter()
         #expect(anchors.withLock { $0 } == [2])
 
         session.invalidateTap()
@@ -84,6 +85,7 @@ struct MicCaptureSessionTests {
         #expect(!session.hasDeliveredBuffer)
         nextTap(buffer, timestamp(seconds: 4))
         #expect(session.hasDeliveredBuffer)
+        session.flushWriter()
         #expect(anchors.withLock { $0 } == [2])
         session.close()
 
@@ -120,6 +122,7 @@ struct MicCaptureSessionTests {
         #expect(!session.hasDeliveredBuffer)
         #expect(anchors.withLock { $0.isEmpty })
         try tap(toneBuffer(), timestamp(seconds: 2))
+        session.flushWriter()
         #expect(anchors.withLock { $0 } == [2])
     }
 
@@ -361,6 +364,170 @@ struct MicCaptureResamplingTests {
 
         #expect(abs(fileDurationSec - expectedDurationSec) < 0.15,
                 "File \(fileDurationSec)s vs expected \(expectedDurationSec)s after reconnect gap fill")
+    }
+}
+
+// MARK: - Writer-thread non-blocking tests
+
+@Suite("Mic capture writer thread")
+struct MicCaptureWriterThreadTests {
+    /// Writes a first buffer, then a second 60 seconds later (triggering
+    /// a long gap fill), followed by 10 contiguous buffers. Verifies all
+    /// buffers appear in the file and the duration accounts for the gap.
+    /// End-to-end correctness check; see `tapCallsBoundedDuringGapFill`
+    /// for the non-blocking timing proof.
+    @Test("Long gap fill preserves all subsequent buffers")
+    func longGapFillPreservesAllBuffers() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        let tap = session.makeTapHandler()
+
+        let sampleRate = EncoderSettings.voice.processingFormat.sampleRate
+        let buffer = try MicCaptureTestHelpers.toneBuffer()
+        let bufferDurationSec = Double(buffer.frameLength) / sampleRate
+        let gapSeconds = 60.0
+        let trailingCount = 10
+
+        // First buffer at t=1 s.
+        tap(buffer, MicCaptureTestHelpers.timestamp(seconds: 1))
+
+        // Second buffer after a 60 s gap.
+        let gapTimeSec = 1.0 + bufferDurationSec + gapSeconds
+        tap(buffer, MicCaptureTestHelpers.timestampNanos(UInt64(gapTimeSec * 1_000_000_000)))
+
+        // Immediately enqueue more contiguous buffers.
+        var nextNanos = UInt64((gapTimeSec + bufferDurationSec) * 1_000_000_000)
+        for _ in 0 ..< trailingCount {
+            tap(buffer, MicCaptureTestHelpers.timestampNanos(nextNanos))
+            nextNanos += UInt64(bufferDurationSec * 1_000_000_000)
+        }
+
+        // close() drains the writer thread before disposing the file.
+        session.close()
+
+        let totalBuffers = 2 + trailingCount
+        let expectedDurationSec = bufferDurationSec * Double(totalBuffers) + gapSeconds
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / audio.processingFormat.sampleRate
+
+        #expect(abs(fileDurationSec - expectedDurationSec) < 0.2,
+                "File \(fileDurationSec)s vs expected \(expectedDurationSec)s — buffers may have been dropped during gap fill")
+    }
+
+    /// Same as longGapFillPreservesAllBuffers but through the 48 kHz →
+    /// 24 kHz converter path.
+    @Test("Long gap fill through 48 kHz converter path preserves all buffers")
+    func longGapFillConverterPathPreservesAllBuffers() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        let tap = session.makeTapHandler()
+
+        let sourceRate = 48000.0
+        let bufferFrames: AVAudioFrameCount = 4800 // 100 ms at 48 kHz
+        let bufferDurationSec = Double(bufferFrames) / sourceRate
+        let gapSeconds = 60.0
+        let trailingCount = 10
+
+        let buf1 = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+        tap(buf1, MicCaptureTestHelpers.timestampNanos(1_000_000_000))
+
+        let gapTimeSec = 1.0 + bufferDurationSec + gapSeconds
+        let buf2 = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+        tap(buf2, MicCaptureTestHelpers.timestampNanos(UInt64(gapTimeSec * 1_000_000_000)))
+
+        var nextNanos = UInt64((gapTimeSec + bufferDurationSec) * 1_000_000_000)
+        for _ in 0 ..< trailingCount {
+            let buf = try MicCaptureTestHelpers.toneBuffer(sampleRate: sourceRate, frameCount: bufferFrames)
+            tap(buf, MicCaptureTestHelpers.timestampNanos(nextNanos))
+            nextNanos += UInt64(bufferDurationSec * 1_000_000_000)
+        }
+
+        session.close()
+
+        let totalBuffers = 2 + trailingCount
+        let expectedDurationSec = bufferDurationSec * Double(totalBuffers) + gapSeconds
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / outputRate
+
+        #expect(abs(fileDurationSec - expectedDurationSec) < 0.2,
+                "File \(fileDurationSec)s vs expected \(expectedDurationSec)s — converter path dropped buffers during gap fill")
+    }
+
+    /// Times the gap-triggering tap call itself. On the old (lock-based)
+    /// design, this call performed the entire gap fill inline on the
+    /// calling thread (hundreds of ms for a 1-hour gap, capped to 300 s
+    /// = ~879 chunks). On the new (ring-buffer) design, it only copies
+    /// into the ring and returns in microseconds. Differential: fails
+    /// on old code, passes on new.
+    @Test("Gap-triggering tap call returns immediately (does not fill inline)")
+    func gapTriggeringTapReturnsImmediately() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        let tap = session.makeTapHandler()
+
+        let sampleRate = EncoderSettings.voice.processingFormat.sampleRate
+        let buffer = try MicCaptureTestHelpers.toneBuffer()
+        let bufferDurationSec = Double(buffer.frameLength) / sampleRate
+        // 1-hour gap (capped to 300 s by gapSilenceFrameCount): on
+        // old code the inline fill writes ~879 silence chunks and
+        // takes hundreds of ms. On new code the tap only enqueues
+        // into the ring (microseconds).
+        let gapSeconds = 3600.0
+
+        // First buffer; flush so expectedNextHostNanos is set.
+        tap(buffer, MicCaptureTestHelpers.timestamp(seconds: 1))
+        session.flushWriter()
+
+        // Time the gap-triggering call.
+        let gapTimeSec = 1.0 + bufferDurationSec + gapSeconds
+        let start = CFAbsoluteTimeGetCurrent()
+        tap(buffer, MicCaptureTestHelpers.timestampNanos(UInt64(gapTimeSec * 1_000_000_000)))
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+
+        // Let the writer thread complete the fill before closing.
+        session.close()
+
+        #expect(elapsed < 0.05,
+                "Gap-triggering tap took \(elapsed)s — should be <50 ms; a slow call means the gap fill ran inline")
+    }
+
+    /// Sends 96 kHz mono buffers with 9600 frames each (100 ms) through
+    /// the converter path. These exceed the old 8192-frame slot limit
+    /// and verify the ring slots are sized for high sample rates.
+    @Test("Buffers larger than 8192 frames are accepted (96 kHz tap)")
+    func largeBuffersAccepted() throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        let tap = session.makeTapHandler()
+
+        let sourceRate = 96000.0
+        let bufferFrames: AVAudioFrameCount = 9600 // 100 ms at 96 kHz
+        let bufferCount = 20 // 2 s of audio
+        let bufferDurationSec = Double(bufferFrames) / sourceRate
+        var hostNanos: UInt64 = 1_000_000_000
+
+        for _ in 0 ..< bufferCount {
+            let buf = try MicCaptureTestHelpers.toneBuffer(
+                sampleRate: sourceRate, frameCount: bufferFrames
+            )
+            tap(buf, MicCaptureTestHelpers.timestampNanos(hostNanos))
+            hostNanos += UInt64(bufferDurationSec * 1_000_000_000)
+        }
+
+        session.close()
+
+        let totalDurationSec = bufferDurationSec * Double(bufferCount)
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        let audio = try AVAudioFile(forReading: url)
+        let fileDurationSec = Double(audio.length) / outputRate
+
+        #expect(abs(fileDurationSec - totalDurationSec) < 0.15,
+                "File \(fileDurationSec)s vs expected \(totalDurationSec)s — large buffers may have been dropped")
     }
 }
 

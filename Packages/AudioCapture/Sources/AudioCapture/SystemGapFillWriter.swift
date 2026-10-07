@@ -26,10 +26,18 @@ final class SystemGapFillWriter: @unchecked Sendable {
     /// Chunk size for gap-fill silence writes (frames per write call).
     static let chunkFrames = 8192
 
+    /// First gap-fill write error during this session, or nil if all
+    /// gap-fill writes succeeded. Cleared by `reset()`. The owning
+    /// engine should propagate this to its session error state so the
+    /// recording surfaces it. Silence itself is harmless to the
+    /// permission checker (it is never fed there); only a *real* write
+    /// failure needs to be surfaced.
+    private(set) var writeError: OSStatus?
+
     /// Checks for a gap before this buffer and fills it with silence.
     /// Updates internal tracking afterward. Silence is NOT fed to the
-    /// permission checker and write errors are NOT recorded as session
-    /// write errors — only logged.
+    /// permission checker. Write errors are recorded in `writeError`
+    /// so the owning engine can surface them.
     ///
     /// - Parameters:
     ///   - hostTimeNanos: host-clock nanoseconds of this buffer
@@ -78,6 +86,7 @@ final class SystemGapFillWriter: @unchecked Sendable {
     /// (tracking persists to detect the reconnect gap).
     func reset() {
         expectedNextHostNanos = 0
+        writeError = nil
     }
 
     // MARK: - Silence writing
@@ -121,6 +130,7 @@ final class SystemGapFillWriter: @unchecked Sendable {
                     logger.error(
                         "System gap-fill write failed: \(status, privacy: .public) — aborting fill"
                     )
+                    if writeError == nil { writeError = status }
                     return
                 }
                 framesRemaining -= count

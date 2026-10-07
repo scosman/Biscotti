@@ -35,10 +35,15 @@ def parse_adts(path):
     while i + 7 <= len(data):
         if data[i] != 0xFF or (data[i + 1] & 0xF0) != 0xF0:
             return rate, sizes, f"lost ADTS sync at byte {i} of {len(data)}"
-        rate = RATES[(data[i + 2] >> 2) & 0xF]
+        rate_idx = (data[i + 2] >> 2) & 0xF
+        if rate_idx >= len(RATES):
+            return rate, sizes, f"invalid sample-rate index {rate_idx} at byte {i}"
+        rate = RATES[rate_idx]
         length = ((data[i + 3] & 0x03) << 11) | (data[i + 4] << 3) | (data[i + 5] >> 5)
         if length < 7:
             return rate, sizes, f"bad frame length {length} at byte {i}"
+        if i + length > len(data):
+            return rate, sizes, f"truncated frame at byte {i}: declares {length} bytes but only {len(data) - i} remain"
         sizes.append(length)
         i += length
     if i != len(data):

@@ -371,7 +371,8 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         // track stays aligned with wall-clock time after reconnects.
         // Measured from IOProc host-clock timestamps (capture side),
         // not writer-thread timing. Silence is not fed to the permission
-        // checker and write errors are not recorded as session errors.
+        // checker; a real gap-fill write failure IS recorded so the
+        // session surfaces it.
         let hostNanos = AudioConvertHostTimeToNanos(entry.hostTime)
         gapFillWriter.processBuffer(
             hostTimeNanos: hostNanos,
@@ -380,6 +381,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
             sampleRate: tapSampleRate,
             file: file
         )
+        if let gapError = gapFillWriter.writeError {
+            recordWriteError(gapError)
+        }
 
         #if DEBUG
             if Self.verboseDiagnostics {

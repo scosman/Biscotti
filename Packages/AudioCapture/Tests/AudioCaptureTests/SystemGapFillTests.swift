@@ -218,6 +218,52 @@ struct SystemGapFillTests {
         #expect(fileDuration < expectedDuration + 0.5,
                 "File \(fileDuration)s should not contain gap silence")
     }
+
+    /// After a successful gap fill, `writeError` must remain nil so the
+    /// owning engine does not record a false write error for silence.
+    @Test("writeError is nil after successful gap fills")
+    func successfulGapFillNoError() throws {
+        let ctx = try TestContext(tapSampleRate: 24000)
+        defer { ctx.dispose() }
+        let writer = SystemGapFillWriter()
+
+        let rate = 24000.0
+        let framesPerBuffer: UInt32 = 1024
+        let bufferDuration = Double(framesPerBuffer) / rate
+        let gapSeconds = 2.0
+        let startNanos: UInt64 = 1_000_000_000
+
+        writer.processBuffer(
+            hostTimeNanos: startNanos,
+            bufferFrameCount: framesPerBuffer,
+            channelCount: 1,
+            sampleRate: rate,
+            file: ctx.file
+        )
+        ctx.writeToneBuffer(frameCount: framesPerBuffer, channelCount: 1)
+
+        let secondNanos = startNanos + UInt64((bufferDuration + gapSeconds) * 1_000_000_000)
+        writer.processBuffer(
+            hostTimeNanos: secondNanos,
+            bufferFrameCount: framesPerBuffer,
+            channelCount: 1,
+            sampleRate: rate,
+            file: ctx.file
+        )
+        ctx.writeToneBuffer(frameCount: framesPerBuffer, channelCount: 1)
+
+        #expect(writer.writeError == nil, "Successful gap fill must not set writeError")
+    }
+
+    /// `reset()` clears any accumulated writeError so a fresh session
+    /// starts clean.
+    @Test("reset clears writeError")
+    func resetClearsError() {
+        let writer = SystemGapFillWriter()
+        #expect(writer.writeError == nil)
+        writer.reset()
+        #expect(writer.writeError == nil)
+    }
 }
 
 // MARK: - Test context

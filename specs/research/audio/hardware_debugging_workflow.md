@@ -5,7 +5,7 @@ How to diagnose, fix and validate audio-capture behaviour on real hardware. It w
 The loop:
 
 1. **Evidence first.** Before you read code, get the facts: the recording files on disk and the unified log for that recording. Diagnose from them.
-2. **Fix it, and add a test that writes real audio.** The test must go through the real format/rate path (see [Writing audio tests](#writing-audio-tests)).
+2. **Fix it, and add a test that writes real audio.** The test must go through the real format/rate path (see [Writing audio tests](#5-writing-audio-tests)).
 3. **Build the app and give the human one specific scenario to run** ("record, unplug the mic at ~9 s, switch to AirPods, plug back at ~20 s, talk, stop").
 4. **Check the result yourself.** Read the log and measure the files. Report numbers (durations, gap sizes, counts), not impressions. Compare with a clean baseline recording.
 5. Repeat until the numbers are correct. A pass on the normal path does not prove a recovery path ran — check that the log line for that path is present.
@@ -124,6 +124,7 @@ hooks-mcp runs `make` in the session's main checkout, not in a worktree. To buil
 - Put timing math in pure functions (`AudioFrameCount.swift`: `leadingSilenceFrameCount`, `gapSilenceFrameCount`) and test their edge cases separately.
 - Compute any duration from the **same buffer** whose host time you use (input frames ÷ input rate), never from a converted output.
 - Assert durations with an AAC padding tolerance (about 0.15–0.2 s), and assert fill counts (zero for continuous audio).
+- **Both tracks use a writer thread.** `MicCaptureSession` and `LiveSystemCaptureEngine` each use a pre-allocated ring buffer + dedicated writer thread. The tap/IOProc callback enqueues data and returns immediately; conversion, gap fill and AAC encoding happen on the writer thread. This keeps the callback non-blocking (no long gap fills under a lock) and lets `close()`/`stop()` drain pending writes deterministically before disposing the file. Gap detection still uses the tap buffer's host time and input-buffer duration (ring entry metadata), not writer-thread timing.
 
 ## 6. Case study: `audio_change_handling` (PR #101)
 
@@ -133,3 +134,4 @@ hooks-mcp runs `make` in the session's main checkout, not in a worktree. To buil
 | Mic track short after unplug/replug | mic 22.87 s vs system 28.03 s; two reconnect windows in the log | Fill reconnect gaps with silence (host-clock gap) | Durations match; one `Mic gap fill` per reconnect |
 | Mic track 2 % too long (regression) | mic 29.44 s vs system 28.89 s; ~90 periodic 6 ms fills in the log, starting before any reconnect | Compute duration from the input buffer, not the resampled output; threshold 5 ms → 100 ms; converter-path tests | Only reconnect-sized fills; mic 23.64 s for 23.47 s wall time |
 | System track short after an output change | system 22.66 s vs mic 23.64 s after AirPods switched the output twice | Same gap fill for `LiveSystemCaptureEngine` | AirPods in and out with system audio playing: `System gap fill` 0.81 s + 0.35 s; mic 66.30 s, system 66.39 s for 66.25 s wall time |
+| Long gap fill blocks the mic tap callback | CR review: at the 300 s cap, `fillGapWithSilence` runs ~879 `ExtAudioFileWrite` calls under the session lock; later callbacks drop buffers and `stop()` stalls | Move all mic writes to a writer thread via a pre-allocated SPSC ring buffer (mirrors `LiveSystemCaptureEngine`). Gap detection preserves input-buffer host time + duration from ring entry metadata | Test: 60 s gap fill does not drop subsequent buffers (file duration matches) |

@@ -134,7 +134,7 @@ Zero checked words contributes nothing and is not an error.
 
 Worked example — *"Project Parakeet Team Meeting"*: 4 checked words, 1 uncommon (`parakeet`) = 25%.
 Checked ≤ 5, so the 34% threshold applies → 25% passes → `Parakeet` is contributed. This is the
-motivating example from `specs/app_overview.md`, and the two-tier threshold exists to keep it working.
+motivating example from `specs/projects/initial_implementation/project_overview.md`, and the two-tier threshold exists to keep it working.
 
 ### 3.5 Casing rules
 
@@ -356,7 +356,7 @@ token length (3), max user-list contribution (12), max effective terms (40), max
 - **Schema:** additive `AppSettings` fields only. No migration stage, no V2 schema.
   `customVocabularyEnabled` is deliberately optional — see §5.0.
 - **Package boundary:** all new logic lives in `Vocabulary` (a BiscottiKit module, per
-  `specs/architecture.md` component 13). `Packages/Transcription` is not modified by this project's
+  `specs/projects/initial_implementation/architecture.md` component 13). `Packages/Transcription` is not modified by this project's
   phases (a prerequisite bump landed in its own earlier commit), so the manual-test staleness rule is
   not triggered by the phases themselves.
 - **Testability:** extraction and assembly are pure functions over plain values, so they are unit
@@ -364,7 +364,7 @@ token length (3), max user-list contribution (12), max effective terms (40), max
 
 ## 11. Out of scope
 
-- Per-recording manual vocabulary additions (P3 in `specs/app_overview.md`).
+- Per-recording manual vocabulary additions (P3 in `specs/projects/initial_implementation/project_overview.md`).
 - LLM-based vocabulary extraction from invites (a Project 10 leftover).
 - Non-English uncommon-word extraction, or bundling non-English word lists.
 - Surfacing `vocabularyUsed` anywhere in the UI.

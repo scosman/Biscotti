@@ -46,7 +46,7 @@ hardware, so the LLM must use the same `NSXPC` mechanism. We pull that swap forw
 - A LocalLLM ManualTestApp tab (`llm_*` steps) that drives `BiscottiLLM.xpc` for in-app
   inference and is wired into the `manual-tests-check` gate; plus the `CLAUDE.md` staleness rule.
 - Docs: production README; fold/remove experiment-era `NOTES.md`/`VALIDATION.md`; update
-  `CLAUDE.md`, `specs/architecture.md`, `specs/implementation_plan.md`.
+  `CLAUDE.md`, `specs/projects/initial_implementation/architecture.md`, `specs/projects/initial_implementation/implementation_plan.md`.
 - Verification: autonomous unit suite green via `make test`/`ci`; human-in-the-loop run of the
   CLI, `make test-ai`, and the new ManualTestApp tab (which exercises the XPC service) on real
   Apple-silicon hardware.
@@ -238,11 +238,11 @@ hold setup text; excluded from the gate.) Results are committed only after a hum
 
 ## Documentation updates
 
-- `specs/architecture.md`: the local LLM runtime now exists as `Packages/LocalLLM`, **and its
+- `specs/projects/initial_implementation/architecture.md`: the local LLM runtime now exists as `Packages/LocalLLM`, **and its
   production transport — `BiscottiLLM.xpc` — is built ahead of Project 10**; the future
   `Intelligence` package will consume both. Keep the Intelligence/Project-10 plan otherwise.
 - `CLAUDE.md`: add `Packages/LocalLLM` + `XPCServices/BiscottiLLM` to the repo map; extend the
   manual-test staleness rule with `llm_*`; note the new tab.
-- `specs/implementation_plan.md`: note the NSXPC transport is graduated ahead of Project 10.
+- `specs/projects/initial_implementation/implementation_plan.md`: note the NSXPC transport is graduated ahead of Project 10.
 - Package `README.md`: production rewrite (library API, CLI, the XPC service, build/test, model
   location, the preserved technical rationale).

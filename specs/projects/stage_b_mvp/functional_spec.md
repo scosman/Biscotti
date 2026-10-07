@@ -12,7 +12,7 @@ This document specifies **what** the MVP must do and the contracts between the n
 components. Concrete API shapes (types, signatures) live in [`architecture.md`](architecture.md)
 (and in `components/*.md` where a module needs more depth). The static topology — which component
 lives where, its boundaries, its dependency edges — is already fixed by the repo
-[`architecture.md`](../../architecture.md) and is **not** re-litigated here. The screen/navigation
+[`architecture.md`](../initial_implementation/architecture.md) and is **not** re-litigated here. The screen/navigation
 design lives in [`ui_design.md`](ui_design.md).
 
 **Grounding — consume, don't re-derive:**
@@ -87,7 +87,7 @@ locations and the data-model wiring; the engine owns the bytes.
   `Meeting` in `DataStore`; (b) computes paths and creates the recording directory; (c) attaches two
   `AudioFileRef`s (mic + system, with the real paths) to the meeting **before/at** the moment
   capture begins — never after stop. This makes the "audio model created on start, linked as
-  streaming begins" requirement real (per `app_overview.md` → Misc App Reqs).
+  streaming begins" requirement real (per `specs/projects/initial_implementation/project_overview.md` → Misc App Reqs).
 - **Auto-naming.** New meetings get a sensible default title (e.g. `"Recording — Jun 9, 2:30 PM"`).
   Renaming is a later project; the MVP just needs a non-empty title. `// TODO` mark as a pre-ship
   nicety if hardcoded formatting needs localization.

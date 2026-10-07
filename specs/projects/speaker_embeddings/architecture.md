@@ -1212,9 +1212,9 @@ the SpeakerKit models):
   PLDA facts and the fork.
 - `sdk_findings.md`: add a PLDA section (two vector types, `PldaProjector`,
   128-dim, why it fits cross-recording matching).
-- `specs/architecture.md`: add `VoiceprintMatching` and `voiceprint-cli` to the
+- `specs/projects/initial_implementation/architecture.md`: add `VoiceprintMatching` and `voiceprint-cli` to the
   topology and the dependency DAG.
-- `specs/implementation_plan.md`: Project 11 status (voiceprint half built; no
+- `specs/projects/initial_implementation/implementation_plan.md`: Project 11 status (voiceprint half built; no
   "me" setting, no microphone signal).
 - `CLAUDE.md`: the SpeakerKit fork gotcha (§2.2 step 6).
 - `DataStore+ReadModels.swift`: remove the "Not yet populated" comment.

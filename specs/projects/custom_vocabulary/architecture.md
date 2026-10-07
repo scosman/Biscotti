@@ -25,7 +25,7 @@ in full below.
         (three settings, via its existing settings path — no Vocabulary dependency)
 ```
 
-**Deviation from `specs/architecture.md` component 13, recorded deliberately.** That doc says
+**Deviation from `specs/projects/initial_implementation/architecture.md` component 13, recorded deliberately.** That doc says
 `Vocabulary` "owns the custom-vocabulary source-of-truth *and* merge logic," including "store/edit the
 app-wide vocab list (in settings)." In this codebase, `AppSettings` is the settings source of truth
 and every view model mutates it through `DataStore.updateSettings`. Putting a service in front of only
@@ -35,7 +35,7 @@ the vocabulary fields would make them the one inconsistent setting. So:
 - The **storage** stays in `AppSettings`, and `SettingsUI` reads/writes it exactly like
   `aiAnalysisEnabled` and `summaryPrompt`.
 
-`specs/architecture.md` component 13 should be reworded to match at the end of the project.
+`specs/projects/initial_implementation/architecture.md` component 13 should be reworded to match at the end of the project.
 
 ## 2. Data model
 

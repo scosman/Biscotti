@@ -4,7 +4,7 @@ status: complete
 
 # Architecture: Stage A Foundations
 
-This project designs **four separable units**, each in its own component doc. Unlike the repo [`architecture.md`](../../architecture.md) (which is deliberately *shape-level* — homes, boundaries, dependency edges, no interfaces), **these component docs go deep**: they design the real public API (types and signatures) inside the boundaries the repo architecture already drew. That is the explicit ask for parts 1 & 2 ("packaging, testing, and API-design exercise").
+This project designs **four separable units**, each in its own component doc. Unlike the repo [`architecture.md`](../initial_implementation/architecture.md) (which is deliberately *shape-level* — homes, boundaries, dependency edges, no interfaces), **these component docs go deep**: they design the real public API (types and signatures) inside the boundaries the repo architecture already drew. That is the explicit ask for parts 1 & 2 ("packaging, testing, and API-design exercise").
 
 This top-level doc holds only what is **shared across the four**: the workspace additions, the resolved cross-cutting technical choices, the dependency picture for Stage A, and the autonomy/test-seam strategy. Everything component-specific lives in:
 

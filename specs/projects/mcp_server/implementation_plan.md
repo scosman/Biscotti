@@ -34,6 +34,6 @@ and is reviewable on its own.
   start-on-launch / observe-changes path, the General settings row with its
   four states (Copy button, Retry) and the How-to-connect sheet. Add the
   `MCPScript` manual test with its one recordable step and register it in
-  `allScripts`. Update `specs/architecture.md` (new module in the topology) and
+  `allScripts`. Update `specs/projects/initial_implementation/architecture.md` (new module in the topology) and
   `CLAUDE.md` (module list, manual-test staleness rule now covers
   `mcp_*` steps).

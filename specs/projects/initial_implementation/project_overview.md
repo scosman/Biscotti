@@ -1,3 +1,7 @@
+---
+status: complete
+---
+
 # Biscotti App
 
 A new MacOS app for recording meetings. Private, local, awesome.

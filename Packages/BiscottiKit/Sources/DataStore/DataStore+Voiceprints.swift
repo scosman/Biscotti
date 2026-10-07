@@ -369,4 +369,20 @@ public extension DataStore {
         context.delete(person)
         try save()
     }
+
+    /// Inserts a voiceprint with an arbitrary `kindRaw` string. Used by tests
+    /// to create legacy PLDA rows without the (removed) `.plda` enum case.
+    func insertLegacyVoiceprint(
+        speakerID: Int, kindRaw: String, space: String,
+        vector: [Float], transcript: TranscriptRecord
+    ) throws {
+        let voiceprint = Voiceprint(
+            speakerID: speakerID, kind: .raw, embeddingSpace: space,
+            vector: vector, speakingDuration: 10
+        )
+        voiceprint.kindRaw = kindRaw
+        voiceprint.transcript = transcript
+        context.insert(voiceprint)
+        try save()
+    }
 }

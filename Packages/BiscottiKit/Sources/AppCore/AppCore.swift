@@ -157,6 +157,7 @@ public struct AutoStopState: Sendable, Equatable {
 /// auto-association, detection -> notification -> record flow,
 /// calendar-start timers, auto-stop countdown).
 @MainActor @Observable
+// swiftlint:disable:next type_body_length
 public final class AppCore {
     // MARK: - Published state
 
@@ -409,12 +410,13 @@ public final class AppCore {
             return
         }
         hasLaunched = true
+        logger.info("onLaunch: enter")
 
         logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
         logger.info("onLaunch: recoverOrphans done")
 
-        try? await store.deletePLDAVoiceprints() // one-time legacy cleanup
+        try? await store.deletePLDAVoiceprints() // idempotent legacy cleanup (no-op once PLDA rows are gone)
 
         // Resolve model selection (migration write-back for existing users)
         logger.info("onLaunch: modelManager.refresh starting")

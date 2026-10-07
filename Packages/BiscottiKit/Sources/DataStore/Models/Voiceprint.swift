@@ -8,6 +8,12 @@ import SwiftData
 public enum VoiceprintKind: String, Sendable, Codable, CaseIterable {
     /// Raw embedder output (256-dim for pyannote-v3).
     case raw
+    /// Reserved, never written: PLDA voiceprints (mean of per-window PLDA
+    /// embeddings) were evaluated and removed. Developer stores may still hold
+    /// rows with this value. Keep the case so the "plda" key is never reused —
+    /// a future PLDA kind needs a new raw value (e.g. "plda_v2"). See the
+    /// `plda_v2` branch, `specs/projects/plda_v2/project_overview.md`.
+    case legacyPLDA = "plda"
 }
 
 // MARK: - Voiceprint

@@ -222,13 +222,6 @@ public struct MeetingDetailView: View {
         .sheet(item: $viewModel.voiceprintDebug) { model in
                 VoiceprintDebugView(
                     report: model.report,
-                    onKindChange: { kind in
-                        Task {
-                            await viewModel.reloadVoiceprintDebug(
-                                kind: kind
-                            )
-                        }
-                    },
                     onDismiss: { viewModel.voiceprintDebug = nil }
                 )
             }

@@ -409,11 +409,12 @@ public final class AppCore {
             return
         }
         hasLaunched = true
-        logger.info("onLaunch: enter")
 
         logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
         logger.info("onLaunch: recoverOrphans done")
+
+        try? await store.deletePLDAVoiceprints() // one-time legacy cleanup
 
         // Resolve model selection (migration write-back for existing users)
         logger.info("onLaunch: modelManager.refresh starting")

@@ -331,6 +331,28 @@ public extension DataStore {
     }
 }
 
+// MARK: - PLDA Cleanup
+
+public extension DataStore {
+    /// Deletes all voiceprint rows with `kindRaw == "plda"`. These are legacy
+    /// rows from when Biscotti stored PLDA-projected embeddings alongside raw
+    /// embeddings. Raw voiceprints already cover the same speakers, so no data
+    /// is lost. Returns the number of rows deleted.
+    @discardableResult
+    func deletePLDAVoiceprints() throws -> Int {
+        let all = try context.fetch(FetchDescriptor<Voiceprint>())
+        let plda = all.filter { $0.kindRaw == "plda" }
+        for voiceprint in plda {
+            context.delete(voiceprint)
+        }
+        if !plda.isEmpty {
+            try save()
+            logger.info("Deleted \(plda.count) legacy PLDA voiceprint(s)")
+        }
+        return plda.count
+    }
+}
+
 // MARK: - Test Helpers
 
 public extension DataStore {

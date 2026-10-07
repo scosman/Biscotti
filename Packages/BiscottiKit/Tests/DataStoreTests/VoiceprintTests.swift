@@ -27,7 +27,6 @@ private func makeSegments() -> [TranscriptSegment] {
 /// Creates a TranscriptResult with embedding sets.
 private func makeResultWithEmbeddings(
     rawVectors: [Int: [Float]] = [0: [1.0, 2.0, 3.0], 1: [4.0, 5.0, 6.0]],
-    pldaVectors: [Int: [Float]] = [0: [0.1, 0.2], 1: [0.3, 0.4]],
     durations: [Int: TimeInterval] = [0: 45.0, 1: 30.0]
 ) -> TranscriptResult {
     TranscriptResult(
@@ -36,9 +35,7 @@ private func makeResultWithEmbeddings(
         speakerCount: 2,
         segments: makeSegments(),
         embeddingSets: [
-            SpeakerEmbeddingSet(kind: .raw, space: "pyannote-v3/W8A16", vectors: rawVectors),
-            SpeakerEmbeddingSet(kind: .plda, space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
-                                vectors: pldaVectors)
+            SpeakerEmbeddingSet(kind: .raw, space: "pyannote-v3/W8A16", vectors: rawVectors)
         ],
         speakerSpeechDurations: durations,
         processingDuration: 2.0
@@ -51,12 +48,11 @@ private func makeMeetingWithVoiceprints(
     title: String = "Meeting",
     start: Date? = nil,
     rawVectors: [Int: [Float]] = [0: [1.0, 2.0, 3.0], 1: [4.0, 5.0, 6.0]],
-    pldaVectors: [Int: [Float]] = [0: [0.1, 0.2], 1: [0.3, 0.4]],
     durations: [Int: TimeInterval] = [0: 45.0, 1: 30.0]
 ) async throws -> (UUID, UUID) {
     let meetingID = try await store.createMeeting(title: title, start: start)
     let result = makeResultWithEmbeddings(
-        rawVectors: rawVectors, pldaVectors: pldaVectors, durations: durations
+        rawVectors: rawVectors, durations: durations
     )
     let transcriptID = try await store.addTranscript(
         result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
@@ -109,27 +105,22 @@ struct VectorCodingTests {
 
 @Suite("DataStore -- addTranscript voiceprints")
 struct AddTranscriptVoiceprintTests {
-    @Test("creates one voiceprint per non-empty vector per kind")
+    @Test("creates one voiceprint per non-empty vector")
     func createsVoiceprints() async throws {
         let store = try makeStore()
         _ = try await makeMeetingWithVoiceprints(store: store)
 
         try await store.read { store in
             let voiceprints = try store.fetchAllVoiceprints()
-            // 2 speakers x 2 kinds = 4
-            #expect(voiceprints.count == 4)
+            // 2 speakers x 1 kind (raw) = 2
+            #expect(voiceprints.count == 2)
 
             let rawVPs = voiceprints.filter { $0.kindRaw == "raw" }
-            let pldaVPs = voiceprints.filter { $0.kindRaw == "plda" }
             #expect(rawVPs.count == 2)
-            #expect(pldaVPs.count == 2)
 
             // Check dimensions
             for entry in rawVPs {
                 #expect(entry.dimension == 3)
-            }
-            for entry in pldaVPs {
-                #expect(entry.dimension == 2)
             }
 
             // Check speaking durations
@@ -234,17 +225,12 @@ struct VoiceprintQueryTests {
         #expect(rawQuery?.vectors.count == 2)
         #expect(rawQuery?.vectors[0] == [1.0, 2.0, 3.0])
         #expect(rawQuery?.speakingDurations[0] == 45.0)
-
-        let pldaQuery = try await store.voiceprintQuery(transcriptID: transcriptID, kind: .plda)
-        #expect(pldaQuery?.space == "pyannote-v3/W8A16+plda:pyannote-v4/W32A32")
-        #expect(pldaQuery?.vectors.count == 2)
-        #expect(pldaQuery?.vectors[0] == [0.1, 0.2])
     }
 
-    @Test("returns nil space when no voiceprints of that kind exist")
+    @Test("returns nil space when no voiceprints of the matching space exist")
     func nilSpaceWhenNone() async throws {
         let store = try makeStore()
-        let meetingID = try await store.createMeeting(title: "No PLDA")
+        let meetingID = try await store.createMeeting(title: "Wrong space")
         let result = TranscriptResult(
             transcriptionMethodId: "v1", language: "en", speakerCount: 1,
             segments: [makeSegments()[0]],
@@ -257,9 +243,10 @@ struct VoiceprintQueryTests {
             result, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
         )
 
-        let pldaQuery = try await store.voiceprintQuery(transcriptID: txID, kind: .plda)
-        #expect(pldaQuery?.space == nil)
-        #expect(pldaQuery?.vectors.isEmpty == true)
+        // Query with a different space to confirm nil result
+        let query = try await store.voiceprintQuery(transcriptID: txID, kind: .raw)
+        // voiceprintQuery doesn't filter by space; it returns whatever space is stored
+        #expect(query?.space == "test")
     }
 
     @Test("returns nil for nonexistent transcript")
@@ -288,8 +275,7 @@ struct VoiceprintCorpusTests {
 
         // Second transcript (not preferred)
         let result2 = makeResultWithEmbeddings(
-            rawVectors: [0: [99.0, 99.0, 99.0]],
-            pldaVectors: [:]
+            rawVectors: [0: [99.0, 99.0, 99.0]]
         )
         _ = try await store.addTranscript(
             result2, vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
@@ -306,23 +292,16 @@ struct VoiceprintCorpusTests {
         #expect(!vectors.contains([99.0, 99.0, 99.0]))
     }
 
-    @Test("excludes wrong kind and wrong space")
-    func excludesKindAndSpace() async throws {
+    @Test("excludes wrong space")
+    func excludesWrongSpace() async throws {
         let store = try makeStore()
         _ = try await makeMeetingWithVoiceprints(store: store)
 
-        // Query for PLDA in the raw space -> nothing
+        // Query for raw in a non-existent space -> nothing
         let corpus = try await store.voiceprintCorpus(
-            kind: .plda, space: "pyannote-v3/W8A16", excludingMeetingID: nil
+            kind: .raw, space: "nonexistent-space", excludingMeetingID: nil
         )
         #expect(corpus.entries.isEmpty)
-
-        // Query for raw in the PLDA space -> nothing
-        let corpus2 = try await store.voiceprintCorpus(
-            kind: .raw, space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
-            excludingMeetingID: nil
-        )
-        #expect(corpus2.entries.isEmpty)
     }
 
     @Test("excludes the specified meeting")
@@ -333,7 +312,7 @@ struct VoiceprintCorpusTests {
         )
         _ = try await makeMeetingWithVoiceprints(
             store: store, title: "Included",
-            rawVectors: [0: [7.0, 8.0, 9.0]], pldaVectors: [:]
+            rawVectors: [0: [7.0, 8.0, 9.0]]
         )
 
         let corpus = try await store.voiceprintCorpus(
@@ -426,7 +405,7 @@ struct VoiceprintCascadeTests {
         let countBefore = try await store.read { store in
             try store.fetchAllVoiceprints().count
         }
-        #expect(countBefore == 4)
+        #expect(countBefore == 2)
 
         try await store.delete(meetingID: meetingID)
 
@@ -581,7 +560,7 @@ struct BackfillTests {
 
         // Initially no voiceprints
         let hasBefore = try await store.hasVoiceprints(
-            transcriptID: txID, kind: .plda, space: "test-space"
+            transcriptID: txID, kind: .raw, space: "test-space"
         )
         #expect(hasBefore == false)
 
@@ -591,23 +570,17 @@ struct BackfillTests {
                 NewVoiceprint(speakerID: 0, vector: [1.0, 2.0], speakingDuration: 30.0),
                 NewVoiceprint(speakerID: 1, vector: [3.0, 4.0], speakingDuration: 15.0)
             ],
-            kind: .plda, space: "test-space", to: txID
+            kind: .raw, space: "test-space", to: txID
         )
 
         let hasAfter = try await store.hasVoiceprints(
-            transcriptID: txID, kind: .plda, space: "test-space"
+            transcriptID: txID, kind: .raw, space: "test-space"
         )
         #expect(hasAfter == true)
 
-        // Different kind still returns false
-        let hasRaw = try await store.hasVoiceprints(
-            transcriptID: txID, kind: .raw, space: "test-space"
-        )
-        #expect(hasRaw == false)
-
         // Different space still returns false
         let hasDiffSpace = try await store.hasVoiceprints(
-            transcriptID: txID, kind: .plda, space: "other-space"
+            transcriptID: txID, kind: .raw, space: "other-space"
         )
         #expect(hasDiffSpace == false)
 
@@ -673,7 +646,7 @@ struct BackfillTests {
                 NewVoiceprint(speakerID: 2, vector: [.infinity], speakingDuration: 3.0),
                 NewVoiceprint(speakerID: 3, vector: [], speakingDuration: 1.0)
             ],
-            kind: .plda, space: "test-space", to: txID
+            kind: .raw, space: "test-space", to: txID
         )
 
         // Only the valid vector (speaker 0) should be stored

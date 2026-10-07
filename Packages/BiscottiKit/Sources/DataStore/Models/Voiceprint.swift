@@ -8,8 +8,6 @@ import SwiftData
 public enum VoiceprintKind: String, Sendable, Codable, CaseIterable {
     /// Raw embedder output (256-dim for pyannote-v3).
     case raw
-    /// PLDA-projected vector (128-dim for pyannote-v4).
-    case plda
 }
 
 // MARK: - Voiceprint
@@ -24,7 +22,7 @@ public enum VoiceprintKind: String, Sendable, Codable, CaseIterable {
     /// The diarization speaker ID within the owning transcript.
     public var speakerID: Int = 0
 
-    /// `VoiceprintKind.rawValue` ("raw" | "plda").
+    /// `VoiceprintKind.rawValue` ("raw").
     public var kindRaw: String = VoiceprintKind.raw.rawValue
 
     /// Identifies the SpeakerKit models that produced this vector.

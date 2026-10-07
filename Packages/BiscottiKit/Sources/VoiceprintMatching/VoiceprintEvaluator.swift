@@ -83,7 +83,6 @@ public struct Coverage: Sendable, Codable, Equatable {
 
 /// Complete metrics from a leave-one-meeting-out evaluation.
 public struct VoiceprintMetrics: Sendable, Codable, Equatable {
-    public let kind: VoiceprintKind
     public let space: String
     public let trials: Int
     public let trialsWithoutHistory: Int
@@ -98,12 +97,11 @@ public struct VoiceprintMetrics: Sendable, Codable, Equatable {
     public let suspectTags: [SuspectTag]
 
     public init(
-        kind: VoiceprintKind, space: String, trials: Int, trialsWithoutHistory: Int,
+        space: String, trials: Int, trialsWithoutHistory: Int,
         top1Correct: Int, byLevel: [MatchLevel: LevelStats], sweep: [SweepRow],
         equalErrorRadius: Float?, confusedPairs: [ConfusedPair],
         coverage: Coverage, suspectTags: [SuspectTag]
     ) {
-        self.kind = kind
         self.space = space
         self.trials = trials
         self.trialsWithoutHistory = trialsWithoutHistory
@@ -136,7 +134,7 @@ public struct VoiceprintEvaluator: Sendable {
     public func evaluate(_ corpus: VoiceprintCorpusData) -> VoiceprintMetrics {
         let prepared = PreparedCorpus(corpus)
         let matcher = VoiceprintMatcher(config: config)
-        let limits = config.thresholds(for: corpus.kind)
+        let limits = config.thresholds
 
         var accumulator = TrialAccumulator()
         runTrials(prepared: prepared, matcher: matcher, corpus: corpus, accumulator: &accumulator)
@@ -152,7 +150,6 @@ public struct VoiceprintEvaluator: Sendable {
         let suspects = computeSuspectTags(prepared: prepared, limits: limits, corpus: corpus)
 
         return VoiceprintMetrics(
-            kind: corpus.kind,
             space: corpus.space,
             trials: accumulator.trials,
             trialsWithoutHistory: accumulator.trialsWithoutHistory,

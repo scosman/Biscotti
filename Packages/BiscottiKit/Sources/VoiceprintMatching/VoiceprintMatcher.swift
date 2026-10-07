@@ -118,7 +118,7 @@ public struct VoiceprintMatcher: Sendable {
         corpus: PreparedCorpus,
         invitees: Invitees
     ) -> [Int: SpeakerMatch] {
-        let limits = config.thresholds(for: corpus.kind)
+        let limits = config.thresholds
         let referenceDim = corpus.entries.first?.vector.count
 
         var results: [Int: SpeakerMatch] = [:]
@@ -148,7 +148,7 @@ public struct VoiceprintMatcher: Sendable {
         invitees: Invitees,
         nearestCount: Int = 15
     ) -> SpeakerExplanation {
-        let limits = config.thresholds(for: corpus.kind)
+        let limits = config.thresholds
         let referenceDim = corpus.entries.first?.vector.count
 
         guard let qVec = VectorMath.normalized(vector),

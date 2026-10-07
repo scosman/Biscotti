@@ -31,7 +31,6 @@
         }
 
         public let speakerID: Int
-        public let kind: VoiceprintKind
         public let space: String?
         public let corpusVoiceprints: Int
         public let corpusMeetings: Int
@@ -43,14 +42,13 @@
         public let errorMessage: String?
 
         public init(
-            speakerID: Int, kind: VoiceprintKind, space: String?,
+            speakerID: Int, space: String?,
             corpusVoiceprints: Int, corpusMeetings: Int,
             hasVoiceprint: Bool, level: MatchLevel?,
             candidates: [Candidate], neighbors: [Neighbor],
             llmBlock: String, errorMessage: String?
         ) {
             self.speakerID = speakerID
-            self.kind = kind
             self.space = space
             self.corpusVoiceprints = corpusVoiceprints
             self.corpusMeetings = corpusMeetings
@@ -68,14 +66,14 @@
     public extension Intelligence {
         func voiceprintDebug(
             meetingID: UUID, transcriptID: UUID,
-            speakerID: Int, kind: VoiceprintKind
+            speakerID: Int
         ) async -> VoiceprintDebugReport {
             do {
                 guard let detail = try await store.meetingDetail(id: meetingID),
                       let transcript = try await store.transcript(id: transcriptID)
                 else {
                     return emptyDebugReport(
-                        speakerID: speakerID, kind: kind,
+                        speakerID: speakerID,
                         error: "Meeting or transcript not found"
                     )
                 }
@@ -85,7 +83,7 @@
                 let evidence = try await VoiceprintEvidence.compute(
                     store: store, meetingID: meetingID,
                     transcript: transcript, detail: detail,
-                    human: human, kind: kind
+                    human: human
                 )
 
                 let hasVoiceprint = evidence.queryVectors[speakerID] != nil
@@ -110,7 +108,7 @@
 
                 let space = evidence.corpus.space.isEmpty ? nil : evidence.corpus.space
                 return VoiceprintDebugReport(
-                    speakerID: speakerID, kind: kind, space: space,
+                    speakerID: speakerID, space: space,
                     corpusVoiceprints: evidence.corpus.entryCount,
                     corpusMeetings: evidence.corpus.history.meetingCount,
                     hasVoiceprint: hasVoiceprint, level: level,
@@ -119,7 +117,7 @@
                 )
             } catch {
                 return emptyDebugReport(
-                    speakerID: speakerID, kind: kind,
+                    speakerID: speakerID,
                     error: error.localizedDescription
                 )
             }
@@ -175,10 +173,10 @@
         }
 
         private func emptyDebugReport(
-            speakerID: Int, kind: VoiceprintKind, error: String
+            speakerID: Int, error: String
         ) -> VoiceprintDebugReport {
             VoiceprintDebugReport(
-                speakerID: speakerID, kind: kind, space: nil,
+                speakerID: speakerID, space: nil,
                 corpusVoiceprints: 0, corpusMeetings: 0,
                 hasVoiceprint: false, level: nil,
                 candidates: [], neighbors: [],

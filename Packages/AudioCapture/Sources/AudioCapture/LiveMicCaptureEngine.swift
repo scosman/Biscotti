@@ -34,6 +34,17 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     private var configObserver: NSObjectProtocol?
     private var outputRateOverride: (deviceID: AudioObjectID, originalRate: Double)?
 
+    /// First mic write error from the most recent session. Cleared at
+    /// the start of each recording; set during `closeSession()` after the
+    /// writer thread drains. Thread-safe via `Mutex`.
+    private let _micWriteError = Mutex<OSStatus?>(nil)
+
+    /// Non-nil if the mic session's ExtAudioFileWrite failed during
+    /// recording. Read after `stop()` to surface write errors.
+    var writeError: OSStatus? {
+        _micWriteError.withLock { $0 }
+    }
+
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
     /// Registration is copied into each session before capture starts. Audio
@@ -56,6 +67,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
         let callback = firstBufferCallback.withLock { $0 }
+        _micWriteError.withLock { $0 = nil }
         capturingFlag.store(true, ordering: .releasing)
 
         // Run the initial engine build on engineQueue via a continuation so
@@ -387,8 +399,12 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     }
 
     /// Finalizes the current attempt after its hardware has been stopped.
+    /// Transfers any write error from the session before releasing it.
     private func closeSession() {
         session?.close()
+        if let sessionError = session?.writeError {
+            _micWriteError.withLock { $0 = $0 ?? sessionError }
+        }
         session = nil
     }
 }

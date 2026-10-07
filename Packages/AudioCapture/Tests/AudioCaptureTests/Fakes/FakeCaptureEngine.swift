@@ -25,6 +25,8 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         /// via `setFirstBufferAnchor(_:)` before calling start. Default 0.
         var firstBufferAnchor: Double = 0
         var startsWithoutBuffers = 0
+        /// Simulated write error surfaced via `writeError`.
+        var simulatedWriteError: OSStatus?
     }
 
     private let state = Mutex(State())
@@ -112,6 +114,15 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
     /// `onFirstBuffer` with the given anchor, just like the real mic engine.
     func simulateFirstBuffer(anchor: Double) {
         onFirstBuffer?(anchor)
+    }
+
+    /// Set a simulated write error returned by `writeError`.
+    func setWriteError(_ status: OSStatus?) {
+        state.withLock { $0.simulatedWriteError = status }
+    }
+
+    var writeError: OSStatus? {
+        state.withLock { $0.simulatedWriteError }
     }
 
     func setMicAnchor(_ seconds: Double) {

@@ -188,7 +188,7 @@ public actor AudioRecorder {
             throw CaptureError.micPermissionDenied
         }
 
-        _lastSystemWriteError = nil
+        (lastSystemWriteError, lastMicWriteError) = (nil, nil)
 
         // Start mic first: VPIO reclocks the output device to the input
         // sample rate. The system tap must query the device after this
@@ -339,8 +339,9 @@ public actor AudioRecorder {
 
     /// Stops capture. Idempotent — safe to call when not recording.
     ///
-    /// After stopping, checks the system engine for write errors and
-    /// logs them. The error is also available via `lastSystemWriteError`.
+    /// After stopping, checks both engines for write errors and logs them.
+    /// The errors are available via `lastSystemWriteError` and
+    /// `lastMicWriteError`.
     public func stop() async {
         guard lifecycle == .recording else { return }
 
@@ -356,7 +357,11 @@ public actor AudioRecorder {
         // Surface any write errors that occurred during recording.
         if let writeErr = systemEngine.writeError {
             logger.error("System audio write error during recording (OSStatus \(writeErr, privacy: .public))")
-            _lastSystemWriteError = writeErr
+            lastSystemWriteError = writeErr
+        }
+        if let writeErr = micEngine.writeError {
+            logger.error("Mic audio write error during recording (OSStatus \(writeErr, privacy: .public))")
+            lastMicWriteError = writeErr
         }
 
         logger.info("Capture stopped")
@@ -366,12 +371,11 @@ public actor AudioRecorder {
 
     /// Non-nil if the system engine's ExtAudioFile write failed during the
     /// last recording session. Reset on the next `start()`.
-    public private(set) var lastSystemWriteError: OSStatus? {
-        get { _lastSystemWriteError }
-        set { _lastSystemWriteError = newValue }
-    }
+    public private(set) var lastSystemWriteError: OSStatus?
 
-    private var _lastSystemWriteError: OSStatus?
+    /// Non-nil if the mic engine's ExtAudioFile write failed during the
+    /// last recording session. Reset on the next `start()`.
+    public private(set) var lastMicWriteError: OSStatus?
 
     // MARK: - State stream
 

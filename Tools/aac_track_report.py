@@ -79,11 +79,21 @@ def report(rec_dir, profile=True):
         print(f"  mic - system = {mic - system:+.2f} s")
 
 
+def recording_dirs():
+    """Returns recording sub-directories, or an empty list if the base path is missing."""
+    if not RECORDINGS.is_dir():
+        return []
+    return [d for d in RECORDINGS.iterdir() if d.is_dir()]
+
+
 def main(args):
     if args and args[0] == "--list":
         count = int(args[1]) if len(args) > 1 else 10
-        dirs = sorted((d for d in RECORDINGS.iterdir() if d.is_dir()),
+        dirs = sorted(recording_dirs(),
                       key=lambda d: d.stat().st_mtime, reverse=True)[:count]
+        if not dirs:
+            print(f"No recordings found in {RECORDINGS}")
+            return
         for d in dirs:
             report(d, profile=False)
         return
@@ -91,8 +101,11 @@ def main(args):
         candidate = Path(args[0])
         rec_dir = candidate if candidate.is_dir() else RECORDINGS / args[0]
     else:
-        rec_dir = max((d for d in RECORDINGS.iterdir() if d.is_dir()),
-                      key=lambda d: d.stat().st_mtime)
+        dirs = recording_dirs()
+        if not dirs:
+            print(f"No recordings found in {RECORDINGS}")
+            return
+        rec_dir = max(dirs, key=lambda d: d.stat().st_mtime)
     report(rec_dir)
 
 

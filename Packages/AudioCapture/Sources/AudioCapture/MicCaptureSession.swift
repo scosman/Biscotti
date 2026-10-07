@@ -79,6 +79,11 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     /// allocation); subsequent fills reuse the same buffer.
     private var silenceBuffer: AVAudioPCMBuffer?
 
+    /// First write error during this session, or nil if all writes
+    /// succeeded. Writer-thread-only; safe to read after `close()`
+    /// joins the writer thread.
+    private(set) var writeError: OSStatus?
+
     private var didNotifyFirstBuffer = false
 
     /// Lazily (re)created buffer for wrapping ring-slot data on the writer
@@ -248,6 +253,11 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
     private func writerLoop() {
         while writerRunning.load(ordering: .acquiring) == 1 {
+            // Capture any pending flush request before draining so that
+            // every entry already in the ring is processed before the
+            // flush is signaled. A request arriving after the exchange
+            // is handled on the next iteration.
+            let flushing = flushBarrier.exchange(false, ordering: .acquiringAndReleasing)
             var didWork = false
             while let entry = peekEntry() {
                 didWork = true
@@ -260,8 +270,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             if drops > 0 {
                 logger.notice("Mic ring overflow: \(drops, privacy: .public) buffer(s) dropped — writer thread may be stalled")
             }
-            // After draining, signal any pending flush.
-            if flushBarrier.exchange(false, ordering: .acquiringAndReleasing) {
+            if flushing {
                 flushDone.signal()
             }
             if !didWork { Thread.sleep(forTimeInterval: 0.001) }
@@ -362,7 +371,9 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             expectedNextHostNanos = entry.hostTimeNanos + durationNanos
         }
 
-        guard VPIOBufferHelper.writeBuffer(bufferToWrite, to: file) == noErr else {
+        let writeStatus = VPIOBufferHelper.writeBuffer(bufferToWrite, to: file)
+        guard writeStatus == noErr else {
+            if writeError == nil { writeError = writeStatus }
             return
         }
 
@@ -432,8 +443,10 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             if let data = buf.floatChannelData?[0] {
                 memset(data, 0, Int(count) * MemoryLayout<Float>.size)
             }
-            if VPIOBufferHelper.writeBuffer(buf, to: file) != noErr {
+            let fillStatus = VPIOBufferHelper.writeBuffer(buf, to: file)
+            if fillStatus != noErr {
                 logger.error("Mic gap-fill write failed -- aborting fill")
+                if writeError == nil { writeError = fillStatus }
                 return
             }
             framesRemaining -= Int(count)

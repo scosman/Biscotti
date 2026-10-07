@@ -146,7 +146,6 @@ public struct DiarizationResult {
     public var timings: (any DiarizationTimings)?
     // Public since v1.1.0 (was internal in v1.0.0 — see section 6 erratum):
     public private(set) var speakerCentroidEmbeddings: [Int: [Float]]
-    public private(set) var speakerPLDACentroidEmbeddings: [Int: [Float]]  // Biscotti fork; upstream PR pending
     // centroidCosineDistance(between:and:) -> Float  (range 0.0-2.0)
     // nearestSpeakerCentroid(to:) -> (speakerId: Int, distance: Float)?
     // Methods (public):
@@ -264,17 +263,17 @@ Both `whisperKit.transcribe(audioArray:)` and `speakerKit.diarize(audioArray:)` 
 - SpeakerKit exposes `speakerCentroidEmbeddings: [Int: [Float]]` on `DiarizationResult` — these are **256-dim** raw centroid embedding vectors for each speaker cluster, unnormalized (plain arithmetic mean of per-window embeddings). Cosine distance range is `[0, 2]`. Zero-magnitude vectors return the sentinel `1.0`, not an error — guard against them explicitly.
 - `DiarizationResult.centroidCosineDistance(between:and:)` computes cosine distance between two embedding vectors (range 0.0-2.0).
 - `DiarizationResult.nearestSpeakerCentroid(to:)` returns `(speakerId: Int, distance: Float)?` (not `Int?` as previously documented).
-- **PLDA centroid embeddings** (128-dim): SpeakerKit internally computes PLDA-projected per-window vectors via the `PldaProjector` CoreML model (pyannote-v4/W32A32), used for VBx clustering. The PLDA transform centers, rotates, and scales the raw embedding to separate speaker identity from channel variation (mic, room, codec) — the hard part of cross-recording matching. Per-window PLDA vectors exist in memory but the SDK (through v1.1.0) does not average or expose them. **Biscotti adds `speakerPLDACentroidEmbeddings: [Int: [Float]]` via a fork** (same averaging logic as raw centroids, applied to the PLDA vectors), with an upstream PR pending.
+- **PLDA centroid embeddings (evaluated and removed):** SpeakerKit internally computes PLDA-projected per-window vectors via the `PldaProjector` CoreML model (pyannote-v4/W32A32), used for VBx clustering. Biscotti previously exposed these via a fork (`speakerPLDACentroidEmbeddings`), but on-hardware evaluation showed PLDA centroids did not outperform raw centroids for cross-recording matching. The fork dependency and all PLDA code paths were removed; Biscotti now uses only raw (256-dim) centroids from the public SDK.
 - With `.trainableOnly` centroid source, a speaker whose windows are all heavily overlapped gets **no key at all** in the centroid dictionary — still present in `segments`. Use `if let`, never `[id]!`.
 - **Embedding space versioning:** the embedder model version/variant (e.g. `pyannote-v3/W8A16`) is chosen at runtime by OS version. Embeddings from different spaces cannot be compared. Every stored embedding must be stamped with its space key.
 
 > **ERRATUM (verified in E3 against argmax-oss-swift v1.0.0; UPDATE: resolved in v1.1.0):** `speakerCentroidEmbeddings`, `centroidCosineDistance(between:and:)`, and `nearestSpeakerCentroid(to:)` were **not** public API on `DiarizationResult` in v1.0.0. **In v1.1.0, speaker centroid embeddings are now available from a public interface** ([PR #463](https://github.com/argmaxinc/argmax-oss-swift/pull/463)). Cross-file speaker matching via centroid embeddings is now feasible.
 
 **Recommendation for Biscotti (implemented):**
-- Biscotti stores both raw (256-dim) and PLDA (128-dim) centroid embeddings from every diarization result as `Voiceprint` rows on `TranscriptRecord`. Stored as `Data` (little-endian Float32) because SwiftData cannot materialize `[Float]` from on-disk stores in SPM modules.
+- Biscotti stores raw (256-dim) centroid embeddings from every diarization result as `Voiceprint` rows on `TranscriptRecord`. Stored as `Data` (little-endian Float32) because SwiftData cannot materialize `[Float]` from on-disk stores in SPM modules. (PLDA 128-dim embeddings were previously stored alongside raw but were removed after evaluation showed they did not improve matching accuracy.)
 - The `VoiceprintMatching` module compares new speakers against the stored corpus using cosine distance, with confidence levels (high/medium/low/ambiguous/none). A `<voiceprint_matches>` report is passed to the LLM for speaker-name inference.
 - `voiceprint-cli backfill` re-runs diarization on existing meetings to populate voiceprints retroactively. `voiceprint-cli metrics` evaluates matching accuracy via leave-one-meeting-out cross-validation.
-- SpeakerKit is pinned to a fork (`scosman/argmax-oss-swift`, branch `biscotti/v1.1.0-plda-centroids`) that adds PLDA centroids. An upstream PR exists on branch `plda-centroid-embeddings`. Return to `argmaxinc/argmax-oss-swift` when an upstream release contains the change.
+- SpeakerKit uses the public `argmaxinc/argmax-oss-swift` release (`from: "1.1.0"`). No fork is required.
 
 ---
 
@@ -528,7 +527,7 @@ public struct TranscriptResult: Sendable, Codable, Identifiable {
     public let language: String                   // detected language code
     public let speakerCount: Int
     public let segments: [TranscriptSegment]
-    public let embeddingSets: [SpeakerEmbeddingSet]  // raw (256-dim) + PLDA (128-dim) centroid embeddings per speaker
+    public let embeddingSets: [SpeakerEmbeddingSet]  // raw (256-dim) centroid embeddings per speaker
     public let speakerSpeechDurations: [Int: TimeInterval]  // sum of each speaker's diarized time ranges
     public let processingDuration: TimeInterval   // how long transcription took
 }
@@ -554,7 +553,7 @@ public struct TranscriptWord: Sendable, Codable {
 }
 ```
 
-This captures everything the SDK provides in a clean Codable shape suitable for SwiftData storage. The `embeddingSets` field contains raw (256-dim) and PLDA (128-dim) centroid embeddings per speaker, each tagged with an embedding space key (see section 6). `speakerSpeechDurations` records how long each speaker talked, used as a quality weight for voiceprint matching. The `modelVersion` field supports the re-transcription use case (re-process with a newer model and compare).
+This captures everything the SDK provides in a clean Codable shape suitable for SwiftData storage. The `embeddingSets` field contains raw (256-dim) centroid embeddings per speaker, each tagged with an embedding space key (see section 6). `speakerSpeechDurations` records how long each speaker talked, used as a quality weight for voiceprint matching. The `modelVersion` field supports the re-transcription use case (re-process with a newer model and compare).
 
 ---
 
@@ -572,7 +571,7 @@ This captures everything the SDK provides in a clean Codable shape suitable for 
 
 6. **Word timestamps are approximate.** The free SDK's word timestamps come from Whisper's built-in mechanism, not forced alignment. They are adequate for diarization matching and UI highlighting, but not sample-accurate. The Pro SDK offers forced alignment.
 
-7. **Speaker labels are per-file.** "Speaker 0" in meeting A is not the same as "Speaker 0" in meeting B. Cross-file matching via centroid embeddings is custom application logic. **Now implemented** using the `VoiceprintMatching` module: raw (256-dim) and PLDA (128-dim) centroids are stored per transcript, compared via cosine distance with configurable thresholds. The `voiceprint-cli backfill` tool populates voiceprints from existing meetings; `voiceprint-cli metrics` measures accuracy. Embedding space versioning is enforced (voiceprints from different model versions cannot be compared).
+7. **Speaker labels are per-file.** "Speaker 0" in meeting A is not the same as "Speaker 0" in meeting B. Cross-file matching via centroid embeddings is custom application logic. **Now implemented** using the `VoiceprintMatching` module: raw (256-dim) centroids are stored per transcript, compared via cosine distance with configurable thresholds. The `voiceprint-cli backfill` tool populates voiceprints from existing meetings; `voiceprint-cli metrics` measures accuracy. Embedding space versioning is enforced (voiceprints from different model versions cannot be compared).
 
 8. **No offline model bundling (easily).** Models are downloaded from HuggingFace on first use. If the user is offline during first launch, transcription will not work. We should detect this and prompt the user to connect. Bundling the SpeakerKit model (~33 MB) in the app is feasible; the STT model (1.3-3.1 GB) is too large to bundle.
 

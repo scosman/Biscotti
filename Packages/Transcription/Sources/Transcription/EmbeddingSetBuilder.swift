@@ -2,32 +2,19 @@ import SpeakerKit
 
 /// Builds `SpeakerEmbeddingSet` arrays from a diarization result.
 enum EmbeddingSetBuilder {
-    /// Builds [raw, plda] embedding sets from a diarization result.
+    /// Builds a raw embedding set from a diarization result.
     ///
     /// - Drops vectors that are empty or contain non-finite values.
-    /// - Omits a set entirely when it has no valid vectors.
+    /// - Returns an empty array when no valid vectors exist.
     static func build(from diarization: DiarizationResult) -> [SpeakerEmbeddingSet] {
-        var sets: [SpeakerEmbeddingSet] = []
-
         let rawVectors = filterValid(diarization.speakerCentroidEmbeddings)
-        if !rawVectors.isEmpty {
-            sets.append(SpeakerEmbeddingSet(
-                kind: .raw,
-                space: SpeakerEmbeddingSpace.current(.raw),
-                vectors: rawVectors
-            ))
-        }
+        guard !rawVectors.isEmpty else { return [] }
 
-        let pldaVectors = filterValid(diarization.speakerPLDACentroidEmbeddings)
-        if !pldaVectors.isEmpty {
-            sets.append(SpeakerEmbeddingSet(
-                kind: .plda,
-                space: SpeakerEmbeddingSpace.current(.plda),
-                vectors: pldaVectors
-            ))
-        }
-
-        return sets
+        return [SpeakerEmbeddingSet(
+            kind: .raw,
+            space: SpeakerEmbeddingSpace.current(),
+            vectors: rawVectors
+        )]
     }
 
     /// Keeps only vectors that are non-empty and all-finite.

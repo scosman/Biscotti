@@ -8,8 +8,12 @@ import SwiftData
 public enum VoiceprintKind: String, Sendable, Codable, CaseIterable {
     /// Raw embedder output (256-dim for pyannote-v3).
     case raw
-    /// PLDA-projected vector (128-dim for pyannote-v4).
-    case plda
+    /// Reserved, never written: PLDA voiceprints (mean of per-window PLDA
+    /// embeddings) were evaluated and removed. Developer stores may still hold
+    /// rows with this value. Keep the case so the "plda" key is never reused —
+    /// a future PLDA kind needs a new raw value (e.g. "plda_v2"). See the
+    /// `plda_v2` branch, `specs/projects/plda_v2/project_overview.md`.
+    case legacyPLDA = "plda"
 }
 
 // MARK: - Voiceprint
@@ -24,7 +28,7 @@ public enum VoiceprintKind: String, Sendable, Codable, CaseIterable {
     /// The diarization speaker ID within the owning transcript.
     public var speakerID: Int = 0
 
-    /// `VoiceprintKind.rawValue` ("raw" | "plda").
+    /// `VoiceprintKind.rawValue` ("raw").
     public var kindRaw: String = VoiceprintKind.raw.rawValue
 
     /// Identifies the SpeakerKit models that produced this vector.

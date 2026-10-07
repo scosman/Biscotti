@@ -3,31 +3,10 @@ import Foundation
 
 /// Renders `VoiceprintMetrics` results as human-readable text.
 public enum MetricsFormatter {
-    /// Renders one section per kind, with a short summary first.
-    public static func text(_ results: [VoiceprintMetrics], includeSweep: Bool) -> String {
-        guard !results.isEmpty else { return "No metrics to display.\n" }
-
-        var lines: [String] = []
-
-        // Side-by-side summary if multiple kinds
-        if results.count > 1 {
-            lines.append("=== Summary ===")
-            lines.append("")
-            for metrics in results {
-                let accuracy = formatAccuracy(correct: metrics.top1Correct, total: metrics.trials)
-                let eerStr = metrics.equalErrorRadius.map { String(format: "%.2f", $0) } ?? "N/A"
-                lines.append(
-                    "\(metrics.kind.rawValue.uppercased()): \(metrics.trials) trials, top-1 \(accuracy), EER radius \(eerStr)"
-                )
-            }
-            lines.append("")
-        }
-
-        for metrics in results {
-            lines.append(contentsOf: formatOneKind(metrics, includeSweep: includeSweep))
-            lines.append("")
-        }
-
+    /// Renders a single metrics result as a human-readable report.
+    public static func text(_ metrics: VoiceprintMetrics, includeSweep: Bool) -> String {
+        var lines = formatOneKind(metrics, includeSweep: includeSweep)
+        lines.append("")
         return lines.joined(separator: "\n")
     }
 
@@ -37,7 +16,7 @@ public enum MetricsFormatter {
 
     private static func formatOneKind(_ metrics: VoiceprintMetrics, includeSweep: Bool) -> [String] {
         var lines: [String] = []
-        lines.append("=== \(metrics.kind.rawValue.uppercased()) (\(metrics.space)) ===")
+        lines.append("=== RAW (\(metrics.space)) ===")
         lines.append("")
 
         let accuracy = formatAccuracy(correct: metrics.top1Correct, total: metrics.trials)

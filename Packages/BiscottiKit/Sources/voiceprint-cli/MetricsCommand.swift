@@ -13,9 +13,6 @@ struct MetricsCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to the directory that contains Biscotti.store.")
     var store: String?
 
-    @Option(name: .long, help: "Which voiceprint kind to evaluate: plda, raw, or both (default: both).")
-    var kind: KindOption = .both
-
     @Flag(name: .long, help: "Show the full radius sweep table.")
     var sweep: Bool = false
 
@@ -38,44 +35,36 @@ struct MetricsCommand: AsyncParsableCommand {
 
         let dataStore = try StoreLocation.open(path: store, writer: writer)
 
-        let kinds = kind.voiceprintKinds
-        var results: [VoiceprintMetrics] = []
+        let space = SpeakerEmbeddingSpace.current()
+        writer.writeStderr("Loading raw corpus (space: \(space))...")
 
-        for voiceprintKind in kinds {
-            let space = SpeakerEmbeddingSpace.current(
-                voiceprintKind == .raw ? .raw : .plda
-            )
-            writer.writeStderr("Loading \(voiceprintKind.rawValue) corpus (space: \(space))...")
+        let loaded = try await dataStore.voiceprintCorpus(
+            kind: .raw, space: space, excludingMeetingID: nil
+        )
+        let corpus = try mergeAliases(loaded, writer: writer)
 
-            let loaded = try await dataStore.voiceprintCorpus(
-                kind: voiceprintKind, space: space, excludingMeetingID: nil
-            )
-            let corpus = try mergeAliases(loaded, writer: writer)
+        writer.writeStderr(
+            "  \(corpus.entries.count) voiceprints, "
+                + "\(Set(corpus.entries.map(\.meetingID)).count) meetings, "
+                + "\(corpus.people.count) people"
+        )
 
-            writer.writeStderr(
-                "  \(corpus.entries.count) voiceprints, "
-                    + "\(Set(corpus.entries.map(\.meetingID)).count) meetings, "
-                    + "\(corpus.people.count) people"
-            )
-
-            let evaluator = VoiceprintEvaluator()
-            writer.writeStderr("Evaluating \(voiceprintKind.rawValue)...")
-            let metrics = evaluator.evaluate(corpus)
-            results.append(metrics)
-        }
+        let evaluator = VoiceprintEvaluator()
+        writer.writeStderr("Evaluating...")
+        let metrics = evaluator.evaluate(corpus)
 
         // Output
         if json {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(results)
+            let data = try encoder.encode(metrics)
             guard let text = String(data: data, encoding: .utf8) else {
                 throw ExitCode.failure
             }
             writer.writeStdout(text)
         } else {
-            let text = MetricsFormatter.text(results, includeSweep: sweep)
+            let text = MetricsFormatter.text(metrics, includeSweep: sweep)
             writer.writeStdout(text)
         }
     }
@@ -97,21 +86,5 @@ struct MetricsCommand: AsyncParsableCommand {
             writer.writeStderr("  Same person: \(names.joined(separator: ", "))")
         }
         return corpus.mergingPeople(resolved.groups)
-    }
-}
-
-// MARK: - Kind option
-
-enum KindOption: String, ExpressibleByArgument, CaseIterable {
-    case plda
-    case raw
-    case both
-
-    var voiceprintKinds: [VoiceprintKind] {
-        switch self {
-        case .plda: [.plda]
-        case .raw: [.raw]
-        case .both: [.plda, .raw]
-        }
     }
 }

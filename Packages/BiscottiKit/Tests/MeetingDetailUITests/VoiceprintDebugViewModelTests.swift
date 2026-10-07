@@ -37,41 +37,6 @@
 
             let model = try #require(viewModel.voiceprintDebug)
             #expect(model.report.speakerID == 0)
-            #expect(model.report.kind == VoiceprintConfig.default.kind)
-        }
-
-        @Test("reloadVoiceprintDebug replaces report with new kind")
-        @MainActor
-        func reloadReplacesReport() async throws {
-            let fix = try makeCoreFixture(testName: "VoiceprintDebugVMTests")
-            defer { fix.cleanup() }
-
-            let meetingID = try await fix.createMeetingWithAudio()
-            let result = FakeTranscriber.defaultResult
-            let transcriptID = try await fix.store.addTranscript(
-                result,
-                vocabularyUsed: [],
-                mappedEventIdentifier: nil,
-                to: meetingID
-            )
-            try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
-
-            let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
-            await viewModel.load()
-
-            // Open with default kind (.raw per VoiceprintConfig.default)
-            await viewModel.openVoiceprintDebug(speakerID: 0)
-            let firstID = viewModel.voiceprintDebug?.id
-            #expect(viewModel.voiceprintDebug?.report.kind == VoiceprintConfig.default.kind)
-
-            // Reload with .plda (the non-default kind)
-            await viewModel.reloadVoiceprintDebug(kind: .plda)
-
-            let reloaded = try #require(viewModel.voiceprintDebug)
-            #expect(reloaded.report.kind == .plda)
-            #expect(reloaded.report.speakerID == 0)
-            // New model has a new ID (replaced, not mutated)
-            #expect(reloaded.id != firstID)
         }
 
         @Test("openVoiceprintDebug is no-op without a transcript")

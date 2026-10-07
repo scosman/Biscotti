@@ -127,16 +127,16 @@ struct ResultCodableTests {
     @Test("SpeakerEmbeddingSet round-trips through JSON")
     func embeddingSetCodable() throws {
         let set = SpeakerEmbeddingSet(
-            kind: .plda,
-            space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
+            kind: .raw,
+            space: "pyannote-v3/W8A16",
             vectors: [0: [0.1, 0.2], 1: [0.3, 0.4]]
         )
 
         let data = try JSONEncoder().encode(set)
         let decoded = try JSONDecoder().decode(SpeakerEmbeddingSet.self, from: data)
 
-        #expect(decoded.kind == .plda)
-        #expect(decoded.space == "pyannote-v3/W8A16+plda:pyannote-v4/W32A32")
+        #expect(decoded.kind == .raw)
+        #expect(decoded.space == "pyannote-v3/W8A16")
         #expect(decoded.vectors.count == 2)
         #expect(decoded.vectors[0] == [0.1, 0.2])
         #expect(decoded.vectors[1] == [0.3, 0.4])
@@ -161,10 +161,6 @@ struct ResultCodableTests {
             SpeakerEmbeddingSet(
                 kind: .raw, space: "pyannote-v3/W8A16",
                 vectors: [0: [0.1, 0.2, 0.3], 1: [0.4, 0.5, 0.6]]
-            ),
-            SpeakerEmbeddingSet(
-                kind: .plda, space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
-                vectors: [0: [0.7, 0.8], 1: [0.9, 1.0]]
             )
         ]
 
@@ -187,9 +183,8 @@ struct ResultCodableTests {
         #expect(decoded.speakerCount == 2)
         #expect(decoded.segments.count == 1)
         #expect(decoded.segments[0].text == "Hello world")
-        #expect(decoded.embeddingSets.count == 2)
+        #expect(decoded.embeddingSets.count == 1)
         #expect(decoded.embeddingSets[0].kind == .raw)
-        #expect(decoded.embeddingSets[1].kind == .plda)
         #expect(decoded.speakerSpeechDurations[0] == 45.0)
         #expect(decoded.speakerSpeechDurations[1] == 120.5)
         #expect(decoded.processingDuration == 12.5)

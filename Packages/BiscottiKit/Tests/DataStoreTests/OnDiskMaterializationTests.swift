@@ -167,7 +167,6 @@ struct OnDiskMaterializationTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let rawVector: [Float] = [1.0, -2.5, 3.14, 0.0]
-        let pldaVector: [Float] = [0.1, 0.2]
         let meetingID: UUID
         let transcriptID: UUID
 
@@ -185,8 +184,7 @@ struct OnDiskMaterializationTests {
                     )
                 ],
                 embeddingSets: [
-                    SpeakerEmbeddingSet(kind: .raw, space: "test/raw", vectors: [0: rawVector]),
-                    SpeakerEmbeddingSet(kind: .plda, space: "test/plda", vectors: [0: pldaVector])
+                    SpeakerEmbeddingSet(kind: .raw, space: "test/raw", vectors: [0: rawVector])
                 ],
                 speakerSpeechDurations: [0: 42.5],
                 processingDuration: 1.0
@@ -201,7 +199,7 @@ struct OnDiskMaterializationTests {
             let store2 = try DataStore(storage: .onDisk(dir))
             try await store2.read { store in
                 let voiceprints = try store.fetchAllVoiceprints()
-                #expect(voiceprints.count == 2)
+                #expect(voiceprints.count == 1)
 
                 let rawEntry = try #require(voiceprints.first { $0.kindRaw == "raw" })
                 #expect(rawEntry.dimension == 4)
@@ -209,10 +207,6 @@ struct OnDiskMaterializationTests {
                 #expect(rawEntry.embeddingSpace == "test/raw")
                 let decodedRaw = VectorCoding.decode(rawEntry.vectorData, dimension: rawEntry.dimension)
                 #expect(decodedRaw == rawVector)
-
-                let pldaEntry = try #require(voiceprints.first { $0.kindRaw == "plda" })
-                let decodedPlda = VectorCoding.decode(pldaEntry.vectorData, dimension: pldaEntry.dimension)
-                #expect(decodedPlda == pldaVector)
             }
 
             // Also verify the query read-model path works

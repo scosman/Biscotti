@@ -31,15 +31,12 @@ struct BackfillCommand: AsyncParsableCommand {
         try await MainActor.run { try AppRunningGuard.check(storePath: store, writer: writer) }
 
         let dataStore = try StoreLocation.open(path: store, writer: writer)
-        let spaces = BackfillRunner.currentSpaces()
+        let space = SpeakerEmbeddingSpace.current()
 
-        writer.writeStderr("Embedding spaces:")
-        for (kind, space) in spaces.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            writer.writeStderr("  \(kind.rawValue): \(space)")
-        }
+        writer.writeStderr("Embedding space: \(space)")
 
         let runner = BackfillRunner(
-            dataStore: dataStore, spaces: spaces, writer: writer
+            dataStore: dataStore, space: space, writer: writer
         )
         var workItems = try await runner.planWork(meetingFilter: meeting)
 
@@ -85,20 +82,12 @@ private struct WorkPlan {
 
 private struct WorkItem {
     let candidate: BackfillCandidateData
-    let neededKinds: [VoiceprintKind]
 }
 
 private struct BackfillRunner {
     let dataStore: DataStore
-    let spaces: [VoiceprintKind: String]
+    let space: String
     let writer: StandardOutputWriter
-
-    static func currentSpaces() -> [VoiceprintKind: String] {
-        [
-            .raw: SpeakerEmbeddingSpace.current(.raw),
-            .plda: SpeakerEmbeddingSpace.current(.plda)
-        ]
-    }
 
     func planWork(meetingFilter: String?) async throws -> WorkPlan {
         var candidates = try await dataStore.backfillCandidates()
@@ -122,13 +111,15 @@ private struct BackfillRunner {
             if let reason = try await skipReason(for: candidate) {
                 skipReasons.append(reason)
             } else {
-                let needed = try await neededKinds(for: candidate)
-                if needed.isEmpty {
+                let has = try await dataStore.hasVoiceprints(
+                    transcriptID: candidate.transcriptID, kind: .raw, space: space
+                )
+                if has {
                     skipReasons.append(
                         "\(candidate.title) (\(candidate.meetingID)): already has voiceprints"
                     )
                 } else {
-                    items.append(WorkItem(candidate: candidate, neededKinds: needed))
+                    items.append(WorkItem(candidate: candidate))
                 }
             }
         }
@@ -152,8 +143,7 @@ private struct BackfillRunner {
         if !plan.items.isEmpty {
             writer.writeStderr("")
             for item in plan.items {
-                let kinds = item.neededKinds.map(\.rawValue).joined(separator: ", ")
-                writer.writeStderr("  plan: \(item.candidate.title) — needs \(kinds)")
+                writer.writeStderr("  plan: \(item.candidate.title)")
             }
         }
     }
@@ -166,7 +156,7 @@ private struct BackfillRunner {
 
         var processed = 0
         var failed = 0
-        var voiceprintsAdded: [VoiceprintKind: Int] = [.raw: 0, .plda: 0]
+        var voiceprintsAdded = 0
         var totalUnmapped = 0
 
         for (idx, item) in items.enumerated() {
@@ -179,9 +169,7 @@ private struct BackfillRunner {
                 let result = try await processOne(item, analyzer: analyzer)
                 processed += 1
                 totalUnmapped += result.unmapped
-                for (kind, count) in result.added {
-                    voiceprintsAdded[kind, default: 0] += count
-                }
+                voiceprintsAdded += result.added
             } catch {
                 writer.writeStderr("  Error: \(error.localizedDescription)")
                 failed += 1
@@ -195,9 +183,7 @@ private struct BackfillRunner {
         writer.writeStderr("Processed: \(processed)")
         writer.writeStderr("Failed: \(failed)")
         writer.writeStderr("Skipped: \(skippedCount)")
-        for (kind, count) in voiceprintsAdded.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            writer.writeStderr("Voiceprints added (\(kind.rawValue)): \(count)")
-        }
+        writer.writeStderr("Voiceprints added: \(voiceprintsAdded)")
         if totalUnmapped > 0 {
             writer.writeStderr("Unmapped speakers: \(totalUnmapped)")
         }
@@ -205,8 +191,7 @@ private struct BackfillRunner {
         return BackfillSummary(
             processed: processed, failed: failed,
             skipped: skippedCount,
-            voiceprintsRaw: voiceprintsAdded[.raw, default: 0],
-            voiceprintsPlda: voiceprintsAdded[.plda, default: 0],
+            voiceprintsAdded: voiceprintsAdded,
             unmappedSpeakers: totalUnmapped
         )
     }
@@ -223,19 +208,8 @@ private struct BackfillRunner {
         return nil
     }
 
-    private func neededKinds(for candidate: BackfillCandidateData) async throws -> [VoiceprintKind] {
-        var result: [VoiceprintKind] = []
-        for (kind, space) in spaces {
-            let has = try await dataStore.hasVoiceprints(
-                transcriptID: candidate.transcriptID, kind: kind, space: space
-            )
-            if !has { result.append(kind) }
-        }
-        return result
-    }
-
     private struct OneResult {
-        let added: [VoiceprintKind: Int]
+        let added: Int
         let unmapped: Int
     }
 
@@ -265,27 +239,11 @@ private struct BackfillRunner {
             )
         }
 
-        var added: [VoiceprintKind: Int] = [:]
-        for kind in item.neededKinds {
-            let count = try await writeVoiceprints(
-                kind: kind, candidate: candidate, analysis: analysis, mapping: mapping
-            )
-            added[kind] = count
-        }
-
-        return OneResult(added: added, unmapped: mapping.unmapped.count)
-    }
-
-    private func writeVoiceprints(
-        kind: VoiceprintKind, candidate: BackfillCandidateData,
-        analysis: SpeakerAnalysis, mapping: BackfillSpeakerMapper.Result
-    ) async throws -> Int {
-        let embeddingKind: EmbeddingKind = kind == .raw ? .raw : .plda
         guard let embeddingSet = analysis.embeddingSets.first(
-            where: { $0.kind == embeddingKind }
+            where: { $0.kind == .raw }
         ) else {
-            writer.writeStderr("  No \(kind.rawValue) embeddings from diarization")
-            return 0
+            writer.writeStderr("  No raw embeddings from diarization")
+            return OneResult(added: 0, unmapped: mapping.unmapped.count)
         }
 
         var items: [NewVoiceprint] = []
@@ -295,12 +253,12 @@ private struct BackfillRunner {
             items.append(NewVoiceprint(speakerID: storedID, vector: vector, speakingDuration: duration))
         }
 
-        // Use the space from the actual diarization output, not pre-computed.
         try await dataStore.addVoiceprints(
-            items, kind: kind, space: embeddingSet.space, to: candidate.transcriptID
+            items, kind: .raw, space: embeddingSet.space, to: candidate.transcriptID
         )
-        writer.writeStderr("  Added \(items.count) \(kind.rawValue) voiceprints")
-        return items.count
+        writer.writeStderr("  Added \(items.count) voiceprints")
+
+        return OneResult(added: items.count, unmapped: mapping.unmapped.count)
     }
 }
 
@@ -325,8 +283,7 @@ private struct BackfillSummary: Codable {
     let processed: Int
     let failed: Int
     let skipped: Int
-    let voiceprintsRaw: Int
-    let voiceprintsPlda: Int
+    let voiceprintsAdded: Int
     let unmappedSpeakers: Int
 }
 

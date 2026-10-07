@@ -8,7 +8,7 @@ A dependency-ordered **roadmap of Projects**. Each entry is a future `/spec new 
 
 **How to read an entry.** Each lists *what's in the Project* — the components/parts and capabilities it covers, what it delivers, its dependencies, archetype, and risk. It does **not** break the Project into phases; that's decided when the Project is itself spec'd. Components are grown **incrementally across Projects** (a component may appear in several).
 
-**Two archetypes** (see [functional spec](projects/library_design/functional_spec.md)):
+**Two archetypes** (see [functional spec](../library_design/functional_spec.md)):
 - **Foundation/library** — one complex component built deep; validated by tests + a manual harness; **does not ship a runnable app**. These are front-loaded to retire risk.
 - **Feature/integration** — delivers a **self-standing, runnable app increment** by wiring built components + UI. From the MVP onward, *every* Project leaves a working app.
 
@@ -130,7 +130,7 @@ Create a new test set for "AI tests". These can be run via CLI just fine, but re
 ### Project 11 — Auto-Speaker Identification  ·  [partially built]
 - **Archetype:** library + feature (deepens Transcription's speaker smarts).
 - **Delivers:** automatically work out *who* each speaker is — pin "me" and recognize recurring people across meetings — without manual labeling. **Signal-based; distinct from and complementary to Project 10's LLM name-inference.**
-- **Status:** The **`speaker_embeddings` spec project** built the voiceprint half: PLDA centroid embeddings via a SpeakerKit fork (upstream PR pending), voiceprint storage on `TranscriptRecord`, the `VoiceprintMatching` module (matcher with confidence levels, evaluator, backfill speaker mapper, metrics formatter), LLM prompt integration (`<voiceprint_matches>` report in the speaker turn), current-user fact from EventKit, `#if DEBUG` voiceprint debug window, `voiceprint-cli` (backfill + metrics), and AI tests. Calibration on real data is the developer's next step.
+- **Status:** The **`speaker_embeddings` spec project** built the voiceprint half: raw centroid embeddings (256-dim, public SpeakerKit SDK), voiceprint storage on `TranscriptRecord`, the `VoiceprintMatching` module (matcher with confidence levels, evaluator, backfill speaker mapper, metrics formatter), LLM prompt integration (`<voiceprint_matches>` report in the speaker turn), current-user fact from EventKit, `#if DEBUG` voiceprint debug window, `voiceprint-cli` (backfill + metrics), and AI tests. PLDA embeddings were evaluated via a SpeakerKit fork and removed (did not outperform raw). Calibration on real data is the developer's next step.
 - **Remaining scope:** stream-timing correlation (mic vs. system volume for "me" identification), confirm/correct UI polish.
 - **Depends on:** Project 1 (Transcription — owns the audio smarts + embeddings), Project 3 (DataStore), Project 4 (a corpus of recordings). Pairs with Project 10 (LLM naming).
 - **Risk:** **medium** (voiceprint infrastructure built and tested; remaining work is the stream-timing heuristic).

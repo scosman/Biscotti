@@ -11,7 +11,7 @@ Four parts in one spec, built as a single agentic run:
 3. **Data Store** (`DataStore` module in `Packages/BiscottiKit`) — Project 3.
 4. **Manual Test App** (`ManualTestApp/` Xcode project) — the harness that hosts the real XPC service and validates the hardware/system behavior of parts 1 & 2.
 
-This document specifies **what** each part must do and the contracts between them. Concrete API shapes (types, signatures) live in the four `components/*.md` docs. The static topology (homes, boundaries, dependency edges) is already fixed by the repo [`architecture.md`](../../architecture.md) and is **not** re-litigated here.
+This document specifies **what** each part must do and the contracts between them. Concrete API shapes (types, signatures) live in the four `components/*.md` docs. The static topology (homes, boundaries, dependency edges) is already fixed by the repo [`architecture.md`](../initial_implementation/architecture.md) and is **not** re-litigated here.
 
 **Grounding:** Parts 1 and 2 productionize `experiments/ArgMaxKit` and `experiments/AudioLab`. The hard technical unknowns are already resolved by the completed `research/` project (see [`research/argmax`](../../research/argmax/README.md), [`research/audio`](../../research/audio/README.md), [`research/permissions`](../../research/permissions/README.md)). **We consume those findings; we do not re-derive them.** For parts 1 & 2 this is primarily a **packaging, testing, and API-design** exercise.
 
@@ -106,7 +106,7 @@ The data store, meeting *semantics*/watchlist matching (that's `MeetingDetection
 
 ### 3.1 Purpose
 
-The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not its own package — idiomatic for SwiftData `@Model`; see [architecture §Granularity #3](../../architecture.md)).
+The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not its own package — idiomatic for SwiftData `@Model`; see [architecture §Granularity #3](../initial_implementation/architecture.md)).
 
 ### 3.2 Features & behaviors
 
@@ -170,7 +170,7 @@ Automating the human checks; testing libraries that are fully unit-testable (Dat
 
 ## Cross-cutting
 
-- **Testability seam (the whole point).** Each library is built so the overwhelming majority runs under `swift test`: Core Audio / AVAudioEngine / EventKit / WhisperKit / TCC live behind seams; tests feed synthetic buffers, stubbed engine clients, fixture audio clips, and in-memory containers. The repo `specs/architecture.md` "Tested by" lines are the contract.
+- **Testability seam (the whole point).** Each library is built so the overwhelming majority runs under `swift test`: Core Audio / AVAudioEngine / EventKit / WhisperKit / TCC live behind seams; tests feed synthetic buffers, stubbed engine clients, fixture audio clips, and in-memory containers. The repo `specs/projects/initial_implementation/architecture.md` "Tested by" lines are the contract.
 - **Logging.** Each component uses `os.Logger` with its own subsystem/category; diagnostics to unified logging, never stdout (except the CLI's JSON-to-stdout/diagnostics-to-stderr split).
 - **Error surfacing.** No silent failures, especially in capture and transcription; errors propagate to a caller-facing surface (return value / typed error / event), ready for a UI later.
 - **Strictness.** Swift 6 language mode + warnings-as-errors, matching the scaffolding bar. New packages follow `BiscottiKit`'s manifest conventions (the `Transcription` package pins `argmax-oss-swift` and may need `swift-tools-version: 6.0` like the experiment; `AudioCapture` matches BiscottiKit).

@@ -7,23 +7,12 @@ import SpeakerKit
 /// from different spaces cannot be compared. The key changes automatically when
 /// SpeakerKit selects different model variants (e.g. on a new OS version).
 public enum SpeakerEmbeddingSpace {
-    /// The embedding space key for the current SpeakerKit models.
+    /// The embedding space key for the current SpeakerKit embedder model.
     ///
-    /// - Raw: `"<embedder version>/<embedder variant>"`,
-    ///   e.g. `"pyannote-v3/W8A16"`.
-    /// - PLDA: raw key + `"+plda:<plda version>/<plda variant>"`,
-    ///   e.g. `"pyannote-v3/W8A16+plda:pyannote-v4/W32A32"`.
-    public static func current(_ kind: EmbeddingKind) -> String {
+    /// Format: `"<embedder version>/<embedder variant>"`,
+    /// e.g. `"pyannote-v3/W8A16"`.
+    public static func current() -> String {
         let embedder = ModelInfo.embedder()
-        let embedderKey = "\(embedder.version ?? "unknown")/\(embedder.variant ?? "unknown")"
-
-        switch kind {
-        case .raw:
-            return embedderKey
-        case .plda:
-            let plda = ModelInfo.plda()
-            let pldaKey = "\(plda.version ?? "unknown")/\(plda.variant ?? "unknown")"
-            return "\(embedderKey)+plda:\(pldaKey)"
-        }
+        return "\(embedder.version ?? "unknown")/\(embedder.variant ?? "unknown")"
     }
 }

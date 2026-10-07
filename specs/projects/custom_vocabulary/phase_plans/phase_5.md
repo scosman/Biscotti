@@ -57,10 +57,10 @@ vocabulary, and (2) update the durable repo docs to reflect the completed custom
 
 ### Part 2 — Doc reconciliation
 
-7. **specs/architecture.md** component 13 — reword to reflect that Vocabulary owns assembly,
+7. **specs/projects/initial_implementation/architecture.md** component 13 — reword to reflect that Vocabulary owns assembly,
    extraction, limits, and the word list, but NOT storage (storage stays in AppSettings).
 
-8. **specs/implementation_plan.md** — update Project 14 to mark as complete/built, remove the Project 8
+8. **specs/projects/initial_implementation/implementation_plan.md** — update Project 14 to mark as complete/built, remove the Project 8
    blocker note about promptTokens.
 
 9. **specs/projects/stage_c/implementation_plan.md** — update Phase 9 to remove the deferred/blocked

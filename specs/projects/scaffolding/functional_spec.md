@@ -8,7 +8,7 @@ status: complete
 
 This Project ships **no product behavior**. Its "users" are **developers and CI** (human and agent). So the "features" are the **developer command surface**, the **CI gates**, and the **repo skeleton** that every later Project builds inside. The quality bar: a fresh checkout can build, test, lint, and launch an empty app with one set of commands that behave identically locally and in CI.
 
-It realizes the [`architecture.md` workspace layout](../../architecture.md#workspace-layout) and the [thin-app composition rule](../../architecture.md#thin-app-composition): everything testable lives in SPM packages (`swift build`/`swift test`); the only thing needing `xcodebuild` is a logic-free app shell.
+It realizes the [`architecture.md` workspace layout](../initial_implementation/architecture.md#workspace-layout) and the [thin-app composition rule](../initial_implementation/architecture.md#thin-app-composition): everything testable lives in SPM packages (`swift build`/`swift test`); the only thing needing `xcodebuild` is a logic-free app shell.
 
 Locked decisions from the overview: **XcodeGen** for the app project, bundle ID **`net.scosman.biscotti`**, **bare-window** shell.
 

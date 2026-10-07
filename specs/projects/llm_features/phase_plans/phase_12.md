@@ -12,11 +12,11 @@ Final phase: update the `specs/` roadmap docs to reflect that LLM/AI features ar
 
 ## Steps
 
-1. **Update `specs/architecture.md`** — reflect that Intelligence is no longer P2/future but built and wired into AppCore + MeetingDetailUI + SettingsUI. Update the component card, dependency graph annotations, and P2 placement table.
+1. **Update `specs/projects/initial_implementation/architecture.md`** — reflect that Intelligence is no longer P2/future but built and wired into AppCore + MeetingDetailUI + SettingsUI. Update the component card, dependency graph annotations, and P2 placement table.
 
-2. **Update `specs/implementation_plan.md`** — update Project 10 (Intelligence/LLM) status to reflect that the LLM features spec project has built the core AI features (summarization + speaker identification) as part of the `llm_features` project. Clarify what remains (provider abstraction, external provider, vocab extraction are still future).
+2. **Update `specs/projects/initial_implementation/implementation_plan.md`** — update Project 10 (Intelligence/LLM) status to reflect that the LLM features spec project has built the core AI features (summarization + speaker identification) as part of the `llm_features` project. Clarify what remains (provider abstraction, external provider, vocab extraction are still future).
 
-3. **Check `CLAUDE.md` and `app_overview.md`** for status lines that should reflect these features being implemented. Update conservatively.
+3. **Check `CLAUDE.md` and `specs/projects/initial_implementation/project_overview.md`** for status lines that should reflect these features being implemented. Update conservatively.
 
 4. **Verify CI gates** via hooks-mcp: `precommit_checks` (lint + format + test), `build_app`, and `manual_tests_check`.
 

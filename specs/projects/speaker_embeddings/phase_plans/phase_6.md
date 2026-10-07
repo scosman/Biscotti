@@ -40,10 +40,10 @@ developer to tune thresholds on real data.
 7. Update `specs/research/argmax/README.md` — apply sdk_findings.md section 7
    corrections, add PLDA facts and fork info.
 
-8. Update `specs/architecture.md` — add `VoiceprintMatching` module and
+8. Update `specs/projects/initial_implementation/architecture.md` — add `VoiceprintMatching` module and
    `voiceprint-cli` executable to the topology.
 
-9. Update `specs/implementation_plan.md` — update Project 11 status.
+9. Update `specs/projects/initial_implementation/implementation_plan.md` — update Project 11 status.
 
 10. Create `specs/projects/speaker_embeddings/calibration.md` — template with
     instructions for the developer's calibration pass.

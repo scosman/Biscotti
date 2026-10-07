@@ -83,7 +83,6 @@ public extension DataStore {
         for embeddingSet in result.embeddingSets {
             let kind: VoiceprintKind = switch embeddingSet.kind {
             case .raw: .raw
-            case .plda: .plda
             }
             for (speakerID, vector) in embeddingSet.vectors {
                 guard !vector.isEmpty else { continue }

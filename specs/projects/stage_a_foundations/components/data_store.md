@@ -4,7 +4,7 @@ status: complete
 
 # Component: DataStore (`BiscottiKit` module)
 
-The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not a package — idiomatic for `@Model`; repo [`architecture.md` §Granularity #3](../../../architecture.md)). Informed by the `EventKitLab` data-availability report.
+The SwiftData persistence layer and single owner of persistent types. A module inside `BiscottiKit` (not a package — idiomatic for `@Model`; repo [`architecture.md` §Granularity #3](../../initial_implementation/architecture.md)). Informed by the `EventKitLab` data-availability report.
 
 ## Purpose & Scope
 

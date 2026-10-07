@@ -5,7 +5,7 @@ status: complete
 # Speaker Embeddings (Voiceprint Database)
 
 Roadmap entry: **Project 11 — Auto-Speaker Identification** (the cross-recording
-voiceprint half). See [`specs/implementation_plan.md`](../../implementation_plan.md).
+voiceprint half). See [`specs/projects/initial_implementation/implementation_plan.md`](../initial_implementation/implementation_plan.md).
 
 ## Goal
 

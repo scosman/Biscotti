@@ -192,17 +192,12 @@ struct TextOutputFormattingTests {
                 SpeakerEmbeddingSet(
                     kind: .raw, space: "pyannote-v3/W8A16",
                     vectors: [0: [0.1, 0.2, 0.3], 1: [0.4, 0.5, 0.6]]
-                ),
-                SpeakerEmbeddingSet(
-                    kind: .plda, space: "pyannote-v3/W8A16+plda:pyannote-v4/W32A32",
-                    vectors: [0: [0.7, 0.8], 1: [0.9, 1.0]]
                 )
             ],
             processingDuration: 0
         )
         let text = formatResultText(result)
         #expect(text.contains("raw (pyannote-v3/W8A16): 2 speakers x 3 dims"))
-        #expect(text.contains("plda (pyannote-v3/W8A16+plda:pyannote-v4/W32A32): 2 speakers x 2 dims"))
     }
 
     @Test("Text output omits embedding section when no sets")

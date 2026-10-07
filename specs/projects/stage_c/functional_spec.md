@@ -43,7 +43,7 @@ The app becomes calendar-aware: it reads the user's calendars (read-only), shows
 ### 1.4 Events and "meeting-like" filtering (C6)
 - Fetch events from **enabled** calendars via a date-range predicate (EventKit filters server-side).
 - **Meeting-like** = a timed (non-all-day) event that either (a) has a detected conference link, or (b) has ≥2 attendees. All-day events and solo timed events are excluded from upcoming lists, detection, and notifications. (They remain valid as manual association targets if the user picks them.)
-- "Upcoming" surfaces (sidebar, menu bar, home preview) show meeting-like events in the near future (next ~24h for the lists; the menu-bar "next meeting" uses a 2-hour window per app_overview).
+- "Upcoming" surfaces (sidebar, menu bar, home preview) show meeting-like events in the near future (next ~24h for the lists; the menu-bar "next meeting" uses a 2-hour window per the product overview).
 
 ### 1.5 Conference-link detection
 - Productionize `ConferenceDetector` (from EventKitLab) into the `Calendar` module. Detect a join URL + platform name by regex from `event.url` → `event.location` → `event.notes` (priority order). Platforms: Zoom, Google Meet, Teams, Webex, Slack Huddle (extensible). Compiled regexes cached.

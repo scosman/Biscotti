@@ -40,6 +40,6 @@ Five phases. Each is independently reviewable and leaves the build green. Detail
 - [x] **Phase 5 — Re-transcribe alert, plus doc reconciliation.**
   `MeetingDetailViewModel` gains the `Vocabulary` dependency and `shouldOfferReTranscribe()`; both
   `TODO(re-transcribe-prompt)` markers deleted; the view's alert un-suppressed. Then update the
-  durable docs: `specs/architecture.md` component 13 (reword per arch §1), `specs/implementation_plan.md`
+  durable docs: `specs/projects/initial_implementation/architecture.md` component 13 (reword per arch §1), `specs/projects/initial_implementation/implementation_plan.md`
   Project 14 and the Project 8 blocker note, and `specs/projects/stage_c/implementation_plan.md`
   Phase 9 (no longer deferred). *(functional §6; ui_design §3; arch §1, §5.3. Depends on Phases 2, 3.)*

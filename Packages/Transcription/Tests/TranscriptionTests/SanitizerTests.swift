@@ -212,8 +212,7 @@ struct SanitizerTests {
     @Test("Sanitization preserves embeddingSets and speakerSpeechDurations")
     func preservesEmbeddingsAndDurations() {
         let sets = [
-            SpeakerEmbeddingSet(kind: .raw, space: "test/space", vectors: [0: [1.0, 2.0]]),
-            SpeakerEmbeddingSet(kind: .plda, space: "test/space+plda:v", vectors: [0: [3.0]])
+            SpeakerEmbeddingSet(kind: .raw, space: "test/space", vectors: [0: [1.0, 2.0]])
         ]
         let durations: [Int: TimeInterval] = [0: 45.0, 1: 120.0]
         let segment = makeSegment(start: 0, end: 5, text: "Test")

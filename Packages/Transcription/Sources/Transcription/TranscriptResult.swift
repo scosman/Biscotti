@@ -95,9 +95,6 @@ public struct TranscriptSegment: Sendable, Codable, Identifiable, Equatable {
 public enum EmbeddingKind: String, Sendable, Codable, CaseIterable {
     /// Raw embedder output (256-dim for pyannote-v3).
     case raw
-    /// PLDA-projected vector (128-dim for pyannote-v4), designed to separate
-    /// speaker identity from recording conditions.
-    case plda
 }
 
 /// One kind of per-speaker centroid vectors from one diarization run.
@@ -142,9 +139,9 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     /// Ordered transcript segments with speaker attribution.
     public let segments: [TranscriptSegment]
 
-    /// Per-kind centroid embedding sets from diarization (typically raw + PLDA).
-    /// Each set contains vectors keyed by diarization speaker ID. Empty when
-    /// diarization produced no centroids.
+    /// Centroid embedding sets from diarization. Each set contains vectors
+    /// keyed by diarization speaker ID. Empty when diarization produced no
+    /// centroids.
     public let embeddingSets: [SpeakerEmbeddingSet]
 
     /// Sum of each diarization speaker's time ranges, in seconds.

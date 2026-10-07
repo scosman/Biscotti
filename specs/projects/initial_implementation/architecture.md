@@ -6,7 +6,7 @@ status: complete
 
 This is the **static, final shape** of the Biscotti codebase — every component that will exist (V1 and later), where it lives, what it's responsible for, and how the dependencies flow. It is drawn *to final* so we know where everything slots in.
 
-**Read this with the depth contract from the [functional spec](projects/library_design/functional_spec.md):** components are described at the *shape* level — home, responsibility, capability **outcomes**, boundaries, dependencies, testability seam, risk. **No concrete interfaces, types, or schemas appear here, for any component.** The task that builds a component designs its real API inside the boundary drawn here.
+**Read this with the depth contract from the [functional spec](../library_design/functional_spec.md):** components are described at the *shape* level — home, responsibility, capability **outcomes**, boundaries, dependencies, testability seam, risk. **No concrete interfaces, types, or schemas appear here, for any component.** The task that builds a component designs its real API inside the boundary drawn here.
 
 Delivery order (which Projects build what, and when) is the separate concern of [`implementation_plan.md`](implementation_plan.md).
 
@@ -403,7 +403,7 @@ Not components — conventions every component follows, recorded so they don't f
 | Audio file-usage view + deletion | **SettingsUI** + DataStore/Recording | File accounting. |
 | Contacts enrichment | **Calendar** | Measured in research; deferred. |
 | Opus encoding (smaller files) | **AudioCapture** | Revisit at macOS 16+ (`kAudioFormatOpus`); ~½ size. |
-| Auto speaker identification (who is who, incl. "me") | **Transcription** + DataStore + VoiceprintMatching + Intelligence + MeetingDetailUI | **Voiceprint half built** by the `speaker_embeddings` spec project: cross-recording centroid voiceprints (raw 256-dim + PLDA 128-dim via SpeakerKit fork), voiceprint storage on TranscriptRecord, `VoiceprintMatching` module (matcher, evaluator, backfill mapper, metrics), LLM prompt integration (`<voiceprint_matches>` report), `#if DEBUG` debug window, `voiceprint-cli` (backfill + metrics). **Remaining:** mic/system stream-timing ("me" signal), confirm/correct UI polish. P2. |
+| Auto speaker identification (who is who, incl. "me") | **Transcription** + DataStore + VoiceprintMatching + Intelligence + MeetingDetailUI | **Voiceprint half built** by the `speaker_embeddings` spec project: cross-recording raw centroid voiceprints (256-dim via public SpeakerKit), voiceprint storage on TranscriptRecord, `VoiceprintMatching` module (matcher, evaluator, backfill mapper, metrics), LLM prompt integration (`<voiceprint_matches>` report), `#if DEBUG` debug window, `voiceprint-cli` (backfill + metrics). PLDA embeddings were evaluated and removed (did not outperform raw). **Remaining:** mic/system stream-timing ("me" signal), confirm/correct UI polish. P2. |
 | App auto-update | **Distribution project** (TBD) | May never self-distribute (could be App Store); manual update is fine for V1. Decide if/when we ship Developer-ID. |
 
 Every post-V1 capability has a home in the shape above — none forces a re-topology.

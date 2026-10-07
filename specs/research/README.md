@@ -21,7 +21,7 @@ Biscotti is a macOS meeting recorder that captures audio, integrates with the us
 
 - **macOS 15+ / Apple Silicon only.** Intel Macs are not supported (CoreML ANE acceleration requires Apple Silicon).
 - **On-device and free.** All processing uses the free `argmax-oss-swift` SDK (MIT-licensed). No audio leaves the device. No paid SDK or cloud API in V1.
-- **Parakeet V3 and Sortformer v2-1 are Pro-only.** The app_overview's original model choices are not available on the free tier. V1 uses `whisper-large-v3-turbo` (STT) and Pyannote v4 community-1 (diarization) instead -- both are genuinely capable.
+- **Parakeet V3 and Sortformer v2-1 are Pro-only.** The product overview's original model choices are not available on the free tier. V1 uses `whisper-large-v3-turbo` (STT) and Pyannote v4 community-1 (diarization) instead -- both are genuinely capable.
 - **Precision-2 rejected for V1.** pyannoteAI's Precision-2 diarization model offers ~37% better accuracy but requires commercial licensing; its default cloud path conflicts with privacy goals. The on-device Argmax Marketplace variant is the only privacy-compatible upgrade path, deferred post-V1.
 - **ScreenCaptureKit rejected.** Core Audio taps use a narrower permission, avoid monthly re-auth, and require no app restart after granting. ScreenCaptureKit is kept only as a fallback for the Microsoft Teams silent-capture edge case.
 - **Ad-hoc-signed, non-sandboxed experiments.** Stable bundle IDs (`com.biscotti.experiments.<name>`) so TCC grants persist across rebuilds. Production notarization/sandboxing is covered in R4.

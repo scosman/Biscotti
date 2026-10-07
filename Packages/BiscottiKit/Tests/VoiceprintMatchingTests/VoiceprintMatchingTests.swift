@@ -47,7 +47,7 @@ private func makeEntry(
 private func makeCorpus(
     entries: [VoiceprintData],
     people: [UUID: PersonData] = [:],
-    kind: VoiceprintKind = .plda,
+    kind: VoiceprintKind = .raw,
     space: String = "test-space"
 ) -> VoiceprintCorpusData {
     VoiceprintCorpusData(kind: kind, space: space, entries: entries, people: people)
@@ -515,29 +515,23 @@ struct MatcherEdgeCaseTests {
         #expect(candidates[1].personID == idLarge)
     }
 
-    @Test func perKindThresholds() {
-        // Raw and PLDA thresholds should be used independently
+    @Test func customThresholds() {
+        // Custom thresholds should be used by the matcher
         var config = VoiceprintConfig()
-        config.raw = KindThresholds(acceptRadius: 0.1, highDistance: 0.05, mediumDistance: 0.08)
-        config.plda = KindThresholds(acceptRadius: 0.9, highDistance: 0.5, mediumDistance: 0.7)
+        config.thresholds = KindThresholds(acceptRadius: 0.1, highDistance: 0.05, mediumDistance: 0.08)
 
         let entry = makeEntry(
             meetingID: UUID(),
-            vector: vectorAtAngle(60), // cos(60deg)=0.5, distance ~0.5 — outside R=0.1, inside R=0.9
+            vector: vectorAtAngle(60), // cos(60deg)=0.5, distance ~0.5 — outside R=0.1
             speakingDuration: 120,
             tag: SpeakerTagData(personID: personA, userSet: true)
         )
 
-        // With RAW thresholds (tight R=0.1), should be .none (distance ~0.5 > 0.1)
-        let rawCorpus = makeCorpus(entries: [entry], people: peopleMap, kind: .raw)
-        let rawMatcher = VoiceprintMatcher(config: config)
-        let rawResult = rawMatcher.match(query: [0: vectorAtAngle(0)], corpus: PreparedCorpus(rawCorpus), invitees: .none)
-        #expect(rawResult[0]?.level == MatchLevel.none)
-
-        // With PLDA thresholds (loose R=0.9), should match (distance ~0.5 < 0.9)
-        let pldaCorpus = makeCorpus(entries: [entry], people: peopleMap, kind: .plda)
-        let pldaResult = rawMatcher.match(query: [0: vectorAtAngle(0)], corpus: PreparedCorpus(pldaCorpus), invitees: .none)
-        #expect(pldaResult[0]?.level != MatchLevel.none)
+        // With tight R=0.1, should be .none (distance ~0.5 > 0.1)
+        let corpus = makeCorpus(entries: [entry], people: peopleMap)
+        let matcher = VoiceprintMatcher(config: config)
+        let result = matcher.match(query: [0: vectorAtAngle(0)], corpus: PreparedCorpus(corpus), invitees: .none)
+        #expect(result[0]?.level == MatchLevel.none)
     }
 }
 
@@ -1048,8 +1042,8 @@ struct PersonAliasesTests {
 @Suite("MetricsFormatter")
 struct MetricsFormatterTests {
     @Test func goldenText() {
-        let metrics1 = VoiceprintMetrics(
-            kind: .plda, space: "test/space",
+        let metrics = VoiceprintMetrics(
+            space: "test/space",
             trials: 10, trialsWithoutHistory: 2,
             top1Correct: 8,
             byLevel: [
@@ -1066,32 +1060,11 @@ struct MetricsFormatterTests {
             ),
             suspectTags: []
         )
-        let metrics2 = VoiceprintMetrics(
-            kind: .raw, space: "test/raw-space",
-            trials: 10, trialsWithoutHistory: 2,
-            top1Correct: 6,
-            byLevel: [
-                .high: LevelStats(total: 3, correct: 3),
-                .low: LevelStats(total: 7, correct: 3)
-            ],
-            sweep: [],
-            equalErrorRadius: 0.55,
-            confusedPairs: [],
-            coverage: Coverage(
-                peopleWithConfirmed: 5, atLeast3: 3, atLeast5: 1,
-                speechUnder15s: 2, speech15to60s: 3, speech60to300s: 4, speechOver300s: 1
-            ),
-            suspectTags: []
-        )
 
-        let output = MetricsFormatter.text([metrics1, metrics2], includeSweep: false)
+        let output = MetricsFormatter.text(metrics, includeSweep: false)
 
         // Verify key lines are present
-        #expect(output.contains("=== Summary ==="))
-        #expect(output.contains("PLDA: 10 trials, top-1 80.0%, EER radius 0.45"))
-        #expect(output.contains("RAW: 10 trials, top-1 60.0%, EER radius 0.55"))
-        #expect(output.contains("=== PLDA (test/space) ==="))
-        #expect(output.contains("=== RAW (test/raw-space) ==="))
+        #expect(output.contains("=== RAW (test/space) ==="))
         #expect(output.contains("Top-1 accuracy: 80.0% (8/10)"))
         #expect(output.contains("high: 5/5 (100.0%)"))
         #expect(output.contains("medium: 2/3 (66.7%)"))
@@ -1100,9 +1073,9 @@ struct MetricsFormatterTests {
         #expect(output.contains("People with confirmed tags: 5"))
     }
 
-    @Test func singleKindNoSummary() {
+    @Test func noSummarySection() {
         let metrics = VoiceprintMetrics(
-            kind: .plda, space: "test/space",
+            space: "test/space",
             trials: 5, trialsWithoutHistory: 0,
             top1Correct: 5,
             byLevel: [.high: LevelStats(total: 5, correct: 5)],
@@ -1116,10 +1089,9 @@ struct MetricsFormatterTests {
             suspectTags: []
         )
 
-        let output = MetricsFormatter.text([metrics], includeSweep: false)
+        let output = MetricsFormatter.text(metrics, includeSweep: false)
 
-        // No summary section for a single kind
         #expect(!output.contains("=== Summary ==="))
-        #expect(output.contains("=== PLDA (test/space) ==="))
+        #expect(output.contains("=== RAW (test/space) ==="))
     }
 }

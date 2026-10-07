@@ -4,7 +4,7 @@ status: complete
 
 # Research
 
-Up-front technical research for the Biscotti app (see [`specs/app_overview.md`](../../app_overview.md)). The goal is to resolve the real technical unknowns — Core Audio, system permissions, on-device STT/diarization, EventKit — before we design and build the core app. Once these are settled, the app layer can be designed in detail with no major technical unknowns remaining.
+Up-front technical research for the Biscotti app (see [`specs/projects/initial_implementation/project_overview.md`](../initial_implementation/project_overview.md)). The goal is to resolve the real technical unknowns — Core Audio, system permissions, on-device STT/diarization, EventKit — before we design and build the core app. Once these are settled, the app layer can be designed in detail with no major technical unknowns remaining.
 
 ## Scope
 
@@ -16,7 +16,7 @@ A project covering the 3 highlighted research efforts, plus any other unknowns w
 
 Add other genuine unknowns worth researching. We do **not** need to research well-known ground (using SwiftData, building SwiftUI apps). Focus on the deeper tech: Core Audio, system permissions and their limits, on-device STT, SpeakerKit/diarization, ML model lifecycle/isolation, etc.
 
-Experiments live in an `experiments/` folder (per `app_overview.md`), each independent, with a lighter testing bar since they're throwaway / reference code.
+Experiments live in an `experiments/` folder (per the product overview), each independent, with a lighter testing bar since they're throwaway / reference code.
 
 ## Implementation Shape
 

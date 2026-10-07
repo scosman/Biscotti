@@ -1608,18 +1608,7 @@ public extension MeetingDetailViewModel {
             guard let transcript = displayedTranscript else { return }
             let report = await core.intelligence.voiceprintDebug(
                 meetingID: meetingID, transcriptID: transcript.id,
-                speakerID: speakerID, kind: VoiceprintConfig.default.kind
-            )
-            voiceprintDebug = VoiceprintDebugModel(report: report)
-        }
-
-        func reloadVoiceprintDebug(kind: VoiceprintKind) async {
-            guard let transcript = displayedTranscript,
-                  let current = voiceprintDebug
-            else { return }
-            let report = await core.intelligence.voiceprintDebug(
-                meetingID: meetingID, transcriptID: transcript.id,
-                speakerID: current.report.speakerID, kind: kind
+                speakerID: speakerID
             )
             voiceprintDebug = VoiceprintDebugModel(report: report)
         }

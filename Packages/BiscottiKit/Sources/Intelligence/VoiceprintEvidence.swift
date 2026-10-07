@@ -37,18 +37,15 @@ public enum VoiceprintEvidence {
         transcript: TranscriptData,
         detail: MeetingDetailData,
         human: [Int: PersonData],
-        config: VoiceprintConfig = .default,
-        kind: VoiceprintKind? = nil
+        config: VoiceprintConfig = .default
     ) async throws -> VoiceprintEvidenceResult {
-        let effectiveKind = kind ?? config.kind
-
         let allSpeakers = Set(transcript.segments.compactMap(\.speakerID)).sorted()
         let unassigned = allSpeakers.filter { !human.keys.contains($0) }
 
-        let query = try await store.voiceprintQuery(transcriptID: transcript.id, kind: effectiveKind)
+        let query = try await store.voiceprintQuery(transcriptID: transcript.id, kind: .raw)
 
         let (corpus, queryVectors) = try await loadCorpus(
-            store: store, query: query, kind: effectiveKind, meetingID: meetingID
+            store: store, query: query, meetingID: meetingID
         )
 
         let invitees = buildInvitees(detail: detail)
@@ -108,16 +105,16 @@ public enum VoiceprintEvidence {
 
     private static func loadCorpus(
         store: DataStore, query: VoiceprintQueryData?,
-        kind: VoiceprintKind, meetingID: UUID
+        meetingID: UUID
     ) async throws -> (PreparedCorpus, [Int: [Float]]) {
         guard let space = query?.space else {
             let emptyData = VoiceprintCorpusData(
-                kind: kind, space: "", entries: [], people: [:]
+                kind: .raw, space: "", entries: [], people: [:]
             )
             return (PreparedCorpus(emptyData), [:])
         }
         let corpusData = try await store.voiceprintCorpus(
-            kind: kind, space: space, excludingMeetingID: meetingID
+            kind: .raw, space: space, excludingMeetingID: meetingID
         )
         let corpus = await Task.detached(priority: .userInitiated) {
             PreparedCorpus(corpusData)

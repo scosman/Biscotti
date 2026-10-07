@@ -9,21 +9,7 @@
 
     struct VoiceprintDebugView: View {
         let report: VoiceprintDebugReport
-        let onKindChange: (VoiceprintKind) -> Void
         let onDismiss: () -> Void
-
-        @State private var selectedKind: VoiceprintKind
-
-        init(
-            report: VoiceprintDebugReport,
-            onKindChange: @escaping (VoiceprintKind) -> Void,
-            onDismiss: @escaping () -> Void
-        ) {
-            self.report = report
-            self.onKindChange = onKindChange
-            self.onDismiss = onDismiss
-            _selectedKind = State(initialValue: report.kind)
-        }
 
         var body: some View {
             VStack(alignment: .leading, spacing: Tokens.spacingMD) {
@@ -46,16 +32,6 @@
                     .font(.headline)
 
                 Spacer()
-
-                Picker("Kind", selection: $selectedKind) {
-                    Text("PLDA").tag(VoiceprintKind.plda)
-                    Text("Raw").tag(VoiceprintKind.raw)
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-                .onChange(of: selectedKind) { _, newKind in
-                    onKindChange(newKind)
-                }
 
                 Button("Done") { onDismiss() }
                     .keyboardShortcut(.cancelAction)

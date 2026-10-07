@@ -1,6 +1,6 @@
 import DataStore
 
-/// Distance thresholds for one voiceprint kind (raw or PLDA).
+/// Distance thresholds for voiceprint matching.
 public struct KindThresholds: Sendable, Equatable {
     /// Maximum distance to consider a voiceprint a potential match.
     public var acceptRadius: Float
@@ -19,17 +19,9 @@ public struct KindThresholds: Sendable, Equatable {
 /// All tuneable constants for voiceprint matching. One type, one place.
 /// Users cannot change these; the `metrics` tool measures the right values.
 public struct VoiceprintConfig: Sendable, Equatable {
-    /// Which voiceprint kind the matcher uses. Raw separates people better
-    /// than PLDA on the calibration data (calibration.md).
-    public var kind: VoiceprintKind = .raw
-
     /// Calibrated (calibration.md). Confirmed same-person p90 is 0.32; the
     /// closest confirmed different person is 0.62.
-    public var raw = KindThresholds(acceptRadius: 0.50, highDistance: 0.20, mediumDistance: 0.30)
-
-    /// Calibrated (calibration.md). Confirmed same-person max is 0.44; the
-    /// closest confirmed different person is 0.45.
-    public var plda = KindThresholds(acceptRadius: 0.45, highDistance: 0.20, mediumDistance: 0.30)
+    public var thresholds = KindThresholds(acceptRadius: 0.50, highDistance: 0.20, mediumDistance: 0.30)
 
     /// Maximum distinct meetings counted per person (K), the strongest by
     /// contribution.
@@ -70,14 +62,6 @@ public struct VoiceprintConfig: Sendable, Equatable {
 
     /// Maximum candidates reported for an ambiguous match.
     public var maxAmbiguousCandidates = 3
-
-    /// Returns the thresholds for a given voiceprint kind.
-    public func thresholds(for kind: VoiceprintKind) -> KindThresholds {
-        switch kind {
-        case .raw: raw
-        case .plda: plda
-        }
-    }
 
     public static let `default` = VoiceprintConfig()
 

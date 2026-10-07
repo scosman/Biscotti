@@ -253,7 +253,7 @@ EventKit identifiers are not perfectly stable:
 
 **Snapshot-and-store at meeting creation time.** When Biscotti associates a recording with a calendar event:
 
-1. **Copy all needed fields** into our own SwiftData `CalendarEventSnapshot` model (a sub-item of `Meeting`, so it can be cleared in one swipe if the pairing was wrong, per app_overview.md).
+1. **Copy all needed fields** into our own SwiftData `CalendarEventSnapshot` model (a sub-item of `Meeting`, so it can be cleared in one swipe if the pairing was wrong, per the product overview).
 2. **Store a composite key** for re-linking:
 
 ```swift

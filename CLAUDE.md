@@ -2,7 +2,7 @@
 
 Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic + system), produces on-device diarized transcripts, integrates with the calendar, and lives mostly in a menu-bar app. Private, local, Apple-silicon-only (macOS 15+).
 
-**Current stage:** Scaffolding (Project 0) and the **Stage A foundations** are built. Beyond the scaffolding (`BiscottiKit`, `App/`, `Makefile`, `hooks-mcp`, CI, lint/format), the repo now has the `Transcription` and `AudioCapture` packages, the `DataStore` + `ManualTestKit` modules in `BiscottiKit`, the `ManualTestApp` (XcodeGen) that hosts the shared `XPCServices/BiscottiTranscriber.xpc` and `XPCServices/BiscottiLLM.xpc`, and a manual-test CI gate — all green on `lint`/`test`/`build_app`. The `LocalLLM` package (`Packages/LocalLLM`) has been graduated from `experiments/llm` with a production NSXPC transport (`BiscottiLLM.xpc`) and a `Local LLM` ManualTestApp tab. The **`llm_features` spec project** has built the app-level AI features: the `Intelligence` module in `BiscottiKit` (LLM-powered summarization + speaker-name inference), wired into `AppCore` (auto-run after transcription), `MeetingDetailUI` (Summary tab, speaker names, mapping sheet), and `SettingsUI` (AI Enhancements section with model download). The **`mcp_server` spec project** added an opt-in local MCP server: the `MCPServer` module in `BiscottiKit` (stateless Streamable HTTP on `127.0.0.1:8516`, three read-only tools over DataStore), owned by `AppCore` and surfaced as the MCP row at the end of Settings → General. **The Stage A foundations are complete**, including the on-hardware manual-test pass (the non-gating `manual-tests-check` job is green except the pending `mcp_real_client` hardware pass). The next *product* step is the MVP (Record → Transcribe). See the roadmap (`specs/implementation_plan.md`).
+**Current stage:** Scaffolding (Project 0) and the **Stage A foundations** are built. Beyond the scaffolding (`BiscottiKit`, `App/`, `Makefile`, `hooks-mcp`, CI, lint/format), the repo now has the `Transcription` and `AudioCapture` packages, the `DataStore` + `ManualTestKit` modules in `BiscottiKit`, the `ManualTestApp` (XcodeGen) that hosts the shared `XPCServices/BiscottiTranscriber.xpc` and `XPCServices/BiscottiLLM.xpc`, and a manual-test CI gate — all green on `lint`/`test`/`build_app`. The `LocalLLM` package (`Packages/LocalLLM`) has been graduated from `experiments/llm` with a production NSXPC transport (`BiscottiLLM.xpc`) and a `Local LLM` ManualTestApp tab. The **`llm_features` spec project** has built the app-level AI features: the `Intelligence` module in `BiscottiKit` (LLM-powered summarization + speaker-name inference), wired into `AppCore` (auto-run after transcription), `MeetingDetailUI` (Summary tab, speaker names, mapping sheet), and `SettingsUI` (AI Enhancements section with model download). The **`mcp_server` spec project** added an opt-in local MCP server: the `MCPServer` module in `BiscottiKit` (stateless Streamable HTTP on `127.0.0.1:8516`, three read-only tools over DataStore), owned by `AppCore` and surfaced as the MCP row at the end of Settings → General. **The Stage A foundations are complete**, including the on-hardware manual-test pass (the non-gating `manual-tests-check` job is green except the pending `mcp_real_client` hardware pass). The next *product* step is the MVP (Record → Transcribe). See the roadmap (`specs/projects/initial_implementation/implementation_plan.md`).
 
 > This file is a map. Read the specific docs below before acting; don't rely on this summary alone for decisions.
 
@@ -10,9 +10,9 @@ Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic +
 
 ## Read this first, by what you're doing
 
-- **Anything at all / new to the repo** → `specs/app_overview.md` (the product) + this file.
-- **Designing or building a component, or asking "where does X live / what depends on it?"** → `specs/architecture.md`.
-- **Deciding what to build next, scoping a new `/spec` project, or ordering work** → `specs/implementation_plan.md`.
+- **Anything at all / new to the repo** → `specs/projects/initial_implementation/project_overview.md` (the product, formerly `app_overview.md`) + this file.
+- **Designing or building a component, or asking "where does X live / what depends on it?"** → `specs/projects/initial_implementation/architecture.md`.
+- **Deciding what to build next, scoping a new `/spec` project, or ordering work** → `specs/projects/initial_implementation/implementation_plan.md`.
 - **Touching audio / calendar / transcription / permissions** → the matching `specs/research/<area>/README.md` (validated decisions — don't re-derive them) **and** the corresponding `experiments/<Name>/` (working reference code).
 - **Understanding *why* the design is shaped this way / the rules it follows** → `specs/projects/library_design/functional_spec.md`.
 
@@ -23,22 +23,23 @@ Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic +
 The docs form a chain, each feeding the next:
 
 ```
-specs/app_overview.md  ─►  specs/research/**  ─►  experiments/**
-  (what to build)            (how — proven)         (reference code)
-        │                         │                       │
-        └─────────────────────────┴───────► specs/architecture.md ─► specs/implementation_plan.md
-                                              (where it lives)         (order to build it)
+specs/projects/initial_implementation/
+  project_overview.md  ─►  specs/research/**  ─►  experiments/**
+    (what to build)            (how — proven)         (reference code)
+          │                         │                       │
+          └─────────────────────────┴───────► architecture.md ─► implementation_plan.md
+                                                (where it lives)   (order to build it)
 ```
 
 ### Product & vision (the "what" and "why")
-- **`specs/app_overview.md`** — the master product spec. Every feature, the UX intent, "Misc App Reqs," design style, and the stack/testing philosophy (Swift-package-first, thin app target). **Source of truth for product intent.** Read when you need to know what a feature is supposed to do.
-- **`specs/plan.md`** — the high-level staging (Research → Scaffolding → Library Building → App). Short; gives the big-picture sequence. `specs/implementation_plan.md` is the detailed version of this.
+- **`specs/projects/initial_implementation/project_overview.md`** — the master product spec (formerly `app_overview.md`). Every feature, the UX intent, "Misc App Reqs," design style, and the stack/testing philosophy (Swift-package-first, thin app target). **Source of truth for product intent.** Read when you need to know what a feature is supposed to do.
+- **`specs/projects/initial_implementation/plan.md`** — the high-level staging (Research → Scaffolding → Library Building → App). Short; gives the big-picture sequence. `specs/projects/initial_implementation/implementation_plan.md` is the detailed version of this.
 
-### The design — master roadmap (the "where" and "in what order") — under `specs/`
-- **`specs/architecture.md`** — the **static topology**: every component (package vs. module vs. app-glue), its responsibilities (as outcomes, not interfaces), dependency DAG, granularity rationale, thin-app composition, cross-cutting conventions, and P2/P3 placement. **Deliberately shape-level — it designs *no* concrete interfaces/schemas.** Read before building or modifying any component to know its home, boundaries, and dependencies.
-- **`specs/implementation_plan.md`** — the **build roadmap**: an ordered list of ~14 Projects (each a future `/spec new project`), with a contents list, dependencies, and risk per Project — but no internal phases (those are decided when each Project is spec'd). Read to pick/scope the next Project. Project 0 (Scaffolding) is the first.
+### The design — master roadmap (the "where" and "in what order")
+- **`specs/projects/initial_implementation/architecture.md`** — the **static topology**: every component (package vs. module vs. app-glue), its responsibilities (as outcomes, not interfaces), dependency DAG, granularity rationale, thin-app composition, cross-cutting conventions, and P2/P3 placement. **Deliberately shape-level — it designs *no* concrete interfaces/schemas.** Read before building or modifying any component to know its home, boundaries, and dependencies.
+- **`specs/projects/initial_implementation/implementation_plan.md`** — the **build roadmap**: an ordered list of ~14 Projects (each a future `/spec new project`), with a contents list, dependencies, and risk per Project — but no internal phases (those are decided when each Project is spec'd). Read to pick/scope the next Project. Project 0 (Scaffolding) is the first.
 
-These two were authored in the `library_design` spec project and promoted under `specs/` as the durable, living roadmap. Keep them updated as the build progresses.
+These were authored in the `library_design` spec project. The spec skill has no top-level spec concept, so these app-level docs live in the `initial_implementation` project. They are still the living roadmap — keep them updated as the build progresses.
 
 ### Validated research (the "how" — already proven, don't re-litigate)
 - **`specs/research/README.md`** — one-page summary of all technical decisions (audio API, format, models, isolation, permissions, distribution) with a recommendations table. Start here for any technical area.
@@ -58,7 +59,8 @@ Each is an independent, throwaway app/package that proves a technique and leaves
 
 ### Process & planning records — `specs/projects/`
 Spec-driven-development artifacts (see the `spec` skill). Mostly historical context.
-- **`specs/projects/library_design/`** — how `specs/architecture.md` + `specs/implementation_plan.md` were produced: `project_overview.md` and **`functional_spec.md`** (the design brief: depth contract, design goals, capability catalog). Read `functional_spec.md` to understand the *rules* the architecture follows.
+- **`specs/projects/initial_implementation/`** — the app-level product and design docs: `project_overview.md` (master product spec, formerly `app_overview.md`), `architecture.md` (codebase topology), `implementation_plan.md` (build roadmap), and `plan.md` (high-level staging). These are living documents — update them as the build progresses.
+- **`specs/projects/library_design/`** — how the architecture and implementation plan were produced: `project_overview.md` and **`functional_spec.md`** (the design brief: depth contract, design goals, capability catalog). Read `functional_spec.md` to understand the *rules* the architecture follows.
 - **`specs/projects/research/`** — the completed research meta-project's specs (overview/functional/architecture/implementation + phase plans). Historical; the *outputs* live in `specs/research/` and `experiments/`.
 - **`specs/projects/manual_test_app/`** — a **planned** future project: a manual-test harness app (one tab per library, interactive pass/fail scripts saved to the repo) for hardware/system things unit tests can't cover. Overview only so far; not built.
 - **`specs/projects/graduate_llm_package/`** — the spec project that graduated `experiments/llm` → `Packages/LocalLLM`, replaced the pipe transport with real NSXPC (`BiscottiLLM.xpc`), and added the `Local LLM` ManualTestApp tab.
@@ -71,9 +73,9 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 ## Conventions & gotchas
 
 - **Apple Silicon, macOS 15+ only.** Newest APIs are fair game; no Intel/older-macOS support.
-- **Swift-package-first.** The app target stays thin (composition root + Apple glue); everything testable lives in packages under `Packages/` so it runs via `swift build`/`swift test` with no `xcodebuild`/signing. See `specs/architecture.md` → "Thin-App Composition."
+- **Swift-package-first.** The app target stays thin (composition root + Apple glue); everything testable lives in packages under `Packages/` so it runs via `swift build`/`swift test` with no `xcodebuild`/signing. See `specs/projects/initial_implementation/architecture.md` → "Thin-App Composition."
 - **Agents: run builds/tests through the `hooks-mcp` MCP server, not Bash.** The `Makefile` is the canonical command surface, but `swift build`, `swift test`, and `xcodebuild` **fail under the agent Bash sandbox** — llbuild's build-system file writes hit a silent sandbox denial that no SwiftPM flag, scratch-path, or `--disable-sandbox` fixes. The `hooks-mcp` tools (`mcp__hooks-mcp__build`, `…__test`, `…__build_app`, `…__generate`, `…__bootstrap`, etc.) run the *same* `make` targets in the MCP server process, **outside** the sandbox — use them for anything that compiles. Only `mcp__hooks-mcp__lint` / `…__format` (and their `make lint`/`make format` equivalents) are also safe to run directly in Bash — **once the pinned SwiftLint binary is cached under `.tools/`**. On a fresh checkout, `make lint`/`format` first `curl` the pinned SwiftLint (see `SWIFTLINT_VERSION` in the `Makefile`), and that download is blocked by the Bash sandbox; run `mcp__hooks-mcp__lint` (outside the sandbox) once to populate `.tools/`, after which Bash `make lint`/`format` work. Humans and CI invoke `make` directly as usual.
-- **The design is shape-level.** When building a component, *you* design its real API inside the boundary `specs/architecture.md` draws — don't expect interfaces there, and don't add them to that doc.
+- **The design is shape-level.** When building a component, *you* design its real API inside the boundary `specs/projects/initial_implementation/architecture.md` draws — don't expect interfaces there, and don't add them to that doc.
 - **Experiments are disposable.** Don't build on them directly; productionize per the roadmap.
 - **Building a component = run `/spec new project`** for its roadmap entry; foundation libraries (Transcription, Audio Capture, Data Store) come first.
 - **Bundle ID is locked:** `net.scosman.biscotti`. Do not change it (TCC grants persist against it). Signing/notarization are deferred to Project 9.
@@ -137,7 +139,7 @@ The `precommit_checks` run must be the **last thing before the commit** — if y
 
 ## When you change things
 
-- Updating product intent → `specs/app_overview.md`. Updating the topology → `specs/architecture.md`. Re-ordering/scoping work → `specs/implementation_plan.md`. Correcting a technical finding → the relevant `specs/research/<area>/README.md`.
+- Updating product intent → `specs/projects/initial_implementation/project_overview.md`. Updating the topology → `specs/projects/initial_implementation/architecture.md`. Re-ordering/scoping work → `specs/projects/initial_implementation/implementation_plan.md`. Correcting a technical finding → the relevant `specs/research/<area>/README.md`.
 - **Manual test staleness rule:** when you touch `Packages/Transcription`, `Packages/AudioCapture`, `Packages/LocalLLM` (including `XPCServices/BiscottiLLM`), or `Packages/BiscottiKit/Sources/MCPServer`, mark that library's manual tests as `not-run` in `ManualTestApp/Results/manual_test_results.json`. Either hand-edit the file (set `"status": "not-run"` for each step with the matching prefix: `ac_*` for AudioCapture, `tx_*` for Transcription, `llm_*` for LocalLLM, `mcp_*` for MCPServer) or use `ResultsStore.markScriptNotRun(scriptID:allStepIDs:)` from `ManualTestKit`. This causes `make manual-tests-check` (and its CI gate) to fail until a human re-runs the affected tests on real hardware and commits the updated results. **Only recordable steps belong in the file** — `.instruction` steps (setup/sequence text the human just reads, e.g. `ac_timed_capture`, `ac_mega_setup`, `ac_crash_safety_setup`, `mcp_connect`) have no pass/fail, are excluded from the gate (`TestStep.isRecordable` / `ResultsStore.recordableStepIDs`), and must not be written back. Pass `recordableStepIDs(in:)` to `markScriptNotRun`, or skip those IDs when hand-editing.
 
 ---

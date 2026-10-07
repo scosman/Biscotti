@@ -4,11 +4,11 @@ status: complete
 
 # Project 0 — Scaffolding & Tooling
 
-The repo skeleton everything else is built in. This is Project 0 from the [build roadmap](../../implementation_plan.md): the foundation infrastructure Project, with no runnable product features. It exists largely to nail the historically painful part — `xcodebuild`/CI reliability and the macOS app/package split — exactly once, so every later Project inherits a green, agent-friendly build.
+The repo skeleton everything else is built in. This is Project 0 from the [build roadmap](../initial_implementation/implementation_plan.md): the foundation infrastructure Project, with no runnable product features. It exists largely to nail the historically painful part — `xcodebuild`/CI reliability and the macOS app/package split — exactly once, so every later Project inherits a green, agent-friendly build.
 
 ## What it delivers
 
-The repo skeleton: a buildable, empty `BiscottiKit` package plus a thin `App` Xcode project that launches, with green CI — matching the [`Packages/` + `App/` workspace layout](../../architecture.md#workspace-layout) and the thin-app composition rule from `architecture.md`.
+The repo skeleton: a buildable, empty `BiscottiKit` package plus a thin `App` Xcode project that launches, with green CI — matching the [`Packages/` + `App/` workspace layout](../initial_implementation/architecture.md#workspace-layout) and the thin-app composition rule from `architecture.md`.
 
 ## In scope (from the roadmap entry)
 

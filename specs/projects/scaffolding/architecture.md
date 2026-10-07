@@ -8,7 +8,7 @@ This is the **concrete, file-level** design for the scaffolding. Because the del
 
 **Single-doc decision:** this Project is one coherent infrastructure effort with no internally-complex components, so everything lives here — no `components/` split. It runs long only because config files are verbose.
 
-Inputs: [`project_overview.md`](project_overview.md), [`functional_spec.md`](functional_spec.md), the repo [`architecture.md`](../../architecture.md) (workspace layout / thin-app rule) and [`research/permissions`](../../research/permissions/README.md).
+Inputs: [`project_overview.md`](project_overview.md), [`functional_spec.md`](functional_spec.md), the repo [`architecture.md`](../initial_implementation/architecture.md) (workspace layout / thin-app rule) and [`research/permissions`](../../research/permissions/README.md).
 
 ---
 

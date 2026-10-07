@@ -11,7 +11,7 @@ setting, the `.mcpServerEnabledDidChange` notification, AppCore ownership of
 `MCPServerController` (start on launch, live-apply on setting change), the
 General settings row with its four states (Copy button, Retry, How-to-connect
 sheet), the `mcp_server` manual test script with its one recordable step, and
-the doc updates (`specs/architecture.md` topology, `CLAUDE.md` module list +
+the doc updates (`specs/projects/initial_implementation/architecture.md` topology, `CLAUDE.md` module list +
 staleness rule). Phases 1–2 constraints stay in force: channel-handler-internal
 aggregation, bind-before-transport, everything created in `start()` and
 released in `stop()`.
@@ -161,7 +161,7 @@ released in `stop()`.
     notification (observer-token pattern); `mcpServerState` forwards the
     controller state.
 
-16. **`specs/architecture.md`** — add MCPServer to the topology: L1 Services
+16. **`specs/projects/initial_implementation/architecture.md`** — add MCPServer to the topology: L1 Services
     line, a component card in the Service modules section, AppCore's
     "Depends on" list, and the mermaid graph (`CORE --> MCPS[MCPServer]`,
     `MCPS --> STORE`).

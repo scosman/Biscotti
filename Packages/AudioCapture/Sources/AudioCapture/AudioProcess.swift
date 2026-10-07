@@ -46,7 +46,7 @@ public struct AudioProcess: Identifiable, Sendable, Equatable {
     // MARK: - Seed watchlist (from specs/research/audio/meeting_app_bundle_ids.md)
 
     // NOTE: This hardcoded seed data is temporary. When MeetingDetection is built
-    // (Project 5), this list moves to the RemoteConfig module per specs/architecture.md,
+    // (Project 5), this list moves to the RemoteConfig module per specs/projects/initial_implementation/architecture.md,
     // enabling OTA updates without app releases.
 
     public static let knownMeetingBundleIDs: Set<String> = [

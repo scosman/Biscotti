@@ -10,8 +10,8 @@ with (names, codenames, technical terms).
 **Note: this is partly already built.** Do not assume we are starting fresh. This spec takes the
 feature to completion from the actual codebase state.
 
-Pull in older information and plans (`specs/app_overview.md` §Custom Vocabularies,
-`specs/architecture.md` component 13, `specs/projects/stage_c/**` §4.4 / §10 / Phase 9) when helpful.
+Pull in older information and plans (`specs/projects/initial_implementation/project_overview.md` §Custom Vocabularies,
+`specs/projects/initial_implementation/architecture.md` component 13, `specs/projects/stage_c/**` §4.4 / §10 / Phase 9) when helpful.
 Build on it, but this is a standalone spec to implement.
 
 ## Backend

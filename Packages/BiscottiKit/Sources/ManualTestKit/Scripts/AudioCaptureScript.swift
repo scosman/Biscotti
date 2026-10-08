@@ -99,7 +99,8 @@ public extension TestScript {
                 id: "ac_mega_timing",
                 prompt: "In the system playback, does the music begin exactly when you said "
                     + "\"starting music now\" — i.e. system audio is time-aligned to the mic "
-                    + "with no offset?"
+                    + "with no offset? Helpful to convert audio to better file formats for this "
+                    + "test: ffmpeg -i mic.aac mic.mp4 && ffmpeg -i system.aac system.mp4"
             ),
             .instruction(
                 id: "ac_crash_safety_setup",

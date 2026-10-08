@@ -64,6 +64,16 @@ gap-free audio through that switch.
 
 Automated tests cover recorder-level first-buffer alignment, timeout/retry,
 exhaustion, cleanup and cancellation. They do not emulate Apple's VPIO hardware.
+**Update (2026-10-08):** the `ac_headset_startup` manual step was removed from
+ManualTestApp. The recovery runs only when macOS stops the engine before the first
+buffer. That happens intermittently and only on some setups (this one and the USB
+setup below), so a pass on the step did not show that the recovery ran. Also, its
+wording (Bluetooth headset, external displays, meeting app) did not fit
+ManualTestApp. Coverage is now the automated tests and the hardware evidence in
+this note. To re-check on hardware, confirm the log line `Config-change honoured —
+restarting existing mic engine during startup`, followed by first-buffer delivery.
+The original description of the step follows.
+
 The `ac_headset_startup` manual step requires successful repeated recording with
 both local and remote speech; an explicit startup error is a failure. The broader
 AudioCapture manual suite remains marked `not-run` under the repository's staleness

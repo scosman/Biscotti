@@ -15,11 +15,6 @@
     "stepID" : "ac_files_exist",
     "timestamp" : "2026-10-08T13:37:49Z"
   },
-  "ac_headset_startup" : {
-    "status" : "not-run",
-    "stepID" : "ac_headset_startup",
-    "timestamp" : "2026-09-27T13:52:10Z"
-  },
   "ac_meet_close_midcapture" : {
     "status" : "pass",
     "stepID" : "ac_meet_close_midcapture",

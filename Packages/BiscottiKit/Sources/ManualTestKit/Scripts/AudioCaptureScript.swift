@@ -50,14 +50,6 @@ public extension TestScript {
                 prompt: "Play the system recording — is the system audio audible and clear?"
             ),
             .humanQuestion(
-                id: "ac_headset_startup",
-                prompt: "Connect external displays and a Bluetooth headset. Select the headset as input/output "
-                    + "in BOTH macOS and the meeting app. Record a conversation, stop, then record again "
-                    + "without restarting Biscotti. Do both recordings contain your voice and the other "
-                    + "participants? Startup errors or an empty track count as failure. "
-                    + "For any failure, capture mic setup and config-change logs and compare with the displays disconnected."
-            ),
-            .humanQuestion(
                 id: "ac_route_change",
                 prompt: "Mid-recording, connect AirPods, speak, then disconnect and keep speaking. "
                     + "In playback you should hear the mic source change (built-in → AirPods → built-in); "

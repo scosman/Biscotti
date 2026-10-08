@@ -99,7 +99,7 @@ Biscotti monitors active audio apps, without listening to their audio streams. N
 Yes. Biscotti can sync any calendars you connect to the Apple Calendar app on your Mac. Event data enables meeting start notifications, speaker identity matching, and enhances meeting summaries.
 
 **How does speaker idenitification work?**
-Three steps: an AI model transcribes what you say, a second AI model separates speakers by voice, and a third model figures out who's who. Enhanced by calendar metadata when available.
+Four steps: 1) an AI model transcribes what you say, 2) a second AI model separates speakers by voice + generates voiceprint vectors, 3) we search for voiceprints closely matching these voiceprints in your past meetings which have speaker labels, and 4) a third model figures out who's who balancing evidence (voiceprints, user said "Hi, I'm Steve", etc). Enhanced by calendar metadata when available.
 
 **Which languages does it support?**
 The [transcription model](https://huggingface.co/openai/whisper-large-v3-turbo) supports 99 languages and [summary model](https://huggingface.co/google/gemma-4-12B-it) supports 35+ languages.

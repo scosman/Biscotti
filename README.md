@@ -26,7 +26,7 @@
 - 🆓 **Totally free** — no account, no subscription, no upsell.
 - 🧠 **Powerful AI summaries** - automatic summaries, action items, meeting titles, and real speaker names.
 - 🤖 **No bots, any app** — records Zoom, Teams, Meet, FaceTime, or Slack huddles — even an in‑person conversation — without joining your call.
-- 🗣️ **Knows who said what** — accurate transcripts, automatically split by speaker.
+- 🗣️ **Speaker identification** — accurate transcripts, automatically split by speaker and tagged with speaker name. 
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
 - 🧩 **MCP** - chat with your meeting notes in apps like Claude Desktop or LM Studio.
 - ⏹️ **Auto‑stop** — detects when your call ends and stops recording.

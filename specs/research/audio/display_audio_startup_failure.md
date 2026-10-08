@@ -114,4 +114,11 @@ output. Evidence collected 2026-10-01 to 2026-10-06 on `main` (before PR #94):
 
 After PR #94, five test recordings on this setup all contained mic audio. However,
 the startup engine-stop did not occur in any of them, so the same-engine restart
-path has not yet been exercised on this hardware.
+path was not exercised in that first round.
+
+**Update (2026-10-06, `audio_change_handling` / PR #101):** a later recording on this
+setup hit the startup engine-stop, and the recovery worked. The log shows `Mic config change:
+running=false, bufferDelivered=false` → `Config-change honoured — restarting
+existing mic engine during startup` → `Mic startup restart completed: running=true`,
+followed by mic audio. See the case-study table in
+[`hardware_debugging_workflow.md`](hardware_debugging_workflow.md#6-case-study-audio_change_handling-pr-101).

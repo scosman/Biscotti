@@ -1,333 +1,334 @@
 {
-  "ac_crash_safety_check": {
-    "status": "not-run",
-    "stepID": "ac_crash_safety_check",
-    "timestamp": "2026-10-07T02:28:29Z"
-  },
-  "ac_device_sample_rate": {
-    "status": "not-run",
-    "stepID": "ac_device_sample_rate",
-    "timestamp": "2026-10-07T02:29:02Z"
-  },
-  "ac_files_exist": {
-    "status": "not-run",
-    "stepID": "ac_files_exist",
-    "timestamp": "2026-10-07T02:21:52Z"
-  },
-  "ac_headset_startup": {
-    "status": "not-run",
-    "stepID": "ac_headset_startup",
-    "timestamp": "2026-09-27T13:52:10Z"
-  },
-  "ac_meet_close_midcapture": {
-    "status": "not-run",
-    "stepID": "ac_meet_close_midcapture",
-    "timestamp": "2026-10-07T02:24:14Z"
-  },
-  "ac_meet_open_midcapture": {
-    "status": "not-run",
-    "stepID": "ac_meet_open_midcapture",
-    "timestamp": "2026-10-07T02:25:03Z"
-  },
-  "ac_mega_timing": {
-    "status": "not-run",
-    "stepID": "ac_mega_timing",
-    "timestamp": "2026-10-07T02:27:29Z"
-  },
-  "ac_mega_voice": {
-    "status": "not-run",
-    "stepID": "ac_mega_voice",
-    "timestamp": "2026-10-07T02:27:28Z"
-  },
-  "ac_playback_mic": {
-    "status": "not-run",
-    "stepID": "ac_playback_mic",
-    "timestamp": "2026-10-07T02:21:55Z"
-  },
-  "ac_playback_system": {
-    "status": "not-run",
-    "stepID": "ac_playback_system",
-    "timestamp": "2026-10-07T02:21:56Z"
-  },
-  "ac_request_permissions": {
-    "status": "not-run",
-    "stepID": "ac_request_permissions",
-    "timestamp": "2026-10-07T02:19:05Z"
-  },
-  "ac_route_change": {
-    "status": "not-run",
-    "stepID": "ac_route_change",
-    "timestamp": "2026-10-07T02:22:26Z"
-  },
-  "ac_start_recording": {
-    "status": "not-run",
-    "stepID": "ac_start_recording",
-    "timestamp": "2026-10-07T02:27:45Z"
-  },
-  "ac_stop_recording": {
-    "status": "not-run",
-    "stepID": "ac_stop_recording",
-    "timestamp": "2026-10-07T02:26:17Z"
-  },
-  "ac_two_dialogs": {
-    "status": "not-run",
-    "stepID": "ac_two_dialogs",
-    "timestamp": "2026-10-07T02:19:06Z"
-  },
-  "au_background_check": {
-    "status": "pass",
-    "stepID": "au_background_check",
-    "timestamp": "2026-09-01T00:04:25Z"
-  },
-  "au_background_open": {
-    "status": "pass",
-    "stepID": "au_background_open",
-    "timestamp": "2026-09-01T00:04:23Z"
-  },
-  "au_cold_launch_check": {
-    "status": "pass",
-    "stepID": "au_cold_launch_check",
-    "timestamp": "2026-09-01T00:04:10Z"
-  },
-  "au_cold_launch_open": {
-    "status": "pass",
-    "stepID": "au_cold_launch_open",
-    "timestamp": "2026-09-01T00:04:07Z"
-  },
-  "au_home_landed": {
-    "status": "pass",
-    "stepID": "au_home_landed",
-    "timestamp": "2026-08-31T23:38:06Z"
-  },
-  "au_meeting_notes_landed": {
-    "status": "pass",
-    "stepID": "au_meeting_notes_landed",
-    "timestamp": "2026-08-31T23:39:43Z"
-  },
-  "au_meeting_summary": {
-    "status": "pass",
-    "stepID": "au_meeting_summary",
-    "timestamp": "2026-08-31T23:39:33Z"
-  },
-  "au_meeting_time_seek": {
-    "status": "pass",
-    "stepID": "au_meeting_time_seek",
-    "timestamp": "2026-08-31T23:39:49Z"
-  },
-  "au_meetings_landed": {
-    "status": "pass",
-    "stepID": "au_meetings_landed",
-    "timestamp": "2026-08-31T23:38:22Z"
-  },
-  "au_menubar_check": {
-    "status": "pass",
-    "stepID": "au_menubar_check",
-    "timestamp": "2026-09-01T00:04:19Z"
-  },
-  "au_menubar_open": {
-    "status": "pass",
-    "stepID": "au_menubar_open",
-    "timestamp": "2026-09-01T00:04:18Z"
-  },
-  "au_open_home": {
-    "status": "pass",
-    "stepID": "au_open_home",
-    "timestamp": "2026-08-31T23:38:03Z"
-  },
-  "au_open_meeting": {
-    "status": "pass",
-    "stepID": "au_open_meeting",
-    "timestamp": "2026-08-31T23:39:30Z"
-  },
-  "au_open_meeting_notes": {
-    "status": "pass",
-    "stepID": "au_open_meeting_notes",
-    "timestamp": "2026-08-31T23:39:41Z"
-  },
-  "au_open_meeting_time": {
-    "status": "pass",
-    "stepID": "au_open_meeting_time",
-    "timestamp": "2026-09-01T00:03:58Z"
-  },
-  "au_open_meetings": {
-    "status": "pass",
-    "stepID": "au_open_meetings",
-    "timestamp": "2026-08-31T23:38:24Z"
-  },
-  "au_open_record": {
-    "status": "pass",
-    "stepID": "au_open_record",
-    "timestamp": "2026-09-01T00:03:33Z"
-  },
-  "au_open_search": {
-    "status": "pass",
-    "stepID": "au_open_search",
-    "timestamp": "2026-08-31T23:38:33Z"
-  },
-  "au_open_search_query": {
-    "status": "pass",
-    "stepID": "au_open_search_query",
-    "timestamp": "2026-09-01T00:03:07Z"
-  },
-  "au_open_settings": {
-    "status": "pass",
-    "stepID": "au_open_settings",
-    "timestamp": "2026-08-31T23:38:26Z"
-  },
-  "au_record_started": {
-    "status": "pass",
-    "stepID": "au_record_started",
-    "timestamp": "2026-08-31T23:39:17Z"
-  },
-  "au_search_filtered": {
-    "status": "pass",
-    "stepID": "au_search_filtered",
-    "timestamp": "2026-09-01T00:03:10Z"
-  },
-  "au_search_focused": {
-    "status": "pass",
-    "stepID": "au_search_focused",
-    "timestamp": "2026-08-31T23:38:38Z"
-  },
-  "au_settings_landed": {
-    "status": "pass",
-    "stepID": "au_settings_landed",
-    "timestamp": "2026-08-31T23:38:30Z"
-  },
-  "llm_action_items_quality": {
-    "status": "pass",
-    "stepID": "llm_action_items_quality",
-    "timestamp": "2026-06-23T18:42:01Z"
-  },
-  "llm_action_items_run": {
-    "status": "pass",
-    "stepID": "llm_action_items_run",
-    "timestamp": "2026-06-23T18:41:59Z"
-  },
-  "llm_ai_tests_passed": {
-    "status": "pass",
-    "stepID": "llm_ai_tests_passed",
-    "timestamp": "2026-06-23T18:41:20Z"
-  },
-  "llm_chat_system": {
-    "status": "pass",
-    "stepID": "llm_chat_system",
-    "timestamp": "2026-06-23T18:41:34Z"
-  },
-  "llm_chat_system_quality": {
-    "status": "pass",
-    "stepID": "llm_chat_system_quality",
-    "timestamp": "2026-06-23T18:41:36Z"
-  },
-  "llm_e2b_download": {
-    "status": "pass",
-    "stepID": "llm_e2b_download",
-    "timestamp": "2026-06-23T18:10:28Z"
-  },
-  "llm_e2b_kv_reuse": {
-    "status": "pass",
-    "stepID": "llm_e2b_kv_reuse",
-    "timestamp": "2026-06-23T19:18:57Z"
-  },
-  "llm_e2b_kv_reuse_quality": {
-    "status": "pass",
-    "stepID": "llm_e2b_kv_reuse_quality",
-    "timestamp": "2026-06-23T19:19:01Z"
-  },
-  "llm_kv_reuse": {
-    "status": "pass",
-    "stepID": "llm_kv_reuse",
-    "timestamp": "2026-06-23T19:18:44Z"
-  },
-  "llm_kv_reuse_quality": {
-    "status": "pass",
-    "stepID": "llm_kv_reuse_quality",
-    "timestamp": "2026-06-23T19:18:51Z"
-  },
-  "llm_model_disk": {
-    "status": "pass",
-    "stepID": "llm_model_disk",
-    "timestamp": "2026-06-23T17:57:50Z"
-  },
-  "llm_model_download": {
-    "status": "pass",
-    "stepID": "llm_model_download",
-    "timestamp": "2026-06-23T18:30:01Z"
-  },
-  "llm_reclamation": {
-    "note": "No BiscottiLLM service process found (reclaimed)",
-    "status": "pass",
-    "stepID": "llm_reclamation",
-    "timestamp": "2026-06-23T19:19:05Z"
-  },
-  "llm_speaker_names_quality": {
-    "status": "pass",
-    "stepID": "llm_speaker_names_quality",
-    "timestamp": "2026-06-23T18:42:16Z"
-  },
-  "llm_speaker_names_run": {
-    "status": "pass",
-    "stepID": "llm_speaker_names_run",
-    "timestamp": "2026-06-23T18:42:13Z"
-  },
-  "llm_streaming_channels": {
-    "status": "pass",
-    "stepID": "llm_streaming_channels",
-    "timestamp": "2026-06-23T19:17:23Z"
-  },
-  "llm_streaming_run": {
-    "status": "pass",
-    "stepID": "llm_streaming_run",
-    "timestamp": "2026-06-23T19:17:40Z"
-  },
-  "llm_summarize_quality": {
-    "status": "pass",
-    "stepID": "llm_summarize_quality",
-    "timestamp": "2026-06-23T18:41:48Z"
-  },
-  "llm_summarize_run": {
-    "status": "pass",
-    "stepID": "llm_summarize_run",
-    "timestamp": "2026-06-23T18:41:46Z"
-  },
-  "llm_thinking_mode": {
-    "status": "pass",
-    "stepID": "llm_thinking_mode",
-    "timestamp": "2026-06-23T19:17:13Z"
-  },
-  "llm_thinking_run": {
-    "status": "pass",
-    "stepID": "llm_thinking_run",
-    "timestamp": "2026-06-23T18:42:58Z"
-  },
-  "llm_xpc_inference": {
-    "status": "pass",
-    "stepID": "llm_xpc_inference",
-    "timestamp": "2026-06-23T18:41:29Z"
-  },
-  "mcp_real_client": {
-    "status": "pass",
-    "stepID": "mcp_real_client",
-    "timestamp": "2026-09-01T00:30:00Z"
-  },
-  "tx_ai_test_passed": {
-    "status": "pass",
-    "stepID": "tx_ai_test_passed",
-    "timestamp": "2026-10-01T18:24:12Z"
-  },
-  "tx_clear_cache": {
-    "status": "pass",
-    "stepID": "tx_clear_cache",
-    "timestamp": "2026-10-01T18:24:22Z"
-  },
-  "tx_model_disk": {
-    "status": "pass",
-    "stepID": "tx_model_disk",
-    "timestamp": "2026-10-01T18:24:10Z"
-  },
-  "tx_model_download": {
-    "status": "pass",
-    "stepID": "tx_model_download",
-    "timestamp": "2026-10-01T18:24:51Z"
+  "ac_crash_safety_check" : {
+    "status" : "not-run",
+    "stepID" : "ac_crash_safety_check",
+    "timestamp" : "2026-10-07T02:28:29Z"
+  },
+  "ac_device_sample_rate" : {
+    "status" : "pass",
+    "stepID" : "ac_device_sample_rate",
+    "timestamp" : "2026-10-08T13:44:37Z"
+  },
+  "ac_files_exist" : {
+    "note" : "Both .aac files exist with sane sizes",
+    "status" : "pass",
+    "stepID" : "ac_files_exist",
+    "timestamp" : "2026-10-08T13:37:49Z"
+  },
+  "ac_headset_startup" : {
+    "status" : "not-run",
+    "stepID" : "ac_headset_startup",
+    "timestamp" : "2026-09-27T13:52:10Z"
+  },
+  "ac_meet_close_midcapture" : {
+    "status" : "pass",
+    "stepID" : "ac_meet_close_midcapture",
+    "timestamp" : "2026-10-08T13:45:34Z"
+  },
+  "ac_meet_open_midcapture" : {
+    "status" : "pass",
+    "stepID" : "ac_meet_open_midcapture",
+    "timestamp" : "2026-10-08T13:45:45Z"
+  },
+  "ac_mega_timing" : {
+    "status" : "pass",
+    "stepID" : "ac_mega_timing",
+    "timestamp" : "2026-10-08T13:54:46Z"
+  },
+  "ac_mega_voice" : {
+    "status" : "pass",
+    "stepID" : "ac_mega_voice",
+    "timestamp" : "2026-10-08T13:48:32Z"
+  },
+  "ac_playback_mic" : {
+    "status" : "pass",
+    "stepID" : "ac_playback_mic",
+    "timestamp" : "2026-10-08T13:38:10Z"
+  },
+  "ac_playback_system" : {
+    "status" : "pass",
+    "stepID" : "ac_playback_system",
+    "timestamp" : "2026-10-08T13:38:11Z"
+  },
+  "ac_request_permissions" : {
+    "status" : "pass",
+    "stepID" : "ac_request_permissions",
+    "timestamp" : "2026-10-08T13:37:38Z"
+  },
+  "ac_route_change" : {
+    "status" : "pass",
+    "stepID" : "ac_route_change",
+    "timestamp" : "2026-10-08T13:42:09Z"
+  },
+  "ac_start_recording" : {
+    "status" : "pass",
+    "stepID" : "ac_start_recording",
+    "timestamp" : "2026-10-08T13:56:19Z"
+  },
+  "ac_stop_recording" : {
+    "status" : "pass",
+    "stepID" : "ac_stop_recording",
+    "timestamp" : "2026-10-08T13:47:29Z"
+  },
+  "ac_two_dialogs" : {
+    "status" : "pass",
+    "stepID" : "ac_two_dialogs",
+    "timestamp" : "2026-10-08T13:37:39Z"
+  },
+  "au_background_check" : {
+    "status" : "pass",
+    "stepID" : "au_background_check",
+    "timestamp" : "2026-09-01T00:04:25Z"
+  },
+  "au_background_open" : {
+    "status" : "pass",
+    "stepID" : "au_background_open",
+    "timestamp" : "2026-09-01T00:04:23Z"
+  },
+  "au_cold_launch_check" : {
+    "status" : "pass",
+    "stepID" : "au_cold_launch_check",
+    "timestamp" : "2026-09-01T00:04:10Z"
+  },
+  "au_cold_launch_open" : {
+    "status" : "pass",
+    "stepID" : "au_cold_launch_open",
+    "timestamp" : "2026-09-01T00:04:07Z"
+  },
+  "au_home_landed" : {
+    "status" : "pass",
+    "stepID" : "au_home_landed",
+    "timestamp" : "2026-08-31T23:38:06Z"
+  },
+  "au_meeting_notes_landed" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_notes_landed",
+    "timestamp" : "2026-08-31T23:39:43Z"
+  },
+  "au_meeting_summary" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_summary",
+    "timestamp" : "2026-08-31T23:39:33Z"
+  },
+  "au_meeting_time_seek" : {
+    "status" : "pass",
+    "stepID" : "au_meeting_time_seek",
+    "timestamp" : "2026-08-31T23:39:49Z"
+  },
+  "au_meetings_landed" : {
+    "status" : "pass",
+    "stepID" : "au_meetings_landed",
+    "timestamp" : "2026-08-31T23:38:22Z"
+  },
+  "au_menubar_check" : {
+    "status" : "pass",
+    "stepID" : "au_menubar_check",
+    "timestamp" : "2026-09-01T00:04:19Z"
+  },
+  "au_menubar_open" : {
+    "status" : "pass",
+    "stepID" : "au_menubar_open",
+    "timestamp" : "2026-09-01T00:04:18Z"
+  },
+  "au_open_home" : {
+    "status" : "pass",
+    "stepID" : "au_open_home",
+    "timestamp" : "2026-08-31T23:38:03Z"
+  },
+  "au_open_meeting" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting",
+    "timestamp" : "2026-08-31T23:39:30Z"
+  },
+  "au_open_meeting_notes" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting_notes",
+    "timestamp" : "2026-08-31T23:39:41Z"
+  },
+  "au_open_meeting_time" : {
+    "status" : "pass",
+    "stepID" : "au_open_meeting_time",
+    "timestamp" : "2026-09-01T00:03:58Z"
+  },
+  "au_open_meetings" : {
+    "status" : "pass",
+    "stepID" : "au_open_meetings",
+    "timestamp" : "2026-08-31T23:38:24Z"
+  },
+  "au_open_record" : {
+    "status" : "pass",
+    "stepID" : "au_open_record",
+    "timestamp" : "2026-09-01T00:03:33Z"
+  },
+  "au_open_search" : {
+    "status" : "pass",
+    "stepID" : "au_open_search",
+    "timestamp" : "2026-08-31T23:38:33Z"
+  },
+  "au_open_search_query" : {
+    "status" : "pass",
+    "stepID" : "au_open_search_query",
+    "timestamp" : "2026-09-01T00:03:07Z"
+  },
+  "au_open_settings" : {
+    "status" : "pass",
+    "stepID" : "au_open_settings",
+    "timestamp" : "2026-08-31T23:38:26Z"
+  },
+  "au_record_started" : {
+    "status" : "pass",
+    "stepID" : "au_record_started",
+    "timestamp" : "2026-08-31T23:39:17Z"
+  },
+  "au_search_filtered" : {
+    "status" : "pass",
+    "stepID" : "au_search_filtered",
+    "timestamp" : "2026-09-01T00:03:10Z"
+  },
+  "au_search_focused" : {
+    "status" : "pass",
+    "stepID" : "au_search_focused",
+    "timestamp" : "2026-08-31T23:38:38Z"
+  },
+  "au_settings_landed" : {
+    "status" : "pass",
+    "stepID" : "au_settings_landed",
+    "timestamp" : "2026-08-31T23:38:30Z"
+  },
+  "llm_action_items_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_action_items_quality",
+    "timestamp" : "2026-06-23T18:42:01Z"
+  },
+  "llm_action_items_run" : {
+    "status" : "pass",
+    "stepID" : "llm_action_items_run",
+    "timestamp" : "2026-06-23T18:41:59Z"
+  },
+  "llm_ai_tests_passed" : {
+    "status" : "pass",
+    "stepID" : "llm_ai_tests_passed",
+    "timestamp" : "2026-06-23T18:41:20Z"
+  },
+  "llm_chat_system" : {
+    "status" : "pass",
+    "stepID" : "llm_chat_system",
+    "timestamp" : "2026-06-23T18:41:34Z"
+  },
+  "llm_chat_system_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_chat_system_quality",
+    "timestamp" : "2026-06-23T18:41:36Z"
+  },
+  "llm_e2b_download" : {
+    "status" : "pass",
+    "stepID" : "llm_e2b_download",
+    "timestamp" : "2026-06-23T18:10:28Z"
+  },
+  "llm_e2b_kv_reuse" : {
+    "status" : "pass",
+    "stepID" : "llm_e2b_kv_reuse",
+    "timestamp" : "2026-06-23T19:18:57Z"
+  },
+  "llm_e2b_kv_reuse_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_e2b_kv_reuse_quality",
+    "timestamp" : "2026-06-23T19:19:01Z"
+  },
+  "llm_kv_reuse" : {
+    "status" : "pass",
+    "stepID" : "llm_kv_reuse",
+    "timestamp" : "2026-06-23T19:18:44Z"
+  },
+  "llm_kv_reuse_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_kv_reuse_quality",
+    "timestamp" : "2026-06-23T19:18:51Z"
+  },
+  "llm_model_disk" : {
+    "status" : "pass",
+    "stepID" : "llm_model_disk",
+    "timestamp" : "2026-06-23T17:57:50Z"
+  },
+  "llm_model_download" : {
+    "status" : "pass",
+    "stepID" : "llm_model_download",
+    "timestamp" : "2026-06-23T18:30:01Z"
+  },
+  "llm_reclamation" : {
+    "note" : "No BiscottiLLM service process found (reclaimed)",
+    "status" : "pass",
+    "stepID" : "llm_reclamation",
+    "timestamp" : "2026-06-23T19:19:05Z"
+  },
+  "llm_speaker_names_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_speaker_names_quality",
+    "timestamp" : "2026-06-23T18:42:16Z"
+  },
+  "llm_speaker_names_run" : {
+    "status" : "pass",
+    "stepID" : "llm_speaker_names_run",
+    "timestamp" : "2026-06-23T18:42:13Z"
+  },
+  "llm_streaming_channels" : {
+    "status" : "pass",
+    "stepID" : "llm_streaming_channels",
+    "timestamp" : "2026-06-23T19:17:23Z"
+  },
+  "llm_streaming_run" : {
+    "status" : "pass",
+    "stepID" : "llm_streaming_run",
+    "timestamp" : "2026-06-23T19:17:40Z"
+  },
+  "llm_summarize_quality" : {
+    "status" : "pass",
+    "stepID" : "llm_summarize_quality",
+    "timestamp" : "2026-06-23T18:41:48Z"
+  },
+  "llm_summarize_run" : {
+    "status" : "pass",
+    "stepID" : "llm_summarize_run",
+    "timestamp" : "2026-06-23T18:41:46Z"
+  },
+  "llm_thinking_mode" : {
+    "status" : "pass",
+    "stepID" : "llm_thinking_mode",
+    "timestamp" : "2026-06-23T19:17:13Z"
+  },
+  "llm_thinking_run" : {
+    "status" : "pass",
+    "stepID" : "llm_thinking_run",
+    "timestamp" : "2026-06-23T18:42:58Z"
+  },
+  "llm_xpc_inference" : {
+    "status" : "pass",
+    "stepID" : "llm_xpc_inference",
+    "timestamp" : "2026-06-23T18:41:29Z"
+  },
+  "mcp_real_client" : {
+    "status" : "pass",
+    "stepID" : "mcp_real_client",
+    "timestamp" : "2026-09-01T00:30:00Z"
+  },
+  "tx_ai_test_passed" : {
+    "status" : "pass",
+    "stepID" : "tx_ai_test_passed",
+    "timestamp" : "2026-10-01T18:24:12Z"
+  },
+  "tx_clear_cache" : {
+    "status" : "pass",
+    "stepID" : "tx_clear_cache",
+    "timestamp" : "2026-10-01T18:24:22Z"
+  },
+  "tx_model_disk" : {
+    "status" : "pass",
+    "stepID" : "tx_model_disk",
+    "timestamp" : "2026-10-01T18:24:10Z"
+  },
+  "tx_model_download" : {
+    "status" : "pass",
+    "stepID" : "tx_model_download",
+    "timestamp" : "2026-10-01T18:24:51Z"
   }
 }

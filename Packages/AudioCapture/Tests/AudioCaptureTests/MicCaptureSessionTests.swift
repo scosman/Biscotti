@@ -531,6 +531,69 @@ struct MicCaptureWriterThreadTests {
     }
 }
 
+// MARK: - Content fidelity (48 kHz → 24 kHz converter path)
+
+@Suite("Mic capture content fidelity")
+struct MicCaptureContentFidelityTests {
+    /// A phase-continuous tone sent as a 4-channel 48 kHz tap (as the VPIO
+    /// tap delivers on real hardware) must come out of the 24 kHz AAC file
+    /// as the same clean tone. Duration-only tests cannot see corrupted
+    /// samples; this decodes the file and checks every 100 ms window.
+    @Test("Resampled mic audio is a clean copy of channel 0", arguments: [4800, 1024, 441])
+    func resampledToneIsClean(bufferFrames: Int) throws {
+        let url = MicCaptureTestHelpers.temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
+        defer { session.close() }
+        let tap = session.makeTapHandler()
+
+        let sourceRate = 48000.0
+        let toneHz = 400.0
+        let totalFrames = Int(sourceRate * 3) // 3 s
+        // More than 2 channels needs an explicit layout.
+        let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 4))
+        let format = AVAudioFormat(standardFormatWithSampleRate: sourceRate, channelLayout: layout)
+        var noise = SystemRandomNumberGenerator()
+        var frameIndex = 0
+        var hostNanos: UInt64 = 1_000_000_000
+        while frameIndex < totalFrames {
+            let count = min(bufferFrames, totalFrames - frameIndex)
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)))
+            buffer.frameLength = AVAudioFrameCount(count)
+            let channels = try #require(buffer.floatChannelData)
+            for frame in 0 ..< count {
+                let phase = 2 * Double.pi * toneHz * Double(frameIndex + frame) / sourceRate
+                channels[0][frame] = Float(0.3 * sin(phase))
+                for channel in 1 ..< 4 {
+                    channels[channel][frame] = Float.random(in: -0.3 ... 0.3, using: &noise)
+                }
+            }
+            tap(buffer, MicCaptureTestHelpers.timestampNanos(hostNanos))
+            hostNanos += UInt64(Double(count) / sourceRate * 1_000_000_000)
+            frameIndex += count
+        }
+        session.close()
+
+        let samples = try MicCaptureTestHelpers.decodedSamples(url)
+        let outputRate = EncoderSettings.voice.processingFormat.sampleRate
+        // 100 ms windows hold a whole number of tone cycles (40), so a clean
+        // tone puts ~all of its energy in the tone bin at any phase.
+        let window = Int(outputRate / 10)
+        // Skip AAC priming at the start and padding at the end.
+        let start = window * 2
+        let end = samples.count - window * 2
+        try #require(end > start + window)
+        var worst = 1.0
+        var offset = start
+        while offset + window <= end {
+            let slice = samples[offset ..< offset + window]
+            worst = min(worst, MicCaptureTestHelpers.toneEnergyRatio(slice, toneHz: toneHz, sampleRate: outputRate))
+            offset += window
+        }
+        #expect(worst > 0.9, "Worst 100 ms window has only \(worst) of its energy in the \(toneHz) Hz tone — mic audio is corrupted")
+    }
+}
+
 // MARK: - Shared test helpers
 
 enum MicCaptureTestHelpers {
@@ -568,5 +631,33 @@ enum MicCaptureTestHelpers {
 
     static func timestampNanos(_ nanos: UInt64) -> AVAudioTime {
         AVAudioTime(hostTime: AudioConvertNanosToHostTime(nanos))
+    }
+
+    /// Decodes a recording to mono float samples at the file's processing rate.
+    static func decodedSamples(_ url: URL) throws -> [Float] {
+        let audio = try AVAudioFile(forReading: url)
+        let buffer = try #require(AVAudioPCMBuffer(
+            pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(audio.length)
+        ))
+        try audio.read(into: buffer)
+        let data = try #require(buffer.floatChannelData?[0])
+        return Array(UnsafeBufferPointer(start: data, count: Int(buffer.frameLength)))
+    }
+
+    /// Fraction of the slice's energy at `toneHz` (Goertzel). Near 1 for a
+    /// clean tone over a whole number of cycles; low for distorted audio.
+    static func toneEnergyRatio(_ slice: ArraySlice<Float>, toneHz: Double, sampleRate: Double) -> Double {
+        let omega = 2 * Double.pi * toneHz / sampleRate
+        var real = 0.0
+        var imag = 0.0
+        var total = 0.0
+        for (index, sample) in slice.enumerated() {
+            let value = Double(sample)
+            real += value * cos(omega * Double(index))
+            imag -= value * sin(omega * Double(index))
+            total += value * value
+        }
+        guard total > 0 else { return 0 }
+        return 2 * (real * real + imag * imag) / (Double(slice.count) * total)
     }
 }

@@ -86,11 +86,6 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
     private var didNotifyFirstBuffer = false
 
-    /// Lazily (re)created buffer for wrapping ring-slot data on the writer
-    /// thread. Rebuilt when the source sample rate changes.
-    private var writerInputBuffer: AVAudioPCMBuffer?
-    private var writerInputRate: Double = 0
-
     /// Chunk size for gap-fill silence writes (frames per write call).
     private static let gapFillChunkFrames: AVAudioFrameCount = 8192
 
@@ -386,27 +381,22 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
         onFirstBuffer?(anchor)
     }
 
-    /// Returns a pre-allocated mono PCM buffer populated with the ring
-    /// entry's data. Lazily (re)created when the sample rate changes.
+    /// Returns a new mono PCM buffer holding the ring entry's data.
     /// Writer-thread-only.
+    ///
+    /// Must be a fresh buffer per entry, never a reused one: when
+    /// resampling, `AVAudioConverter` keeps the input buffer it did not
+    /// fully consume (e.g. an odd frame count at 48 → 24 kHz) and reads the
+    /// rest on the next `convert` call. Overwriting a shared buffer in
+    /// between corrupts the audio (audible, but garbled).
     private func inputBuffer(for entry: WriteEntry) -> AVAudioPCMBuffer? {
-        if writerInputRate != entry.sampleRate || writerInputBuffer == nil
-            || (writerInputBuffer?.frameCapacity ?? 0) < entry.frameCount
-        {
-            guard let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: entry.sampleRate,
-                channels: 1,
-                interleaved: false
-            ), let buf = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: max(entry.frameCount, Self.gapFillChunkFrames)
-            ) else { return nil }
-            writerInputBuffer = buf
-            writerInputRate = entry.sampleRate
-        }
-        guard let buf = writerInputBuffer,
-              let dst = buf.floatChannelData?[0]
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: entry.sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: entry.frameCount),
+        let dst = buf.floatChannelData?[0]
         else { return nil }
         buf.frameLength = entry.frameCount
         dst.update(from: entry.data, count: Int(entry.frameCount))

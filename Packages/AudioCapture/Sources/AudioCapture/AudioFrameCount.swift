@@ -49,3 +49,44 @@ public func leadingSilenceFrameCount(
     let cappedSeconds = min(gap, wallBound, maxLeadingSilenceSeconds)
     return Int((cappedSeconds * sampleRate).rounded())
 }
+
+/// Computes the number of silent frames to insert when an audio stream
+/// resumes after a gap (device reconnect, config-change rebuild, etc.).
+///
+/// Used by both the mic and system tracks to keep each track aligned
+/// with wall-clock time after reconnects.
+///
+/// - Parameters:
+///   - expectedNextHostNanos: host-clock nanoseconds when the next
+///     sample was expected (last buffer's host time + its duration).
+///   - actualHostNanos: host-clock nanoseconds of the first buffer
+///     after the gap.
+///   - sampleRate: the file's processing sample rate (Hz).
+///   - thresholdSeconds: positive gaps smaller than this are treated as
+///     jitter and ignored (default 0.1 s = 100 ms). The threshold must
+///     be well above callback/resampler scheduling jitter (~10 ms) but
+///     well below real reconnect gaps (≥1 s). 100 ms satisfies both.
+///   - maxFillSeconds: absolute cap on a single silence fill (default
+///     300 s). Prevents a bad timestamp from producing a huge file.
+///
+/// Returns 0 if the gap is non-positive, below the threshold, or any
+/// input is invalid (zero host times, zero sample rate).
+public func gapSilenceFrameCount(
+    expectedNextHostNanos: UInt64,
+    actualHostNanos: UInt64,
+    sampleRate: Double,
+    thresholdSeconds: Double = 0.1,
+    maxFillSeconds: Double = 300
+) -> Int {
+    guard expectedNextHostNanos > 0, actualHostNanos > 0, sampleRate > 0 else { return 0 }
+    guard actualHostNanos > expectedNextHostNanos else { return 0 }
+
+    // Integer subtraction first to avoid precision loss from dividing
+    // two large UInt64 values independently and then subtracting.
+    let gapNanos = actualHostNanos - expectedNextHostNanos
+    let gap = Double(gapNanos) / 1_000_000_000
+    guard gap >= thresholdSeconds else { return 0 }
+
+    let capped = min(gap, maxFillSeconds)
+    return Int((capped * sampleRate).rounded())
+}

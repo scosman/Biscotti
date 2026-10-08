@@ -29,6 +29,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     private let writerRunning = Atomic<Int>(0)
     private let writerDone = DispatchSemaphore(value: 0)
     private var tapSampleRate: Double = 24000
+    private let gapFillWriter = SystemGapFillWriter()
 
     /// Writer-thread-only flags for deferred client format setup.
     private var clientFormatConfigured = false
@@ -113,6 +114,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 
         systemStartWall = CACurrentMediaTime()
         didWriteLeadingSilence = false
+        gapFillWriter.reset()
 
         do {
             try createTapAndAggregate()
@@ -363,6 +365,24 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
                 firstFrameHostTime: entry.hostTime,
                 file: file
             )
+        }
+
+        // Fill any gap since the last buffer with silence so the system
+        // track stays aligned with wall-clock time after reconnects.
+        // Measured from IOProc host-clock timestamps (capture side),
+        // not writer-thread timing. Silence is not fed to the permission
+        // checker; a real gap-fill write failure IS recorded so the
+        // session surfaces it.
+        let hostNanos = AudioConvertHostTimeToNanos(entry.hostTime)
+        gapFillWriter.processBuffer(
+            hostTimeNanos: hostNanos,
+            bufferFrameCount: entry.frameCount,
+            channelCount: entry.channelCount,
+            sampleRate: tapSampleRate,
+            file: file
+        )
+        if let gapError = gapFillWriter.writeError {
+            recordWriteError(gapError)
         }
 
         #if DEBUG

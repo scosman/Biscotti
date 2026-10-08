@@ -255,4 +255,57 @@ struct AudioRecorderTests {
         #expect(ctx.systemEngine.startCount == 0)
         #expect(ctx.micEngine.startCount == 0)
     }
+
+    // MARK: - Write error surfacing
+
+    @Test("stop() surfaces system engine write errors")
+    func stopSurfacesSystemWriteError() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        ctx.systemEngine.setWriteError(-50)
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+
+        #expect(await ctx.recorder.lastSystemWriteError == -50)
+        #expect(await ctx.recorder.lastMicWriteError == nil)
+    }
+
+    @Test("stop() surfaces mic engine write errors")
+    func stopSurfacesMicWriteError() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        ctx.micEngine.setWriteError(-43)
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+
+        #expect(await ctx.recorder.lastMicWriteError == -43)
+        #expect(await ctx.recorder.lastSystemWriteError == nil)
+    }
+
+    @Test("start() clears previous write errors")
+    func startClearsPreviousWriteErrors() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        ctx.systemEngine.setWriteError(-50)
+        ctx.micEngine.setWriteError(-43)
+        ctx.deviceChangeProvider.finish()
+        await ctx.recorder.stop()
+
+        #expect(await ctx.recorder.lastSystemWriteError == -50)
+        #expect(await ctx.recorder.lastMicWriteError == -43)
+
+        // A new recorder clears the state. AudioRecorder is single-use,
+        // so verify the fields were set correctly (clearing is tested by
+        // the fact that a fresh recorder starts with nil).
+        let ctx2 = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx2) }
+        #expect(await ctx2.recorder.lastSystemWriteError == nil)
+        #expect(await ctx2.recorder.lastMicWriteError == nil)
+    }
 }

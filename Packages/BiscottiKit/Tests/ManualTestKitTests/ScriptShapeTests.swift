@@ -29,6 +29,7 @@ struct ScriptShapeTests {
         #expect(TestScript.transcription.steps.count == 4)
     }
 
+    /// Saved manual results must use these stable IDs.
     @Test("Audio Capture step IDs match the canonical set")
     func audioCaptureStepIDs() {
         let ids = Set(TestScript.audioCapture.steps.map(\.id))

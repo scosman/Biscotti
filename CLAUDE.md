@@ -14,6 +14,7 @@ Biscotti is a native **macOS meeting recorder**: it records meeting audio (mic +
 - **Designing or building a component, or asking "where does X live / what depends on it?"** → `specs/projects/initial_implementation/architecture.md`.
 - **Deciding what to build next, scoping a new `/spec` project, or ordering work** → `specs/projects/initial_implementation/implementation_plan.md`.
 - **Touching audio / calendar / transcription / permissions** → the matching `specs/research/<area>/README.md` (validated decisions — don't re-derive them) **and** the corresponding `experiments/<Name>/` (working reference code).
+- **Changing, debugging or validating audio capture (`Packages/AudioCapture`) on real hardware** → `specs/research/audio/hardware_debugging_workflow.md`. The required loop: read the unified log + measure the recording files yourself (`Tools/aac_track_report.py`), give the human one specific scenario, re-check the numbers, and add tests that write real AAC files through the real 48 → 24 kHz path.
 - **Understanding *why* the design is shaped this way / the rules it follows** → `specs/projects/library_design/functional_spec.md`.
 
 ---
@@ -43,7 +44,7 @@ These were authored in the `library_design` spec project. The spec skill has no 
 
 ### Validated research (the "how" — already proven, don't re-litigate)
 - **`specs/research/README.md`** — one-page summary of all technical decisions (audio API, format, models, isolation, permissions, distribution) with a recommendations table. Start here for any technical area.
-- **`specs/research/audio/README.md`** — audio capture/recording decisions. Plus `specs/research/audio/phase9_validation_findings.md` (what changed after real-hardware validation — e.g. global capture, route-change survival, ADTS AAC) and `specs/research/audio/meeting_app_bundle_ids.md` (seed watchlist data).
+- **`specs/research/audio/README.md`** — audio capture/recording decisions. Plus `specs/research/audio/phase9_validation_findings.md` (what changed after real-hardware validation — e.g. global capture, route-change survival, ADTS AAC) and `specs/research/audio/meeting_app_bundle_ids.md` (seed watchlist data). `specs/research/audio/hardware_debugging_workflow.md` is the **how-to-validate** guide: log persistence + reading, recording-file analysis, the human-in-the-loop hardware test, and audio test rules.
 - **`specs/research/eventkit/README.md`** — calendar access + the event data-availability report (informs the data model).
 - **`specs/research/argmax/README.md`** — WhisperKit + SpeakerKit (STT + diarization): models, XPC isolation, custom vocab, output quirks, centroid embeddings, and the drafted questions for the ArgMax team.
 - **`specs/research/permissions/README.md`** — the permissions/entitlements matrix + distribution (non-sandboxed, hardened runtime, Developer ID notarized).

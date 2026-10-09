@@ -63,30 +63,16 @@ struct AppCoreIntelligenceTests {
         await fix.core.startRecording()
         let meetingID = try #require(await fix.core.stopRecording())
 
-        // The pending task is a @MainActor Task; since we're on
-        // @MainActor, its body hasn't started yet. Insert a transcript
-        // now so Intelligence finds it when the task runs.
-        let result = TranscriptResult(
-            transcriptionMethodId: "v1",
-            language: "en",
-            speakerCount: 1,
-            segments: [
-                TranscriptSegment(
-                    speakerID: 0, speakerLabel: "Speaker 0",
-                    startTime: 0, endTime: 5,
-                    text: "Hello", confidence: 0.9,
-                    noSpeechProbability: 0.1, words: nil
-                )
-            ],
-            processingDuration: 1.0
-        )
-        let txID = try await fix.store.addTranscript(
-            result, vocabularyUsed: [],
-            mappedEventIdentifier: nil, to: meetingID
-        )
-        try await fix.store.setPreferredTranscript(
-            txID, for: meetingID
-        )
+        // The fake recorder writes no audio, so the transcription would fail
+        // ("no audio files") and, correctly, skip enhancements. Put audio
+        // files in place before the fire-and-forget task (a @MainActor Task
+        // that has not started yet) resolves the paths. The fake engine then
+        // produces the transcript Intelligence runs on.
+        let directory = fix.core.recording.meetingDirectory(for: meetingID)
+        for name in ["mic.aac", "system.aac"] {
+            try Data("audio".utf8).write(to: directory.appendingPathComponent(name))
+        }
+        try await fix.store.markAudioPresence(meetingID: meetingID)
 
         // Now let the fire-and-forget task run
         await fix.core.awaitPendingTranscription()

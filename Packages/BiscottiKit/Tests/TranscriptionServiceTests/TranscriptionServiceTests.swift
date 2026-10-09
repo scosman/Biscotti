@@ -646,7 +646,9 @@ struct TranscriptionCancellationTests {
         await job.value
 
         #expect(service.jobs[meetingID] == .cancelled)
-        #expect(engine.backing.shutdownCallCount >= 1)
+        // Exactly one shutdown: `cancel` shuts the worker down and `runJob`
+        // must not do it again.
+        #expect(engine.backing.shutdownCallCount == 1)
         let detail = try await store.meetingDetail(id: meetingID)
         #expect(detail?.preferredTranscript == nil)
         #expect(detail?.versions.isEmpty == true)

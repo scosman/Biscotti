@@ -16,18 +16,14 @@ public extension AppShellViewModel {
         await core.importAudioFiles(at: urls)
     }
 
-    /// Whether a drag carrying `urls` should be accepted: at least one
-    /// audio/video file, and not during onboarding.
-    func canAcceptDrop(_ urls: [URL]) -> Bool {
-        !showOnboarding && urls.contains(where: AudioImportSupport.isSupported)
-    }
-
-    /// Imports dropped files. Unsupported ones are not filtered out here:
-    /// the core reports them in the same "Couldn't import" alert and
-    /// creates no meeting for them.
+    /// Imports dropped files. Non-file URLs (e.g. a dragged web link) are
+    /// ignored. Unsupported files are not filtered out here: the core
+    /// reports them in the same "Couldn't import" alert and creates no
+    /// meeting for them.
     func importDroppedFiles(_ urls: [URL]) async {
-        guard !showOnboarding, !urls.isEmpty else { return }
-        await core.importAudioFiles(at: urls)
+        let files = urls.filter(\.isFileURL)
+        guard !showOnboarding, !files.isEmpty else { return }
+        await core.importAudioFiles(at: files)
     }
 
     /// The pending "Couldn't import" alert, if any import failed.

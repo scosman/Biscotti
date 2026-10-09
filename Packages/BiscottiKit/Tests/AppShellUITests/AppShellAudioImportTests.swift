@@ -118,7 +118,6 @@ struct AppShellAudioImportTests {
         try Data("hello".utf8).write(to: text)
         let viewModel = makeViewModel(fix, panel: PanelStub([]))
 
-        #expect(!viewModel.canAcceptDrop([text]))
         await viewModel.importDroppedFiles([text])
 
         #expect(fix.core.summaries.isEmpty)
@@ -139,12 +138,24 @@ struct AppShellAudioImportTests {
         try Data("hello".utf8).write(to: text)
         let viewModel = makeViewModel(fix, panel: PanelStub([]))
 
-        #expect(viewModel.canAcceptDrop([text, wav]))
         await viewModel.importDroppedFiles([text, wav])
         await fix.core.awaitPendingTranscription()
 
         #expect(fix.core.summaries.map(\.title) == ["good"])
         #expect(viewModel.audioImportAlert?.title == "Couldn\u{2019}t import readme.txt")
+    }
+
+    @Test("a dropped web link is ignored: no meeting and no alert")
+    func droppedWebLinkIgnored() async throws {
+        let fix = try makeCoreFixture(testName: "ShellDropWebLink")
+        defer { fix.cleanup() }
+        let link = try #require(URL(string: "https://example.com/talk.mp3"))
+        let viewModel = makeViewModel(fix, panel: PanelStub([]))
+
+        await viewModel.importDroppedFiles([link])
+
+        #expect(fix.core.summaries.isEmpty)
+        #expect(viewModel.audioImportAlert == nil)
     }
 
     @Test("a drop of several bad files lists each in one alert")

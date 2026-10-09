@@ -117,18 +117,35 @@ public struct AudioFileImporter: Sendable {
     /// mid-copy is reconciled by orphan recovery), then copies `source` in as
     /// `imported.<original extension>`.
     public func stage(source: URL, into directory: URL) throws(AudioImportError) -> StagedAudio {
+        let destination = try prepare(source: source, into: directory)
+        return try copy(source: source, to: destination)
+    }
+
+    /// First half of `stage`: creates `directory` and writes the `.recording`
+    /// marker, without copying. Returns the path the copy will be written to,
+    /// so the caller can record it in the store before the (slow, crash-prone)
+    /// copy begins.
+    public func prepare(source: URL, into directory: URL) throws(AudioImportError) -> URL {
         let fileManager = FileManager.default
         let ext = source.pathExtension
         let name = ext.isEmpty ? Self.importedBaseName : "\(Self.importedBaseName).\(ext)"
-        let destination = directory.appendingPathComponent(name)
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             let marker = directory.appendingPathComponent(RecordingController.markerFileName)
             guard fileManager.createFile(atPath: marker.path, contents: nil) else {
                 throw CocoaError(.fileWriteUnknown)
             }
+        } catch {
+            throw .copyFailed(error.localizedDescription)
+        }
+        return directory.appendingPathComponent(name)
+    }
+
+    /// Second half of `stage`: copies `source` to `destination`.
+    public func copy(source: URL, to destination: URL) throws(AudioImportError) -> StagedAudio {
+        do {
             try copyFile(source, destination)
-            let attrs = try fileManager.attributesOfItem(atPath: destination.path)
+            let attrs = try FileManager.default.attributesOfItem(atPath: destination.path)
             let size = (attrs[.size] as? Int64) ?? 0
             return StagedAudio(url: destination, byteSize: size)
         } catch {

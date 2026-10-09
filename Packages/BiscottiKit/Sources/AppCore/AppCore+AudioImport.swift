@@ -138,21 +138,37 @@ private extension AppCore {
         directory: URL,
         importer: AudioFileImporter
     ) async throws(AudioImportError) {
-        let staged: StagedAudio
+        // Marker first, then the (not yet present) ref, then the copy: a
+        // crash at any point leaves a marker plus a ref, which
+        // `recoverOrphans` reconciles via `markAudioPresence`.
+        let destination: URL
         do {
-            staged = try await Task.detached(priority: .userInitiated) {
-                try importer.stage(source: source, into: directory)
+            destination = try await Task.detached(priority: .userInitiated) {
+                try importer.prepare(source: source, into: directory)
             }.value
         } catch let error as AudioImportError {
             throw error
         } catch {
             throw .copyFailed(error.localizedDescription)
         }
-        let ref = AudioFileRef(
-            role: .mic, path: staged.url.path, byteSize: staged.byteSize, isPresent: true
-        )
+        let ref = AudioFileRef(role: .mic, path: destination.path, byteSize: 0, isPresent: false)
         do {
             try await store.attachAudio([ref], to: meetingID)
+        } catch {
+            throw .storageFailed(error.localizedDescription)
+        }
+
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try importer.copy(source: source, to: destination)
+            }.value
+        } catch let error as AudioImportError {
+            throw error
+        } catch {
+            throw .copyFailed(error.localizedDescription)
+        }
+        do {
+            try await store.markAudioPresence(meetingID: meetingID)
             try await store.setRecordingDuration(validated.duration, for: meetingID)
         } catch {
             throw .storageFailed(error.localizedDescription)

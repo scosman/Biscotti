@@ -1933,6 +1933,13 @@ extension AppCore {
             return false
         }
 
+        // 0. Stop any running or queued transcription for this meeting
+        // before its files vanish, and drop its job status. Cancelling a
+        // queued job dequeues it, so it is never transcribed and the queue
+        // moves on.
+        await cancelTranscription(meetingID: meetingID)
+        transcription.jobs[meetingID] = nil
+
         // 1. Collect on-disk paths from the store BEFORE deleting the row.
         let filePaths: [String]
         do {

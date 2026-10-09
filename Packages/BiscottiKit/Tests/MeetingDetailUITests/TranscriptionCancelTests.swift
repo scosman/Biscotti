@@ -69,7 +69,7 @@ struct TranscriptionCancelTests {
         await job.value
 
         #expect(fix.core.transcription.jobs[meetingID] == .cancelled)
-        #expect(fix.fakeEngine.backing.shutdownCallCount >= 1)
+        #expect(fix.fakeEngine.backing.shutdownCallCount == 1)
         #expect(!viewModel.isTranscriptionRunning)
         #expect(viewModel.displayState == .cancelled(canDelete: false))
     }

@@ -1027,7 +1027,7 @@ public extension MeetingDetailViewModel {
             await core.transcription.reTranscribe(meetingID: meetingID)
         }
         await load()
-        if ran {
+        if ran, core.shouldRunEnhancements(meetingID: meetingID) {
             await core.intelligence.runAutoEnhancements(meetingID: meetingID)
         }
     }

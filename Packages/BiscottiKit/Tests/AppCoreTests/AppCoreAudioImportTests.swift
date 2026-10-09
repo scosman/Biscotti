@@ -110,11 +110,7 @@ struct AppCoreAudioImportTests {
 
         let result = await fix.core.importAudioFile(at: source)
 
-        guard case let .failure(error) = result else {
-            Issue.record("expected failure")
-            return
-        }
-        #expect(error == .noAudioTrack || error == .unreadable)
+        #expect(result == .failure(.unreadable))
         try await Self.expectNothingCreated(fix)
     }
 
@@ -156,11 +152,7 @@ struct AppCoreAudioImportTests {
 
         let result = await fix.core.importAudioFile(at: source)
 
-        guard case let .failure(error) = result else {
-            Issue.record("expected failure")
-            return
-        }
-        #expect(error == .emptyAudio || error == .unreadable || error == .noAudioTrack)
+        #expect(result == .failure(.emptyAudio))
         try await Self.expectNothingCreated(fix)
     }
 

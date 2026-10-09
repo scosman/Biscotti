@@ -71,13 +71,17 @@ public struct AppShellView: View {
             Text(viewModel.audioImportAlert?.message ?? "")
         }
         // Drop audio/video files anywhere on the window to import them.
-        .dropDestination(for: URL.self) { urls, _ in
-            // Accept only when something is importable; a rejected drop
-            // is still reported (no meeting is created for it).
-            let accepted = viewModel.canAcceptDrop(urls)
-            Task { await viewModel.importDroppedFiles(urls) }
-            return accepted
-        } isTargeted: { isDropTargeted = $0 }
+        // Only file URLs target the window, so a dragged web link neither
+        // highlights it nor is accepted. Every file drop is handled: files
+        // that can't be imported are reported in the alert.
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            guard !viewModel.showOnboarding else { return false }
+            Task {
+                let urls = await Self.fileURLs(from: providers)
+                await viewModel.importDroppedFiles(urls)
+            }
+            return true
+        }
         .overlay {
             if isDropTargeted, !viewModel.showOnboarding {
                 RoundedRectangle(cornerRadius: 8)
@@ -109,6 +113,20 @@ public struct AppShellView: View {
             }
         }
         .task { await viewModel.onLaunch() }
+    }
+
+    /// Resolves the file URLs carried by dropped item providers, in order.
+    private static func fileURLs(from providers: [NSItemProvider]) async -> [URL] {
+        var urls: [URL] = []
+        for provider in providers {
+            let url: URL? = await withCheckedContinuation { continuation in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url)
+                }
+            }
+            if let url, url.isFileURL { urls.append(url) }
+        }
+        return urls
     }
 
     // MARK: - Main window

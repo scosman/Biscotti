@@ -64,6 +64,12 @@ public final class TranscriptionService {
     /// persistence from the cancelled job. Reset when the job is cleaned up.
     private var cancelRequested = false
 
+    /// Token of the job that `cancel(meetingID:)` already shut the engine
+    /// down for. Unlike `cancelRequested` it is not reset by `finishJob`, so
+    /// `runJob` can tell "cancelled" regardless of which of the two callers
+    /// finishes the job first. Tokens are unique, so a stale value is inert.
+    private var cancelledJobToken: UUID?
+
     // MARK: - Init
 
     /// Creates a `TranscriptionService`.
@@ -118,6 +124,7 @@ public final class TranscriptionService {
         else { return }
 
         cancelRequested = true
+        cancelledJobToken = token
         jobs[meetingID] = .cancelled
         task.cancel()
         await engine.shutdown()
@@ -191,7 +198,7 @@ public final class TranscriptionService {
         // pass the guard, call ensureConnected(), and spawn a second XPC
         // worker that nothing ever tears down. Keeping the guard held
         // through shutdown prevents this.
-        if !cancelRequested {
+        if cancelledJobToken != token {
             await engine.shutdown()
         }
         finishJob(token: token)

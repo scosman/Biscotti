@@ -90,8 +90,8 @@ struct AudioImportEdgeCaseTests {
         #expect(try await fix.store.meetingSummaries().isEmpty)
     }
 
-    @Test("a cancelled calling task never leaves a half-imported meeting")
-    func cancelledCallerStaysConsistent() async throws {
+    @Test("a cancelled calling task still completes the import (the work is not cancellable)")
+    func cancelledCallerStillImports() async throws {
         let fix = try makeCoreFixture(testName: "ImportCancelledCaller")
         defer { fix.cleanup() }
         let dir = try Helpers.makeTempDir()
@@ -102,19 +102,109 @@ struct AudioImportEdgeCaseTests {
             await fix.core.importAudioFile(at: source)
         }
         task.cancel()
-        _ = await task.value
+        let meetingID = try await Helpers.unwrap(task.value)
         await fix.core.awaitPendingTranscription()
+
+        let mic = try #require(try await fix.store.storedAudioFileRefs(meetingID: meetingID).mic)
+        #expect(FileManager.default.fileExists(atPath: mic.path))
+        #expect(try await fix.store.meetingSummaries().map(\.id) == [meetingID])
+        #expect(try Self.markedDirectories(in: fix.storageRoot).isEmpty)
+    }
+
+    @Test("the audio ref and marker exist before the copy starts")
+    func refAndMarkerPrecedeCopy() async throws {
+        let fix = try makeCoreFixture(testName: "ImportRefBeforeCopy")
+        defer { fix.cleanup() }
+        let dir = try Helpers.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = try Helpers.writeWAV(named: "slow.wav", in: dir)
+        let gate = CopyGate()
+        let importer = AudioFileImporter { _, _ in
+            gate.entered = true
+            while !gate.released {
+                usleep(2000)
+            }
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+
+        let task = Task { @MainActor in
+            await fix.core.importAudioFile(at: source, importer: importer)
+        }
+        for _ in 0 ..< 500 where !gate.entered {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(gate.entered)
+
+        // Mid-copy: a crash now would leave exactly this state.
+        let summaries = try await fix.store.meetingSummaries()
+        let meetingID = try #require(summaries.first?.id)
+        let refs = try await fix.store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(refs.mic != nil)
+        #expect(!refs.present)
+        #expect(try Self.markedDirectories(in: fix.storageRoot).count == 1)
+
+        gate.released = true
+        _ = await task.value
+        #expect(try await fix.store.meetingSummaries().isEmpty)
+    }
+
+    @Test("orphan recovery reconciles a crash mid-copy: the marker goes, the partial file counts as present")
+    func recoverOrphansAfterInterruptedCopy() async throws {
+        let fix = try makeCoreFixture(testName: "ImportCrashMidCopy")
+        defer { fix.cleanup() }
+        let dir = try Helpers.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = try Helpers.writeWAV(named: "crash.wav", in: dir)
+        let (meetingID, destination) = try await Self.simulateInterruptedImport(fix, source: source)
+        try Data("partial".utf8).write(to: destination)
+
         await fix.core.recording.recoverOrphans()
 
-        // Either nothing was created, or a complete meeting exists: never
-        // a stray directory, marker, or row without its files.
-        let summaries = try await fix.store.meetingSummaries()
-        let directories = try FileManager.default.contentsOfDirectory(atPath: fix.storageRoot.path)
-        #expect(directories.count == summaries.count)
+        let refs = try await fix.store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(refs.mic == destination)
+        #expect(refs.present)
         #expect(try Self.markedDirectories(in: fix.storageRoot).isEmpty)
-        for summary in summaries {
-            let mic = try #require(try await fix.store.storedAudioFileRefs(meetingID: summary.id).mic)
-            #expect(FileManager.default.fileExists(atPath: mic.path))
-        }
+        #expect(try await fix.store.meetingExists(id: meetingID))
     }
+
+    @Test("orphan recovery after a crash before the copy leaves a consistent audio-less meeting")
+    func recoverOrphansAfterCrashBeforeCopy() async throws {
+        let fix = try makeCoreFixture(testName: "ImportCrashBeforeCopy")
+        defer { fix.cleanup() }
+        let dir = try Helpers.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = try Helpers.writeWAV(named: "crash.wav", in: dir)
+        let (meetingID, destination) = try await Self.simulateInterruptedImport(fix, source: source)
+
+        await fix.core.recording.recoverOrphans()
+
+        let refs = try await fix.store.storedAudioFileRefs(meetingID: meetingID)
+        #expect(refs.mic == destination)
+        #expect(!refs.present)
+        #expect(try Self.markedDirectories(in: fix.storageRoot).isEmpty)
+        #expect(try await fix.store.meetingDetail(id: meetingID)?.hasAudio == false)
+    }
+
+    /// Leaves the state `importAudioFile` has when the app dies right after
+    /// the audio ref is attached and before the copy runs.
+    private static func simulateInterruptedImport(
+        _ fix: CoreFixture, source: URL
+    ) async throws -> (UUID, URL) {
+        let importer = AudioFileImporter()
+        let meetingID = try await fix.store.createMeeting(title: "crash")
+        let directory = fix.core.recording.meetingDirectory(for: meetingID)
+        let destination = try importer.prepare(source: source, into: directory)
+        try await fix.store.attachAudio(
+            [AudioFileRef(role: .mic, path: destination.path, byteSize: 0, isPresent: false)],
+            to: meetingID
+        )
+        return (meetingID, destination)
+    }
+}
+
+/// Lets a test hold the importer's copy primitive open (which runs off the
+/// main actor) while it inspects the store.
+private final class CopyGate: @unchecked Sendable {
+    var entered = false
+    var released = false
 }

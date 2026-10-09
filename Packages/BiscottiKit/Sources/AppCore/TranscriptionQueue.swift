@@ -119,12 +119,22 @@ package extension AppCore {
         let task = Task { @MainActor [self] in
             await runQueuedTranscription(meetingID: meetingID) {
                 await transcription.transcribe(meetingID: meetingID)
-                await intelligence.runAutoEnhancements(meetingID: meetingID)
+                if shouldRunEnhancements(meetingID: meetingID) {
+                    await intelligence.runAutoEnhancements(meetingID: meetingID)
+                }
             }
             pendingTranscriptionTasks[key] = nil
         }
         pendingTranscriptionTasks[key] = task
         pendingTranscriptionTask = task
+    }
+
+    /// Whether auto-enhancements should follow the meeting's last
+    /// transcription job: only when it completed. A cancelled or failed job
+    /// (or one whose status was cleared because the meeting was deleted)
+    /// must not trigger LLM work.
+    func shouldRunEnhancements(meetingID: UUID) -> Bool {
+        transcription.jobs[meetingID] == .completed
     }
 
     /// Cancels this meeting's transcription: dequeues it if it is waiting

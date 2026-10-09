@@ -240,7 +240,7 @@ struct AppCoreAudioImportTests {
 
     // MARK: - Helpers
 
-    private static func unwrap(
+    static func unwrap(
         _ result: Result<UUID, AudioImportError>
     ) throws -> UUID {
         switch result {
@@ -258,7 +258,7 @@ struct AppCoreAudioImportTests {
         #expect(contents.isEmpty)
     }
 
-    private static func makeTempDir() throws -> URL {
+    static func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("AudioImportSrc-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -266,7 +266,7 @@ struct AppCoreAudioImportTests {
     }
 
     /// Writes a minimal 16-bit mono 8 kHz PCM WAV of silence (0.5 s by default).
-    private static func writeWAV(
+    static func writeWAV(
         named name: String, in dir: URL, frames: Int = 4000
     ) throws -> URL {
         let sampleRate: UInt32 = 8000

@@ -344,8 +344,18 @@ public final class AppCore {
     /// Fires at each clock-minute boundary to refresh `minuteTick`.
     private var minuteTickTask: Task<Void, Never>?
 
-    /// The fire-and-forget transcription task spawned by `stopRecording()`.
+    /// The fire-and-forget transcription task most recently spawned by
+    /// `stopRecording()` or an audio import. Earlier tasks may still be
+    /// queued behind `transcriptionQueue`; `awaitPendingTranscription()`
+    /// waits for all of them.
     package var pendingTranscriptionTask: Task<Void, Never>?
+
+    /// Every fire-and-forget transcription task still running or queued,
+    /// keyed by a per-task ID so each removes itself when it finishes.
+    package var pendingTranscriptionTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// FIFO gate so only one `AppCore`-started transcription runs at a time.
+    let transcriptionQueue = TranscriptionQueue()
 
     /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
@@ -577,10 +587,7 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
-            await transcription.transcribe(meetingID: meetingID)
-            await intelligence.runAutoEnhancements(meetingID: meetingID)
-        }
+        spawnTranscription(meetingID: meetingID)
 
         // The audio engine and its capture buffers were just torn down;
         // reclaim that ~transient footprint back to the OS. Delayed so the
@@ -1118,7 +1125,12 @@ package extension AppCore {
     /// Waits for any pending fire-and-forget transcription task spawned by
     /// `stopRecording()` to finish.
     func awaitPendingTranscription() async {
-        await pendingTranscriptionTask?.value
+        // Tasks spawned while waiting (e.g. a recording stopped mid-batch)
+        // are picked up by the loop.
+        while let (key, task) = pendingTranscriptionTasks.first {
+            await task.value
+            pendingTranscriptionTasks[key] = nil
+        }
         pendingTranscriptionTask = nil
     }
 

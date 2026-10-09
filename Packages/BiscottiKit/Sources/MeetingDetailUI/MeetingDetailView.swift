@@ -981,7 +981,7 @@ private extension MeetingDetailView {
     /// timeline re-evaluates the label every second.
     @ViewBuilder
     var transcriptionCancelControls: some View {
-        if viewModel.isTranscriptionRunning {
+        if viewModel.isTranscriptionRunning || viewModel.isTranscriptionQueued {
             VStack(spacing: Tokens.spacingSM) {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     if let elapsed = viewModel.transcriptionElapsedText(
@@ -1000,7 +1000,11 @@ private extension MeetingDetailView {
                 }
                 .controlSize(.small)
                 .accessibilityLabel("Cancel transcription")
-                .accessibilityHint("Stops transcribing this meeting")
+                .accessibilityHint(
+                    viewModel.isTranscriptionQueued
+                        ? "Removes this meeting from the transcription queue"
+                        : "Stops transcribing this meeting"
+                )
             }
         }
     }

@@ -481,6 +481,11 @@ public extension MeetingDetailViewModel {
         case .transcribing:
             return .processing(message: "Transcribing\u{2026}")
 
+        case .queued:
+            return .processing(
+                message: "Queued \u{2014} waiting for the current transcription"
+            )
+
         case let .failed(message, retriable):
             return .failed(message: message, retriable: retriable)
 
@@ -520,6 +525,12 @@ public extension MeetingDetailViewModel {
         }
     }
 
+    /// Whether this meeting is waiting for another transcription to finish.
+    /// Cancel is also offered in this state (it dequeues the meeting).
+    var isTranscriptionQueued: Bool {
+        core.transcription.jobs[meetingID] == .queued
+    }
+
     /// Elapsed time of the running job as a clock string (`m:ss`, or
     /// `h:mm:ss` past an hour), or nil when no job is running.
     ///
@@ -550,7 +561,7 @@ public extension MeetingDetailViewModel {
         guard let detail, detail.hasAudio else { return false }
         let jobStatus = core.transcription.jobs[meetingID]
         switch jobStatus {
-        case .downloadingModel, .transcribing:
+        case .downloadingModel, .transcribing, .queued:
             return false
         default:
             return true
@@ -1011,21 +1022,29 @@ public extension MeetingDetailViewModel {
     /// Triggers a re-transcription of the meeting, then runs
     /// AI auto-enhancements (speaker-ID + summary) on the new transcript.
     func reTranscribe() async {
-        await core.transcription.reTranscribe(meetingID: meetingID)
+        // Waits its turn when another transcription is running.
+        let ran = await core.runQueuedTranscription(meetingID: meetingID) {
+            await core.transcription.reTranscribe(meetingID: meetingID)
+        }
         await load()
-        await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+        if ran {
+            await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+        }
     }
 
-    /// Cancels this meeting's running transcription job. No-op unless a job
-    /// is running for this meeting, so a stale tap cannot affect a later job.
+    /// Cancels this meeting's transcription: stops the running job, or
+    /// removes the meeting from the queue if it is still waiting. No-op
+    /// otherwise, so a stale tap cannot affect a later job.
     func cancelTranscription() async {
-        guard isTranscriptionRunning else { return }
-        await core.transcription.cancel(meetingID: meetingID)
+        guard isTranscriptionRunning || isTranscriptionQueued else { return }
+        await core.cancelTranscription(meetingID: meetingID)
     }
 
     /// Retries a failed transcription.
     func retry() async {
-        await core.transcription.transcribe(meetingID: meetingID)
+        await core.runQueuedTranscription(meetingID: meetingID) {
+            await core.transcription.transcribe(meetingID: meetingID)
+        }
         await load()
     }
 

@@ -73,10 +73,7 @@ public extension AppCore {
         } else {
             select(meetingID)
         }
-        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
-            await transcription.transcribe(meetingID: meetingID)
-            await intelligence.runAutoEnhancements(meetingID: meetingID)
-        }
+        spawnTranscription(meetingID: meetingID)
         return .success(meetingID)
     }
 }
@@ -92,10 +89,10 @@ public extension AppCore {
     /// Re-entrant: a call made while a batch is running queues its URLs onto
     /// that batch and returns immediately.
     ///
-    /// `TranscriptionService` runs one job at a time and fails a second
-    /// `transcribe` with a retriable "already in progress" status. So before
-    /// each file after the first, this waits for the previous file's
-    /// transcription to finish; every file in a batch therefore transcribes.
+    /// Files are validated and copied one after another, while their
+    /// transcriptions wait their turn in the shared transcription queue (a
+    /// meeting shows "Queued" until then), so every file transcribes even
+    /// when another transcription is already running.
     func importAudioFiles(at urls: [URL]) async {
         pendingAudioImports.append(contentsOf: urls)
         guard !isImportingAudio else { return }
@@ -104,11 +101,8 @@ public extension AppCore {
         defer { isImportingAudio = false }
 
         var failures: [AudioImportFailure] = []
-        var isFirst = true
         while !pendingAudioImports.isEmpty {
             let url = pendingAudioImports.removeFirst()
-            if !isFirst { await awaitPendingTranscription() }
-            isFirst = false
 
             guard AudioImportSupport.isSupported(url) else {
                 failures.append(AudioImportFailure(

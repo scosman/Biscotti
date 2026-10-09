@@ -42,6 +42,15 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         /// (models present on disk) to match the common test scenario.
         public var modelsPresentResult: Bool = true
 
+        /// When true, `processAudio` blocks (like the real XPC worker) until
+        /// this is cleared or `shutdown()` is called. After a `shutdown()` it
+        /// throws `TranscriptionError.workerInterrupted`, like the real
+        /// engine whose worker was killed. Defaults to false (returns at once).
+        public var blocksUntilShutdown = false
+
+        /// Set once `processAudio` has been entered.
+        public var processAudioStarted = false
+
         public init(
             cannedResult: TranscriptResult,
             ensureModelsError: (any Error)? = nil,
@@ -93,6 +102,14 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         backing.lastMicURL = mic
         backing.lastSystemURL = system
         backing.lastVocabulary = customVocabulary
+        backing.processAudioStarted = true
+        let shutdownsAtStart = backing.shutdownCallCount
+        while backing.blocksUntilShutdown {
+            if backing.shutdownCallCount > shutdownsAtStart {
+                throw TranscriptionError.workerInterrupted
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
         if let error = backing.processAudioError {
             throw error
         }

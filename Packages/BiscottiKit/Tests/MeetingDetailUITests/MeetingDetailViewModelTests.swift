@@ -85,7 +85,7 @@ struct MeetingDetailDisplayStateTests {
         }
     }
 
-    @Test("displayState is a retriable .failed 'cancelled' state when cancelled with no transcript")
+    @Test("displayState is .cancelled (not deletable) when a recorded meeting is cancelled with no transcript")
     @MainActor
     func displayStateCancelledNoTranscript() async throws {
         let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
@@ -97,10 +97,7 @@ struct MeetingDetailDisplayStateTests {
         let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
         await viewModel.load()
 
-        #expect(viewModel.displayState == .failed(
-            message: "Transcription cancelled.",
-            retriable: true
-        ))
+        #expect(viewModel.displayState == .cancelled(canDelete: false))
         #expect(viewModel.canReTranscribe)
     }
 

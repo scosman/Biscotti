@@ -23,6 +23,14 @@ public final class TranscriptionService {
     /// without running the full transcription pipeline.
     public package(set) var jobs: [UUID: JobStatus] = [:]
 
+    /// When the currently running job for a meeting started. Present only
+    /// while that job is in flight (set in `runJob`, removed when the job is
+    /// cleaned up). The engine reports no numeric progress, so the UI shows
+    /// elapsed time derived from this instead.
+    ///
+    /// `package` setter so view-model tests can inject a start date.
+    public package(set) var jobStartedAt: [UUID: Date] = [:]
+
     // MARK: - Dependencies
 
     private let store: DataStore
@@ -154,6 +162,7 @@ public final class TranscriptionService {
         inFlightMeetingID = meetingID
         currentJobToken = token
         cancelRequested = false
+        jobStartedAt[meetingID] = Date()
 
         // The job runs in its own Task so `cancel(meetingID:)` has a handle
         // to cancel. `runJob` still awaits it, so callers of `transcribe` /
@@ -194,6 +203,9 @@ public final class TranscriptionService {
     /// whichever runs second must not clobber a job that has since started.
     private func finishJob(token: UUID) {
         guard currentJobToken == token else { return }
+        if let meetingID = inFlightMeetingID {
+            jobStartedAt[meetingID] = nil
+        }
         inFlightMeetingID = nil
         currentJobToken = nil
         currentTask = nil

@@ -189,6 +189,45 @@ struct AppCoreAudioImportTests {
         #expect(!fix.fakeEngine.backing.processAudioCalled)
     }
 
+    // MARK: - Cancel during a batch
+
+    @Test("cancelling the running job lets the batch continue with the next file and finish")
+    func cancelDuringBatchContinues() async throws {
+        let fix = try makeCoreFixture(testName: "AudioImportCancel")
+        defer { fix.cleanup() }
+        let dir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = try Self.writeWAV(named: "first.wav", in: dir)
+        let second = try Self.writeWAV(named: "second.wav", in: dir)
+        fix.fakeEngine.backing.blocksUntilShutdown = true
+
+        let batch = Task { @MainActor in
+            await fix.core.importAudioFiles(at: [first, second])
+        }
+        // Wait until the first file's job is inside the (blocked) engine.
+        for _ in 0 ..< 500 where !fix.fakeEngine.backing.processAudioStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(fix.fakeEngine.backing.processAudioStarted)
+        let firstID = try #require(fix.core.transcription.jobs.first { $0.value == .transcribing }?.key)
+
+        // Second file transcribes normally once the first is cancelled.
+        fix.fakeEngine.backing.blocksUntilShutdown = false
+        await fix.core.transcription.cancel(meetingID: firstID)
+        await batch.value
+        await fix.core.awaitPendingTranscription()
+
+        #expect(!fix.core.isImportingAudio)
+        #expect(fix.core.audioImportFailures.isEmpty)
+        #expect(Set(fix.core.summaries.map(\.title)) == ["first", "second"])
+        #expect(fix.core.transcription.jobs[firstID] == .cancelled)
+        let secondID = try #require(fix.core.summaries.first { $0.title == "second" }?.id)
+        #expect(fix.core.transcription.jobs[secondID] == .completed)
+        // The cancelled file has no transcript; the second one does.
+        #expect(try await fix.store.meetingDetail(id: firstID)?.preferredTranscript == nil)
+        #expect(try await fix.store.meetingDetail(id: secondID)?.preferredTranscript != nil)
+    }
+
     @Test("every error has a user-facing description")
     func errorDescriptions() {
         let errors: [AudioImportError] = [

@@ -516,16 +516,23 @@ public extension DataStore {
         )
     }
 
-    /// Returns the mic and system audio file paths for a meeting, or nil if not available.
-    func audioPaths(meetingID: UUID) throws -> (mic: URL, system: URL)? {
+    /// Returns the audio file paths for a meeting, or nil if no usable audio.
+    ///
+    /// The mic track is required; the system track is optional because an
+    /// imported audio file is stored as a single `.mic` track. A meeting whose
+    /// only present track is `.system` yields nil (unchanged from before).
+    func audioPaths(meetingID: UUID) throws -> (mic: URL, system: URL?)? {
         guard let meeting = try meeting(id: meetingID) else { return nil }
 
         let micRef = meeting.audioFiles.first(where: { $0.role == .mic && $0.isPresent })
         let systemRef = meeting.audioFiles.first(where: { $0.role == .system && $0.isPresent })
 
-        guard let micRef, let systemRef else { return nil }
+        guard let micRef else { return nil }
 
-        return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
+        return (
+            mic: URL(fileURLWithPath: micRef.path),
+            system: systemRef.map { URL(fileURLWithPath: $0.path) }
+        )
     }
 
     /// Returns the uncapped people data for a meeting, or nil if the meeting

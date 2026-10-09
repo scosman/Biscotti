@@ -35,6 +35,20 @@ struct TranscriptionTestFixture {
         return meetingID
     }
 
+    /// Creates a meeting with a single present mic track (as an imported
+    /// audio file is stored) and no system track, and returns its ID.
+    func createMeetingWithMicOnlyAudio() async throws -> UUID {
+        let meetingID = try await store.createMeeting(title: "Imported Meeting")
+        let micRef = AudioFileRef(
+            role: .mic,
+            path: "/tmp/test/imported.m4a",
+            byteSize: 1024,
+            isPresent: true
+        )
+        try await store.attachAudio([micRef], to: meetingID)
+        return meetingID
+    }
+
     /// Creates a meeting with no audio files and returns its ID.
     func createMeetingWithoutAudio() async throws -> UUID {
         try await store.createMeeting(title: "No Audio Meeting")
@@ -85,6 +99,23 @@ struct TranscriptionSuccessTests {
         let detail = try await fix.store.meetingDetail(id: meetingID)
         #expect(detail?.preferredTranscript != nil)
         #expect(detail?.preferredTranscript?.speakerCount == 2)
+        #expect(detail?.preferredTranscript?.segments.count == 2)
+    }
+
+    @Test("Transcribe works for a single-track (mic-only) meeting")
+    @MainActor
+    func transcribeMicOnlyMeeting() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithMicOnlyAudio()
+
+        await fix.service.transcribe(meetingID: meetingID)
+
+        #expect(fix.fakeEngine.backing.processAudioCalled == true)
+        #expect(fix.fakeEngine.backing.lastMicURL?.path == "/tmp/test/imported.m4a")
+        #expect(fix.fakeEngine.backing.lastSystemURL == nil)
+        #expect(fix.service.jobs[meetingID] == .completed)
+
+        let detail = try await fix.store.meetingDetail(id: meetingID)
         #expect(detail?.preferredTranscript?.segments.count == 2)
     }
 
@@ -550,7 +581,7 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
@@ -608,7 +639,7 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
@@ -911,7 +942,7 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult

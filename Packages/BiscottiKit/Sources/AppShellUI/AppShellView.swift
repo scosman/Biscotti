@@ -24,6 +24,9 @@ public struct AppShellView: View {
     /// `searchFocusToken` (⌘F).
     @FocusState private var searchFieldFocused: Bool
 
+    /// True while a drag is hovering over the window (drop highlight).
+    @State private var isDropTargeted = false
+
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
     }
@@ -53,6 +56,36 @@ public struct AppShellView: View {
             Button("OK") { viewModel.dismissLinkError() }
         } message: {
             Text(viewModel.linkError?.message ?? "")
+        }
+        // Failed or unsupported audio imports (File menu, toolbar, popover,
+        // drag-and-drop) report once per batch.
+        .alert(
+            viewModel.audioImportAlert?.title ?? "",
+            isPresented: Binding(
+                get: { viewModel.audioImportAlert != nil },
+                set: { if !$0 { viewModel.dismissAudioImportAlert() } }
+            )
+        ) {
+            Button("OK") { viewModel.dismissAudioImportAlert() }
+        } message: {
+            Text(viewModel.audioImportAlert?.message ?? "")
+        }
+        // Drop audio/video files anywhere on the window to import them.
+        .dropDestination(for: URL.self) { urls, _ in
+            // Accept only when something is importable; a rejected drop
+            // is still reported (no meeting is created for it).
+            let accepted = viewModel.canAcceptDrop(urls)
+            Task { await viewModel.importDroppedFiles(urls) }
+            return accepted
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted, !viewModel.showOnboarding {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.sage, lineWidth: 3)
+                    .background(Color.sage.opacity(0.08))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
         }
         // Two-way sync between the search field and AppCore's query.
         // Harmless during onboarding (no field is shown).
@@ -98,6 +131,9 @@ public struct AppShellView: View {
         .searchFocused($searchFieldFocused)
         .toolbar {
             homeToolbarItem
+            ToolbarItem(placement: .primaryAction) {
+                importAudioButton
+            }
             ToolbarItem(placement: .primaryAction) {
                 recordButton
             }
@@ -278,6 +314,17 @@ private extension AppShellView {
             .help("Home")
             .disabled(viewModel.isHome)
         }
+    }
+
+    /// Transcribe an existing audio file (also File > Import Audio File).
+    var importAudioButton: some View {
+        Button {
+            Task { await viewModel.importAudioFiles() }
+        } label: {
+            Image(systemName: "square.and.arrow.down")
+        }
+        .help("Import audio file")
+        .accessibilityLabel("Import audio file")
     }
 
     /// The stateful Record affordance: a live recording indicator while

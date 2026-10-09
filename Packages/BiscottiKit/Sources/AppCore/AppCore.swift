@@ -210,13 +210,6 @@ public final class AppCore {
     /// clock. Driven by the `AppScheduler` seam for testability.
     public private(set) var minuteTick: Date = .init()
 
-    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
-    /// The sidebar, menu bar, and home screen should use this instead of
-    /// `upcoming` directly.
-    public var displayedUpcoming: [CalendarEvent] {
-        upcoming.filter { $0.end > minuteTick }
-    }
-
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
 
@@ -242,6 +235,16 @@ public final class AppCore {
     /// A well-formed link whose meeting/event is missing. Non-nil presents
     /// the shell alert; a second failure overwrites the first.
     public internal(set) var linkError: AppLinkError?
+
+    /// Files from the last import batch that failed (or were skipped as
+    /// non-audio). Non-empty presents the shell's "Couldn't import" alert.
+    public internal(set) var audioImportFailures: [AudioImportFailure] = []
+
+    /// True while `importAudioFiles(at:)` is draining its queue.
+    public internal(set) var isImportingAudio = false
+
+    /// URLs waiting for the running import batch to reach them.
+    var pendingAudioImports: [URL] = []
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -695,6 +698,14 @@ public extension AppCore {
 // stored properties (which must live in the class body for @Observable).
 
 public extension AppCore {
+    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
+    /// The sidebar, menu bar, and home screen should use this instead of
+    /// `upcoming` directly. (Moved here to keep the class body within the
+    /// type_body_length limit after adding the audio-import state.)
+    var displayedUpcoming: [CalendarEvent] {
+        upcoming.filter { $0.end > minuteTick }
+    }
+
     /// Factory default summary prompt, surfaced without importing
     /// Intelligence in UI modules.
     var defaultSummaryPrompt: String {

@@ -81,6 +81,58 @@ public extension AppCore {
     }
 }
 
+// MARK: - Batch entry point (menu, toolbar, popover, drop)
+
+public extension AppCore {
+    /// The single funnel for every "import audio" entry point. Imports the
+    /// files one at a time, in order; files that are not audio/video are
+    /// reported without touching the importer. Failures are collected into
+    /// `audioImportFailures` (one alert for the whole batch).
+    ///
+    /// Re-entrant: a call made while a batch is running queues its URLs onto
+    /// that batch and returns immediately.
+    ///
+    /// `TranscriptionService` runs one job at a time and fails a second
+    /// `transcribe` with a retriable "already in progress" status. So before
+    /// each file after the first, this waits for the previous file's
+    /// transcription to finish; every file in a batch therefore transcribes.
+    func importAudioFiles(at urls: [URL]) async {
+        pendingAudioImports.append(contentsOf: urls)
+        guard !isImportingAudio else { return }
+        isImportingAudio = true
+        audioImportFailures = []
+        defer { isImportingAudio = false }
+
+        var failures: [AudioImportFailure] = []
+        var isFirst = true
+        while !pendingAudioImports.isEmpty {
+            let url = pendingAudioImports.removeFirst()
+            if !isFirst { await awaitPendingTranscription() }
+            isFirst = false
+
+            guard AudioImportSupport.isSupported(url) else {
+                failures.append(AudioImportFailure(
+                    fileName: url.lastPathComponent,
+                    message: AudioImportSupport.unsupportedMessage
+                ))
+                continue
+            }
+            if case let .failure(error) = await importAudioFile(at: url) {
+                failures.append(AudioImportFailure(
+                    fileName: url.lastPathComponent,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+        audioImportFailures = failures
+    }
+
+    /// Dismisses the "Couldn't import" alert.
+    func dismissAudioImportFailures() {
+        audioImportFailures = []
+    }
+}
+
 private extension AppCore {
     /// Copies the file into the meeting directory, attaches the single `.mic`
     /// ref, records the duration and clears the `.recording` marker. The

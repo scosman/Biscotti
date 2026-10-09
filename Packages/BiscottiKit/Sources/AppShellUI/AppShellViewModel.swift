@@ -21,7 +21,7 @@ import SettingsUI
 /// re-evaluations.
 @MainActor @Observable
 public final class AppShellViewModel {
-    private let core: AppCore
+    let core: AppCore
 
     // MARK: - Stable child view models
 
@@ -62,8 +62,21 @@ public final class AppShellViewModel {
     @ObservationIgnored
     private var didCallOnLaunch = false
 
-    public init(core: AppCore) {
+    /// Presents the "Import Audio File" open panel and returns the chosen
+    /// files (empty when cancelled). Injectable so tests never open a real
+    /// panel; defaults to a live multi-select `NSOpenPanel`.
+    let presentAudioOpenPanel: @MainActor () -> [URL]
+
+    /// - Parameter presentAudioOpenPanel: Open-panel seam for the audio
+    ///   import entry points. Override in tests.
+    public init(
+        core: AppCore,
+        presentAudioOpenPanel: (@MainActor () -> [URL])? = nil
+    ) {
         self.core = core
+        self.presentAudioOpenPanel = presentAudioOpenPanel ?? {
+            AudioImportSupport.presentOpenPanel()
+        }
         meetingListViewModel = MeetingListViewModel(core: core)
         recordingViewModel = RecordingViewModel(core: core)
         homeViewModel = HomeViewModel(

@@ -25,12 +25,21 @@ public final class MenuBarViewModel {
     /// policy + `NSApp.activate()`.
     public let windowOpener: @MainActor () -> Void
 
+    /// Presents the "Import Audio File" open panel and returns the chosen
+    /// files (empty when cancelled). Injectable for tests; defaults to a
+    /// live multi-select `NSOpenPanel`.
+    let presentAudioOpenPanel: @MainActor () -> [URL]
+
     public init(
         core: AppCore,
-        windowOpener: @escaping @MainActor () -> Void = {}
+        windowOpener: @escaping @MainActor () -> Void = {},
+        presentAudioOpenPanel: (@MainActor () -> [URL])? = nil
     ) {
         self.core = core
         self.windowOpener = windowOpener
+        self.presentAudioOpenPanel = presentAudioOpenPanel ?? {
+            AudioImportSupport.presentOpenPanel()
+        }
     }
 
     // MARK: - Icon state
@@ -133,6 +142,19 @@ public final class MenuBarViewModel {
             core.showHome()
         }
         windowOpener()
+    }
+
+    /// Import existing audio files from the menu bar. Opens the main window
+    /// first (it activates the app so the panel is frontmost, and it hosts
+    /// the new meeting and any "Couldn't import" alert), then funnels the
+    /// chosen files into `AppCore.importAudioFiles(at:)`. Cancelling the
+    /// panel imports nothing. Ignored during onboarding.
+    public func importAudioFiles() async {
+        guard core.route != .onboarding else { return }
+        windowOpener()
+        let urls = presentAudioOpenPanel()
+        guard !urls.isEmpty else { return }
+        await core.importAudioFiles(at: urls)
     }
 
     // TODO(see-all): add a 'See All' menu entry once a full upcoming/recent list page exists

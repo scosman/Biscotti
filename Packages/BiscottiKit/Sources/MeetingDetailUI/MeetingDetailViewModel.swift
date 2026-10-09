@@ -475,7 +475,14 @@ public extension MeetingDetailViewModel {
         case let .failed(message, retriable):
             return .failed(message: message, retriable: retriable)
 
-        case .completed, .idle, .none:
+        case .cancelled where detail?.preferredTranscript == nil && !isLoading:
+            // Cancelled with nothing to fall back on (e.g. a first
+            // transcription): show a retriable "Cancelled" state. When an
+            // earlier transcript exists (cancelled re-transcribe), fall
+            // through and keep showing it.
+            return .failed(message: "Transcription cancelled.", retriable: true)
+
+        case .completed, .idle, .cancelled, .none:
             if let detail, detail.preferredTranscript != nil {
                 return .transcript(detail)
             }

@@ -18,6 +18,10 @@ public enum JobStatus: Sendable, Equatable {
     /// The transcript was produced, persisted, and promoted.
     case completed
 
+    /// The user cancelled the job. Terminal, like `.failed`: no transcript
+    /// was saved, and the meeting can be transcribed again.
+    case cancelled
+
     /// The job failed. If `retriable` is true, the user can tap Retry
     /// (e.g. worker crash, download failure). Non-retriable failures are
     /// permanent for the current audio (e.g. invalid input, diarization error).

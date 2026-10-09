@@ -603,6 +603,171 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
     }
 }
 
+// MARK: - Cancellation tests
+
+@Suite("TranscriptionService -- cancellation")
+struct TranscriptionCancellationTests {
+    /// Starts a job on a blocking engine and waits until the engine is inside `processAudio`.
+    @MainActor
+    private func startBlockedJob(
+        engine: ShutdownAwareFakeTranscriber,
+        service: TranscriptionService,
+        meetingID: UUID
+    ) async throws -> Task<Void, Never> {
+        let job = Task { @MainActor in
+            await service.transcribe(meetingID: meetingID)
+        }
+        for _ in 0 ..< 500 where !engine.backing.processAudioStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(engine.backing.processAudioStarted)
+        return job
+    }
+
+    @Test(
+        "Cancel stops the job: .cancelled, guard cleared, shutdown called, no transcript",
+        arguments: [true, false]
+    )
+    @MainActor
+    func cancelRunningJob(throwOnShutdown: Bool) async throws {
+        let engine = ShutdownAwareFakeTranscriber(throwOnShutdown: throwOnShutdown)
+        let store = try DataStore(storage: .inMemory)
+        let service = TranscriptionService(
+            store: store, engine: engine, vocabulary: VocabularyService(store: store)
+        )
+        let meetingID = try await store.createMeeting(title: "M")
+        let mic = AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 1, isPresent: true)
+        try await store.attachAudio([mic], to: meetingID)
+
+        let job = try await startBlockedJob(engine: engine, service: service, meetingID: meetingID)
+        #expect(service.jobs[meetingID] == .transcribing)
+
+        await service.cancel(meetingID: meetingID)
+        await job.value
+
+        #expect(service.jobs[meetingID] == .cancelled)
+        #expect(engine.backing.shutdownCallCount >= 1)
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.preferredTranscript == nil)
+        #expect(detail?.versions.isEmpty == true)
+
+        // In-flight guard released: a new job on another meeting starts and completes.
+        let other = try await store.createMeeting(title: "Other")
+        try await store.attachAudio(
+            [AudioFileRef(role: .mic, path: "/tmp/test/o.aac", byteSize: 1, isPresent: true)],
+            to: other
+        )
+        engine.backing.blocks = false
+        await service.transcribe(meetingID: other)
+        #expect(service.jobs[other] == .completed)
+        // The cancelled meeting's status is untouched by the later job.
+        #expect(service.jobs[meetingID] == .cancelled)
+
+        // And the cancelled meeting itself can be retried.
+        await service.transcribe(meetingID: meetingID)
+        #expect(service.jobs[meetingID] == .completed)
+    }
+
+    @Test("Cancel with nothing running is a no-op")
+    @MainActor
+    func cancelWhenIdleIsNoOp() async throws {
+        let fix = try makeFixture()
+        let meetingID = try await fix.createMeetingWithAudio()
+
+        await fix.service.cancel(meetingID: meetingID)
+
+        #expect(fix.service.jobs[meetingID] == nil)
+        #expect(fix.fakeEngine.backing.shutdownCallCount == 0)
+
+        // Still works afterwards.
+        await fix.service.transcribe(meetingID: meetingID)
+        #expect(fix.service.jobs[meetingID] == .completed)
+
+        // Cancelling a finished job does not overwrite .completed.
+        await fix.service.cancel(meetingID: meetingID)
+        #expect(fix.service.jobs[meetingID] == .completed)
+    }
+
+    @Test("Cancel for a different meeting does not stop the running job")
+    @MainActor
+    func cancelOtherMeetingIsNoOp() async throws {
+        let engine = ShutdownAwareFakeTranscriber(throwOnShutdown: false)
+        let store = try DataStore(storage: .inMemory)
+        let service = TranscriptionService(
+            store: store, engine: engine, vocabulary: VocabularyService(store: store)
+        )
+        let meetingID = try await store.createMeeting(title: "M")
+        try await store.attachAudio(
+            [AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 1, isPresent: true)],
+            to: meetingID
+        )
+        let job = try await startBlockedJob(engine: engine, service: service, meetingID: meetingID)
+
+        await service.cancel(meetingID: UUID())
+        #expect(service.jobs[meetingID] == .transcribing)
+        #expect(engine.backing.shutdownCallCount == 0)
+
+        engine.backing.blocks = false
+        await job.value
+        #expect(service.jobs[meetingID] == .completed)
+    }
+}
+
+// MARK: - ShutdownAwareFakeTranscriber
+
+/// A fake engine whose `processAudio` blocks until `blocks` is cleared or
+/// `shutdown()` is called -- like the real XPC worker, which only stops when
+/// its connection is torn down. It deliberately ignores Task cancellation.
+/// After `shutdown()` it either throws `workerInterrupted` (real behavior) or
+/// returns a result anyway (to prove a cancelled job is never persisted).
+private struct ShutdownAwareFakeTranscriber: Transcribing, @unchecked Sendable {
+    final class Backing: @unchecked Sendable {
+        var blocks = true
+        var processAudioStarted = false
+        var shutdownCallCount = 0
+        let throwOnShutdown: Bool
+        init(throwOnShutdown: Bool) {
+            self.throwOnShutdown = throwOnShutdown
+        }
+    }
+
+    let backing: Backing
+
+    init(throwOnShutdown: Bool) {
+        backing = Backing(throwOnShutdown: throwOnShutdown)
+    }
+
+    func ensureModelsDownloaded(status _: (@Sendable (String) -> Void)?) async throws {}
+
+    func processAudio(
+        mic _: URL,
+        system _: URL?,
+        customVocabulary _: [String]
+    ) async throws -> TranscriptResult {
+        backing.processAudioStarted = true
+        var interrupted = false
+        while backing.blocks {
+            if backing.shutdownCallCount > 0 {
+                interrupted = true
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        if interrupted, backing.throwOnShutdown {
+            throw TranscriptionError.workerInterrupted
+        }
+        return FakeTranscriber.defaultResult
+    }
+
+    func modelsPresent() async -> Bool {
+        true
+    }
+
+    func shutdown() async {
+        backing.shutdownCallCount += 1
+    }
+}
+
 // MARK: - BlockingFakeTranscriber
 
 /// A fake transcriber that blocks on `processAudio` until unblocked.

@@ -24,9 +24,9 @@ struct ScriptShapeTests {
         #expect(TestScript.audioCapture.steps.count == 17)
     }
 
-    @Test("Transcription script has exactly 4 steps")
+    @Test("Transcription script has exactly 5 steps")
     func transcriptionStepCount() {
-        #expect(TestScript.transcription.steps.count == 4)
+        #expect(TestScript.transcription.steps.count == 5)
     }
 
     /// Saved manual results must use these stable IDs.
@@ -62,6 +62,7 @@ struct ScriptShapeTests {
             "tx_clear_cache",
             "tx_model_download",
             "tx_model_disk",
+            "tx_import_audio_file",
             "tx_ai_test_passed"
         ]
         #expect(ids == expected)

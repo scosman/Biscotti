@@ -182,7 +182,46 @@ struct ReadModelTests {
         let paths = try await store.audioPaths(meetingID: id)
         #expect(paths != nil)
         #expect(paths?.mic.path == "/audio/mic.aac")
-        #expect(paths?.system.path == "/audio/system.aac")
+        #expect(paths?.system?.path == "/audio/system.aac")
+    }
+
+    @Test("audioPaths returns mic with nil system when only a mic ref is present")
+    func audioPathsMicOnly() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Imported")
+
+        let micRef = AudioFileRef(role: .mic, path: "/audio/imported.m4a", byteSize: 100, isPresent: true)
+        try await store.attachAudio([micRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths?.mic.path == "/audio/imported.m4a")
+        #expect(paths?.system == nil)
+    }
+
+    @Test("audioPaths ignores a missing system file when mic is present")
+    func audioPathsMicPresentSystemMissing() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Partial")
+
+        let micRef = AudioFileRef(role: .mic, path: "/audio/mic.aac", byteSize: 100, isPresent: true)
+        let sysRef = AudioFileRef(role: .system, path: "/gone/system.aac", byteSize: 0, isPresent: false)
+        try await store.attachAudio([micRef, sysRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths?.mic.path == "/audio/mic.aac")
+        #expect(paths?.system == nil)
+    }
+
+    @Test("audioPaths returns nil when only a system ref is present")
+    func audioPathsSystemOnly() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "System Only")
+
+        let sysRef = AudioFileRef(role: .system, path: "/audio/system.aac", byteSize: 100, isPresent: true)
+        try await store.attachAudio([sysRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths == nil)
     }
 
     @Test("audioPaths returns nil when no audio refs")

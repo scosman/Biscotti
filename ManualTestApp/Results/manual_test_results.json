@@ -307,23 +307,23 @@
     "timestamp" : "2026-09-01T00:30:00Z"
   },
   "tx_ai_test_passed" : {
-    "status" : "pass",
-    "stepID" : "tx_ai_test_passed",
-    "timestamp" : "2026-10-01T18:24:12Z"
+    "status" : "not-run",
+    "stepID" : "tx_ai_test_passed"
   },
   "tx_clear_cache" : {
-    "status" : "pass",
-    "stepID" : "tx_clear_cache",
-    "timestamp" : "2026-10-01T18:24:22Z"
+    "status" : "not-run",
+    "stepID" : "tx_clear_cache"
+  },
+  "tx_import_audio_file" : {
+    "status" : "not-run",
+    "stepID" : "tx_import_audio_file"
   },
   "tx_model_disk" : {
-    "status" : "pass",
-    "stepID" : "tx_model_disk",
-    "timestamp" : "2026-10-01T18:24:10Z"
+    "status" : "not-run",
+    "stepID" : "tx_model_disk"
   },
   "tx_model_download" : {
-    "status" : "pass",
-    "stepID" : "tx_model_download",
-    "timestamp" : "2026-10-01T18:24:51Z"
+    "status" : "not-run",
+    "stepID" : "tx_model_download"
   }
 }

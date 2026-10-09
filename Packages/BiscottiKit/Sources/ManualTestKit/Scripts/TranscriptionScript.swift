@@ -29,6 +29,16 @@ public extension TestScript {
                     + "is expected; mark Pass."
             ),
             .humanQuestion(
+                id: "tx_import_audio_file",
+                prompt: "In the real Biscotti app (models downloaded), use File > Import "
+                    + "Audio File... on a real .m4a, then a .mp3, then a video (.mp4 or "
+                    + ".mov) that has an audio track. For each: does a new meeting appear "
+                    + "titled after the file, show Queued/Transcribing with a Cancel "
+                    + "button, and finish with a correct transcript, a duration matching "
+                    + "the file and a working audio player? Does importing several files "
+                    + "at once transcribe them one after another?"
+            ),
+            .humanQuestion(
                 id: "tx_ai_test_passed",
                 prompt: "Run `make test-ai` (downloads models; runs the automated "
                     + "transcription / diarization / custom-vocab quality tests). "

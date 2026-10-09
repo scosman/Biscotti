@@ -23,6 +23,11 @@ public enum MeetingDetailState: Sendable, Equatable {
 
     /// The job failed; the user may retry if `retriable` is true.
     case failed(message: String, retriable: Bool)
+
+    /// The user cancelled the first transcription, so there is no transcript
+    /// to show. The UI offers Retry, and Delete Meeting when `canDelete`
+    /// (imported audio, which has no recording worth keeping on its own).
+    case cancelled(canDelete: Bool)
 }
 
 /// View model for the Meeting Detail screen.
@@ -162,6 +167,10 @@ public final class MeetingDetailViewModel {
     private var pendingSeek: TimeInterval?
 
     // MARK: - Phase 11: Delete meeting
+
+    /// Whether this meeting came from "Transcribe an audio file" (see
+    /// `detectImportedAudio`). Loaded with the meeting data.
+    public private(set) var isImportedAudio: Bool = false
 
     /// Whether the delete confirmation dialog is presented.
     public var showDeleteConfirmation: Bool = false
@@ -472,10 +481,22 @@ public extension MeetingDetailViewModel {
         case .transcribing:
             return .processing(message: "Transcribing\u{2026}")
 
+        case .queued:
+            return .processing(
+                message: "Queued \u{2014} waiting for the current transcription"
+            )
+
         case let .failed(message, retriable):
             return .failed(message: message, retriable: retriable)
 
-        case .completed, .idle, .none:
+        case .cancelled where detail?.preferredTranscript == nil && !isLoading:
+            // Cancelled with nothing to fall back on (e.g. a first
+            // transcription): show the "Cancelled" state. When an earlier
+            // transcript exists (cancelled re-transcribe), fall through and
+            // keep showing it.
+            return .cancelled(canDelete: isImportedAudio)
+
+        case .completed, .idle, .cancelled, .none:
             if let detail, detail.preferredTranscript != nil {
                 return .transcript(detail)
             }
@@ -494,12 +515,53 @@ public extension MeetingDetailViewModel {
         core.transcription.jobs[meetingID]
     }
 
+    /// Whether a transcription job is running for this meeting (model
+    /// download or transcribing). Drives the Cancel button, which is shown
+    /// only while this is true.
+    var isTranscriptionRunning: Bool {
+        switch core.transcription.jobs[meetingID] {
+        case .downloadingModel, .transcribing: true
+        default: false
+        }
+    }
+
+    /// Whether this meeting is waiting for another transcription to finish.
+    /// Cancel is also offered in this state (it dequeues the meeting).
+    var isTranscriptionQueued: Bool {
+        core.transcription.jobs[meetingID] == .queued
+    }
+
+    /// Elapsed time of the running job as a clock string (`m:ss`, or
+    /// `h:mm:ss` past an hour), or nil when no job is running.
+    ///
+    /// The view passes the timeline date so the label ticks; tests pass a
+    /// fixed `now`. Defaults to the injected clock.
+    func transcriptionElapsedText(now: Date? = nil) -> String? {
+        guard isTranscriptionRunning,
+              let start = core.transcription.jobStartedAt[meetingID]
+        else { return nil }
+        return Self.formatElapsed((now ?? currentDate()).timeIntervalSince(start))
+    }
+
+    /// Formats an elapsed interval as `m:ss` (or `h:mm:ss`). Negative
+    /// intervals (clock skew) clamp to `0:00`.
+    internal static func formatElapsed(_ interval: TimeInterval) -> String {
+        let total = max(0, Int(interval))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     /// Whether the Re-transcribe action should be enabled.
     var canReTranscribe: Bool {
         guard let detail, detail.hasAudio else { return false }
         let jobStatus = core.transcription.jobs[meetingID]
         switch jobStatus {
-        case .downloadingModel, .transcribing:
+        case .downloadingModel, .transcribing, .queued:
             return false
         default:
             return true
@@ -960,14 +1022,29 @@ public extension MeetingDetailViewModel {
     /// Triggers a re-transcription of the meeting, then runs
     /// AI auto-enhancements (speaker-ID + summary) on the new transcript.
     func reTranscribe() async {
-        await core.transcription.reTranscribe(meetingID: meetingID)
+        // Waits its turn when another transcription is running.
+        let ran = await core.runQueuedTranscription(meetingID: meetingID) {
+            await core.transcription.reTranscribe(meetingID: meetingID)
+        }
         await load()
-        await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+        if ran, core.shouldRunEnhancements(meetingID: meetingID) {
+            await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+        }
+    }
+
+    /// Cancels this meeting's transcription: stops the running job, or
+    /// removes the meeting from the queue if it is still waiting. No-op
+    /// otherwise, so a stale tap cannot affect a later job.
+    func cancelTranscription() async {
+        guard isTranscriptionRunning || isTranscriptionQueued else { return }
+        await core.cancelTranscription(meetingID: meetingID)
     }
 
     /// Retries a failed transcription.
     func retry() async {
-        await core.transcription.transcribe(meetingID: meetingID)
+        await core.runQueuedTranscription(meetingID: meetingID) {
+            await core.transcription.transcribe(meetingID: meetingID)
+        }
         await load()
     }
 
@@ -1128,6 +1205,9 @@ private extension MeetingDetailViewModel {
     /// notes, settings, and title.
     func refreshData() async throws {
         detail = try await core.store.meetingDetail(id: meetingID)
+        isImportedAudio = await Self.detectImportedAudio(
+            store: core.store, meetingID: meetingID
+        )
         calendarContext = detail?.calendar
         editableTitle = detail?.title ?? ""
         notes = detail?.notes ?? ""
@@ -1137,6 +1217,22 @@ private extension MeetingDetailViewModel {
         catalogueTags = try await core.store.allTags()
         let settings = try? await core.store.settings()
         aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
+    }
+
+    /// Whether the meeting was created by "Transcribe an audio file".
+    ///
+    /// There is no dedicated flag in the store. The reliable marker is the
+    /// shape `AppCore.importAudioFile` produces: a single `.mic` ref whose
+    /// file is named `imported.<ext>` and no system track. Recorded meetings
+    /// are named `mic.aac`/`system.aac`, so they can never match. Uses the
+    /// stored refs (paths survive a deleted file).
+    static func detectImportedAudio(
+        store: DataStore, meetingID: UUID
+    ) async -> Bool {
+        guard let refs = try? await store.storedAudioFileRefs(meetingID: meetingID),
+              let mic = refs.mic, refs.system == nil
+        else { return false }
+        return mic.lastPathComponent.hasPrefix("imported.")
     }
 
     func loadAudioPlayer() async {

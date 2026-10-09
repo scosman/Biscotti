@@ -8,10 +8,13 @@ import Foundation
 /// fully `Codable`.
 public struct XPCProcessRequest: Codable {
     public let micPath: String
-    public let systemPath: String
+    /// `nil` for a single-track source (e.g. an imported audio file). Optional
+    /// `Codable` fields decode as `nil` when the key is absent, so requests
+    /// from older clients still decode.
+    public let systemPath: String?
     public let customVocabulary: [String]
 
-    public init(micPath: String, systemPath: String, customVocabulary: [String]) {
+    public init(micPath: String, systemPath: String?, customVocabulary: [String]) {
         self.micPath = micPath
         self.systemPath = systemPath
         self.customVocabulary = customVocabulary

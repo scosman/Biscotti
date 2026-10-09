@@ -149,12 +149,8 @@ public struct AppShellView: View {
         .searchFocused($searchFieldFocused)
         .toolbar {
             homeToolbarItem
-            ToolbarItem(placement: .primaryAction) {
-                importAudioButton
-            }
-            ToolbarItem(placement: .primaryAction) {
-                recordButton
-            }
+            importAudioToolbarItem
+            recordToolbarItem
         }
         .onChange(of: viewModel.searchFocusToken) { _, _ in
             searchFieldFocused = true
@@ -335,14 +331,41 @@ private extension AppShellView {
     }
 
     /// Transcribe an existing audio file (also File > Import Audio File).
-    var importAudioButton: some View {
-        Button {
-            Task { await viewModel.importAudioFiles() }
-        } label: {
-            Image(systemName: "square.and.arrow.down")
+    /// Built like the Home button (plain icon button), with a fixed gap before
+    /// Record so the two don't share one toolbar pill.
+    @ToolbarContentBuilder
+    var importAudioToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                Task { await viewModel.importAudioFiles() }
+            } label: {
+                // The glyph sits low in the toolbar pill; nudge it up to centre it.
+                Image(systemName: "square.and.arrow.down")
+                    .frame(width: 20, height: 20)
+                    .offset(y: -3)
+            }
+            .help("Import audio file")
+            .accessibilityLabel("Import audio file")
         }
-        .help("Import audio file")
-        .accessibilityLabel("Import audio file")
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+    }
+
+    /// Record paints its own fill, so on macOS 26+ it opts out of the shared
+    /// toolbar glass; otherwise its fill overlaps the neighbouring import pill.
+    @ToolbarContentBuilder
+    var recordToolbarItem: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .primaryAction) {
+                recordButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                recordButton
+            }
+        }
     }
 
     /// The stateful Record affordance: a live recording indicator while

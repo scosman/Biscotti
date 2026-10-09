@@ -32,7 +32,8 @@ public final class RecordingController {
 
     private let store: DataStore
     private let permissions: Permissions
-    private let storageRoot: URL
+    /// Root directory holding one subdirectory per meeting (`<root>/<meetingUUID>/`).
+    public let storageRoot: URL
     private let makeRecorder: @Sendable () -> any RecorderControlling
 
     /// How long to wait before checking system-audio denial (injectable for tests).
@@ -52,7 +53,7 @@ public final class RecordingController {
 
     /// Name of the marker file written into each recording directory.
     /// Presence indicates an in-progress (or crashed) recording.
-    public static let markerFileName = ".recording"
+    public nonisolated static let markerFileName = ".recording"
 
     // MARK: - Init
 
@@ -77,6 +78,14 @@ public final class RecordingController {
         self.storageRoot = storageRoot
         self.makeRecorder = makeRecorder
         self.denialCheckDelay = denialCheckDelay
+    }
+
+    // MARK: - Paths
+
+    /// The per-meeting storage directory (`<storageRoot>/<meetingUUID>/`) used
+    /// by live recordings and imported audio files alike.
+    public func meetingDirectory(for meetingID: UUID) -> URL {
+        storageRoot.appendingPathComponent(meetingID.uuidString)
     }
 
     // MARK: - Notes
@@ -178,7 +187,7 @@ public final class RecordingController {
         denialCheckTask = nil
 
         // Delete the marker file
-        let meetingDir = storageRoot.appendingPathComponent(meetingID.uuidString)
+        let meetingDir = meetingDirectory(for: meetingID)
         let markerURL = meetingDir.appendingPathComponent(Self.markerFileName)
         try? FileManager.default.removeItem(at: markerURL)
 
@@ -323,7 +332,7 @@ public final class RecordingController {
             return nil
         }
 
-        let meetingDir = storageRoot.appendingPathComponent(meetingID.uuidString)
+        let meetingDir = meetingDirectory(for: meetingID)
         let micPath = meetingDir.appendingPathComponent("mic.aac")
         let systemPath = meetingDir.appendingPathComponent("system.aac")
 
@@ -358,7 +367,7 @@ public final class RecordingController {
     /// partway through `start()`. Best-effort -- if cleanup itself fails, the
     /// meeting + marker remain and `recoverOrphans` will reconcile on next launch.
     private func cleanupFailedStart(meetingID: UUID) {
-        let meetingDir = storageRoot.appendingPathComponent(meetingID.uuidString)
+        let meetingDir = meetingDirectory(for: meetingID)
         try? FileManager.default.removeItem(at: meetingDir)
         let capturedStore = store
         cleanupTask = Task { try? await capturedStore.delete(meetingID: meetingID) }

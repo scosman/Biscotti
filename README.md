@@ -65,9 +65,18 @@ Every step happens on your Mac. Your audio and transcripts never leave your Mac.
 
 ## Install
 
+### Direct Download
+
 1. Download [`Biscotti.dmg`](https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg).
 2. Open the dmg, then copy **Biscotti.app** to your Applications folder.
-3. Open Biscotti and follow the quick setup to grant microphone, system‑audio, and calendar access.
+3. Open Biscotti and follow the quick setup to grant permissions for microphone, system‑audio, and calendar access.
+
+### Homebrew
+
+If you use Homebrew, installation is easy:
+
+1. Run `brew install biscotti`
+2. Now, open Biscotti and follow the above instructions as you normally would.
 
 ## FAQ
 

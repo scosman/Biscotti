@@ -850,7 +850,10 @@ private extension MeetingDetailView {
     ) -> some View {
         VStack {
             Spacer()
-            EnhancementPipelineView(stages: stages)
+            VStack(spacing: Tokens.spacingMD) {
+                EnhancementPipelineView(stages: stages)
+                transcriptionCancelControls
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -934,6 +937,10 @@ private extension MeetingDetailView {
         case let .failed(message, retriable):
             failedContent(message: message, retriable: retriable)
                 .frame(height: fill)
+
+        case let .cancelled(canDelete):
+            cancelledContent(canDelete: canDelete)
+                .frame(height: fill)
         }
     }
 
@@ -960,6 +967,75 @@ private extension MeetingDetailView {
                             .multilineTextAlignment(.center)
                     }
                 }
+
+                transcriptionCancelControls
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Elapsed time and a Cancel button for the running transcription job.
+    /// Renders nothing unless a job is running (the engine has no numeric
+    /// progress, so elapsed time is the only liveness signal). The
+    /// timeline re-evaluates the label every second.
+    @ViewBuilder
+    var transcriptionCancelControls: some View {
+        if viewModel.isTranscriptionRunning || viewModel.isTranscriptionQueued {
+            VStack(spacing: Tokens.spacingSM) {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if let elapsed = viewModel.transcriptionElapsedText(
+                        now: context.date
+                    ) {
+                        Text("Elapsed \(elapsed)")
+                            .font(.monoMeta)
+                            .monospacedDigit()
+                            .foregroundStyle(.inkSecondary)
+                            .accessibilityLabel("Transcription elapsed time \(elapsed)")
+                    }
+                }
+
+                Button("Cancel") {
+                    Task { await viewModel.cancelTranscription() }
+                }
+                .controlSize(.small)
+                .accessibilityLabel("Cancel transcription")
+                .accessibilityHint(
+                    viewModel.isTranscriptionQueued
+                        ? "Removes this meeting from the transcription queue"
+                        : "Stops transcribing this meeting"
+                )
+            }
+        }
+    }
+
+    /// Transcription was cancelled before any transcript existed. Retry
+    /// re-runs it; imported audio can also be deleted outright, since the
+    /// meeting is only a copy of the file the user picked.
+    func cancelledContent(canDelete: Bool) -> some View {
+        VStack {
+            Spacer()
+            VStack(spacing: Tokens.spacingSM) {
+                Text("Transcription cancelled")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.inkSecondary)
+                Text("This meeting has no transcript yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.inkSecondary)
+                HStack(spacing: Tokens.spacingSM) {
+                    Button("Retry") {
+                        Task { await viewModel.reTranscribe() }
+                    }
+                    .disabled(!viewModel.canReTranscribe)
+                    .accessibilityLabel("Retry transcription")
+                    if canDelete {
+                        Button("Delete Meeting\u{2026}", role: .destructive) {
+                            viewModel.requestDelete()
+                        }
+                        .accessibilityLabel("Delete meeting")
+                    }
+                }
+                .controlSize(.small)
             }
             Spacer()
         }

@@ -77,7 +77,7 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
     public func processAudio(
         micPath: String,
-        systemPath: String,
+        systemPath: String?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         Self.log.debug("processAudio: begin")
@@ -185,7 +185,7 @@ extension InProcessTranscriptionEngine {
 
 private extension InProcessTranscriptionEngine {
     func loadAndMergeAudio(
-        micPath: String, systemPath: String
+        micPath: String, systemPath: String?
     ) throws -> AudioLoading.MergeResult {
         try AudioLoading.loadAndMerge(micPath: micPath, systemPath: systemPath)
     }

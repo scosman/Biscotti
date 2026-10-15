@@ -387,6 +387,32 @@ struct XPCEngineAdapterRoundTripTests {
         #expect(receivedRequest?.customVocabulary == ["Biscotti", "WhisperKit"])
     }
 
+    @Test("processAudio with a nil system path round-trips a nil systemPath")
+    func processAudioSingleTrackRoundTrip() async throws {
+        let mockService = MockTranscriberService()
+        mockService.processAudioResult = makeFixtureResult()
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+
+        _ = try await adapter.processAudio(
+            micPath: "/tmp/imported.m4a", systemPath: nil, customVocabulary: []
+        )
+
+        let receivedRequest = mockService.lastProcessRequest
+        #expect(receivedRequest?.micPath == "/tmp/imported.m4a")
+        #expect(receivedRequest?.systemPath == nil)
+    }
+
+    @Test("XPCProcessRequest JSON without a systemPath key decodes with nil")
+    func requestDecodesWithoutSystemPath() throws {
+        let json = Data(#"{"micPath":"/tmp/mic.wav","customVocabulary":["a"]}"#.utf8)
+
+        let request = try JSONDecoder().decode(XPCProcessRequest.self, from: json)
+
+        #expect(request.micPath == "/tmp/mic.wav")
+        #expect(request.systemPath == nil)
+        #expect(request.customVocabulary == ["a"])
+    }
+
     @Test("unloadModels round-trips through mock service")
     func unloadModelsRoundTrip() async {
         let mockService = MockTranscriberService()

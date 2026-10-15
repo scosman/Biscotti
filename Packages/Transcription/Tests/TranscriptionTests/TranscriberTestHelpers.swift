@@ -31,7 +31,7 @@ actor StubTranscriptionEngine: TranscriptionEngine {
 
     func processAudio(
         micPath _: String,
-        systemPath _: String,
+        systemPath _: String?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         processAudioCallCount += 1

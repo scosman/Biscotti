@@ -593,6 +593,57 @@ struct PipelineReTranscribeTests {
         // The LLM runner should have been called (proving auto-enhancements ran)
         #expect(fix.fakeLLMRunner.sessionCount == 1)
     }
+
+    @Test("a cancelled reTranscribe does not run auto-enhancements")
+    @MainActor
+    func cancelledReTranscribeSkipsAutoRun() async throws {
+        let fix = try makeCoreFixture(modelDownloaded: true, testName: "PipelineStatusTests")
+        defer { fix.cleanup() }
+        let meetingID = try await fix.createMeetingWithAudio()
+        let txID = try await fix.store.addTranscript(
+            FakeTranscriber.defaultResult, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(txID, for: meetingID)
+        let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await viewModel.load()
+        fix.fakeEngine.backing.blocksUntilShutdown = true
+
+        let job = Task { @MainActor in await viewModel.reTranscribe() }
+        for _ in 0 ..< 500 where !fix.fakeEngine.backing.processAudioStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(fix.fakeEngine.backing.processAudioStarted)
+        await viewModel.cancelTranscription()
+        await job.value
+
+        #expect(fix.core.transcription.jobs[meetingID] == .cancelled)
+        #expect(fix.fakeLLMRunner.sessionCount == 0)
+    }
+
+    @Test("a failed reTranscribe does not run auto-enhancements")
+    @MainActor
+    func failedReTranscribeSkipsAutoRun() async throws {
+        let fix = try makeCoreFixture(modelDownloaded: true, testName: "PipelineStatusTests")
+        defer { fix.cleanup() }
+        let meetingID = try await fix.createMeetingWithAudio()
+        let txID = try await fix.store.addTranscript(
+            FakeTranscriber.defaultResult, vocabularyUsed: [],
+            mappedEventIdentifier: nil, to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(txID, for: meetingID)
+        let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await viewModel.load()
+        fix.fakeEngine.backing.processAudioError = TranscriptionError.transcriptionFailed("boom")
+
+        await viewModel.reTranscribe()
+
+        guard case .failed = fix.core.transcription.jobs[meetingID] else {
+            Issue.record("expected .failed, got \(String(describing: fix.core.transcription.jobs[meetingID]))")
+            return
+        }
+        #expect(fix.fakeLLMRunner.sessionCount == 0)
+    }
 }
 
 // MARK: - Handoff gap (Issue 1: no spinner between transcribe and enhance)

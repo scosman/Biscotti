@@ -85,6 +85,48 @@ struct MeetingDetailDisplayStateTests {
         }
     }
 
+    @Test("displayState is .cancelled (not deletable) when a recorded meeting is cancelled with no transcript")
+    @MainActor
+    func displayStateCancelledNoTranscript() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        fix.core.transcription.jobs[meetingID] = .cancelled
+
+        let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await viewModel.load()
+
+        #expect(viewModel.displayState == .cancelled(canDelete: false))
+        #expect(viewModel.canReTranscribe)
+    }
+
+    @Test("displayState keeps showing the existing transcript when a re-transcribe is cancelled")
+    @MainActor
+    func displayStateCancelledWithTranscript() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        let transcriptID = try await fix.store.addTranscript(
+            FakeTranscriber.defaultResult,
+            vocabularyUsed: [],
+            mappedEventIdentifier: nil,
+            to: meetingID
+        )
+        try await fix.store.setPreferredTranscript(transcriptID, for: meetingID)
+        fix.core.transcription.jobs[meetingID] = .cancelled
+
+        let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await viewModel.load()
+
+        if case .transcript = viewModel.displayState {
+            // expected
+        } else {
+            Issue.record("Expected .transcript state, got \(viewModel.displayState)")
+        }
+    }
+
     @Test("displayState is .failed when job failed with retriable error")
     @MainActor
     func displayStateFailedRetriable() async throws {

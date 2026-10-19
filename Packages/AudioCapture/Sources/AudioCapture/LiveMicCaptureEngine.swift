@@ -45,6 +45,15 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         _micWriteError.withLock { $0 }
     }
 
+    /// Buffer-flow timestamps for the recorder's stall watchdog. Owned here
+    /// (not by the session) so it is readable from any thread without
+    /// touching the engineQueue-owned `session`.
+    private let healthTracker = StreamHealthTracker()
+
+    var streamHealth: StreamHealth {
+        healthTracker.snapshot
+    }
+
     var onUnrecoverableError: (@Sendable (Error) -> Void)?
 
     /// Registration is copied into each session before capture starts. Audio
@@ -68,6 +77,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         guard !capturingFlag.load(ordering: .acquiring) else { return }
         let callback = firstBufferCallback.withLock { $0 }
         _micWriteError.withLock { $0 = nil }
+        healthTracker.reset()
         capturingFlag.store(true, ordering: .releasing)
 
         // Run the initial engine build on engineQueue via a continuation so
@@ -84,7 +94,9 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                 engineQueue.async { [self] in
                     isTearingDown = false
                     do {
-                        session = try MicCaptureSession(url: url, encoder: encoder, onFirstBuffer: callback)
+                        session = try MicCaptureSession(
+                            url: url, encoder: encoder, onFirstBuffer: callback, healthTracker: healthTracker
+                        )
                         try buildAndStartEngineOrThrow()
                         installConfigChangeObserver()
                         cont.resume()

@@ -200,6 +200,61 @@ struct MicCaptureSessionTests {
                 "File duration \(fileDurationSec)s should be close to \(expectedDurationSec)s without silence fill")
     }
 
+    /// A plain (non-VPIO) tap can deliver a multichannel discrete stream,
+    /// which AVAudioConverter maps to silence. The downmix path must average
+    /// the channels — with channel 0 silent, a channel-0-only extraction
+    /// would write nothing, so a decoded tone proves averaging.
+    @Test("Downmix averages multichannel taps to mono")
+    func downmixAveragesChannels() throws {
+        let url = temporaryRecording()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = try MicCaptureSession(
+            url: url,
+            encoder: .voice,
+            downmixChannels: true,
+            onFirstBuffer: nil
+        )
+        defer { session.close() }
+
+        // Channel 0 = silence, channel 1 = tone. Average = tone * 0.5.
+        let mono = try toneBuffer()
+        let format = mono.format
+        let multichannel = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: format.sampleRate,
+            channels: 2,
+            interleaved: false
+        ))
+        let buffer = try #require(AVAudioPCMBuffer(
+            pcmFormat: multichannel, frameCapacity: mono.frameLength
+        ))
+        buffer.frameLength = mono.frameLength
+        let ch0 = try #require(buffer.floatChannelData?[0])
+        let ch1 = try #require(buffer.floatChannelData?[1])
+        let src = try #require(mono.floatChannelData?[0])
+        for frame in 0 ..< Int(mono.frameLength) {
+            ch0[frame] = 0
+            ch1[frame] = src[frame]
+        }
+
+        let tap = session.makeTapHandler()
+        tap(buffer, timestamp(seconds: 1))
+        #expect(session.hasDeliveredBuffer)
+        session.flushWriter()
+        session.close()
+
+        let sampleRate = EncoderSettings.voice.processingFormat.sampleRate
+        let samples = try MicCaptureTestHelpers.decodedSamples(url)
+        let peak = try Double(#require(samples.map { abs($0) }.max(), "no decoded samples"))
+        let srcPeak = 0.2
+        // The averaged tone (srcPeak / 2) must survive 24 kHz resampling and
+        // lossy AAC: well above noise floor, clearly below the un-averaged
+        // channel amplitude.
+        #expect(peak > srcPeak * 0.25, "decoded peak \(peak) — downmix likely dropped the signal")
+        #expect(peak < srcPeak, "decoded peak \(peak) — channels were not averaged")
+        #expect(sampleRate == 24000)
+    }
+
     /// Gap fill spans a tap replacement (reconnect). The session keeps the
     /// expected-next timestamp across taps so the gap is detected and filled.
     @Test("Gap fill works across tap replacement (reconnect)")

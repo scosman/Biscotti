@@ -61,6 +61,12 @@ enum WiredScripts {
             micAAC: captureDirectory.appendingPathComponent("mic.aac"),
             systemAAC: captureDirectory.appendingPathComponent("system.aac")
         )
+        // Separate files for the no-voice-processing run so the playback
+        // question compares against the regular capture.
+        let plainPaths = CapturePaths(
+            micAAC: captureDirectory.appendingPathComponent("plain_mic.aac"),
+            systemAAC: captureDirectory.appendingPathComponent("plain_system.aac")
+        )
 
         let wiredSteps = script.steps.map { step -> TestStep in
             switch step {
@@ -108,6 +114,37 @@ enum WiredScripts {
                         await MainActor.run {
                             NSWorkspace.shared.activateFileViewerSelecting(
                                 [paths.micAAC, paths.systemAAC]
+                            )
+                        }
+                    }
+                case "ac_start_recording_no_vpio":
+                    return .action(id: id, label: label) { _ in
+                        try FileManager.default.createDirectory(
+                            at: captureDirectory,
+                            withIntermediateDirectories: true
+                        )
+                        // Same wiring as the regular start, but the recorder
+                        // bypasses VoiceProcessingIO so the built-in mic
+                        // stays available to the concurrent call.
+                        let recorder = AudioRecorder.live(useVoiceProcessing: false)
+                        activeRecorder.withLock { $0 = recorder }
+                        do {
+                            try await recorder.start(paths: plainPaths)
+                        } catch {
+                            activeRecorder.withLock { $0 = nil }
+                            throw error
+                        }
+                    }
+                case "ac_stop_recording_no_vpio":
+                    return .action(id: id, label: label) { _ in
+                        let recorder = activeRecorder.withLock { current -> AudioRecorder? in
+                            defer { current = nil }
+                            return current
+                        }
+                        await recorder?.stop()
+                        await MainActor.run {
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                [plainPaths.micAAC, plainPaths.systemAAC]
                             )
                         }
                     }

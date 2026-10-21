@@ -668,11 +668,21 @@ public extension AudioRecorder {
     /// Creates a recorder wired to real Core Audio / AVAudioEngine backends.
     ///
     /// Use this for production; use the main `init` with fakes for tests.
-    static func live(encoder: EncoderSettings = .voice) -> AudioRecorder {
+    ///
+    /// - Parameter useVoiceProcessing: When true (default), mic capture runs
+    ///   through VoiceProcessingIO for noise-suppressed, normalised audio.
+    ///   When false, capture uses a plain input tap, which leaves the
+    ///   built-in mic available to other applications (VPIO's aggregate
+    ///   device otherwise holds it exclusively) — at the cost of VPIO's
+    ///   noise suppression and AGC.
+    static func live(
+        encoder: EncoderSettings = .voice,
+        useVoiceProcessing: Bool = true
+    ) -> AudioRecorder {
         let permissionChecker = LiveSystemPermissionChecker()
         return AudioRecorder(
             systemEngine: LiveSystemCaptureEngine(permissionChecker: permissionChecker, encoder: encoder),
-            micEngine: LiveMicCaptureEngine(encoder: encoder),
+            micEngine: LiveMicCaptureEngine(encoder: encoder, useVoiceProcessing: useVoiceProcessing),
             deviceChangeProvider: LiveDeviceChangeProvider(),
             permissionChecker: permissionChecker,
             micPermissionChecker: LiveMicPermissionChecker(),

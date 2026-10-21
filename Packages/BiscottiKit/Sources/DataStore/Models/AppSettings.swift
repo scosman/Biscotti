@@ -34,6 +34,11 @@ import SwiftData
     /// Whether meeting-detected notifications are presented.
     public var monitorForMeetings: Bool = true
 
+    /// Whether mic capture uses VoiceProcessingIO. On by default (noise
+    /// suppression + AGC); off captures a plain input stream so the
+    /// built-in mic stays usable by other applications.
+    public var useVoiceProcessing: Bool = true
+
     /// Whether recording auto-stops when all mic users leave.
     public var stopRecordingAutomatically: Bool = true
 
@@ -103,6 +108,7 @@ import SwiftData
         globalRecordShortcutEnabled: Bool = true,
         menuBarLeadTimeSeconds: Int = 3600,
         monitorForMeetings: Bool = true,
+        useVoiceProcessing: Bool = true,
         stopRecordingAutomatically: Bool = true,
         calendarNotificationModeRaw: String = "allMeetings",
         onboardingComplete: Bool = false,
@@ -120,6 +126,7 @@ import SwiftData
         self.globalRecordShortcutEnabled = globalRecordShortcutEnabled
         self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
         self.monitorForMeetings = monitorForMeetings
+        self.useVoiceProcessing = useVoiceProcessing
         self.stopRecordingAutomatically = stopRecordingAutomatically
         self.calendarNotificationModeRaw = calendarNotificationModeRaw
         self.onboardingComplete = onboardingComplete

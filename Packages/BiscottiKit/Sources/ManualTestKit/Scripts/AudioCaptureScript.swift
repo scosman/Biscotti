@@ -55,6 +55,34 @@ public extension TestScript {
                     + "In playback you should hear the mic source change (built-in → AirPods → built-in); "
                     + "capture survives the transitions without crash or silence."
             ),
+            .instruction(
+                id: "ac_plain_setup",
+                text: "With a call running (Slack Huddle, Teams, or a Google Meet instant "
+                    + "meeting): press 'Run' on Start Recording (no voice processing), speak for "
+                    + "15+ seconds, then press 'Run' on Stop Recording (no voice processing)."
+            ),
+            .action(
+                id: "ac_start_recording_no_vpio",
+                label: "Start Recording (no voice processing)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .action(
+                id: "ac_stop_recording_no_vpio",
+                label: "Stop Recording (no voice processing)",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .humanQuestion(
+                id: "ac_other_app_hears_mic",
+                prompt: "During the recording above, did the other party in your call hear you "
+                    + "normally — i.e. the call's own microphone input was NOT muted while "
+                    + "Biscotti recorded without voice processing?"
+            ),
+            .humanQuestion(
+                id: "ac_plain_playback",
+                prompt: "Play the mic .aac from the no-voice-processing recording — is your voice "
+                    + "audible? (It may sound less processed than the voice-processing capture: "
+                    + "no noise suppression or AGC.)"
+            ),
             .humanQuestion(
                 id: "ac_device_sample_rate",
                 prompt: "Mid-recording: (1) connect AirPods/Bluetooth headphones (triggers a sample-rate "

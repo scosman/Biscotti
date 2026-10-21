@@ -43,13 +43,15 @@ public extension AppCore {
         let recordingsRoot = storageRoot.appendingPathComponent("Recordings")
 
         logger.info("AppCore.live: RecordingController init")
-        let recording = RecordingController(
+        // The recorder is made on demand (only when a recording starts,
+        // long after `core` is built), so its factory reads the user's
+        // voice-processing setting through this lock. Capturing the lock
+        // (not `core`) keeps the AppCore → recording → closure chain
+        // cycle-free; AppCore's settings observer shares the same lock.
+        let (recording, micVoiceProcessing) = makeLiveRecordingController(
             store: store,
             permissions: permissions,
-            storageRoot: recordingsRoot,
-            makeRecorder: {
-                LiveRecorderAdapter(recorder: AudioRecorder.live())
-            }
+            recordingsRoot: recordingsRoot
         )
 
         let transcription = buildTranscription(
@@ -85,8 +87,31 @@ public extension AppCore {
             intelligence: intelligence,
             modelManager: modelManager
         )
+        core.micVoiceProcessing = micVoiceProcessing
         logger.info("AppCore.live: done")
         return core
+    }
+
+    /// Builds the live `RecordingController` plus the shared voice-processing
+    /// lock its recorder factory reads at start time. Extracted to keep
+    /// `live(storageRoot:…)` under the function body length lint limit.
+    @MainActor
+    private static func makeLiveRecordingController(
+        store: DataStore,
+        permissions: Permissions,
+        recordingsRoot: URL
+    ) -> (RecordingController, OSAllocatedUnfairLock<Bool>) {
+        let micVoiceProcessing = OSAllocatedUnfairLock(initialState: true)
+        let recording = RecordingController(
+            store: store,
+            permissions: permissions,
+            storageRoot: recordingsRoot,
+            makeRecorder: {
+                let useVP = micVoiceProcessing.withLock { $0 }
+                return LiveRecorderAdapter(recorder: AudioRecorder.live(useVoiceProcessing: useVP))
+            }
+        )
+        return (recording, micVoiceProcessing)
     }
 
     /// Builds the live `ModelManager` + `Intelligence` with real LocalLLM-backed

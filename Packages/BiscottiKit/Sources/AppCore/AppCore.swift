@@ -52,6 +52,13 @@ public extension Notification.Name {
         "net.scosman.biscotti.calendarNotificationModeDidChange"
     )
 
+    /// Posted after the microphone noise-suppression setting is toggled.
+    /// AppCore observes this to refresh the flag the live mic capture reads
+    /// when it builds the next recorder.
+    static let micVoiceProcessingDidChange = Notification.Name(
+        "net.scosman.biscotti.micVoiceProcessingDidChange"
+    )
+
     /// Posted after the "stop recording automatically" setting is toggled.
     /// AppCore observes this to refresh its cached flag.
     static let stopRecordingAutomaticallyDidChange = Notification.Name(
@@ -210,13 +217,6 @@ public final class AppCore {
     /// clock. Driven by the `AppScheduler` seam for testability.
     public private(set) var minuteTick: Date = .init()
 
-    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
-    /// The sidebar, menu bar, and home screen should use this instead of
-    /// `upcoming` directly.
-    public var displayedUpcoming: [CalendarEvent] {
-        upcoming.filter { $0.end > minuteTick }
-    }
-
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
 
@@ -258,6 +258,11 @@ public final class AppCore {
     /// Cached "stop recording automatically" toggle. Gates whether the
     /// auto-stop countdown fires when mic users leave.
     public private(set) var stopRecordingAutomatically = true
+
+    /// Lock-protected mic voice-processing flag. Read by the live `makeRecorder`
+    /// closure when a recording starts; updated by the settings observer.
+    /// The `live` factory replaces it with a lock shared with that closure.
+    public var micVoiceProcessing = OSAllocatedUnfairLock<Bool>(initialState: true)
 
     // MARK: - Child services (publicly readable for the UI layer)
 
@@ -701,6 +706,13 @@ public extension AppCore {
         IntelligencePrompts.defaultSummaryPrompt
     }
 
+    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
+    /// The sidebar, menu bar, and home screen should use this instead of
+    /// `upcoming` directly.
+    var displayedUpcoming: [CalendarEvent] {
+        upcoming.filter { $0.end > minuteTick }
+    }
+
     /// Saved prompt resolved to its effective text (empty -> default).
     func effectiveSummaryPrompt() async -> String {
         let raw = await (try? store.settings())?.summaryPrompt ?? ""
@@ -949,6 +961,7 @@ extension AppCore {
         monitorForMeetings = settings.monitorForMeetings
         calendarNotificationMode = settings.calendarNotificationMode
         stopRecordingAutomatically = settings.stopRecordingAutomatically
+        micVoiceProcessing.withLock { $0 = settings.useVoiceProcessing }
     }
 
     /// Starts async observers that refresh cached notification settings
@@ -973,6 +986,9 @@ extension AppCore {
             },
             settingsObserverTask(for: .stopRecordingAutomaticallyDidChange) { [weak self] in
                 self?.stopRecordingAutomatically = $0.stopRecordingAutomatically
+            },
+            settingsObserverTask(for: .micVoiceProcessingDidChange) { [weak self] settings in
+                self?.micVoiceProcessing.withLock { $0 = settings.useVoiceProcessing }
             },
             settingsObserverTask(for: .mcpServerEnabledDidChange) { [weak self] in
                 await self?.mcpServer.applyEnabled($0.mcpServerEnabled)

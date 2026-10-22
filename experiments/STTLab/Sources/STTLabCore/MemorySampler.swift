@@ -9,7 +9,7 @@ public actor MemorySampler {
     private var samplingTask: Task<Void, Never>?
     private var peakFootprint: UInt64 = 0
     private var sampleCount: Int = 0
-    private var systemPeaks: [Int32: (name: String, peak: UInt64)] = [:]
+    private var systemPeaks: [Int32: (name: String, peak: UInt64, lifetimeMax: UInt64)] = [:]
     private var systemNote: String?
 
     public init(interval: TimeInterval = 0.5, watchSystemProcesses: Bool = false) {
@@ -34,7 +34,10 @@ public actor MemorySampler {
         let lifetimePeak = readLifetimePeakFootprint()
 
         let systemProcesses = systemPeaks.map { pid, entry in
-            ProcessMemory(name: entry.name, pid: pid, peakFootprintBytes: entry.peak)
+            ProcessMemory(
+                name: entry.name, pid: pid, peakFootprintBytes: entry.peak,
+                lifetimeMaxFootprintBytes: entry.lifetimeMax > 0 ? entry.lifetimeMax : nil
+            )
         }.sorted { $0.name < $1.name }
 
         return MemoryReport(
@@ -93,12 +96,15 @@ public actor MemorySampler {
             }
             if result == 0 {
                 let footprint = usage.ri_phys_footprint
+                let lifetimeMax = usage.ri_lifetime_max_phys_footprint
                 if let existing = systemPeaks[pid] {
-                    if footprint > existing.peak {
-                        systemPeaks[pid] = (name, footprint)
-                    }
+                    systemPeaks[pid] = (
+                        name,
+                        max(footprint, existing.peak),
+                        max(lifetimeMax, existing.lifetimeMax)
+                    )
                 } else {
-                    systemPeaks[pid] = (name, footprint)
+                    systemPeaks[pid] = (name, footprint, lifetimeMax)
                 }
             } else {
                 let errMsg = "EPERM for pid \(pid) (\(name))"

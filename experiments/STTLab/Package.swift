@@ -10,7 +10,8 @@ let package = Package(
         .library(name: "STTLabCore", targets: ["STTLabCore"]),
         .library(name: "STTLabHome", targets: ["STTLabHome"]),
         .library(name: "STTLabAnalysis", targets: ["STTLabAnalysis"]),
-        .executable(name: "sttlab", targets: ["sttlab"])
+        .executable(name: "sttlab", targets: ["sttlab"]),
+        .executable(name: "STTLabRunner", targets: ["STTLabRunner"])
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0"),
@@ -47,6 +48,11 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/sttlab"
+        ),
+        .executableTarget(
+            name: "STTLabRunner",
+            dependencies: ["STTLabCore"],
+            path: "Sources/STTLabRunner"
         ),
         .testTarget(
             name: "STTLabCoreTests",

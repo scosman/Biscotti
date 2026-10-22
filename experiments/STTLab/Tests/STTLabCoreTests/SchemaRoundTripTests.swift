@@ -60,7 +60,11 @@ struct SchemaRoundTripTests {
             sampleIntervalSeconds: 0.5,
             sampleCount: 120,
             systemProcesses: [
-                ProcessMemory(name: "speechsynthesisd", pid: 412, peakFootprintBytes: 52_428_800)
+                ProcessMemory(
+                    name: "speechsynthesisd", pid: 412,
+                    peakFootprintBytes: 52_428_800,
+                    lifetimeMaxFootprintBytes: 104_857_600
+                )
             ],
             systemProcessesNote: nil
         )

@@ -87,7 +87,7 @@ public enum Timing {
     }
 
     /// Compute TimingStats from a list of signed deltas.
-    static func computeStats(_ deltas: [Double]) -> TimingStats {
+    public static func computeStats(_ deltas: [Double]) -> TimingStats {
         guard !deltas.isEmpty else { return TimingStats(pairs: 0) }
 
         let absSorted = deltas.map { abs($0) }.sorted()

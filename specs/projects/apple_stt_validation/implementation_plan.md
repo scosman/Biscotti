@@ -13,4 +13,4 @@ All code is in `experiments/STTLab/` (see `architecture.md` and `components/`). 
 - [x] Phase 3: Home engines: ProductionSettings (+ drift test), WhisperRunner, DiarizationRunner (+ SavedDiarization round trip), ChunkPlanner, OpenRouterClient + retry/split policy + response parsing, ReferenceRunner (+ probe, cost prompt), `whisper`/`diarize`/`reference`/`home-run` commands, tests.
 - [x] Phase 4: Runner app: RunnerApp/View/Model, RunnerJob, AppleTranscription (macOS 26+), ResultsWriter, CLI mode, `scripts/package_runner.sh`, tests for the pure parts.
 - [x] Phase 5: Analysis core: model types, AppleWordGrouper, Normalizer, Aligner (Hirschberg + naive), WER, TieBreak, Flags, TextQuality, Timing, tests.
-- [ ] Phase 6: Speaker alignment (bridge + ProductionAssembly + sanitizer), AnalyzeInputs, SpeakerMetrics, ReportModel + MarkdownRenderer + transcripts, the `analyze` command, `NOTES.md` (how to run, end to end), tests.
+- [x] Phase 6: Speaker alignment (bridge + ProductionAssembly + sanitizer), AnalyzeInputs, SpeakerMetrics, ReportModel + MarkdownRenderer + transcripts, the `analyze` command, `NOTES.md` (how to run, end to end), tests.

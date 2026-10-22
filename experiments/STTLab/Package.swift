@@ -29,7 +29,8 @@ let package = Package(
                 "STTLabCore",
                 .product(name: "Transcription", package: "Transcription"),
                 .product(name: "DataStore", package: "BiscottiKit"),
-                .product(name: "WhisperKit", package: "argmax-oss-swift")
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "SpeakerKit", package: "argmax-oss-swift")
             ],
             path: "Sources/STTLabHome"
         ),

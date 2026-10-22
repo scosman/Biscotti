@@ -107,4 +107,91 @@ struct SchemaTests {
             #expect(decoded == bucket)
         }
     }
+
+    @Test("ReferenceStatus round-trips through JSONFiles")
+    func referenceStatusRoundTrip() throws {
+        let status = ReferenceStatus(
+            meetingID: "m03",
+            status: .completed,
+            model: "microsoft/mai-transcribe-2",
+            zdr: true,
+            chunkCount: 4,
+            completedChunks: 4,
+            totalCost: 0.0234,
+            wordsPresent: true
+        )
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sttlab-test-refstatus-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        try JSONFiles.write(status, to: tmpURL)
+        let decoded: ReferenceStatus = try JSONFiles.read(from: tmpURL)
+
+        #expect(decoded == status)
+        #expect(decoded.model == "microsoft/mai-transcribe-2")
+        #expect(decoded.totalCost == 0.0234)
+        #expect(decoded.wordsPresent == true)
+    }
+
+    @Test("ChunkMeta round-trips through JSONFiles")
+    func chunkMetaRoundTrip() throws {
+        let meta = ChunkMeta(
+            chunkIndex: 0,
+            startSample: 0,
+            endSample: 4_800_000,
+            startSeconds: 0,
+            endSeconds: 300,
+            requestMetadata: ["model": "test", "zdr": "true"],
+            httpStatus: 200,
+            responseHeaders: ["Content-Type": "application/json"],
+            attempts: 1,
+            latencySeconds: 12.5,
+            requestedAt: Date(timeIntervalSinceReferenceDate: 5000)
+        )
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sttlab-test-chunkmeta-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        try JSONFiles.write(meta, to: tmpURL)
+        let decoded: ChunkMeta = try JSONFiles.read(from: tmpURL)
+
+        #expect(decoded == meta)
+        #expect(decoded.chunkIndex == 0)
+        #expect(decoded.attempts == 1)
+        #expect(decoded.httpStatus == 200)
+    }
+
+    @Test("ChunkPlan round-trips through JSONFiles")
+    func chunkPlanRoundTrip() throws {
+        let plan = ChunkPlan(
+            sampleRate: 16000,
+            chunks: [
+                ChunkPlan.Chunk(index: 0, startSample: 0, endSample: 4_800_000, cutRMS: 0.001),
+                ChunkPlan.Chunk(index: 1, startSample: 4_800_000, endSample: 9_600_000, cutRMS: nil)
+            ]
+        )
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sttlab-test-chunkplan-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        try JSONFiles.write(plan, to: tmpURL)
+        let decoded: ChunkPlan = try JSONFiles.read(from: tmpURL)
+
+        #expect(decoded == plan)
+        #expect(decoded.chunks.count == 2)
+        #expect(decoded.chunks[0].cutRMS == 0.001)
+        #expect(decoded.chunks[1].cutRMS == nil)
+    }
+
+    @Test("ReferenceConfig fields have correct defaults")
+    func referenceConfigDefaults() {
+        let config = ReferenceConfig()
+        #expect(config.model == "microsoft/mai-transcribe-2")
+        #expect(config.zdr == true)
+        #expect(config.chunkSeconds == 300)
+        #expect(config.pricePerHour == 0.10)
+    }
 }

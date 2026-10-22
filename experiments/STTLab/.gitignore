@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+build/
+Package.resolved
+*.wav
+*.aac
+*.mp3
+*.m4a
+DerivedData/

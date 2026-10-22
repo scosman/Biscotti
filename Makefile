@@ -2,7 +2,15 @@
 SHELL := /bin/bash
 
 PACKAGES := Packages/BiscottiKit Packages/Transcription Packages/AudioCapture Packages/LocalLLM
+EXPERIMENT_PACKAGES := experiments/STTLab
 LINT_PATHS := $(wildcard Packages App ManualTestApp XPCServices)
+
+# Experiments are built and tested locally but not in CI (GitHub Actions sets CI=true).
+ifndef CI
+  LOCAL_PACKAGES := $(PACKAGES) $(EXPERIMENT_PACKAGES)
+else
+  LOCAL_PACKAGES := $(PACKAGES)
+endif
 
 # SwiftLint is pinned to an exact version. Homebrew cannot pin a formula version
 # in a Brewfile, so a brew-installed SwiftLint drifts between machines and CI —
@@ -73,10 +81,10 @@ generate: ## Generate Xcode projects from project.yml files
 	cd ManualTestApp && xcodegen generate
 
 build: ## Build all SPM packages
-	@for pkg in $(PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
+	@for pkg in $(LOCAL_PACKAGES); do echo "==> Building $$pkg"; swift build --package-path $$pkg || exit 1; done
 
 test: ## GATING: run package tests
-	@for pkg in $(PACKAGES); do \
+	@for pkg in $(LOCAL_PACKAGES); do \
 	  echo "==> Testing $$pkg"; \
 	  swift test --no-parallel --package-path $$pkg 2>&1 \
 	    | grep -E 'recorded an issue|with [0-9]+ issue|Test run with [0-9]|Executed [0-9]+ test|: error:|error generated|no such module|cannot find|Build complete!' ; \
@@ -126,5 +134,6 @@ manual-tests-check: ## Check that all manual test step IDs have been run (expect
 clean: ## Remove build artifacts + generated projects
 	rm -rf .build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj
 	@for pkg in $(PACKAGES); do rm -rf $$pkg/.build; done
+	@for pkg in $(EXPERIMENT_PACKAGES); do rm -rf $$pkg/.build; done
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Biscotti-*
 	rm -rf ~/Library/Developer/Xcode/DerivedData/ManualTestApp-*

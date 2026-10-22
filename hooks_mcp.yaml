@@ -70,3 +70,13 @@ actions:
     description: "Run the LocalLLM unit tests (Packages/LocalLLM). Always-on tests only; the env-gated AI/integration tests (BISCOTTI_RUN_AI_TESTS=1) need the model and are human-run."
     command: "bash -c 'set -o pipefail; swift test --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
     timeout: 300
+
+  - name: "build_sttlab"
+    description: "Build the STTLab experiment package (experiments/STTLab)"
+    command: "bash -c 'set -o pipefail; swift build --package-path experiments/STTLab 2>&1 | tail -n 400'"
+    timeout: 600
+
+  - name: "test_sttlab"
+    description: "Run the STTLab experiment tests (experiments/STTLab)"
+    command: "bash -c 'set -o pipefail; swift test --package-path experiments/STTLab 2>&1 | tail -n 400'"
+    timeout: 600

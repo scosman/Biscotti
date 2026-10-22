@@ -34,6 +34,8 @@ public struct DisagreementRegion: Codable, Sendable {
     /// Time span from Whisper words (seconds).
     public var whisperTimeStart: Double?
     public var whisperTimeEnd: Double?
+    /// Meeting ID (set during aggregation; nil for per-meeting regions).
+    public var meetingID: String?
 
     // Codable conformance for tuples.
     enum CodingKeys: String, CodingKey {
@@ -41,13 +43,15 @@ public struct DisagreementRegion: Codable, Sendable {
         case classification, appleDistance, whisperDistance, size
         case appleText, whisperText, refText
         case appleTimeStart, appleTimeEnd, whisperTimeStart, whisperTimeEnd
+        case meetingID
     }
 
     public init(whisperRange: (Int, Int), appleRange: (Int, Int), refRange: (Int, Int),
                 classification: TieBreakClass, appleDistance: Int, whisperDistance: Int,
                 size: Int, appleText: String, whisperText: String, refText: String,
                 appleTimeStart: Double? = nil, appleTimeEnd: Double? = nil,
-                whisperTimeStart: Double? = nil, whisperTimeEnd: Double? = nil) {
+                whisperTimeStart: Double? = nil, whisperTimeEnd: Double? = nil,
+                meetingID: String? = nil) {
         self.whisperRange = whisperRange
         self.appleRange = appleRange
         self.refRange = refRange
@@ -62,6 +66,7 @@ public struct DisagreementRegion: Codable, Sendable {
         self.appleTimeEnd = appleTimeEnd
         self.whisperTimeStart = whisperTimeStart
         self.whisperTimeEnd = whisperTimeEnd
+        self.meetingID = meetingID
     }
 
     public init(from decoder: any Decoder) throws {
@@ -83,6 +88,7 @@ public struct DisagreementRegion: Codable, Sendable {
         appleTimeEnd = try c.decodeIfPresent(Double.self, forKey: .appleTimeEnd)
         whisperTimeStart = try c.decodeIfPresent(Double.self, forKey: .whisperTimeStart)
         whisperTimeEnd = try c.decodeIfPresent(Double.self, forKey: .whisperTimeEnd)
+        meetingID = try c.decodeIfPresent(String.self, forKey: .meetingID)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -104,6 +110,7 @@ public struct DisagreementRegion: Codable, Sendable {
         try c.encodeIfPresent(appleTimeEnd, forKey: .appleTimeEnd)
         try c.encodeIfPresent(whisperTimeStart, forKey: .whisperTimeStart)
         try c.encodeIfPresent(whisperTimeEnd, forKey: .whisperTimeEnd)
+        try c.encodeIfPresent(meetingID, forKey: .meetingID)
     }
 }
 

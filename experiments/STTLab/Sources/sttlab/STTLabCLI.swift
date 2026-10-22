@@ -13,8 +13,8 @@ struct STTLabCLI: AsyncParsableCommand {
             WhisperCommand.self,
             DiarizeCommand.self,
             ReferenceCommand.self,
-            HomeRunCommand.self
-            // Later phases add: analyze
+            HomeRunCommand.self,
+            AnalyzeCommand.self
         ]
     )
 }

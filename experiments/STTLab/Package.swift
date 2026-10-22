@@ -28,6 +28,7 @@ let package = Package(
             name: "STTLabHome",
             dependencies: [
                 "STTLabCore",
+                "STTLabAnalysis",
                 .product(name: "Transcription", package: "Transcription"),
                 .product(name: "DataStore", package: "BiscottiKit"),
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
@@ -61,7 +62,11 @@ let package = Package(
         ),
         .testTarget(
             name: "STTLabHomeTests",
-            dependencies: ["STTLabHome", "STTLabCore"],
+            dependencies: [
+                "STTLabHome", "STTLabCore", "STTLabAnalysis",
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "SpeakerKit", package: "argmax-oss-swift")
+            ],
             path: "Tests/STTLabHomeTests"
         ),
         .testTarget(

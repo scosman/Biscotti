@@ -63,6 +63,11 @@ let package = Package(
             name: "STTLabHomeTests",
             dependencies: ["STTLabHome", "STTLabCore"],
             path: "Tests/STTLabHomeTests"
+        ),
+        .testTarget(
+            name: "STTLabAnalysisTests",
+            dependencies: ["STTLabAnalysis", "STTLabCore"],
+            path: "Tests/STTLabAnalysisTests"
         )
     ],
     swiftLanguageModes: [.v6]

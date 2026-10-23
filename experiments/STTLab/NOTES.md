@@ -2,7 +2,7 @@
 
 This document describes how to run the Apple SpeechTranscriber validation
 experiment end to end: from the home Mac (macOS 15+), to the runner Mac
-(macOS 27), and back.
+(macOS 26 or later), and back.
 
 When the experiment is complete, remove `EXPERIMENT_PACKAGES` from the
 root `Makefile` and delete the `experiments/STTLab` directory.
@@ -15,7 +15,7 @@ root `Makefile` and delete the `experiments/STTLab` directory.
   10 meetings recorded (both mic + system tracks, 2+ speakers each).
   WhisperKit models already downloaded (Biscotti does this on first
   transcription).
-- **Runner Mac:** macOS 27 (Tahoe beta), Apple Silicon.
+- **Runner Mac:** macOS 26 or later (first run: macOS 26.5), Apple Silicon.
 - **OpenRouter account** with API key and credit. Confirm the reference
   model's data retention policy meets your ZDR requirement before the
   first upload (functional_spec section 9).
@@ -107,25 +107,60 @@ Open STTLabRunner.app:
 
 Send the entire results folder back to the home Mac via AirDrop.
 
-## Step 7: Home Mac — Analyze
+## Step 7: Home Mac — Analyze (Prep)
 
-Run analyze in **release mode** (the alignment DP is slow in debug):
+Run `analyze prep` in **release mode** (the alignment DP is slow in
+debug). This step computes disagreement regions between Apple and Whisper
+and writes one `disagreement_report.json` per meeting.
 
 ```bash
-swift run -c release --package-path experiments/STTLab sttlab analyze \
+swift run -c release --package-path experiments/STTLab sttlab analyze prep \
     --workspace "$WS" \
-    --results /path/to/bundle-results
+    --results /path/to/bundle-results \
+    --analysis-dir "$WS/analysis"
+```
+
+Output: `$WS/analysis/<mid>/disagreement_report.json` for each meeting
+that has both Apple and Whisper results.
+
+## Step 8: LLM Judging
+
+Feed each `disagreement_report.json` to an LLM (e.g. Claude) and ask it
+to write a `disagreement_decision.json` in the same directory. The
+decision file contains one entry per disagreement, with a `decision`
+(`apple_wins`, `whisper_wins`, `both_acceptable`, or `unknown`) and a `severity`
+(`high`, `med`, or `low`). It must include the `report_fingerprint`
+from the report file.
+
+Place each decision file next to its report:
+`$WS/analysis/<mid>/disagreement_decision.json`.
+
+Meetings without a decision file are treated as unjudged (the final
+report still includes their WER metrics).
+
+## Step 9: Home Mac — Analyze (Final)
+
+Run `analyze final` to produce the report. This step re-runs the core
+metrics pipeline and overlays LLM decisions onto the output.
+
+```bash
+swift run -c release --package-path experiments/STTLab sttlab analyze final \
+    --workspace "$WS" \
+    --results /path/to/bundle-results \
+    --analysis-dir "$WS/analysis"
 ```
 
 The report lands in `~/STTLabData/run1/report/`:
 
-- `report.md` — the full Markdown report.
+- `report.md` — the full Markdown report (LLM judgement section replaces
+  the old tie-break section).
 - `metrics.json` — machine-readable metrics (Codable `ReportModel`).
 - `transcripts/<mid>/` — plain text and speaker-annotated transcripts
   per meeting per engine.
 
-Re-run `analyze` at any time on the saved data. It deletes and
-regenerates the output directory.
+Re-run `analyze prep` and `analyze final` at any time on the saved data.
+Prep never deletes existing decision files, so LLM judgements survive
+re-runs. Final deletes and regenerates the output directory.
 
 ## Environment Variables
 

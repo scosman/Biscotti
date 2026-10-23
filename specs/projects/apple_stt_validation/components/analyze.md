@@ -8,18 +8,42 @@ Spec: functional_spec §5. The pure logic is in `STTLabAnalysis` (depends on `ST
 
 ## 1. Pipeline
 
+The analyze step has two subcommands: `prep` and `final`.
+
+### `sttlab analyze prep`
+
 ```
-sttlab analyze --workspace W --results R [--out W/report]
-  1. Load: manifest, metas, home/whisper, home/diarization, home/reference, R/run.json, R/meetings/*/apple.json
-  2. Validate: R sessions' bundleID == manifest.bundleID; every R meeting id is in the manifest.
-     Else refuse and list the mismatch. A meeting with no Apple result = "not run" (reported).
-  3. Per meeting: build EngineTranscript for apple / whisper / reference (what exists)
-  4. Per meeting: SpeakerAlignment for each engine with timed words (needs diarization)
-  5. Per meeting: MeetingMetrics = Metrics.compute(transcripts, aligned, meta, runInfo)
-  6. Aggregate → ReportModel → report.md + metrics.json + transcripts/
+sttlab analyze prep --workspace W --results R --analysis-dir W/analysis
+  1. Load inputs (manifest, metas, transcripts) — same as before.
+  2. Per meeting with both Apple and Whisper: run TieBreak to find
+     disagreement regions, then write disagreement_report.json.
+  3. Never touches existing disagreement_decision.json files.
+  4. Warns if a decision file's fingerprint is stale.
 ```
 
-Analyze is read-only on its inputs. It deletes and rewrites `--out` on each run. Build it in release (`swift run -c release sttlab analyze …`); `NOTES.md` says so, because the alignment DP is slow in debug.
+Output per meeting: `<analysis-dir>/<mid>/disagreement_report.json`.
+
+### LLM judging (manual)
+
+Feed each `disagreement_report.json` to an LLM. The LLM writes a
+`disagreement_decision.json` in the same directory with one entry per
+disagreement (`decision`: `apple_wins` / `whisper_wins` / `both_acceptable` /
+`unknown`; `severity`: `high` / `med` / `low`). Must include the
+`report_fingerprint` from the report file.
+
+### `sttlab analyze final`
+
+```
+sttlab analyze final --workspace W --results R --analysis-dir W/analysis [--out W/report]
+  1. Run the core metrics pipeline (WER, timing, speakers, flags, etc.).
+  2. Load disagreement reports and decisions per meeting from analysis-dir.
+  3. Parse decisions tolerantly (case-insensitive, extra fields ignored,
+     warnings for invalid/unknown/missing entries).
+  4. Aggregate LLM decisions via LLMJudgementAggregator.
+  5. Overlay LLM data onto ReportModel → report.md + metrics.json + transcripts/
+```
+
+Build both in release (`swift run -c release sttlab analyze prep …`); the alignment DP is slow in debug.
 
 ## 2. Neutral model (`STTLabAnalysis/Model.swift`)
 
@@ -164,9 +188,9 @@ public enum SpeakerAlignment {
 `ReportModel` (Codable) is written as `metrics.json`. `MarkdownRenderer.render(_:) -> String` writes `report.md`:
 
 1. **Run summary:** the bundle id; for each machine the chip, RAM and OS (home from the Whisper outputs, runner from `run.json`); the reference model, provider(s), ZDR flag and total cost; the meetings, with a status table per engine (completed / failed / not run / unsupported locale).
-2. **Summary table** (one row per engine): pooled WER vs reference; tie-break wins (matches + closer) by count and by tokens; median RTF (audio / wall) with the machine name; median |ΔStart| vs reference (and vs Whisper for Apple); speaker agreement with the other local engine (time).
-3. **Per-meeting table:** id, duration, speakers, WER A, WER W, A–W disagreement, tie-break A/W wins, median |ΔStart| A–W, speaker agreement, flags.
-4. **Sections:** §5.1 speed (each value labelled with its machine; the "cross-machine" note); §5.2 accuracy (S/D/I tables, tie-break classes, flags, the disagreement sample); §5.3 text quality; §5.4 timing (stats tables, Apple run granularity and anomalies); §5.5 speakers (agreement, segments, turns, sample); §5.6 other (stability with errors, memory with what it covers, locale coverage).
+2. **Summary table** (one row per engine): pooled WER vs reference; LLM wins (high/med/low/total); median RTF (audio / wall) with the machine name; median |ΔStart| vs reference (and vs Whisper for Apple); speaker agreement with the other local engine (time).
+3. **Per-meeting table:** id, duration, speakers, WER A, WER W, A–W disagreement, LLM A wins/W wins/both-ok/unknown, high-severity losses per engine, median |ΔStart| A–W, speaker agreement, flags.
+4. **Sections:** §5.1 speed; §5.2 accuracy (S/D/I tables, LLM Judgement section with decision table and Mistakes That Matter, flags); §5.3 text quality; §5.4 timing; §5.5 speakers; §5.6 other.
 5. **Caveats:** cross-machine speed; the reference is not ground truth; normalization rules; alternatives were on for Apple; the Apple asset version is unknown (assets update silently); every failure.
 
 No verdict text. `transcripts/<mid>/{apple,whisper,reference}.txt` (display text) and `transcripts/<mid>/{apple,whisper,reference}.speakers.md` (aligned segments as `[mm:ss] Speaker N: text`) let the user read the transcripts.

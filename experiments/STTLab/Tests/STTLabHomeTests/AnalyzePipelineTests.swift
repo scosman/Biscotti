@@ -419,15 +419,9 @@ struct AnalyzePipelineTests {
         // Per-meeting table has Speakers and Median |ΔStart| columns.
         #expect(md.contains("| Speakers |"))
         #expect(md.contains("| Median |ΔStart| A-W |"))
-        // m01 row should contain actual timing value (not n/a) for ΔStart.
-        let m01Lines = md.components(separatedBy: "\n").filter { $0.contains("| m01 |") }
-        let perMeetingLine = m01Lines.first { $0.contains("TB A wins") == false && $0.contains("| 2 |") }
-        if let line = perMeetingLine {
-            #expect(line.contains("n/a") == false || line.contains("| — |"))
-        }
 
-        // Summary table has tie-break by tokens and timing vs ref rows.
-        #expect(md.contains("Tie-break wins (tokens)"))
+        // Summary table has LLM wins and timing vs ref rows.
+        #expect(md.contains("LLM wins"))
         #expect(md.contains("Median |ΔStart| vs ref"))
 
         // Caveats mention m02 Whisper failure.
@@ -487,6 +481,131 @@ struct AnalyzePipelineTests {
         // Report files.
         #expect(fm.fileExists(atPath: outDir.appendingPathComponent("report.md").path))
         #expect(fm.fileExists(atPath: outDir.appendingPathComponent("metrics.json").path))
+    }
+
+    @Test("Prep then final with decision file for m01, none for m02")
+    func prepThenFinal() throws {
+        let (ws, resultsDir, _) = try Self.buildFixture()
+        let root = ws.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let bundle = try BundleLoader.load(from: ws.appendingPathComponent("bundle"))
+        let runFile: RunFile = try JSONFiles.read(
+            from: resultsDir.appendingPathComponent("run.json"))
+        let inputs = try AnalyzeInputs.load(
+            workspace: ws, resultsDir: resultsDir,
+            manifest: bundle.manifest, metas: bundle.metas
+        )
+
+        let analysisDir = root.appendingPathComponent("analysis")
+        let log = RunLog(echoToStdout: false)
+
+        // --- Prep ---
+        let prepResult = try AnalyzePrepPipeline.run(
+            meetingInputs: inputs,
+            analysisDir: analysisDir,
+            log: log
+        )
+
+        // m01 has both Apple and Whisper -> should be written.
+        // m02 has Apple but Whisper failed -> should be skipped.
+        #expect(prepResult.meetingsWritten == 1)
+        #expect(prepResult.regionsPerMeeting["m01"] != nil)
+
+        // Verify the report file exists and has correct shape.
+        let reportURL = analysisDir.appendingPathComponent("m01/disagreement_report.json")
+        let reportData = try Data(contentsOf: reportURL)
+        let report = try JSONDecoder().decode(DisagreementReportFile.self, from: reportData)
+        #expect(report.meetingId == "m01")
+        #expect(report.schemaVersion == 1)
+        #expect(report.hasReference)
+
+        // Verify no decision file was written (prep never writes them).
+        let decisionURL = analysisDir.appendingPathComponent("m01/disagreement_decision.json")
+        #expect(!FileManager.default.fileExists(atPath: decisionURL.path))
+
+        // --- Write a decision file for m01 ---
+        if !report.disagreements.isEmpty {
+            let decisions = report.disagreements.map { entry in
+                DecisionEntry(id: entry.id, decision: "apple_wins", severity: "low",
+                              note: "test")
+            }
+            let decisionFile = DisagreementDecisionFile(
+                meetingId: "m01",
+                reportFingerprint: report.reportFingerprint,
+                decisions: decisions
+            )
+            try JSONFiles.write(decisionFile, to: decisionURL)
+        }
+
+        // --- Final ---
+        let outputDir = root.appendingPathComponent("final-output")
+        try AnalyzeFinalPipeline.run(
+            meetingInputs: inputs,
+            manifest: bundle.manifest,
+            runFile: runFile,
+            analysisDir: analysisDir,
+            outputDir: outputDir,
+            log: log
+        )
+
+        // Report files exist.
+        let fm = FileManager.default
+        #expect(fm.fileExists(atPath: outputDir.appendingPathComponent("report.md").path))
+        #expect(fm.fileExists(atPath: outputDir.appendingPathComponent("metrics.json").path))
+
+        // Metrics JSON includes LLM data.
+        let metricsData = try Data(contentsOf: outputDir.appendingPathComponent("metrics.json"))
+        let metricsReport = try JSONDecoder().decode(ReportModel.self, from: metricsData)
+
+        if !report.disagreements.isEmpty {
+            #expect(metricsReport.llmJudgement != nil)
+            #expect(metricsReport.llmJudgement?.meetingsJudged == 1)
+            // m02 has no report (whisper failed) so it is not "not judged" either.
+        }
+
+        // Report markdown contains LLM section.
+        let md = try String(contentsOf: outputDir.appendingPathComponent("report.md"), encoding: .utf8)
+        #expect(md.contains("### LLM Judgement"))
+    }
+
+    @Test("Prep does not delete existing decision files")
+    func prepPreservesDecisions() throws {
+        let (ws, resultsDir, _) = try Self.buildFixture()
+        let root = ws.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let bundle = try BundleLoader.load(from: ws.appendingPathComponent("bundle"))
+        let inputs = try AnalyzeInputs.load(
+            workspace: ws, resultsDir: resultsDir,
+            manifest: bundle.manifest, metas: bundle.metas
+        )
+
+        let analysisDir = root.appendingPathComponent("analysis")
+        let log = RunLog(echoToStdout: false)
+
+        // First prep run.
+        _ = try AnalyzePrepPipeline.run(
+            meetingInputs: inputs, analysisDir: analysisDir, log: log
+        )
+
+        // Write a decision file.
+        let decisionURL = analysisDir.appendingPathComponent("m01/disagreement_decision.json")
+        let decisionFile = DisagreementDecisionFile(
+            meetingId: "m01", reportFingerprint: "test-fp",
+            decisions: [DecisionEntry(id: "m01-d0001", decision: "apple_wins", severity: "low")]
+        )
+        try JSONFiles.write(decisionFile, to: decisionURL)
+
+        // Second prep run: must NOT delete the decision file.
+        _ = try AnalyzePrepPipeline.run(
+            meetingInputs: inputs, analysisDir: analysisDir, log: log
+        )
+
+        #expect(FileManager.default.fileExists(atPath: decisionURL.path))
+        let savedData = try Data(contentsOf: decisionURL)
+        let saved = try JSONDecoder().decode(DisagreementDecisionFile.self, from: savedData)
+        #expect(saved.decisions[0].decision == "apple_wins")
     }
 
     @Test("Bundle ID mismatch is refused")

@@ -499,8 +499,12 @@ public enum AnalyzePipeline {
         switch flag {
         case let .werRatio(a, w):
             return "WER ratio: Apple \(String(format: "%.1f%%", a * 100)) vs Whisper \(String(format: "%.1f%%", w * 100))"
-        case let .droppedStretch(engine, start, end):
-            return "\(engine.rawValue) dropped \(String(format: "%.0f", end - start))s (\(String(format: "%.0f", start))-\(String(format: "%.0f", end))s)"
+        case let .droppedStretch(engine, start, end, otherExcerpts):
+            var desc = "\(engine.rawValue) dropped \(String(format: "%.0f", end - start))s (\(String(format: "%.0f", start))-\(String(format: "%.0f", end))s)"
+            for excerpt in otherExcerpts {
+                desc += "; \(excerpt.engine.rawValue): \(excerpt.text)"
+            }
+            return desc
         case let .emptyResult(engine):
             return "\(engine.rawValue) returned no words"
         }

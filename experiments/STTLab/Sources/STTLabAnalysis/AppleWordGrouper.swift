@@ -199,12 +199,25 @@ public enum AppleWordGrouper {
             return .punctuationOnly
         }
 
-        let runStart = run.charOffset
-        let runEnd = run.charOffset + run.charLength
+        // Trim leading/trailing whitespace from the run's character range
+        // before comparing to token ranges. Real Apple runs often include
+        // a leading space (e.g. " Oh," at [0,4) while the token "Oh," is [1,4)).
+        var trimmedStart = run.charOffset
+        var trimmedEnd = run.charOffset + run.charLength
+        for ch in runText.utf16 {
+            guard let scalar = Unicode.Scalar(ch) else { break }
+            guard CharacterSet.whitespaces.contains(scalar) else { break }
+            trimmedStart += 1
+        }
+        for ch in runText.utf16.reversed() {
+            guard let scalar = Unicode.Scalar(ch) else { break }
+            guard CharacterSet.whitespaces.contains(scalar) else { break }
+            trimmedEnd -= 1
+        }
 
-        // Find which tokens this run overlaps.
+        // Find which tokens this run overlaps (using trimmed range).
         let overlapped = tokens.filter { t in
-            runStart < t.endOffset && runEnd > t.startOffset
+            trimmedStart < t.endOffset && trimmedEnd > t.startOffset
         }
 
         if overlapped.count >= 2 {
@@ -216,13 +229,13 @@ public enum AppleWordGrouper {
             return .subWord
         }
 
-        // wholeWord: the run's range equals the token range, or equals the token
-        // minus leading/trailing punctuation.
+        // wholeWord: the run's trimmed range equals the token range, or equals
+        // the token minus leading/trailing punctuation.
         let strippedStart = token.startOffset + leadingPunctuationLength(token.text)
         let strippedEnd = token.endOffset - trailingPunctuationLength(token.text)
 
-        if (runStart == token.startOffset && runEnd == token.endOffset)
-            || (runStart == strippedStart && runEnd == strippedEnd) {
+        if (trimmedStart == token.startOffset && trimmedEnd == token.endOffset)
+            || (trimmedStart == strippedStart && trimmedEnd == strippedEnd) {
             return .wholeWord
         }
 

@@ -161,4 +161,56 @@ struct SpeakerAlignmentTests {
         #expect(aligned.droppedUntimedWords == 0)
         #expect(!aligned.words.isEmpty)
     }
+
+    @Test("Bridge with colliding segment indices produces words in time order")
+    func bridgeTwoChunkSegmentOrder() {
+        // Simulates two reference chunks that both use segmentIndex 0 and 1
+        // (the old bug). After the fix in AnalyzeInputs, the indices are
+        // unique (0, 1 for chunk 0; 100_000, 100_001 for chunk 1).
+        // The bridge must produce words in time order regardless.
+        let transcript = EngineTranscript(
+            engine: .reference,
+            words: [
+                // Chunk 0, segment 0: words at 0-2s
+                EngineWord(text: "hello", start: 0.0, end: 1.0, segmentIndex: 0),
+                EngineWord(text: "world", start: 1.0, end: 2.0, segmentIndex: 0),
+                // Chunk 0, segment 1: word at 2-3s
+                EngineWord(text: "this", start: 2.0, end: 3.0, segmentIndex: 1),
+                // Chunk 1, segment 0: words at 5-7s (unique index: 100_000)
+                EngineWord(text: "is", start: 5.0, end: 6.0, segmentIndex: 100_000),
+                EngineWord(text: "great", start: 6.0, end: 7.0, segmentIndex: 100_000),
+                // Chunk 1, segment 1: word at 7-8s (unique index: 100_001)
+                EngineWord(text: "today", start: 7.0, end: 8.0, segmentIndex: 100_001),
+            ],
+            displayText: "hello world this is great today"
+        )
+
+        let (results, dropped) = SpeakerAlignment.bridge(transcript)
+
+        #expect(dropped == 0)
+        #expect(results.count == 1)
+        // 4 segment groups: indices 0, 1, 100_000, 100_001.
+        #expect(results[0].segments.count == 4)
+
+        // Segments must be in time order (by first word's start time).
+        let segStarts = results[0].segments.map(\.start)
+        for i in 1..<segStarts.count {
+            #expect(segStarts[i] >= segStarts[i - 1],
+                    "Segments should be in time order: \(segStarts)")
+        }
+
+        // All words across segments are in time order.
+        let allWords = results[0].segments.flatMap { $0.words ?? [] }
+        for i in 1..<allWords.count {
+            #expect(allWords[i].start >= allWords[i - 1].start,
+                    "Words should be in time order")
+        }
+
+        // Verify no mixing: chunk 0 segment 0 has "hello", "world";
+        // chunk 1 segment 0 has "is", "great".
+        let seg0Words = results[0].segments[0].words!.map { $0.word.trimmingCharacters(in: .whitespaces) }
+        #expect(seg0Words == ["hello", "world"])
+        let seg2Words = results[0].segments[2].words!.map { $0.word.trimmingCharacters(in: .whitespaces) }
+        #expect(seg2Words == ["is", "great"])
+    }
 }

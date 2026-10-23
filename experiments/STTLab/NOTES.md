@@ -187,3 +187,8 @@ Run 1 (2026-10-23, 16 meetings, 13.4 h): see
 `specs/projects/apple_stt_validation/results/overview.md`. Re-test steps:
 `specs/projects/apple_stt_validation/results/how_to_retest.md`. LLM judging
 scripts and prompts: `scripts/judge/`.
+
+Run 2 (2026-10-23, same meetings and Mac, macOS 27.0.1): Apple text identical
+to macOS 26.5.2; only timestamps (better) and memory (higher) changed. See
+`specs/projects/apple_stt_validation/results/macos27.md`. To compare two Apple
+runs: `scripts/compare_apple_runs.py <old-results> <new-results>`.

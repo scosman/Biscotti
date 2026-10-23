@@ -1,6 +1,6 @@
-# Apple SpeechTranscriber Validation — Results Overview (Run 1)
+# Apple SpeechTranscriber Validation — Results Overview
 
-Run date: 2026-10-23. Code: `experiments/STTLab` (branch `fluid_audio`). Spec: `../functional_spec.md`, `../architecture.md`.
+Run 1: 2026-10-23 on macOS 26.5.2. Run 2 (re-test on macOS 27.0.1): 2026-10-23, see `macos27.md`. Code: `experiments/STTLab` (branch `fluid_audio`). Spec: `../functional_spec.md`, `../architecture.md`.
 
 ## Question
 
@@ -57,6 +57,15 @@ Pipeline: `select` → `confirm` → `bundle` → home engines (Whisper, diariza
 - **Readability: neither local engine matches the reference.** Whisper reads smoothest (it removes fillers) but sometimes falls into long lowercase, unpunctuated stretches. Apple is the hardest to read, mostly because of garbled terms.
 - **The reference is a good reference.** In a blind check it ranked first in 49 of 64 windows and never last (`reference_quality.md`). The exception is the meditation recording (m13).
 
+## Re-Test on macOS 27 (Run 2)
+
+The same bundle was run again on the same M2 Mac after its upgrade to **macOS 27.0.1**, with the same runner build. Apple's text output was **identical** to macOS 26.5.2 (all 38,461 results, alternatives and confidence values). So all accuracy results above also apply to macOS 27.0.1. Only two things changed:
+
+- **Better timestamps.** macOS 27 trims leading silence from result time ranges. Apple vs reference P90 |Δstart| went from 0.42 s to 0.30 s, and Apple speaker agreement with the reference from 98.8 % to 99.3 % (time).
+- **Higher process memory.** 55–195 MB, rising over the session (macOS 26: 34–58 MB). It is still well below Whisper. Check for growth in a long-lived process.
+
+The `SpeechTranscriber` model is a system-managed asset per language, with no version API, so we cannot prove that macOS 27 has the same model. The system reported no asset update. Details: `macos27.md`.
+
 **Caveat on scope:** these are one person's meetings, mostly technical, in English. That is the hardest case for Apple's vocabulary weakness. Non-technical meetings and other languages were not tested. Custom vocabulary was not tested for either engine (Whisper's is blocked by an upstream SDK bug; whether Apple's `SpeechAnalyzer` contextual strings work with `SpeechTranscriber` is unverified).
 
 ## Issues Found During the Run
@@ -83,7 +92,9 @@ Open:
 | `llm_judgement.md` | Region judging method, results by severity, mistake categories, patterns |
 | `reference_quality.md` | Blind check of the reference: accuracy ranking and style scores |
 | `how_to_retest.md` | How to re-run (new macOS, new model) and compare with run 1 |
-| `report_stats.md` | The `analyze final` report with all speech-quoting sections removed |
-| `metrics_stats.json` | The machine-readable metrics with all text fields removed |
+| `macos27.md` | Run 2: the macOS 27.0.1 re-test and what changed |
+| `report_stats.md` | Run 1: the `analyze final` report with all speech-quoting sections removed |
+| `metrics_stats.json` | Run 1: the machine-readable metrics with all text fields removed |
+| `run2-macos27/` | `report_stats.md` and `metrics_stats.json` for run 2 |
 
-Meeting audio, transcripts, disagreement reports and judge work stay in the private workspace (`~/STTLabData/run1`) and are not committed.
+Meeting audio, transcripts, disagreement reports and judge work stay in the private workspace (`~/STTLabData/run1`; Apple results in `bundle-results-macos26/` and `bundle-results-macos27/`) and are not committed.

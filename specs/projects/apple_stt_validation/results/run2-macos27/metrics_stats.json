@@ -1,0 +1,4819 @@
+{
+ "bundleID": "5CE91FC4-1F4D-4628-9BAD-FC1DBE2B1AD9",
+ "caveats": [],
+ "errors": [],
+ "homeMachine": {
+  "chip": "Apple M4 Pro",
+  "memoryGB": 48,
+  "name": "home",
+  "osVersion": "Version 15.6.1 (Build 24G90)"
+ },
+ "llmJudgement": {
+  "appleWins": {
+   "high": 62,
+   "low": 2187,
+   "med": 517
+  },
+  "bothAcceptable": 585,
+  "caveats": [],
+  "invalid": 0,
+  "meetingsJudged": 16,
+  "meetingsNotJudged": 0,
+  "undecided": 0,
+  "unknown": 287,
+  "whisperWins": {
+   "high": 142,
+   "low": 2192,
+   "med": 1159
+  }
+ },
+ "llmPerMeeting": {
+  "m01": {
+   "appleHighLosses": 9,
+   "appleWins": 128,
+   "bothAcceptable": 8,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 12,
+   "whisperHighLosses": 9,
+   "whisperWins": 153
+  },
+  "m02": {
+   "appleHighLosses": 7,
+   "appleWins": 119,
+   "bothAcceptable": 18,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 13,
+   "whisperHighLosses": 1,
+   "whisperWins": 150
+  },
+  "m03": {
+   "appleHighLosses": 11,
+   "appleWins": 125,
+   "bothAcceptable": 87,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 7,
+   "whisperHighLosses": 1,
+   "whisperWins": 193
+  },
+  "m04": {
+   "appleHighLosses": 14,
+   "appleWins": 92,
+   "bothAcceptable": 32,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 13,
+   "whisperHighLosses": 3,
+   "whisperWins": 153
+  },
+  "m05": {
+   "appleHighLosses": 8,
+   "appleWins": 154,
+   "bothAcceptable": 17,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 13,
+   "whisperHighLosses": 2,
+   "whisperWins": 160
+  },
+  "m06": {
+   "appleHighLosses": 23,
+   "appleWins": 117,
+   "bothAcceptable": 22,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 6,
+   "whisperHighLosses": 4,
+   "whisperWins": 176
+  },
+  "m07": {
+   "appleHighLosses": 4,
+   "appleWins": 135,
+   "bothAcceptable": 63,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 23,
+   "whisperHighLosses": 7,
+   "whisperWins": 200
+  },
+  "m08": {
+   "appleHighLosses": 8,
+   "appleWins": 103,
+   "bothAcceptable": 29,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 10,
+   "whisperHighLosses": 2,
+   "whisperWins": 170
+  },
+  "m09": {
+   "appleHighLosses": 10,
+   "appleWins": 433,
+   "bothAcceptable": 87,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 39,
+   "whisperHighLosses": 13,
+   "whisperWins": 386
+  },
+  "m10": {
+   "appleHighLosses": 5,
+   "appleWins": 246,
+   "bothAcceptable": 66,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 25,
+   "whisperHighLosses": 1,
+   "whisperWins": 383
+  },
+  "m11": {
+   "appleHighLosses": 6,
+   "appleWins": 188,
+   "bothAcceptable": 25,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 17,
+   "whisperHighLosses": 6,
+   "whisperWins": 281
+  },
+  "m12": {
+   "appleHighLosses": 8,
+   "appleWins": 230,
+   "bothAcceptable": 42,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 27,
+   "whisperHighLosses": 3,
+   "whisperWins": 288
+  },
+  "m13": {
+   "appleHighLosses": 0,
+   "appleWins": 29,
+   "bothAcceptable": 0,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 1,
+   "whisperHighLosses": 1,
+   "whisperWins": 64
+  },
+  "m14": {
+   "appleHighLosses": 12,
+   "appleWins": 228,
+   "bothAcceptable": 27,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 20,
+   "whisperHighLosses": 6,
+   "whisperWins": 241
+  },
+  "m15": {
+   "appleHighLosses": 6,
+   "appleWins": 302,
+   "bothAcceptable": 30,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 29,
+   "whisperHighLosses": 2,
+   "whisperWins": 293
+  },
+  "m16": {
+   "appleHighLosses": 11,
+   "appleWins": 137,
+   "bothAcceptable": 32,
+   "invalid": 0,
+   "judged": true,
+   "undecided": 0,
+   "unknown": 32,
+   "whisperHighLosses": 1,
+   "whisperWins": 202
+  }
+ },
+ "medianAppleRTF": 67.64487527352775,
+ "medianWhisperRTF": 15.253438619500434,
+ "meetings": [
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 58328000,
+    "processPeakFootprintBytes": 57787328,
+    "sampleCount": 50,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 29016544,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11731400,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6111616,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6111616,
+      "pid": 2085
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 58049040,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 48480784,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 75.04056263630004,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 4533
+    },
+    "totalRuns": 4533
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 25.58729898929596,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 1003931688,
+    "sampleCount": 27,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 1920.0853125,
+   "llmCounts": {
+    "appleHighLosses": 9,
+    "appleWins": 128,
+    "bothAcceptable": 8,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 12,
+    "whisperHighLosses": 9,
+    "whisperWins": 153
+   },
+   "locale": "en_US",
+   "meetingID": "m01",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 17.639984130859375,
+    "maxWordCount": 28,
+    "medianLengthSeconds": 0.47998046875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.4400634765625,
+    "p90WordCount": 5,
+    "segmentCount": 1797,
+    "speakerChanges": 209,
+    "turnCount": 210
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 5.579010009765625,
+    "maxWordCount": 31,
+    "medianLengthSeconds": 0.61895751953125,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.9990234375,
+    "p90WordCount": 10,
+    "segmentCount": 1180,
+    "speakerChanges": 241,
+    "turnCount": 242
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 16.5,
+    "maxWordCount": 26,
+    "medianLengthSeconds": 0.91998291015625,
+    "medianWordCount": 4,
+    "p90LengthSeconds": 5.20001220703125,
+    "p90WordCount": 17,
+    "segmentCount": 666,
+    "speakerChanges": 151,
+    "turnCount": 152
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.6839246281404942,
+    "coverageB": 0.5512739052539477,
+    "timeAgreement": 0.9828347887120414,
+    "wordAgreement": 0.9871642500594248
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.6839246281404942,
+    "coverageB": 0.6489156701804092,
+    "timeAgreement": 0.9408020722512604,
+    "wordAgreement": 0.9521578298397041
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.6489156701804092,
+    "coverageB": 0.5512739052539477,
+    "timeAgreement": 0.9446132116714682,
+    "wordAgreement": 0.9534331195058209
+   },
+   "speakerCount": 2,
+   "textQualityApple": {
+    "fillerCounts": {
+     "uh": 21,
+     "um": 22
+    },
+    "fillerPer1000Words": 9.485991617030663,
+    "fillerTotal": 43,
+    "midSentenceCapitalizedShare": 0.017668776371308016,
+    "punctuationPer100Words": 26.62695786454886,
+    "sentenceCount": 611,
+    "sentenceStartCapitalizedShare": 0.9587458745874587,
+    "wordCount": 4533
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 1,
+     "mhm": 2,
+     "mm": 2,
+     "uh": 34,
+     "um": 27
+    },
+    "fillerPer1000Words": 13.833577866275414,
+    "fillerTotal": 66,
+    "midSentenceCapitalizedShare": 0.022878228782287822,
+    "punctuationPer100Words": 27.66715573255083,
+    "sentenceCount": 560,
+    "sentenceStartCapitalizedShare": 0.9551971326164874,
+    "wordCount": 4771
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 12,
+     "um": 6
+    },
+    "fillerPer1000Words": 4.342857142857143,
+    "fillerTotal": 19,
+    "midSentenceCapitalizedShare": 0.010958205912334353,
+    "punctuationPer100Words": 14.057142857142857,
+    "sentenceCount": 367,
+    "sentenceStartCapitalizedShare": 0.9724517906336089,
+    "wordCount": 4375
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 31,
+     "appleMatches": 87,
+     "neither": 21,
+     "tiedPartial": 16,
+     "whisperCloser": 29,
+     "whisperMatches": 117
+    },
+    "byTokens": {
+     "appleCloser": 159,
+     "appleMatches": 120,
+     "neither": 29,
+     "tiedPartial": 44,
+     "whisperCloser": 74,
+     "whisperMatches": 178
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.6000000000001364,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.18000000000006366,
+     "pairs": 4207
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.4000000000000057,
+     "medianAbs": 0.10000000000002274,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.29999999999999716,
+     "pairs": 4207
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 6.539993896484418,
+     "medianAbs": 0.07998535156252728,
+     "medianSigned": 0.04000549316407387,
+     "p90Abs": 0.20000000000000284,
+     "pairs": 4040
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 6.239989013671902,
+     "medianAbs": 0.08000976562493634,
+     "medianSigned": 0.03996093749992724,
+     "p90Abs": 0.27996093749993634,
+     "pairs": 4040
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 6.5599938964844,
+     "medianAbs": 0.060024414062581855,
+     "medianSigned": -0.05999965667724538,
+     "p90Abs": 0.18001953125008185,
+     "pairs": 4193
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 6.499989013671893,
+     "medianAbs": 0.10005371093757276,
+     "medianSigned": -0.10002929687505002,
+     "p90Abs": 0.3800585937501637,
+     "pairs": 4193
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 271,
+    "insertions": 53,
+    "refWords": 4960,
+    "substitutions": 266,
+    "wer": 0.11895161290322581
+   },
+   "werAppleVsWhisper": {
+    "deletions": 88,
+    "insertions": 242,
+    "refWords": 4588,
+    "substitutions": 251,
+    "wer": 0.12663469921534437
+   },
+   "werWhisperVsRef": {
+    "deletions": 402,
+    "insertions": 30,
+    "refWords": 4960,
+    "substitutions": 149,
+    "wer": 0.11713709677419355
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 400328048,
+    "processPeakFootprintBytes": 395593072,
+    "sampleCount": 214,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 17.533221116779732,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 109.51127004623413
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 119096280,
+    "processPeakFootprintBytes": 99697648,
+    "sampleCount": 61,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11600328,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 71336488,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 52314664,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 61.94600501197124,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 5959
+    },
+    "totalRuns": 5959
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 31.506492018699646,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 907184312,
+    "sampleCount": 16,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 1951.7013125,
+   "llmCounts": {
+    "appleHighLosses": 7,
+    "appleWins": 119,
+    "bothAcceptable": 18,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 13,
+    "whisperHighLosses": 1,
+    "whisperWins": 150
+   },
+   "locale": "en_US",
+   "meetingID": "m02",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 13.67999267578125,
+    "maxWordCount": 54,
+    "medianLengthSeconds": 0.47998046875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.6199951171875,
+    "p90WordCount": 7,
+    "segmentCount": 1933,
+    "speakerChanges": 126,
+    "turnCount": 127
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 8.698974609375,
+    "maxWordCount": 41,
+    "medianLengthSeconds": 0.67999267578125,
+    "medianWordCount": 3,
+    "p90LengthSeconds": 2.5789794921875,
+    "p90WordCount": 13,
+    "segmentCount": 1175,
+    "speakerChanges": 131,
+    "turnCount": 132
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 12.3399658203125,
+    "maxWordCount": 36,
+    "medianLengthSeconds": 1.1999969482421875,
+    "medianWordCount": 6,
+    "p90LengthSeconds": 4.300048828125,
+    "p90WordCount": 17,
+    "segmentCount": 797,
+    "speakerChanges": 103,
+    "turnCount": 104
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.7986422093559461,
+    "coverageB": 0.6613618896346775,
+    "timeAgreement": 0.9938358014686018,
+    "wordAgreement": 0.9960763331549849
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.7986422093559461,
+    "coverageB": 0.7268791310139878,
+    "timeAgreement": 0.9816140214565341,
+    "wordAgreement": 0.9827366890786844
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7268791310139878,
+    "coverageB": 0.6613618896346775,
+    "timeAgreement": 0.9822585361963081,
+    "wordAgreement": 0.9841045566937477
+   },
+   "speakerCount": 8,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 34,
+     "um": 41
+    },
+    "fillerPer1000Words": 12.753817754656822,
+    "fillerTotal": 76,
+    "midSentenceCapitalizedShare": 0.01636536631779258,
+    "punctuationPer100Words": 20.104044302735357,
+    "sentenceCount": 559,
+    "sentenceStartCapitalizedShare": 0.9481216457960644,
+    "wordCount": 5959
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "mhm": 1,
+     "mm": 9,
+     "uh": 65,
+     "um": 51
+    },
+    "fillerPer1000Words": 20.6151832460733,
+    "fillerTotal": 126,
+    "midSentenceCapitalizedShare": 0.021587998536406878,
+    "punctuationPer100Words": 21.433246073298427,
+    "sentenceCount": 520,
+    "sentenceStartCapitalizedShare": 0.9923076923076923,
+    "wordCount": 6112
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 19,
+     "um": 15
+    },
+    "fillerPer1000Words": 5.990073592332705,
+    "fillerTotal": 35,
+    "midSentenceCapitalizedShare": 0.01572565365668814,
+    "punctuationPer100Words": 14.547321581379427,
+    "sentenceCount": 476,
+    "sentenceStartCapitalizedShare": 0.982532751091703,
+    "wordCount": 5843
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 17,
+     "appleMatches": 97,
+     "neither": 17,
+     "tiedPartial": 10,
+     "whisperCloser": 23,
+     "whisperMatches": 136
+    },
+    "byTokens": {
+     "appleCloser": 62,
+     "appleMatches": 139,
+     "neither": 21,
+     "tiedPartial": 30,
+     "whisperCloser": 89,
+     "whisperMatches": 201
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.3789999999999054,
+     "medianAbs": 0.060000000000172804,
+     "medianSigned": -0.020000000000010232,
+     "p90Abs": 0.17899999999997362,
+     "pairs": 5607
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 1.8199999999999363,
+     "medianAbs": 0.10000000000000853,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.28000000000000114,
+     "pairs": 5607
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 5.440048828124873,
+     "medianAbs": 0.0799658203125091,
+     "medianSigned": 0.039956054687309006,
+     "p90Abs": 0.19999023437503638,
+     "pairs": 5497
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 5.860048828124945,
+     "medianAbs": 0.07998291015621817,
+     "medianSigned": 0.019997558593757958,
+     "p90Abs": 0.22000366210937727,
+     "pairs": 5497
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 25.600053710937345,
+     "medianAbs": 0.059990234374936335,
+     "medianSigned": -0.05997070312503183,
+     "p90Abs": 0.15905371093754184,
+     "pairs": 5648
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 25.679995117187445,
+     "medianAbs": 0.10001953124992724,
+     "medianSigned": -0.10001464843753638,
+     "p90Abs": 0.29999267578125455,
+     "pairs": 5648
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 191,
+    "insertions": 67,
+    "refWords": 6254,
+    "substitutions": 228,
+    "wer": 0.07771026543012471
+   },
+   "werAppleVsWhisper": {
+    "deletions": 108,
+    "insertions": 179,
+    "refWords": 6059,
+    "substitutions": 236,
+    "wer": 0.08631787423667271
+   },
+   "werWhisperVsRef": {
+    "deletions": 254,
+    "insertions": 59,
+    "refWords": 6254,
+    "substitutions": 112,
+    "wer": 0.06795650783498561
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 420857200,
+    "processPeakFootprintBytes": 399721888,
+    "sampleCount": 251,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 15.253438619500434,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 127.95156300067902
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 129516552,
+    "processPeakFootprintBytes": 62686168,
+    "sampleCount": 88,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 12845512,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 83821144,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 70943272,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 45.15718347235135,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 7763
+    },
+    "totalRuns": 7763
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 45.39710307121277,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 861686040,
+    "sampleCount": 16,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 2050.0053125,
+   "llmCounts": {
+    "appleHighLosses": 11,
+    "appleWins": 125,
+    "bothAcceptable": 87,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 7,
+    "whisperHighLosses": 1,
+    "whisperWins": 193
+   },
+   "locale": "en_US",
+   "meetingID": "m03",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 14.58001708984375,
+    "maxWordCount": 59,
+    "medianLengthSeconds": 0.53997802734375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.15997314453125,
+    "p90WordCount": 9,
+    "segmentCount": 1962,
+    "speakerChanges": 81,
+    "turnCount": 82
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 9.51995849609375,
+    "maxWordCount": 48,
+    "medianLengthSeconds": 0.94000244140625,
+    "medianWordCount": 4,
+    "p90LengthSeconds": 3.1600341796875,
+    "p90WordCount": 16,
+    "segmentCount": 1148,
+    "speakerChanges": 83,
+    "turnCount": 84
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 10.05999755859375,
+    "maxWordCount": 39,
+    "medianLengthSeconds": 1.580078125,
+    "medianWordCount": 8,
+    "p90LengthSeconds": 4.260009765625,
+    "p90WordCount": 18,
+    "segmentCount": 843,
+    "speakerChanges": 75,
+    "turnCount": 76
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.9158195121951219,
+    "coverageB": 0.7791853658536585,
+    "timeAgreement": 0.9923810262977479,
+    "wordAgreement": 0.9939197405755978
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.9158195121951219,
+    "coverageB": 0.8270878048780488,
+    "timeAgreement": 0.9832242201079222,
+    "wordAgreement": 0.9843837144450641
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.8270878048780488,
+    "coverageB": 0.7791853658536585,
+    "timeAgreement": 0.981524040336509,
+    "wordAgreement": 0.9831012572664594
+   },
+   "speakerCount": 3,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 29,
+     "um": 32
+    },
+    "fillerPer1000Words": 7.98660311735154,
+    "fillerTotal": 62,
+    "midSentenceCapitalizedShare": 0.01383789889861621,
+    "punctuationPer100Words": 16.83627463609429,
+    "sentenceCount": 491,
+    "sentenceStartCapitalizedShare": 0.9611451942740287,
+    "wordCount": 7763
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 2,
+     "mhm": 1,
+     "uh": 43,
+     "um": 39
+    },
+    "fillerPer1000Words": 10.639629490549504,
+    "fillerTotal": 85,
+    "midSentenceCapitalizedShare": 0.016467065868263474,
+    "punctuationPer100Words": 18.275128301414444,
+    "sentenceCount": 456,
+    "sentenceStartCapitalizedShare": 0.9846491228070176,
+    "wordCount": 7989
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "ah": 2,
+     "uh": 9,
+     "um": 5
+    },
+    "fillerPer1000Words": 2.120047701073274,
+    "fillerTotal": 16,
+    "midSentenceCapitalizedShare": 0.013052208835341365,
+    "punctuationPer100Words": 12.216774877434743,
+    "sentenceCount": 448,
+    "sentenceStartCapitalizedShare": 0.9776286353467561,
+    "wordCount": 7547
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 32,
+     "appleMatches": 154,
+     "neither": 11,
+     "tiedPartial": 11,
+     "whisperCloser": 21,
+     "whisperMatches": 183
+    },
+    "byTokens": {
+     "appleCloser": 131,
+     "appleMatches": 248,
+     "neither": 13,
+     "tiedPartial": 25,
+     "whisperCloser": 83,
+     "whisperMatches": 270
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 2.3810000000000855,
+     "medianAbs": 0.060000000000002274,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.16099999999994452,
+     "pairs": 7401
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 1.7400000000002365,
+     "medianAbs": 0.09999999999990905,
+     "medianSigned": -0.08000000000004093,
+     "p90Abs": 0.2799999999999727,
+     "pairs": 7401
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 2.119987792968743,
+     "medianAbs": 0.060048828124990905,
+     "medianSigned": 0.039975585937327196,
+     "p90Abs": 0.18000976562507276,
+     "pairs": 7155
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.1400268554687045,
+     "medianAbs": 0.0799560546875,
+     "medianSigned": 0.02001464843760914,
+     "p90Abs": 0.20000732421874545,
+     "pairs": 7155
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 2.059987792968741,
+     "medianAbs": 0.05999511718755457,
+     "medianSigned": -0.05996582031229991,
+     "p90Abs": 0.1400048828124909,
+     "pairs": 7366
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.1599975585937727,
+     "medianAbs": 0.10000976562491815,
+     "medianSigned": -0.10000488281252728,
+     "p90Abs": 0.27997070312494543,
+     "pairs": 7366
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 297,
+    "insertions": 67,
+    "refWords": 8300,
+    "substitutions": 266,
+    "wer": 0.07590361445783132
+   },
+   "werAppleVsWhisper": {
+    "deletions": 132,
+    "insertions": 310,
+    "refWords": 7892,
+    "substitutions": 291,
+    "wer": 0.09287886467308668
+   },
+   "werWhisperVsRef": {
+    "deletions": 448,
+    "insertions": 40,
+    "refWords": 8300,
+    "substitutions": 138,
+    "wer": 0.07542168674698795
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 396641744,
+    "sampleCount": 292,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 13.809104245688328,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 148.45317089557648
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 164496392,
+    "sampleCount": 64,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 12698056,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 83821144,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 46842408,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 56.964680302133345,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 6426
+    },
+    "totalRuns": 6426
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 33.02724802494049,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 839141728,
+    "sampleCount": 16,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 1881.386625,
+   "llmCounts": {
+    "appleHighLosses": 14,
+    "appleWins": 92,
+    "bothAcceptable": 32,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 13,
+    "whisperHighLosses": 3,
+    "whisperWins": 153
+   },
+   "locale": "en_US",
+   "meetingID": "m04",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 10.8599853515625,
+    "maxWordCount": 41,
+    "medianLengthSeconds": 0.4801025390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.8599853515625,
+    "p90WordCount": 8,
+    "segmentCount": 1861,
+    "speakerChanges": 41,
+    "turnCount": 42
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 20.039999961853027,
+    "maxWordCount": 39,
+    "medianLengthSeconds": 0.9599609375,
+    "medianWordCount": 4,
+    "p90LengthSeconds": 3.08001708984375,
+    "p90WordCount": 16,
+    "segmentCount": 992,
+    "speakerChanges": 48,
+    "turnCount": 49
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 8.25,
+    "maxWordCount": 38,
+    "medianLengthSeconds": 1.3800048828125,
+    "medianWordCount": 7,
+    "p90LengthSeconds": 3.719970703125,
+    "p90WordCount": 16,
+    "segmentCount": 804,
+    "speakerChanges": 41,
+    "turnCount": 42
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.8448851375054481,
+    "coverageB": 0.7288532885435159,
+    "timeAgreement": 0.9987621859335117,
+    "wordAgreement": 0.9985306122448979
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.8448851375054481,
+    "coverageB": 0.7449000201979398,
+    "timeAgreement": 0.998381995490087,
+    "wordAgreement": 0.9981845188975078
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7449000201979398,
+    "coverageB": 0.7288532885435159,
+    "timeAgreement": 0.9964589888818963,
+    "wordAgreement": 0.9967648010352637
+   },
+   "speakerCount": 6,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 1,
+     "hmm": 2,
+     "uh": 31,
+     "um": 24
+    },
+    "fillerPer1000Words": 9.025832555244321,
+    "fillerTotal": 58,
+    "midSentenceCapitalizedShare": 0.02030631560832903,
+    "punctuationPer100Words": 16.604419545596016,
+    "sentenceCount": 483,
+    "sentenceStartCapitalizedShare": 0.9688796680497925,
+    "wordCount": 6426
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 2,
+     "mm": 2,
+     "uh": 50,
+     "um": 29
+    },
+    "fillerPer1000Words": 12.67175572519084,
+    "fillerTotal": 83,
+    "midSentenceCapitalizedShare": 0.02137608550434202,
+    "punctuationPer100Words": 18.51908396946565,
+    "sentenceCount": 438,
+    "sentenceStartCapitalizedShare": 0.9794520547945206,
+    "wordCount": 6550
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 10,
+     "um": 7
+    },
+    "fillerPer1000Words": 2.6856240126382307,
+    "fillerTotal": 17,
+    "midSentenceCapitalizedShare": 0.018647612408504707,
+    "punctuationPer100Words": 14.518167456556084,
+    "sentenceCount": 495,
+    "sentenceStartCapitalizedShare": 0.98989898989899,
+    "wordCount": 6330
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 18,
+     "appleMatches": 90,
+     "neither": 20,
+     "tiedPartial": 7,
+     "whisperCloser": 16,
+     "whisperMatches": 139
+    },
+    "byTokens": {
+     "appleCloser": 56,
+     "appleMatches": 140,
+     "neither": 21,
+     "tiedPartial": 21,
+     "whisperCloser": 53,
+     "whisperMatches": 210
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.1400000000001,
+     "medianAbs": 0.060000000000002274,
+     "medianSigned": -0.020000000000209184,
+     "p90Abs": 0.16000000000008185,
+     "pairs": 6125
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.440000000000005,
+     "medianAbs": 0.09999999999990905,
+     "medianSigned": -0.08000000000015461,
+     "p90Abs": 0.27899999999999636,
+     "pairs": 6125
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.780000000000001,
+     "medianAbs": 0.060048828124990905,
+     "medianSigned": 0.03994628906229991,
+     "p90Abs": 0.17999755859375455,
+     "pairs": 6043
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.280001220703127,
+     "medianAbs": 0.06005859375,
+     "medianSigned": 0.019989013671875,
+     "p90Abs": 0.19997802734371817,
+     "pairs": 6043
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.6809999999999974,
+     "medianAbs": 0.059985351562545475,
+     "medianSigned": -0.059946289062509095,
+     "p90Abs": 0.15899511718748727,
+     "pairs": 6154
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.679996643066403,
+     "medianAbs": 0.09999999999990905,
+     "medianSigned": -0.09999755859382731,
+     "p90Abs": 0.24001953125002728,
+     "pairs": 6154
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 181,
+    "insertions": 48,
+    "refWords": 6827,
+    "substitutions": 223,
+    "wer": 0.06620770470191885
+   },
+   "werAppleVsWhisper": {
+    "deletions": 113,
+    "insertions": 157,
+    "refWords": 6650,
+    "substitutions": 206,
+    "wer": 0.07157894736842105
+   },
+   "werWhisperVsRef": {
+    "deletions": 217,
+    "insertions": 40,
+    "refWords": 6827,
+    "substitutions": 131,
+    "wer": 0.056833162443240076
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 315409896,
+    "sampleCount": 258,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 14.288482074602275,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 131.67155301570892
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 137790472,
+    "sampleCount": 52,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11649480,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 83821144,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 40059408,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 74.88638962476227,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 4895
+    },
+    "totalRuns": 4895
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 26.7817599773407,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 786434448,
+    "sampleCount": 17,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 2005.5893125,
+   "llmCounts": {
+    "appleHighLosses": 8,
+    "appleWins": 154,
+    "bothAcceptable": 17,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 13,
+    "whisperHighLosses": 2,
+    "whisperWins": 160
+   },
+   "locale": "en_US",
+   "meetingID": "m05",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 14.219970703125,
+    "maxWordCount": 49,
+    "medianLengthSeconds": 0.47998046875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.43994140625,
+    "p90WordCount": 5,
+    "segmentCount": 1877,
+    "speakerChanges": 215,
+    "turnCount": 216
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 10.029253906250005,
+    "maxWordCount": 28,
+    "medianLengthSeconds": 0.719970703125,
+    "medianWordCount": 3,
+    "p90LengthSeconds": 2.1590576171875,
+    "p90WordCount": 11,
+    "segmentCount": 1137,
+    "speakerChanges": 236,
+    "turnCount": 237
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 15.459991455078125,
+    "maxWordCount": 25,
+    "medianLengthSeconds": 1.06005859375,
+    "medianWordCount": 5,
+    "p90LengthSeconds": 3.039997100830078,
+    "p90WordCount": 12,
+    "segmentCount": 807,
+    "speakerChanges": 192,
+    "turnCount": 193
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.667607375422571,
+    "coverageB": 0.5598181074801304,
+    "timeAgreement": 0.9884001838756687,
+    "wordAgreement": 0.9908543386125362
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.667607375422571,
+    "coverageB": 0.5624457762841671,
+    "timeAgreement": 0.979740343307027,
+    "wordAgreement": 0.9819248826291079
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.5624457762841671,
+    "coverageB": 0.5598181074801304,
+    "timeAgreement": 0.9804790894653256,
+    "wordAgreement": 0.9859186410371032
+   },
+   "speakerCount": 4,
+   "textQualityApple": {
+    "fillerCounts": {
+     "hmm": 1,
+     "mm": 2,
+     "uh": 24,
+     "um": 39
+    },
+    "fillerPer1000Words": 13.483146067415731,
+    "fillerTotal": 66,
+    "midSentenceCapitalizedShare": 0.0476997578692494,
+    "punctuationPer100Words": 24.228804902962207,
+    "sentenceCount": 633,
+    "sentenceStartCapitalizedShare": 0.9552715654952076,
+    "wordCount": 4895
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 1,
+     "mm": 1,
+     "uh": 53,
+     "um": 47
+    },
+    "fillerPer1000Words": 19.871420222092347,
+    "fillerTotal": 102,
+    "midSentenceCapitalizedShare": 0.056890299184043515,
+    "punctuationPer100Words": 24.624975647769336,
+    "sentenceCount": 579,
+    "sentenceStartCapitalizedShare": 0.9842105263157894,
+    "wordCount": 5133
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 8,
+     "um": 12
+    },
+    "fillerPer1000Words": 4.286326618088299,
+    "fillerTotal": 20,
+    "midSentenceCapitalizedShare": 0.04618822945120437,
+    "punctuationPer100Words": 17.402486069438492,
+    "sentenceCount": 537,
+    "sentenceStartCapitalizedShare": 0.9696969696969697,
+    "wordCount": 4666
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 39,
+     "appleMatches": 113,
+     "neither": 19,
+     "tiedPartial": 18,
+     "whisperCloser": 29,
+     "whisperMatches": 126
+    },
+    "byTokens": {
+     "appleCloser": 172,
+     "appleMatches": 198,
+     "neither": 22,
+     "tiedPartial": 67,
+     "whisperCloser": 135,
+     "whisperMatches": 238
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.9199999999999875,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.18000000000000682,
+     "pairs": 4483
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.5,
+     "medianAbs": 0.10000000000002274,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.2800000000002001,
+     "pairs": 4483
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.2599932861328114,
+     "medianAbs": 0.07997558593751819,
+     "medianSigned": 0.03999938964843608,
+     "p90Abs": 0.20001464843744543,
+     "pairs": 4261
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.0399902343749545,
+     "medianAbs": 0.07999267578122726,
+     "medianSigned": 0.020009765624990905,
+     "p90Abs": 0.24000488281239996,
+     "pairs": 4261
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.139993286132807,
+     "medianAbs": 0.06094140625009459,
+     "medianSigned": -0.060004882812563665,
+     "p90Abs": 0.18002441406247272,
+     "pairs": 4468
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.099995117187518,
+     "medianAbs": 0.10002441406254547,
+     "medianSigned": -0.10001464843753638,
+     "p90Abs": 0.3199658203125182,
+     "pairs": 4468
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 303,
+    "insertions": 78,
+    "refWords": 5312,
+    "substitutions": 306,
+    "wer": 0.12932981927710843
+   },
+   "werAppleVsWhisper": {
+    "deletions": 144,
+    "insertions": 333,
+    "refWords": 4898,
+    "substitutions": 298,
+    "wer": 0.15822784810126583
+   },
+   "werWhisperVsRef": {
+    "deletions": 460,
+    "insertions": 46,
+    "refWords": 5312,
+    "substitutions": 171,
+    "wer": 0.1274472891566265
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 432621008,
+    "sampleCount": 240,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 16.416395876873622,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 122.16989207267761
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 119096328,
+    "sampleCount": 66,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11616712,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 83821144,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 63095336,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 54.733443464451376,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 5954
+    },
+    "totalRuns": 5954
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 34.28241503238678,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 750930368,
+    "sampleCount": 12,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 1876.394625,
+   "llmCounts": {
+    "appleHighLosses": 23,
+    "appleWins": 117,
+    "bothAcceptable": 22,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 6,
+    "whisperHighLosses": 4,
+    "whisperWins": 176
+   },
+   "locale": "en_US",
+   "meetingID": "m06",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 29.46002197265625,
+    "maxWordCount": 77,
+    "medianLengthSeconds": 0.5999755859375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.280029296875,
+    "p90WordCount": 9,
+    "segmentCount": 1554,
+    "speakerChanges": 47,
+    "turnCount": 48
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 10.1199951171875,
+    "maxWordCount": 51,
+    "medianLengthSeconds": 0.659912109375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.4000244140625,
+    "p90WordCount": 11,
+    "segmentCount": 1311,
+    "speakerChanges": 51,
+    "turnCount": 52
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 14.219970703125,
+    "maxWordCount": 30,
+    "medianLengthSeconds": 1.5999755859375,
+    "medianWordCount": 7,
+    "p90LengthSeconds": 4.469970703125,
+    "p90WordCount": 16,
+    "segmentCount": 718,
+    "speakerChanges": 43,
+    "turnCount": 44
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.9184817655178295,
+    "coverageB": 0.7106198604767665,
+    "timeAgreement": 0.9973805855161787,
+    "wordAgreement": 0.9981936416184971
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.9184817655178295,
+    "coverageB": 0.8100394907242098,
+    "timeAgreement": 0.997492490881785,
+    "wordAgreement": 0.9979749631811488
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.8100394907242098,
+    "coverageB": 0.7106198604767665,
+    "timeAgreement": 0.9973238479542957,
+    "wordAgreement": 0.998030791263874
+   },
+   "speakerCount": 2,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 82,
+     "um": 54
+    },
+    "fillerPer1000Words": 23.009741350352705,
+    "fillerTotal": 137,
+    "midSentenceCapitalizedShare": 0.020783956244302643,
+    "punctuationPer100Words": 17.92072556264696,
+    "sentenceCount": 379,
+    "sentenceStartCapitalizedShare": 0.9604221635883905,
+    "wordCount": 5954
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 1,
+     "er": 1,
+     "mhm": 1,
+     "uh": 95,
+     "um": 51
+    },
+    "fillerPer1000Words": 24.555042847725773,
+    "fillerTotal": 149,
+    "midSentenceCapitalizedShare": 0.030491047686580394,
+    "punctuationPer100Words": 18.770599868160843,
+    "sentenceCount": 346,
+    "sentenceStartCapitalizedShare": 0.9594202898550724,
+    "wordCount": 6068
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 22,
+     "um": 9
+    },
+    "fillerPer1000Words": 5.389429763560501,
+    "fillerTotal": 31,
+    "midSentenceCapitalizedShare": 0.023769100169779286,
+    "punctuationPer100Words": 13.456189151599443,
+    "sentenceCount": 394,
+    "sentenceStartCapitalizedShare": 0.9846547314578005,
+    "wordCount": 5752
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 15,
+     "appleMatches": 109,
+     "neither": 19,
+     "tiedPartial": 12,
+     "whisperCloser": 18,
+     "whisperMatches": 148
+    },
+    "byTokens": {
+     "appleCloser": 51,
+     "appleMatches": 169,
+     "neither": 19,
+     "tiedPartial": 29,
+     "whisperCloser": 51,
+     "whisperMatches": 225
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.481000000000222,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.03899999999998727,
+     "p90Abs": 0.1790000000000873,
+     "pairs": 5536
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 1.8600000000001273,
+     "medianAbs": 0.11999999999989086,
+     "medianSigned": -0.10000000000013642,
+     "p90Abs": 0.339999999999975,
+     "pairs": 5536
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.380009765624891,
+     "medianAbs": 0.060053710937381766,
+     "medianSigned": 0.02004882812479991,
+     "p90Abs": 0.19997558593740905,
+     "pairs": 5427
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.0800244140625637,
+     "medianAbs": 0.0799658203125091,
+     "medianSigned": 0.019993286132802268,
+     "p90Abs": 0.2199914550781159,
+     "pairs": 5427
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.220009765624809,
+     "medianAbs": 0.05999389648434317,
+     "medianSigned": -0.05997070312503183,
+     "p90Abs": 0.1599975585937159,
+     "pairs": 5574
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.539951171874918,
+     "medianAbs": 0.11995117187507276,
+     "medianSigned": -0.11994628906245453,
+     "p90Abs": 0.3200585937499909,
+     "pairs": 5574
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 194,
+    "insertions": 60,
+    "refWords": 6215,
+    "substitutions": 236,
+    "wer": 0.07884151246983105
+   },
+   "werAppleVsWhisper": {
+    "deletions": 93,
+    "insertions": 176,
+    "refWords": 5998,
+    "substitutions": 251,
+    "wer": 0.08669556518839613
+   },
+   "werWhisperVsRef": {
+    "deletions": 260,
+    "insertions": 43,
+    "refWords": 6215,
+    "substitutions": 125,
+    "wer": 0.06886564762670958
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 366331344,
+    "sampleCount": 243,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 15.144021796554018,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 123.90332305431366
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 108004360,
+    "sampleCount": 72,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11616712,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 83821144,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 45941288,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4342120,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 62.032433556711794,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 6857
+    },
+    "totalRuns": 6857
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 37.37571609020233,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 878086664,
+    "sampleCount": 22,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 2318.506625,
+   "llmCounts": {
+    "appleHighLosses": 4,
+    "appleWins": 135,
+    "bothAcceptable": 63,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 23,
+    "whisperHighLosses": 7,
+    "whisperWins": 200
+   },
+   "locale": "en_US",
+   "meetingID": "m07",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 20.8800048828125,
+    "maxWordCount": 49,
+    "medianLengthSeconds": 0.48004150390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.7998046875,
+    "p90WordCount": 7,
+    "segmentCount": 2247,
+    "speakerChanges": 190,
+    "turnCount": 191
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 7.279022216796875,
+    "maxWordCount": 40,
+    "medianLengthSeconds": 0.55999755859375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.259033203125,
+    "p90WordCount": 11,
+    "segmentCount": 1605,
+    "speakerChanges": 206,
+    "turnCount": 207
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 10.15997314453125,
+    "maxWordCount": 31,
+    "medianLengthSeconds": 1.3399658203125,
+    "medianWordCount": 6,
+    "p90LengthSeconds": 4.740001678466797,
+    "p90WordCount": 18,
+    "segmentCount": 905,
+    "speakerChanges": 163,
+    "turnCount": 164
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.8159974121199051,
+    "coverageB": 0.6503860254474876,
+    "timeAgreement": 0.9925362130584675,
+    "wordAgreement": 0.9934024505183789
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.8159974121199051,
+    "coverageB": 0.7581539788656458,
+    "timeAgreement": 0.9671206880719905,
+    "wordAgreement": 0.9704425627096981
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7581539788656458,
+    "coverageB": 0.6503860254474876,
+    "timeAgreement": 0.9691908447622928,
+    "wordAgreement": 0.9711806631546328
+   },
+   "speakerCount": 4,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 25,
+     "um": 45
+    },
+    "fillerPer1000Words": 10.354382382966312,
+    "fillerTotal": 71,
+    "midSentenceCapitalizedShare": 0.032412766661154294,
+    "punctuationPer100Words": 21.117106606387633,
+    "sentenceCount": 632,
+    "sentenceStartCapitalizedShare": 0.9713831478537361,
+    "wordCount": 6857
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "hmm": 1,
+     "mm": 2,
+     "uh": 40,
+     "um": 57
+    },
+    "fillerPer1000Words": 14.074595355383533,
+    "fillerTotal": 100,
+    "midSentenceCapitalizedShare": 0.038838017050836754,
+    "punctuationPer100Words": 22.5615763546798,
+    "sentenceCount": 576,
+    "sentenceStartCapitalizedShare": 0.975609756097561,
+    "wordCount": 7105
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 7,
+     "um": 11
+    },
+    "fillerPer1000Words": 2.680565897244974,
+    "fillerTotal": 18,
+    "midSentenceCapitalizedShare": 0.021367521367521368,
+    "punctuationPer100Words": 13.655994043186896,
+    "sentenceCount": 517,
+    "sentenceStartCapitalizedShare": 0.9630350194552529,
+    "wordCount": 6715
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 43,
+     "appleMatches": 120,
+     "neither": 31,
+     "tiedPartial": 11,
+     "whisperCloser": 39,
+     "whisperMatches": 177
+    },
+    "byTokens": {
+     "appleCloser": 152,
+     "appleMatches": 171,
+     "neither": 37,
+     "tiedPartial": 28,
+     "whisperCloser": 111,
+     "whisperMatches": 263
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 2.3199999999999363,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.020000000000436557,
+     "p90Abs": 0.19899999999995543,
+     "pairs": 6366
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 2.2999999999999545,
+     "medianAbs": 0.10000000000013642,
+     "medianSigned": -0.10000000000000142,
+     "p90Abs": 0.33999999999991815,
+     "pairs": 6366
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 2.4999902343751046,
+     "medianAbs": 0.07997558593751819,
+     "medianSigned": 0.03997070312516371,
+     "p90Abs": 0.20000183105469205,
+     "pairs": 6252
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.019985351562525,
+     "medianAbs": 0.07999755859373181,
+     "medianSigned": 0.020003662109388642,
+     "p90Abs": 0.23999389648435,
+     "pairs": 6252
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 5.22103906250004,
+     "medianAbs": 0.060003051757817616,
+     "medianSigned": -0.05998535156243179,
+     "p90Abs": 0.17898901367186681,
+     "pairs": 6441
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 4.960058593750091,
+     "medianAbs": 0.11994628906245453,
+     "medianSigned": -0.11902929687494179,
+     "p90Abs": 0.36001953125003183,
+     "pairs": 6441
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 332,
+    "insertions": 82,
+    "refWords": 7392,
+    "substitutions": 368,
+    "wer": 0.1057900432900433
+   },
+   "werAppleVsWhisper": {
+    "deletions": 149,
+    "insertions": 236,
+    "refWords": 7055,
+    "substitutions": 344,
+    "wer": 0.1033309709425939
+   },
+   "werWhisperVsRef": {
+    "deletions": 414,
+    "insertions": 77,
+    "refWords": 7392,
+    "substitutions": 204,
+    "wer": 0.09402056277056277
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 329860584,
+    "sampleCount": 299,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 15.225758409497498,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 152.2752799987793
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 135119904,
+    "sampleCount": 63,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11649480,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 77726272,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 53.28799420501704,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 5744
+    },
+    "totalRuns": 5744
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 32.66216599941254,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 1090078784,
+    "processPeakFootprintBytes": 812485176,
+    "sampleCount": 14,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 1740.5013125,
+   "llmCounts": {
+    "appleHighLosses": 8,
+    "appleWins": 103,
+    "bothAcceptable": 29,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 10,
+    "whisperHighLosses": 2,
+    "whisperWins": 170
+   },
+   "locale": "en_US",
+   "meetingID": "m08",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 23.1600341796875,
+    "maxWordCount": 98,
+    "medianLengthSeconds": 0.5400009155273438,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.91998291015625,
+    "p90WordCount": 8,
+    "segmentCount": 1667,
+    "speakerChanges": 74,
+    "turnCount": 75
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 8.03900146484375,
+    "maxWordCount": 47,
+    "medianLengthSeconds": 0.8390045166015625,
+    "medianWordCount": 4,
+    "p90LengthSeconds": 2.779998779296875,
+    "p90WordCount": 13,
+    "segmentCount": 1028,
+    "speakerChanges": 90,
+    "turnCount": 91
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 14.02001953125,
+    "maxWordCount": 36,
+    "medianLengthSeconds": 1.5,
+    "medianWordCount": 7,
+    "p90LengthSeconds": 4.4599609375,
+    "p90WordCount": 17,
+    "segmentCount": 678,
+    "speakerChanges": 69,
+    "turnCount": 70
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.8664464234415398,
+    "coverageB": 0.7160011490950876,
+    "timeAgreement": 0.9968146209733382,
+    "wordAgreement": 0.9973758200562324
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.8664464234415398,
+    "coverageB": 0.7664234415397874,
+    "timeAgreement": 0.9881568578977457,
+    "wordAgreement": 0.9915563231625408
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7664234415397874,
+    "coverageB": 0.7160011490950876,
+    "timeAgreement": 0.9887525841734743,
+    "wordAgreement": 0.9916232315711094
+   },
+   "speakerCount": 8,
+   "textQualityApple": {
+    "fillerCounts": {
+     "uh": 79,
+     "um": 66
+    },
+    "fillerPer1000Words": 25.24373259052925,
+    "fillerTotal": 145,
+    "midSentenceCapitalizedShare": 0.02101407364565259,
+    "punctuationPer100Words": 19.98607242339833,
+    "sentenceCount": 434,
+    "sentenceStartCapitalizedShare": 0.9676674364896074,
+    "wordCount": 5744
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "mhm": 1,
+     "uh": 114,
+     "um": 57
+    },
+    "fillerPer1000Words": 29.024637192035097,
+    "fillerTotal": 172,
+    "midSentenceCapitalizedShare": 0.024272744117102094,
+    "punctuationPer100Words": 21.22848464394195,
+    "sentenceCount": 408,
+    "sentenceStartCapitalizedShare": 0.9828009828009828,
+    "wordCount": 5926
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 15,
+     "um": 19
+    },
+    "fillerPer1000Words": 6.121714079942384,
+    "fillerTotal": 34,
+    "midSentenceCapitalizedShare": 0.0189498618239242,
+    "punctuationPer100Words": 12.855599567879006,
+    "sentenceCount": 407,
+    "sentenceStartCapitalizedShare": 0.9801488833746899,
+    "wordCount": 5554
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 21,
+     "appleMatches": 98,
+     "neither": 21,
+     "tiedPartial": 13,
+     "whisperCloser": 20,
+     "whisperMatches": 139
+    },
+    "byTokens": {
+     "appleCloser": 80,
+     "appleMatches": 160,
+     "neither": 25,
+     "tiedPartial": 33,
+     "whisperCloser": 73,
+     "whisperMatches": 210
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 2.280999999999949,
+     "medianAbs": 0.06000000000005912,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.1610000000000582,
+     "pairs": 5336
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 2.0799999999999272,
+     "medianAbs": 0.09999999999990905,
+     "medianSigned": -0.08000000000004093,
+     "p90Abs": 0.28,
+     "pairs": 5336
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.799999389648434,
+     "medianAbs": 0.0799658203125091,
+     "medianSigned": 0.0399975585936545,
+     "p90Abs": 0.19997802734371817,
+     "pairs": 5199
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.1399981689453114,
+     "medianAbs": 0.07998535156252728,
+     "medianSigned": 0.020034179687399956,
+     "p90Abs": 0.2200030517578,
+     "pairs": 5199
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.8599993896484364,
+     "medianAbs": 0.059987792968740905,
+     "medianSigned": -0.05995117187512733,
+     "p90Abs": 0.15902441406251455,
+     "pairs": 5364
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.259998168945316,
+     "medianAbs": 0.10001953124992724,
+     "medianSigned": -0.10001464843753638,
+     "p90Abs": 0.29999511718756366,
+     "pairs": 5364
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 235,
+    "insertions": 59,
+    "refWords": 6029,
+    "substitutions": 228,
+    "wer": 0.08658152264057058
+   },
+   "werAppleVsWhisper": {
+    "deletions": 132,
+    "insertions": 208,
+    "refWords": 5777,
+    "substitutions": 225,
+    "wer": 0.09780162714211528
+   },
+   "werWhisperVsRef": {
+    "deletions": 297,
+    "insertions": 45,
+    "refWords": 6029,
+    "substitutions": 129,
+    "wer": 0.07812240835959529
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 476906936,
+    "processPeakFootprintBytes": 312378856,
+    "sampleCount": 235,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 14.531206857087767,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 119.77679002285004
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 164758536,
+    "processPeakFootprintBytes": 117212192,
+    "sampleCount": 170,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11665864,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 51708480,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 104.22030508390351,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "punctuationOnly": 2,
+     "wholeWord": 12331
+    },
+    "totalRuns": 12333
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 88.78832793235779,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 2521697832,
+    "sampleCount": 102,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 9253.546625,
+   "llmCounts": {
+    "appleHighLosses": 10,
+    "appleWins": 433,
+    "bothAcceptable": 87,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 39,
+    "whisperHighLosses": 13,
+    "whisperWins": 386
+   },
+   "locale": "en_US",
+   "meetingID": "m09",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 22.019775390625,
+    "maxWordCount": 74,
+    "medianLengthSeconds": 0.5400390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.919921875,
+    "p90WordCount": 6,
+    "segmentCount": 4157,
+    "speakerChanges": 282,
+    "turnCount": 283
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 17.94000244140625,
+    "maxWordCount": 59,
+    "medianLengthSeconds": 1.43994140625,
+    "medianWordCount": 5,
+    "p90LengthSeconds": 5.31005859375,
+    "p90WordCount": 16,
+    "segmentCount": 1678,
+    "speakerChanges": 244,
+    "turnCount": 245
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.4245931827171007,
+    "coverageB": 0.3941961670884872,
+    "timeAgreement": 0.9874939039258718,
+    "wordAgreement": 0.9851386110317234
+   },
+   "speakerCount": 10,
+   "textQualityApple": {
+    "fillerCounts": {
+     "hmm": 6,
+     "mm": 2,
+     "uh": 103,
+     "um": 201
+    },
+    "fillerPer1000Words": 25.29798102651423,
+    "fillerTotal": 312,
+    "midSentenceCapitalizedShare": 0.022998216464845584,
+    "punctuationPer100Words": 25.938538879429174,
+    "sentenceCount": 1316,
+    "sentenceStartCapitalizedShare": 0.9778625954198473,
+    "wordCount": 12333
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "hmm": 1,
+     "mhm": 4,
+     "mm": 11,
+     "uh": 127,
+     "um": 213
+    },
+    "fillerPer1000Words": 28.193553496475804,
+    "fillerTotal": 356,
+    "midSentenceCapitalizedShare": 0.02110960757780785,
+    "punctuationPer100Words": 26.831393046646074,
+    "sentenceCount": 1139,
+    "sentenceStartCapitalizedShare": 0.9709507042253521,
+    "wordCount": 12627
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "hmm": 1,
+     "uh": 10,
+     "um": 40
+    },
+    "fillerPer1000Words": 4.462723136156808,
+    "fillerTotal": 51,
+    "midSentenceCapitalizedShare": 0.01773879142300195,
+    "punctuationPer100Words": 14.394469723486175,
+    "sentenceCount": 897,
+    "sentenceStartCapitalizedShare": 0.942987457240593,
+    "wordCount": 11428
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 108,
+     "appleMatches": 367,
+     "neither": 52,
+     "tiedPartial": 35,
+     "whisperCloser": 85,
+     "whisperMatches": 298
+    },
+    "byTokens": {
+     "appleCloser": 445,
+     "appleMatches": 600,
+     "neither": 71,
+     "tiedPartial": 110,
+     "whisperCloser": 322,
+     "whisperMatches": 475
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 329.3597265624994,
+     "medianAbs": 0.07996093749989086,
+     "medianSigned": 0.04001953124998181,
+     "p90Abs": 0.2199218750001819,
+     "pairs": 10466
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 328.0793359375002,
+     "medianAbs": 0.08005859374998181,
+     "medianSigned": 0.039946289062527285,
+     "p90Abs": 0.31982421875,
+     "pairs": 10466
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 584,
+    "insertions": 315,
+    "refWords": 12820,
+    "substitutions": 779,
+    "wer": 0.13088923556942278
+   },
+   "werAppleVsWhisper": {
+    "deletions": 279,
+    "insertions": 921,
+    "refWords": 11909,
+    "substitutions": 720,
+    "wer": 0.16122260475270803
+   },
+   "werWhisperVsRef": {
+    "deletions": 1125,
+    "insertions": 214,
+    "refWords": 12820,
+    "substitutions": 497,
+    "wer": 0.14321372854914197
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 910002288,
+    "sampleCount": 749,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 24.054438458430088,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 384.6918580532074
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 154272872,
+    "sampleCount": 108,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11665864,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 42648104,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 70.32719858798005,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 10862
+    },
+    "totalRuns": 10862
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 56.02399504184723,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 1125583872,
+    "sampleCount": 45,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3940.010625,
+   "llmCounts": {
+    "appleHighLosses": 5,
+    "appleWins": 246,
+    "bothAcceptable": 66,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 25,
+    "whisperHighLosses": 1,
+    "whisperWins": 383
+   },
+   "locale": "en_US",
+   "meetingID": "m10",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 9.600006103515625,
+    "maxWordCount": 41,
+    "medianLengthSeconds": 0.480010986328125,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.739990234375,
+    "p90WordCount": 6,
+    "segmentCount": 3846,
+    "speakerChanges": 300,
+    "turnCount": 301
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 5.678955078125,
+    "maxWordCount": 30,
+    "medianLengthSeconds": 0.719970703125,
+    "medianWordCount": 3,
+    "p90LengthSeconds": 2.29901123046875,
+    "p90WordCount": 11,
+    "segmentCount": 2439,
+    "speakerChanges": 330,
+    "turnCount": 331
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 11.150146484375,
+    "maxWordCount": 29,
+    "medianLengthSeconds": 1.43994140625,
+    "medianWordCount": 6,
+    "p90LengthSeconds": 4.8800048828125,
+    "p90WordCount": 17,
+    "segmentCount": 1420,
+    "speakerChanges": 262,
+    "turnCount": 263
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.7813178139141779,
+    "coverageB": 0.6270973931538245,
+    "timeAgreement": 0.9918846733324203,
+    "wordAgreement": 0.9933951104100947
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.7813178139141779,
+    "coverageB": 0.7337900157613814,
+    "timeAgreement": 0.9746575775965093,
+    "wordAgreement": 0.9789324420135723
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7337900157613814,
+    "coverageB": 0.6270973931538245,
+    "timeAgreement": 0.9767160045009954,
+    "wordAgreement": 0.979243452958293
+   },
+   "speakerCount": 4,
+   "textQualityApple": {
+    "fillerCounts": {
+     "uh": 28,
+     "um": 30
+    },
+    "fillerPer1000Words": 5.339716442644081,
+    "fillerTotal": 58,
+    "midSentenceCapitalizedShare": 0.016067653276955602,
+    "punctuationPer100Words": 20.55790830417971,
+    "sentenceCount": 1097,
+    "sentenceStartCapitalizedShare": 0.9367552703941339,
+    "wordCount": 10862
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "uh": 39,
+     "um": 38
+    },
+    "fillerPer1000Words": 6.760909649661954,
+    "fillerTotal": 77,
+    "midSentenceCapitalizedShare": 0.017637732857709077,
+    "punctuationPer100Words": 21.09052594608833,
+    "sentenceCount": 924,
+    "sentenceStartCapitalizedShare": 0.962080173347779,
+    "wordCount": 11389
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 15,
+     "um": 12
+    },
+    "fillerPer1000Words": 2.5299850074962515,
+    "fillerTotal": 27,
+    "midSentenceCapitalizedShare": 0.010004125412541254,
+    "punctuationPer100Words": 13.549475262368816,
+    "sentenceCount": 772,
+    "sentenceStartCapitalizedShare": 0.9725490196078431,
+    "wordCount": 10672
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 56,
+     "appleMatches": 200,
+     "neither": 39,
+     "tiedPartial": 27,
+     "whisperCloser": 64,
+     "whisperMatches": 334
+    },
+    "byTokens": {
+     "appleCloser": 212,
+     "appleMatches": 327,
+     "neither": 43,
+     "tiedPartial": 84,
+     "whisperCloser": 237,
+     "whisperMatches": 499
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 10.039999999999964,
+     "medianAbs": 0.06100000000000705,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.19899999999961437,
+     "pairs": 10144
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 9.960000000000036,
+     "medianAbs": 0.10000000000013642,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.32000000000005,
+     "pairs": 10144
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.500117187500109,
+     "medianAbs": 0.0799560546875,
+     "medianSigned": 0.03997558593755457,
+     "p90Abs": 0.20001708984375455,
+     "pairs": 9846
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.4599609375,
+     "medianAbs": 0.07999694824218295,
+     "medianSigned": 0.02003906250001819,
+     "p90Abs": 0.24008789062509095,
+     "pairs": 9846
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 10.000058593750055,
+     "medianAbs": 0.06000976562472715,
+     "medianSigned": -0.05997070312503183,
+     "p90Abs": 0.1790683593749236,
+     "pairs": 10283
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 9.94005859375011,
+     "medianAbs": 0.11996093749985448,
+     "medianSigned": -0.11995117187461801,
+     "p90Abs": 0.3799707031248545,
+     "pairs": 10283
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 666,
+    "insertions": 147,
+    "refWords": 11937,
+    "substitutions": 588,
+    "wer": 0.11736617240512692
+   },
+   "werAppleVsWhisper": {
+    "deletions": 270,
+    "insertions": 464,
+    "refWords": 11224,
+    "substitutions": 596,
+    "wer": 0.11849607982893799
+   },
+   "werWhisperVsRef": {
+    "deletions": 818,
+    "insertions": 105,
+    "refWords": 11937,
+    "substitutions": 298,
+    "wer": 0.10228700678562452
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 564856512,
+    "sampleCount": 487,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 15.851765315539593,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 248.5534290075302
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 179553384,
+    "sampleCount": 79,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11633096,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 42648104,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 75.47715213288872,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "punctuationOnly": 1,
+     "wholeWord": 7420
+    },
+    "totalRuns": 7421
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 40.83220601081848,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 988335128,
+    "sampleCount": 60,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3081.898625,
+   "llmCounts": {
+    "appleHighLosses": 6,
+    "appleWins": 188,
+    "bothAcceptable": 25,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 17,
+    "whisperHighLosses": 6,
+    "whisperWins": 281
+   },
+   "locale": "en_US",
+   "meetingID": "m11",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 12.84002685546875,
+    "maxWordCount": 44,
+    "medianLengthSeconds": 0.47998046875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.6199951171875,
+    "p90WordCount": 6,
+    "segmentCount": 2782,
+    "speakerChanges": 324,
+    "turnCount": 325
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 18.779052734375,
+    "maxWordCount": 36,
+    "medianLengthSeconds": 0.6400146484375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.0599365234375,
+    "p90WordCount": 10,
+    "segmentCount": 1772,
+    "speakerChanges": 382,
+    "turnCount": 383
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 20.89990234375,
+    "maxWordCount": 33,
+    "medianLengthSeconds": 1.22003173828125,
+    "medianWordCount": 5,
+    "p90LengthSeconds": 4.5,
+    "p90WordCount": 16,
+    "segmentCount": 1045,
+    "speakerChanges": 294,
+    "turnCount": 295
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.6892101924468427,
+    "coverageB": 0.5480208573310533,
+    "timeAgreement": 0.9908206612475907,
+    "wordAgreement": 0.9923551896501029
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.6892101924468427,
+    "coverageB": 0.6311484186651698,
+    "timeAgreement": 0.9516846862307649,
+    "wordAgreement": 0.9627424034203695
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.6311484186651698,
+    "coverageB": 0.5480208573310533,
+    "timeAgreement": 0.9555167779568114,
+    "wordAgreement": 0.9620363636363637
+   },
+   "speakerCount": 3,
+   "textQualityApple": {
+    "fillerCounts": {
+     "hmm": 1,
+     "uh": 32,
+     "um": 35
+    },
+    "fillerPer1000Words": 9.163185554507479,
+    "fillerTotal": 68,
+    "midSentenceCapitalizedShare": 0.030360832935940232,
+    "punctuationPer100Words": 23.83775771459372,
+    "sentenceCount": 898,
+    "sentenceStartCapitalizedShare": 0.9552572706935123,
+    "wordCount": 7421
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 1,
+     "mhm": 1,
+     "mm": 3,
+     "uh": 56,
+     "um": 45
+    },
+    "fillerPer1000Words": 13.832702596894167,
+    "fillerTotal": 106,
+    "midSentenceCapitalizedShare": 0.02962962962962963,
+    "punctuationPer100Words": 25.13375962416808,
+    "sentenceCount": 811,
+    "sentenceStartCapitalizedShare": 0.9740420271940667,
+    "wordCount": 7663
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 15,
+     "um": 16
+    },
+    "fillerPer1000Words": 4.461173846368326,
+    "fillerTotal": 32,
+    "midSentenceCapitalizedShare": 0.017513411170716316,
+    "punctuationPer100Words": 16.4087550536735,
+    "sentenceCount": 687,
+    "sentenceStartCapitalizedShare": 0.9763313609467456,
+    "wordCount": 7173
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 39,
+     "appleMatches": 139,
+     "neither": 34,
+     "tiedPartial": 26,
+     "whisperCloser": 57,
+     "whisperMatches": 216
+    },
+    "byTokens": {
+     "appleCloser": 172,
+     "appleMatches": 250,
+     "neither": 41,
+     "tiedPartial": 82,
+     "whisperCloser": 216,
+     "whisperMatches": 328
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 15.958999999999833,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.01999999999998181,
+     "p90Abs": 0.18000000000029104,
+     "pairs": 6802
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 9.319999999999993,
+     "medianAbs": 0.10000000000002274,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.29999999999972715,
+     "pairs": 6802
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 15.040087890624818,
+     "medianAbs": 0.07997070312489996,
+     "medianSigned": 0.039995727539064774,
+     "p90Abs": 0.2000024414063546,
+     "pairs": 6535
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 15.520087890624836,
+     "medianAbs": 0.07999511718753638,
+     "medianSigned": 0.02003906250001819,
+     "p90Abs": 0.24001464843740905,
+     "pairs": 6535
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 15.93890234374976,
+     "medianAbs": 0.06003906249998181,
+     "medianSigned": -0.059999237060544885,
+     "p90Abs": 0.17905371093752365,
+     "pairs": 6848
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 16.200087890625127,
+     "medianAbs": 0.10006835937474534,
+     "medianSigned": -0.10004882812495453,
+     "p90Abs": 0.33999999999991815,
+     "pairs": 6848
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 346,
+    "insertions": 113,
+    "refWords": 7997,
+    "substitutions": 465,
+    "wer": 0.1155433287482806
+   },
+   "werAppleVsWhisper": {
+    "deletions": 180,
+    "insertions": 366,
+    "refWords": 7578,
+    "substitutions": 500,
+    "wer": 0.13803114278173662
+   },
+   "werWhisperVsRef": {
+    "deletions": 494,
+    "insertions": 75,
+    "refWords": 7997,
+    "substitutions": 260,
+    "wer": 0.10366387395273227
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 365119168,
+    "sampleCount": 359,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 16.80962439103778,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 183.34131407737732
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 144032848,
+    "sampleCount": 111,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11649480,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 57115176,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 57.192276274232,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 11079
+    },
+    "totalRuns": 11079
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 57.662984013557434,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 897567696,
+    "sampleCount": 29,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3297.8773125,
+   "llmCounts": {
+    "appleHighLosses": 8,
+    "appleWins": 230,
+    "bothAcceptable": 42,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 27,
+    "whisperHighLosses": 3,
+    "whisperWins": 288
+   },
+   "locale": "en_US",
+   "meetingID": "m12",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 13.680007934570312,
+    "maxWordCount": 45,
+    "medianLengthSeconds": 0.5400390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.039794921875,
+    "p90WordCount": 8,
+    "segmentCount": 3167,
+    "speakerChanges": 97,
+    "turnCount": 98
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 8.4599609375,
+    "maxWordCount": 54,
+    "medianLengthSeconds": 0.67919921875,
+    "medianWordCount": 3,
+    "p90LengthSeconds": 2.580078125,
+    "p90WordCount": 13,
+    "segmentCount": 2154,
+    "speakerChanges": 108,
+    "turnCount": 109
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 11.0400390625,
+    "maxWordCount": 36,
+    "medianLengthSeconds": 1.449951171875,
+    "medianWordCount": 7,
+    "p90LengthSeconds": 4.14013671875,
+    "p90WordCount": 16,
+    "segmentCount": 1401,
+    "speakerChanges": 85,
+    "turnCount": 86
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.9015212849505894,
+    "coverageB": 0.7198616076437215,
+    "timeAgreement": 0.9957316940248077,
+    "wordAgreement": 0.9965460999712175
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.9015212849505894,
+    "coverageB": 0.8050681197257624,
+    "timeAgreement": 0.9890404665685565,
+    "wordAgreement": 0.9919929694365784
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.8050681197257624,
+    "coverageB": 0.7198616076437215,
+    "timeAgreement": 0.9892445594725141,
+    "wordAgreement": 0.9896279379579408
+   },
+   "speakerCount": 4,
+   "textQualityApple": {
+    "fillerCounts": {
+     "hmm": 1,
+     "uh": 73,
+     "um": 52
+    },
+    "fillerPer1000Words": 11.372867587327375,
+    "fillerTotal": 126,
+    "midSentenceCapitalizedShare": 0.01898860683589846,
+    "punctuationPer100Words": 18.04314468814875,
+    "sentenceCount": 805,
+    "sentenceStartCapitalizedShare": 0.9614906832298137,
+    "wordCount": 11079
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "hmm": 1,
+     "mhm": 1,
+     "mm": 2,
+     "uh": 99,
+     "um": 57
+    },
+    "fillerPer1000Words": 14.022787028921998,
+    "fillerTotal": 160,
+    "midSentenceCapitalizedShare": 0.022483735170302336,
+    "punctuationPer100Words": 19.123575810692376,
+    "sentenceCount": 702,
+    "sentenceStartCapitalizedShare": 0.9601139601139601,
+    "wordCount": 11410
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "hmm": 1,
+     "uh": 35,
+     "um": 10
+    },
+    "fillerPer1000Words": 4.225610876354952,
+    "fillerTotal": 46,
+    "midSentenceCapitalizedShare": 0.016188667932447286,
+    "punctuationPer100Words": 13.292302039316553,
+    "sentenceCount": 696,
+    "sentenceStartCapitalizedShare": 0.9826839826839827,
+    "wordCount": 10886
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 43,
+     "appleMatches": 194,
+     "neither": 46,
+     "tiedPartial": 19,
+     "whisperCloser": 40,
+     "whisperMatches": 245
+    },
+    "byTokens": {
+     "appleCloser": 161,
+     "appleMatches": 281,
+     "neither": 57,
+     "tiedPartial": 53,
+     "whisperCloser": 152,
+     "whisperMatches": 372
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 1.6800000000000637,
+     "medianAbs": 0.060000000000172804,
+     "medianSigned": -0.020000000000436557,
+     "p90Abs": 0.1790000000000873,
+     "pairs": 10423
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 2.6200000000003456,
+     "medianAbs": 0.10000000000002274,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.31999999999993634,
+     "pairs": 10423
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.0999975585937136,
+     "medianAbs": 0.0799560546875,
+     "medianSigned": 0.03992187499989086,
+     "p90Abs": 0.1999609375000091,
+     "pairs": 10229
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 3.6000292968749363,
+     "medianAbs": 0.07997070312512733,
+     "medianSigned": 0.019987792968777285,
+     "p90Abs": 0.22000083923339986,
+     "pairs": 10229
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.038997558593792,
+     "medianAbs": 0.05997070312514552,
+     "medianSigned": -0.05905859375025102,
+     "p90Abs": 0.15995117187503638,
+     "pairs": 10479
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.760029296875018,
+     "medianAbs": 0.10002197265623636,
+     "medianSigned": -0.10001342773438182,
+     "p90Abs": 0.3000292968749818,
+     "pairs": 10479
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 445,
+    "insertions": 96,
+    "refWords": 11814,
+    "substitutions": 485,
+    "wer": 0.08684611477907567
+   },
+   "werAppleVsWhisper": {
+    "deletions": 231,
+    "insertions": 326,
+    "refWords": 11370,
+    "substitutions": 469,
+    "wer": 0.09023746701846966
+   },
+   "werWhisperVsRef": {
+    "deletions": 538,
+    "insertions": 94,
+    "refWords": 11814,
+    "substitutions": 310,
+    "wer": 0.07973590655154901
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 365512384,
+    "sampleCount": 462,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 14.01186373959232,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 235.36321604251862
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 172704872,
+    "sampleCount": 35,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11616712,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 36061736,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 169.03968975709228,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 2060
+    },
+    "totalRuns": 2060
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 18.045529007911682,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 857279464,
+    "sampleCount": 13,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3050.410625,
+   "llmCounts": {
+    "appleHighLosses": 0,
+    "appleWins": 29,
+    "bothAcceptable": 0,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 1,
+    "whisperHighLosses": 1,
+    "whisperWins": 64
+   },
+   "locale": "en_US",
+   "meetingID": "m13",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 4.9199981689453125,
+    "maxWordCount": 20,
+    "medianLengthSeconds": 0.5400390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.5,
+    "p90WordCount": 5,
+    "segmentCount": 876,
+    "speakerChanges": 4,
+    "turnCount": 5
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 18.800048828125,
+    "maxWordCount": 25,
+    "medianLengthSeconds": 0.6790771484375,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.919189453125,
+    "p90WordCount": 7,
+    "segmentCount": 656,
+    "speakerChanges": 4,
+    "turnCount": 5
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 7.800048828125,
+    "maxWordCount": 20,
+    "medianLengthSeconds": 1.75,
+    "medianWordCount": 5,
+    "p90LengthSeconds": 4.419921875,
+    "p90WordCount": 13,
+    "segmentCount": 329,
+    "speakerChanges": 4,
+    "turnCount": 5
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.2211079822056707,
+    "coverageB": 0.20498555931825557,
+    "timeAgreement": 1,
+    "wordAgreement": 1
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.2211079822056707,
+    "coverageB": 0.23865972115223855,
+    "timeAgreement": 0.999790082190896,
+    "wordAgreement": 0.9994969818913481
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.23865972115223855,
+    "coverageB": 0.20498555931825557,
+    "timeAgreement": 0.9946991783726478,
+    "wordAgreement": 0.9995042141794744
+   },
+   "speakerCount": 2,
+   "textQualityApple": {
+    "fillerCounts": {
+     "um": 2
+    },
+    "fillerPer1000Words": 0.970873786407767,
+    "fillerTotal": 2,
+    "midSentenceCapitalizedShare": 0.0045377197958026095,
+    "punctuationPer100Words": 17.766990291262136,
+    "sentenceCount": 277,
+    "sentenceStartCapitalizedShare": 0.9819494584837545,
+    "wordCount": 2060
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 2,
+     "um": 2
+    },
+    "fillerPer1000Words": 1.9455252918287937,
+    "fillerTotal": 4,
+    "midSentenceCapitalizedShare": 0.005414185165132647,
+    "punctuationPer100Words": 16.342412451361866,
+    "sentenceCount": 193,
+    "sentenceStartCapitalizedShare": 0.9948186528497409,
+    "wordCount": 2056
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {},
+    "fillerPer1000Words": 0,
+    "fillerTotal": 0,
+    "midSentenceCapitalizedShare": 0.007940709370037057,
+    "punctuationPer100Words": 13.527724665391968,
+    "sentenceCount": 186,
+    "sentenceStartCapitalizedShare": 0.8978494623655914,
+    "wordCount": 2092
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 4,
+     "appleMatches": 24,
+     "neither": 3,
+     "tiedPartial": 3,
+     "whisperCloser": 3,
+     "whisperMatches": 57
+    },
+    "byTokens": {
+     "appleCloser": 16,
+     "appleMatches": 31,
+     "neither": 3,
+     "tiedPartial": 8,
+     "whisperCloser": 13,
+     "whisperMatches": 67
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 241.76,
+     "medianAbs": 0.07999999999998408,
+     "medianSigned": -0.03999999999996362,
+     "p90Abs": 0.27899999999999636,
+     "pairs": 1967
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 241.5,
+     "medianAbs": 0.12000000000011823,
+     "medianSigned": -0.12000000000000455,
+     "p90Abs": 0.3200000000001637,
+     "pairs": 1967
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 240.77960937500006,
+     "medianAbs": 0.08006835937476353,
+     "medianSigned": 0.03996093749992724,
+     "p90Abs": 0.22004882812507276,
+     "pairs": 1983
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 240.17995117187502,
+     "medianAbs": 0.0800268554687591,
+     "medianSigned": 0.03995117187514552,
+     "p90Abs": 0.22004394531245453,
+     "pairs": 1983
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 43.66096093750002,
+     "medianAbs": 0.0791171875002874,
+     "medianSigned": -0.0790122070312691,
+     "p90Abs": 0.23908789062488722,
+     "pairs": 2011
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 43.67999511718767,
+     "medianAbs": 0.16000244140627728,
+     "medianSigned": -0.15999999999985448,
+     "p90Abs": 0.3400195312501637,
+     "pairs": 2011
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 31,
+    "insertions": 40,
+    "refWords": 2098,
+    "substitutions": 58,
+    "wer": 0.061487130600571975
+   },
+   "werAppleVsWhisper": {
+    "deletions": 51,
+    "insertions": 18,
+    "refWords": 2140,
+    "substitutions": 63,
+    "wer": 0.0616822429906542
+   },
+   "werWhisperVsRef": {
+    "deletions": 17,
+    "insertions": 59,
+    "refWords": 2098,
+    "substitutions": 24,
+    "wer": 0.047664442326024785
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 463374016,
+    "sampleCount": 201,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 29.54232713542165,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 103.2555969953537
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 203998312,
+    "sampleCount": 119,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11633096,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 61194792,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 53.44816447297061,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 11310
+    },
+    "totalRuns": 11310
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 61.72150802612305,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 751913912,
+    "sampleCount": 28,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3298.9013125,
+   "llmCounts": {
+    "appleHighLosses": 12,
+    "appleWins": 228,
+    "bothAcceptable": 27,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 20,
+    "whisperHighLosses": 6,
+    "whisperWins": 241
+   },
+   "locale": "en_US",
+   "meetingID": "m14",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 22.5,
+    "maxWordCount": 77,
+    "medianLengthSeconds": 0.5400390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.10009765625,
+    "p90WordCount": 9,
+    "segmentCount": 2980,
+    "speakerChanges": 111,
+    "turnCount": 112
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 9.5390625,
+    "maxWordCount": 55,
+    "medianLengthSeconds": 0.87890625,
+    "medianWordCount": 4,
+    "p90LengthSeconds": 2.839111328125,
+    "p90WordCount": 14,
+    "segmentCount": 1942,
+    "speakerChanges": 110,
+    "turnCount": 111
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 9.569976806640625,
+    "maxWordCount": 32,
+    "medianLengthSeconds": 1.540283203125,
+    "medianWordCount": 7,
+    "p90LengthSeconds": 4.239990234375,
+    "p90WordCount": 17,
+    "segmentCount": 1353,
+    "speakerChanges": 98,
+    "turnCount": 99
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.8871532935220832,
+    "coverageB": 0.7214707932947346,
+    "timeAgreement": 0.995722925640691,
+    "wordAgreement": 0.9954132734250679
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.8871532935220832,
+    "coverageB": 0.7938100578980872,
+    "timeAgreement": 0.9882266343212407,
+    "wordAgreement": 0.9879931389365352
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7938100578980872,
+    "coverageB": 0.7214707932947346,
+    "timeAgreement": 0.9868218622529393,
+    "wordAgreement": 0.9874043664862847
+   },
+   "speakerCount": 3,
+   "textQualityApple": {
+    "fillerCounts": {
+     "uh": 66,
+     "um": 102
+    },
+    "fillerPer1000Words": 14.854111405835544,
+    "fillerTotal": 168,
+    "midSentenceCapitalizedShare": 0.017496111975116642,
+    "punctuationPer100Words": 18.5499557913351,
+    "sentenceCount": 748,
+    "sentenceStartCapitalizedShare": 0.9558232931726908,
+    "wordCount": 11310
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "uh": 73,
+     "um": 103
+    },
+    "fillerPer1000Words": 15.33635413035901,
+    "fillerTotal": 176,
+    "midSentenceCapitalizedShare": 0.01899810964083176,
+    "punctuationPer100Words": 18.73475078424538,
+    "sentenceCount": 645,
+    "sentenceStartCapitalizedShare": 0.9674418604651163,
+    "wordCount": 11476
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 20,
+     "um": 24
+    },
+    "fillerPer1000Words": 4.009111617312073,
+    "fillerTotal": 44,
+    "midSentenceCapitalizedShare": 0.013401655498620418,
+    "punctuationPer100Words": 12.391799544419134,
+    "sentenceCount": 659,
+    "sentenceStartCapitalizedShare": 0.9787234042553191,
+    "wordCount": 10975
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 28,
+     "appleMatches": 191,
+     "neither": 29,
+     "tiedPartial": 15,
+     "whisperCloser": 36,
+     "whisperMatches": 217
+    },
+    "byTokens": {
+     "appleCloser": 100,
+     "appleMatches": 283,
+     "neither": 33,
+     "tiedPartial": 43,
+     "whisperCloser": 131,
+     "whisperMatches": 318
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 2.2210000000000036,
+     "medianAbs": 0.06000000000005912,
+     "medianSigned": -0.03899999999975989,
+     "p90Abs": 0.17899999999963256,
+     "pairs": 10683
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 2.6399999999998727,
+     "medianAbs": 0.09999999999990905,
+     "medianSigned": -0.09999999999990905,
+     "p90Abs": 0.2800000000002001,
+     "pairs": 10683
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.7600073242188046,
+     "medianAbs": 0.06005859375,
+     "medianSigned": 0.02008789062529104,
+     "p90Abs": 0.1800048828126819,
+     "pairs": 10473
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.03997802734375,
+     "medianAbs": 0.0601074218748181,
+     "medianSigned": 0.019990234374972715,
+     "p90Abs": 0.20007812499989086,
+     "pairs": 10473
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.7999804687501637,
+     "medianAbs": 0.05997070312514552,
+     "medianSigned": -0.05988281249983629,
+     "p90Abs": 0.15899877929686568,
+     "pairs": 10689
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 4.180039062499873,
+     "medianAbs": 0.10001953124992724,
+     "medianSigned": -0.100014648437309,
+     "p90Abs": 0.2800097656249818,
+     "pairs": 10689
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 295,
+    "insertions": 113,
+    "refWords": 11815,
+    "substitutions": 389,
+    "wer": 0.06745662293694456
+   },
+   "werAppleVsWhisper": {
+    "deletions": 145,
+    "insertions": 350,
+    "refWords": 11428,
+    "substitutions": 367,
+    "wer": 0.07542877143857193
+   },
+   "werWhisperVsRef": {
+    "deletions": 456,
+    "insertions": 69,
+    "refWords": 11815,
+    "substitutions": 205,
+    "wer": 0.06178586542530681
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 505398976,
+    "sampleCount": 464,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 13.93670868333046,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 236.70591008663177
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 203801752,
+    "sampleCount": 101,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11633096,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 57573928,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 67.64487527352775,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 9970
+    },
+    "totalRuns": 9970
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 52.46158409118652,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 831245240,
+    "sampleCount": 39,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3548.7573125,
+   "llmCounts": {
+    "appleHighLosses": 6,
+    "appleWins": 302,
+    "bothAcceptable": 30,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 29,
+    "whisperHighLosses": 2,
+    "whisperWins": 293
+   },
+   "locale": "en_US",
+   "meetingID": "m15",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 13.139892578125,
+    "maxWordCount": 46,
+    "medianLengthSeconds": 0.48004150390625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.679931640625,
+    "p90WordCount": 6,
+    "segmentCount": 3469,
+    "speakerChanges": 314,
+    "turnCount": 315
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 7.5,
+    "maxWordCount": 39,
+    "medianLengthSeconds": 0.579010009765625,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 2.040008544921875,
+    "p90WordCount": 10,
+    "segmentCount": 2506,
+    "speakerChanges": 360,
+    "turnCount": 361
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 11.5,
+    "maxWordCount": 25,
+    "medianLengthSeconds": 1.3800048828125,
+    "medianWordCount": 6,
+    "p90LengthSeconds": 5.08001708984375,
+    "p90WordCount": 18,
+    "segmentCount": 1304,
+    "speakerChanges": 258,
+    "turnCount": 259
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.7933159563226488,
+    "coverageB": 0.6327805565339908,
+    "timeAgreement": 0.99306665905284,
+    "wordAgreement": 0.9953653804699288
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.7933159563226488,
+    "coverageB": 0.7390292356463544,
+    "timeAgreement": 0.9715900914790832,
+    "wordAgreement": 0.971514745308311
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.7390292356463544,
+    "coverageB": 0.6327805565339908,
+    "timeAgreement": 0.9701249486356096,
+    "wordAgreement": 0.9719302048336405
+   },
+   "speakerCount": 2,
+   "textQualityApple": {
+    "fillerCounts": {
+     "ah": 2,
+     "uh": 50,
+     "um": 130
+    },
+    "fillerPer1000Words": 18.254764292878633,
+    "fillerTotal": 182,
+    "midSentenceCapitalizedShare": 0.029425447778553153,
+    "punctuationPer100Words": 24.092276830491475,
+    "sentenceCount": 1070,
+    "sentenceStartCapitalizedShare": 0.9643527204502814,
+    "wordCount": 9970
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "ah": 2,
+     "mhm": 5,
+     "mm": 1,
+     "uh": 66,
+     "um": 172
+    },
+    "fillerPer1000Words": 23.47104283942372,
+    "fillerTotal": 246,
+    "midSentenceCapitalizedShare": 0.035640100579424946,
+    "punctuationPer100Words": 25.63686671119168,
+    "sentenceCount": 969,
+    "sentenceStartCapitalizedShare": 0.9420889348500517,
+    "wordCount": 10481
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "ah": 1,
+     "uh": 18,
+     "um": 41
+    },
+    "fillerPer1000Words": 6.253908692933083,
+    "fillerTotal": 60,
+    "midSentenceCapitalizedShare": 0.019197207678883072,
+    "punctuationPer100Words": 15.447154471544716,
+    "sentenceCount": 815,
+    "sentenceStartCapitalizedShare": 0.9754299754299754,
+    "wordCount": 9594
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 47,
+     "appleMatches": 236,
+     "neither": 50,
+     "tiedPartial": 28,
+     "whisperCloser": 47,
+     "whisperMatches": 246
+    },
+    "byTokens": {
+     "appleCloser": 181,
+     "appleMatches": 377,
+     "neither": 60,
+     "tiedPartial": 69,
+     "whisperCloser": 167,
+     "whisperMatches": 364
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 3.4189999999999827,
+     "medianAbs": 0.061000000000603904,
+     "medianSigned": -0.03900000000000148,
+     "p90Abs": 0.19900000000006912,
+     "pairs": 9278
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.639999999999986,
+     "medianAbs": 0.11999999999989086,
+     "medianSigned": -0.1000000000003638,
+     "p90Abs": 0.35999999999989996,
+     "pairs": 9278
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 3.2199951171875227,
+     "medianAbs": 0.07994140625010004,
+     "medianSigned": 0.0200683593748181,
+     "p90Abs": 0.19999908447265113,
+     "pairs": 8940
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 4.299951171875023,
+     "medianAbs": 0.07999664306640852,
+     "medianSigned": 0.019998168945306816,
+     "p90Abs": 0.25994140624993634,
+     "pairs": 8940
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 3.4190048828124873,
+     "medianAbs": 0.06007812500001819,
+     "medianSigned": -0.06001464843757276,
+     "p90Abs": 0.17910742187495998,
+     "pairs": 9208
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 3.8599707031249864,
+     "medianAbs": 0.1199951171875,
+     "medianSigned": -0.1199890136718409,
+     "p90Abs": 0.3800976562502001,
+     "pairs": 9208
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 629,
+    "insertions": 135,
+    "refWords": 10818,
+    "substitutions": 423,
+    "wer": 0.10972453318543168
+   },
+   "werAppleVsWhisper": {
+    "deletions": 248,
+    "insertions": 493,
+    "refWords": 10079,
+    "substitutions": 426,
+    "wer": 0.11578529616033337
+   },
+   "werWhisperVsRef": {
+    "deletions": 843,
+    "insertions": 104,
+    "refWords": 10818,
+    "substitutions": 272,
+    "wer": 0.11268256609354779
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 518784704,
+    "sampleCount": 461,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 15.089134590819727,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 235.18627202510834
+  },
+  {
+   "appleMemory": {
+    "processLifetimePeakBytes": 208241792,
+    "processPeakFootprintBytes": 173163648,
+    "sampleCount": 67,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": [
+     {
+      "lifetimeMaxFootprintBytes": 41239008,
+      "name": "com.apple.siri.embeddedspeech",
+      "peakFootprintBytes": 10256840,
+      "pid": 1391
+     },
+     {
+      "lifetimeMaxFootprintBytes": 13124040,
+      "name": "corespeechd",
+      "peakFootprintBytes": 11649480,
+      "pid": 1034
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5800320,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5767552,
+      "pid": 1161
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5931392,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 5898624,
+      "pid": 1047
+     },
+     {
+      "lifetimeMaxFootprintBytes": 6324608,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 6242688,
+      "pid": 1098
+     },
+     {
+      "lifetimeMaxFootprintBytes": 89113176,
+      "name": "localspeechrecognition",
+      "peakFootprintBytes": 46645800,
+      "pid": 2088
+     },
+     {
+      "lifetimeMaxFootprintBytes": 5013792,
+      "name": "speechmaintenanced",
+      "peakFootprintBytes": 4358504,
+      "pid": 1049
+     }
+    ]
+   },
+   "appleRTF": 88.56509244067345,
+   "appleRunStats": {
+    "anomalyCounts": {},
+    "classCounts": {
+     "wholeWord": 5888
+    },
+    "totalRuns": 5888
+   },
+   "appleStatus": "completed",
+   "appleWallSeconds": 34.62998700141907,
+   "diarizationMemory": {
+    "processLifetimePeakBytes": 2541751848,
+    "processPeakFootprintBytes": 850709456,
+    "sampleCount": 32,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "droppedUntimedApple": 0,
+   "droppedUntimedReference": 0,
+   "droppedUntimedWhisper": 0,
+   "durationSeconds": 3067.008,
+   "llmCounts": {
+    "appleHighLosses": 11,
+    "appleWins": 137,
+    "bothAcceptable": 32,
+    "invalid": 0,
+    "judged": true,
+    "undecided": 0,
+    "unknown": 32,
+    "whisperHighLosses": 1,
+    "whisperWins": 202
+   },
+   "locale": "en_US",
+   "meetingID": "m16",
+   "referenceStatus": "completed",
+   "segmentStatsApple": {
+    "maxLengthSeconds": 14.159912109375,
+    "maxWordCount": 37,
+    "medianLengthSeconds": 0.5399169921875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.6199951171875,
+    "p90WordCount": 5,
+    "segmentCount": 2280,
+    "speakerChanges": 192,
+    "turnCount": 193
+   },
+   "segmentStatsReference": {
+    "maxLengthSeconds": 7.4409942626953125,
+    "maxWordCount": 34,
+    "medianLengthSeconds": 0.617919921875,
+    "medianWordCount": 2,
+    "p90LengthSeconds": 1.958984375,
+    "p90WordCount": 9,
+    "segmentCount": 1587,
+    "speakerChanges": 206,
+    "turnCount": 207
+   },
+   "segmentStatsWhisper": {
+    "maxLengthSeconds": 16.47998046875,
+    "maxWordCount": 23,
+    "medianLengthSeconds": 1.300048828125,
+    "medianWordCount": 5,
+    "p90LengthSeconds": 4.699951171875,
+    "p90WordCount": 14,
+    "segmentCount": 892,
+    "speakerChanges": 169,
+    "turnCount": 170
+   },
+   "speakerAgreementAR": {
+    "coverageA": 0.5877143788718617,
+    "coverageB": 0.4537789370720574,
+    "timeAgreement": 0.9915828053174307,
+    "wordAgreement": 0.9933246801409235
+   },
+   "speakerAgreementAW": {
+    "coverageA": 0.5877143788718617,
+    "coverageB": 0.5600782523638735,
+    "timeAgreement": 0.9751752355598686,
+    "wordAgreement": 0.9763899466869764
+   },
+   "speakerAgreementWR": {
+    "coverageA": 0.5600782523638735,
+    "coverageB": 0.4537789370720574,
+    "timeAgreement": 0.971363796074757,
+    "wordAgreement": 0.9767994154183413
+   },
+   "speakerCount": 4,
+   "textQualityApple": {
+    "fillerCounts": {
+     "hmm": 1,
+     "mhm": 1,
+     "uh": 31,
+     "um": 17
+    },
+    "fillerPer1000Words": 8.491847826086955,
+    "fillerTotal": 50,
+    "midSentenceCapitalizedShare": 0.02899980272243046,
+    "punctuationPer100Words": 24.541440217391305,
+    "sentenceCount": 691,
+    "sentenceStartCapitalizedShare": 0.9652677279305355,
+    "wordCount": 5888
+   },
+   "textQualityReference": {
+    "fillerCounts": {
+     "mhm": 1,
+     "mm": 1,
+     "uh": 40,
+     "um": 18
+    },
+    "fillerPer1000Words": 9.860312243221035,
+    "fillerTotal": 60,
+    "midSentenceCapitalizedShare": 0.026931649331352156,
+    "punctuationPer100Words": 25.012325390304024,
+    "sentenceCount": 576,
+    "sentenceStartCapitalizedShare": 0.9547038327526133,
+    "wordCount": 6085
+   },
+   "textQualityWhisper": {
+    "fillerCounts": {
+     "uh": 7,
+     "um": 5
+    },
+    "fillerPer1000Words": 2.100840336134454,
+    "fillerTotal": 12,
+    "midSentenceCapitalizedShare": 0.02111849824012515,
+    "punctuationPer100Words": 17.086834733893557,
+    "sentenceCount": 503,
+    "sentenceStartCapitalizedShare": 0.9437751004016064,
+    "wordCount": 5712
+   },
+   "tieBreakCounts": {
+    "byRegion": {
+     "appleCloser": 39,
+     "appleMatches": 102,
+     "neither": 32,
+     "tiedPartial": 23,
+     "whisperCloser": 43,
+     "whisperMatches": 164
+    },
+    "byTokens": {
+     "appleCloser": 139,
+     "appleMatches": 161,
+     "neither": 40,
+     "tiedPartial": 76,
+     "whisperCloser": 176,
+     "whisperMatches": 246
+    }
+   },
+   "timingAppleVsRef": {
+    "endStats": {
+     "maxAbs": 6.539000000000215,
+     "medianAbs": 0.06099999999992178,
+     "medianSigned": -0.020000000000095497,
+     "p90Abs": 0.19899999999984175,
+     "pairs": 5393
+    },
+    "engineX": "reference",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 6.640000000000327,
+     "medianAbs": 0.1190000000000282,
+     "medianSigned": -0.10000000000002274,
+     "p90Abs": 0.3400000000001455,
+     "pairs": 5393
+    }
+   },
+   "timingAppleVsWhisper": {
+    "endStats": {
+     "maxAbs": 6.259851074218773,
+     "medianAbs": 0.0799804687503638,
+     "medianSigned": 0.03999511718745907,
+     "p90Abs": 0.21999908447265426,
+     "pairs": 5242
+    },
+    "engineX": "whisper",
+    "engineY": "apple",
+    "startStats": {
+     "maxAbs": 5.539912109375109,
+     "medianAbs": 0.0800073242187409,
+     "medianSigned": 0.02003906250001819,
+     "p90Abs": 0.2600390625000273,
+     "pairs": 5242
+    }
+   },
+   "timingWhisperVsRef": {
+    "endStats": {
+     "maxAbs": 6.6990390625001055,
+     "medianAbs": 0.06100976562515825,
+     "medianSigned": -0.06000244140625455,
+     "p90Abs": 0.20000732421874545,
+     "pairs": 5461
+    },
+    "engineX": "reference",
+    "engineY": "whisper",
+    "startStats": {
+     "maxAbs": 6.679960937500255,
+     "medianAbs": 0.119996948242175,
+     "medianSigned": -0.11999023437510914,
+     "p90Abs": 0.43999023437527285,
+     "pairs": 5461
+    }
+   },
+   "werAppleVsRef": {
+    "deletions": 313,
+    "insertions": 104,
+    "refWords": 6322,
+    "substitutions": 378,
+    "wer": 0.12575134451123063
+   },
+   "werAppleVsWhisper": {
+    "deletions": 154,
+    "insertions": 283,
+    "refWords": 5984,
+    "substitutions": 362,
+    "wer": 0.13352272727272727
+   },
+   "werWhisperVsRef": {
+    "deletions": 399,
+    "insertions": 61,
+    "refWords": 6322,
+    "substitutions": 212,
+    "wer": 0.10629547611515343
+   },
+   "whisperMemory": {
+    "processLifetimePeakBytes": 956336096,
+    "processPeakFootprintBytes": 447530688,
+    "sampleCount": 327,
+    "sampleIntervalSeconds": 0.5,
+    "systemProcesses": []
+   },
+   "whisperRTF": 18.32677583541269,
+   "whisperStatus": "completed",
+   "whisperWallSeconds": 167.35120391845703
+  }
+ ],
+ "overallSpeakerAgreementAR": {
+  "timeAgreement": 0.9934503216300892,
+  "wordAgreement": 0.9947944613938591
+ },
+ "overallSpeakerAgreementAW": {
+  "timeAgreement": 0.9796369604585715,
+  "wordAgreement": 0.9820976701668044
+ },
+ "overallSpeakerAgreementWR": {
+  "timeAgreement": 0.9790058847138562,
+  "wordAgreement": 0.9820468677998898
+ },
+ "overallTieBreakCounts": {
+  "byRegion": {
+   "appleCloser": 580,
+   "appleMatches": 2321,
+   "neither": 444,
+   "tiedPartial": 274,
+   "whisperCloser": 570,
+   "whisperMatches": 2942
+  },
+  "byTokens": {
+   "appleCloser": 2289,
+   "appleMatches": 3655,
+   "neither": 535,
+   "tiedPartial": 802,
+   "whisperCloser": 2083,
+   "whisperMatches": 4464
+  }
+ },
+ "overallTimingAR": {
+  "endStats": {
+   "maxAbs": 241.76,
+   "medianAbs": 0.06099999999969441,
+   "medianSigned": -0.020000000000209184,
+   "p90Abs": 0.18000000000000682,
+   "pairs": 99751
+  },
+  "engineX": "reference",
+  "engineY": "apple",
+  "startStats": {
+   "maxAbs": 241.5,
+   "medianAbs": 0.10000000000002274,
+   "medianSigned": -0.09999999999990905,
+   "p90Abs": 0.3000000000001819,
+   "pairs": 99751
+  }
+ },
+ "overallTimingAW": {
+  "endStats": {
+   "maxAbs": 329.3597265624994,
+   "medianAbs": 0.07995117187510914,
+   "medianSigned": 0.03997070312516371,
+   "p90Abs": 0.19999511718742724,
+   "pairs": 107588
+  },
+  "engineX": "whisper",
+  "engineY": "apple",
+  "startStats": {
+   "maxAbs": 328.0793359375002,
+   "medianAbs": 0.07998779296872272,
+   "medianSigned": 0.020010986328145464,
+   "p90Abs": 0.23998535156249545,
+   "pairs": 107588
+  }
+ },
+ "overallTimingWR": {
+  "endStats": {
+   "maxAbs": 43.66096093750002,
+   "medianAbs": 0.06000244140625455,
+   "medianSigned": -0.05998046874992724,
+   "p90Abs": 0.16101464843745816,
+   "pairs": 100187
+  },
+  "engineX": "reference",
+  "engineY": "whisper",
+  "startStats": {
+   "maxAbs": 43.67999511718767,
+   "medianAbs": 0.10008789062476353,
+   "medianSigned": -0.10005371093757276,
+   "p90Abs": 0.320068359375,
+   "pairs": 100187
+  }
+ },
+ "pooledWerAppleVsRef": {
+  "deletions": 5313,
+  "insertions": 1577,
+  "refWords": 126910,
+  "substitutions": 5686,
+  "wer": 0.09909384603262154
+ },
+ "pooledWerAppleVsWhisper": {
+  "deletions": 2517,
+  "insertions": 5062,
+  "refWords": 120629,
+  "substitutions": 5605,
+  "wer": 0.10929378507655704
+ },
+ "pooledWerWhisperVsRef": {
+  "deletions": 7442,
+  "insertions": 1161,
+  "refWords": 126910,
+  "substitutions": 3237,
+  "wer": 0.09329446064139942
+ },
+ "referenceModel": "microsoft/mai-transcribe-2",
+ "referenceTotalCost": 1.3430555555555554,
+ "referenceZDR": true,
+ "runnerMachine": {
+  "chip": "Apple M2",
+  "memoryGB": 16,
+  "name": "runner",
+  "osVersion": "Version 27.0.1 (Build 26A434)"
+ }
+}

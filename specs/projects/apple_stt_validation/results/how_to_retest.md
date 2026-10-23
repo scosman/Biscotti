@@ -4,7 +4,7 @@ Use this to repeat the experiment, for example on a new macOS version (a new App
 
 ## What You Need
 
-- The **run 1 workspace** (`~/STTLabData/run1`). It holds the meeting audio, the Whisper, diarization and reference outputs, and the run 1 judge work. It is private data and is never committed. If it is gone, start from scratch with NOTES.md (new meetings, new reference spend: run 1 cost $1.34 for 13.4 h).
+- The **run 1 workspace** (`~/STTLabData/run1`). It holds the meeting audio, the Whisper, diarization and reference outputs, and the run 1 judge work. The Apple results are in `bundle-results-macos26/` (run 1) and `bundle-results-macos27/` (run 2). It is private data and is never committed. If it is gone, start from scratch with NOTES.md (new meetings, new reference spend: run 1 cost $1.34 for 13.4 h).
 - The STTLab experiment code on a branch where `experiments/STTLab` still exists.
 - A runner Mac on the macOS version under test (macOS 26 or later; `SpeechTranscriber` needs it).
 - For the LLM steps: Claude Code (or another agent runner) that can start sub-agents. Run 1 used Claude Opus 5.5, up to 20 agents at a time.
@@ -26,6 +26,18 @@ export J=experiments/STTLab/scripts/judge
    ./STTLabRunner.app/Contents/MacOS/STTLabRunner --cli /path/to/bundle --results /path/to/bundle-results-$RUN
    ```
 4. AirDrop the results folder back to `$WS/bundle-results-$RUN`.
+5. **Compare the text first.** This takes seconds and tells you if the rest is needed:
+   ```bash
+   python3 experiments/STTLab/scripts/compare_apple_runs.py "$WS/bundle-results-macos27" "$WS/bundle-results-$RUN"
+   ```
+   If it prints `TEXT IDENTICAL`, the accuracy results did not change (this happened for macOS 26.5.2 → 27.0.1, see `macos27.md`). Sections 2–4 below still run, but every region matches an earlier decision, so no LLM judging is needed. Only timing, speaker alignment, speed and memory can change. Pass the earlier judge work folder directly to `merge_decisions.py ... write`.
+
+**About the Apple model.** `SpeechTranscriber` uses a system-managed model asset, **one per language** (all `en_*` locales appear to share one English asset). It is not the Dictation model and it is not shown in System Settings. The system installs and updates it through `AssetInventory`; there is no API for the asset version and no supported way to force a new download. Signs of a new model:
+- `assets.installNeeded` in `meetings/<mid>/apple.json` is `true` and the install took more than a few seconds (a real download is hundreds of MB).
+- The asset folder under `/System/Library/AssetsV2/` (reported as `com_apple_MobileAsset_UAF_Speech_AutomaticSpeechRecognition`; not verified by us) has a date after the last test. Its `Info.plist` files may hold version fields.
+- `compare_apple_runs.py` reports different text.
+
+A new OS version alone does not mean a new model: macOS 27.0.1 gave the same text as 26.5.2.
 
 **New Whisper model.** Change `ProductionSettings.sttModel`, move `$WS/home/whisper/` aside, and run `sttlab whisper --workspace "$WS"`. Then continue below with the run 1 Apple results.
 
@@ -118,7 +130,7 @@ Put these side by side (run 1 values from `overview.md`):
 | Apple run granularity (must stay whole-word) and timing deltas | `report_stats.md` → Word Timing |
 | Speaker agreement A-W | `report_stats.md` → Speaker Alignment |
 
-Run on the same machine as run 1 (M2 runner) when you compare speed; RTF numbers from different chips are not comparable.
+Run on the same machine as run 1 (M2 runner) when you compare speed; RTF numbers from different chips are not comparable. Run 1 and run 2 both used the M2 (median 65.4x and 67.6x).
 
 ## Known Caveats to Carry Forward
 

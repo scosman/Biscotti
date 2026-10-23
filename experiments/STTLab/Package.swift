@@ -1,5 +1,5 @@
 // swift-tools-version: 6.0
-// Using 6.0 (not 6.2) because argmax-oss-swift v1.0.0 requires swift-tools-version 6.0.
+// Using 6.0 (not 6.2) to match argmax-oss-swift (swift-tools-version 6.0).
 
 import PackageDescription
 
@@ -14,7 +14,8 @@ let package = Package(
         .executable(name: "STTLabRunner", targets: ["STTLabRunner"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0"),
+        // Run 1 (2026-10) used 1.0.0; follow Packages/Transcription so the path dependency resolves.
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.1.0"),
         .package(name: "Transcription", path: "../../Packages/Transcription"),
         .package(name: "BiscottiKit", path: "../../Packages/BiscottiKit"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")

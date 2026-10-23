@@ -139,7 +139,6 @@ public enum SpeakerAlignment {
             language: "en",
             speakerCount: 0,
             segments: segments,
-            speakerEmbeddings: [:],
             processingDuration: 0
         )
     }

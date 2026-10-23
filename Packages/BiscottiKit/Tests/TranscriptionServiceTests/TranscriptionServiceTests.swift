@@ -550,7 +550,7 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
@@ -608,7 +608,7 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
@@ -911,7 +911,7 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
 
     func processAudio(
         mic _: URL,
-        system _: URL,
+        system _: URL?,
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult

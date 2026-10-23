@@ -8,6 +8,7 @@ import OnboardingUI
 import RecordingUI
 import SettingsUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The main app window: a `NavigationSplitView` with a sidebar (Home +
 /// Past Meetings + Upcoming + Settings) and a detail pane routed by
@@ -23,6 +24,9 @@ public struct AppShellView: View {
     /// (available on macOS 15+). Set when `focusSearch()` bumps
     /// `searchFocusToken` (⌘F).
     @FocusState private var searchFieldFocused: Bool
+
+    /// Presents the audio file picker (toolbar button / File > Import Audio…).
+    @State private var showAudioImporter = false
 
     public init(viewModel: AppShellViewModel) {
         self.viewModel = viewModel
@@ -99,8 +103,44 @@ public struct AppShellView: View {
         .toolbar {
             homeToolbarItem
             ToolbarItem(placement: .primaryAction) {
+                importAudioButton
+            }
+            ToolbarItem(placement: .primaryAction) {
                 recordButton
             }
+        }
+        // Import audio: toolbar button and File > Import Audio… both flip
+        // `showAudioImporter`; dropping files on the window imports them too.
+        .fileImporter(
+            isPresented: $showAudioImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: true
+        ) { result in
+            guard case let .success(urls) = result else { return }
+            Task { await viewModel.importAudio(urls: urls) }
+        }
+        .onChange(of: viewModel.audioImportRequestToken) { _, _ in
+            if viewModel.canImportAudio { showAudioImporter = true }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard viewModel.canImportAudio else { return false }
+            // Pass every dropped file: AppCore validates each one, so rejected
+            // files are named in the alert and valid ones still import.
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            Task { await viewModel.importAudio(urls: files) }
+            return true
+        }
+        .alert(
+            "Some Files Couldn\u{2019}t Be Imported",
+            isPresented: Binding(
+                get: { viewModel.importFailureMessage != nil },
+                set: { if !$0 { viewModel.dismissImportFailure() } }
+            )
+        ) {
+            Button("OK") { viewModel.dismissImportFailure() }
+        } message: {
+            Text(viewModel.importFailureMessage ?? "")
         }
         .onChange(of: viewModel.searchFocusToken) { _, _ in
             searchFieldFocused = true
@@ -276,6 +316,17 @@ private extension AppShellView {
             .help("Home")
             .disabled(viewModel.isHome)
         }
+    }
+
+    /// Imports an audio file as a new meeting (transcribed + summarized like a recording).
+    var importAudioButton: some View {
+        Button {
+            showAudioImporter = true
+        } label: {
+            Label("Import Audio", systemImage: "square.and.arrow.down")
+        }
+        .help("Import an audio file to transcribe and summarize")
+        .disabled(!viewModel.canImportAudio)
     }
 
     /// The stateful Record affordance: a live recording indicator while

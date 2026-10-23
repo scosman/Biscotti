@@ -51,7 +51,7 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
 
     func processAudio(
         micPath: String,
-        systemPath: String,
+        systemPath: String?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         let proxy = try requireProxy()

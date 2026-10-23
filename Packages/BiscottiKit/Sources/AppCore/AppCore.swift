@@ -157,7 +157,7 @@ public struct AutoStopState: Sendable, Equatable {
 /// auto-association, detection -> notification -> record flow,
 /// calendar-start timers, auto-stop countdown).
 @MainActor @Observable
-public final class AppCore {
+public final class AppCore { // swiftlint:disable:this type_body_length
     // MARK: - Published state
 
     /// The current navigation destination.
@@ -201,6 +201,9 @@ public final class AppCore {
     /// `SearchFieldFocuser` (an `NSViewRepresentable`) which calls
     /// `window.makeFirstResponder` on the toolbar's `NSTextField`.
     public private(set) var searchFocusToken: UInt = 0
+
+    /// Bumped by File > Import Audio… so the main window presents its file picker.
+    public private(set) var audioImportRequestToken: UInt = 0
 
     /// Meeting-like upcoming calendar events, mirrored from CalendarService.
     public package(set) var upcoming: [CalendarEvent] = []
@@ -298,6 +301,9 @@ public final class AppCore {
     // MARK: - Private
 
     private let scheduler: any AppScheduler
+
+    /// Validates user-chosen audio files for import (seam for tests).
+    let audioInspector: any AudioImportInspecting
     private var meetingsSearchTask: Task<Void, Never>?
     private var meetingsSearchSpinnerTask: Task<Void, Never>?
 
@@ -380,7 +386,8 @@ public final class AppCore {
         modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler(),
         updateChecker: UpdateChecker? = nil,
-        mcpServer: MCPServerController? = nil
+        mcpServer: MCPServerController? = nil,
+        audioInspector: any AudioImportInspecting = AudioImporter()
     ) {
         self.store = store
         self.permissions = permissions
@@ -392,6 +399,7 @@ public final class AppCore {
         self.intelligence = intelligence
         self.modelManager = modelManager
         self.scheduler = scheduler
+        self.audioInspector = audioInspector
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
     }
@@ -748,6 +756,11 @@ public extension AppCore {
     /// Routes to Onboarding (re-run from Settings).
     func showOnboardingReplay() {
         route = .onboarding
+    }
+
+    /// Asks the main window to present the "Import Audio" file picker.
+    func requestAudioImport() {
+        audioImportRequestToken &+= 1
     }
 
     /// Requests focus on the search field. Increments the focus token

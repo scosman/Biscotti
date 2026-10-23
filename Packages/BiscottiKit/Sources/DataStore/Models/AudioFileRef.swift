@@ -7,11 +7,14 @@ import SwiftData
 public enum AudioRole: String, Codable, Sendable {
     case mic
     case system
+    /// A single file uploaded by the user (not a live recording).
+    case imported
 }
 
 // MARK: - AudioFileRef
 
-/// A reference to a recorded audio file on disk. Two per meeting (mic + system).
+/// A reference to an audio file on disk. Two per recorded meeting (mic + system),
+/// one per imported meeting (`.imported`).
 @Model public final class AudioFileRef {
     public var id = UUID()
     public var role = AudioRole.mic

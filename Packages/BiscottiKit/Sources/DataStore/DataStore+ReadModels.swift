@@ -19,6 +19,8 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
     public let participantCount: Int
     /// Tags applied to this meeting, sorted alphabetically.
     public let tags: [TagData]
+    /// True when created from an uploaded audio file rather than a live recording.
+    public let isImported: Bool
 
     public init(
         id: UUID,
@@ -28,7 +30,8 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
         recordingDuration: TimeInterval? = nil,
         participants: [PersonData] = [],
         participantCount: Int = 0,
-        tags: [TagData] = []
+        tags: [TagData] = [],
+        isImported: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -38,6 +41,7 @@ public struct MeetingSummary: Sendable, Identifiable, Equatable {
         self.participants = participants
         self.participantCount = participantCount
         self.tags = tags
+        self.isImported = isImported
     }
 }
 
@@ -70,6 +74,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let editedTitle: Bool
     /// Tags applied to this meeting, sorted alphabetically.
     public let tags: [TagData]
+    /// True when created from an uploaded audio file rather than a live recording.
+    public let isImported: Bool
 
     public init(
         id: UUID,
@@ -86,7 +92,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         summary: String = "",
         editedSummary: Bool = false,
         editedTitle: Bool = false,
-        tags: [TagData] = []
+        tags: [TagData] = [],
+        isImported: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -103,6 +110,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.editedSummary = editedSummary
         self.editedTitle = editedTitle
         self.tags = tags
+        self.isImported = isImported
     }
 }
 
@@ -470,7 +478,8 @@ public extension DataStore {
                 recordingDuration: meeting.recordingDuration,
                 participants: mappedParticipants,
                 participantCount: deduped.count,
-                tags: mappedTags
+                tags: mappedTags,
+                isImported: meeting.audioFiles.contains { $0.role == .imported }
             )
         }
     }
@@ -512,20 +521,35 @@ public extension DataStore {
             summary: meeting.summary,
             editedSummary: meeting.editedSummary,
             editedTitle: meeting.editedTitle,
-            tags: mappedTags
+            tags: mappedTags,
+            isImported: meeting.audioFiles.contains { $0.role == .imported }
         )
     }
 
-    /// Returns the mic and system audio file paths for a meeting, or nil if not available.
-    func audioPaths(meetingID: UUID) throws -> (mic: URL, system: URL)? {
+    /// Returns the audio file paths to transcribe for a meeting, or nil if not available.
+    ///
+    /// A live recording has a mic + system pair. An imported meeting has one
+    /// `.imported` file, returned as `mic` with `system == nil`.
+    func audioPaths(meetingID: UUID) throws -> (mic: URL, system: URL?)? {
         guard let meeting = try meeting(id: meetingID) else { return nil }
 
         let micRef = meeting.audioFiles.first(where: { $0.role == .mic && $0.isPresent })
         let systemRef = meeting.audioFiles.first(where: { $0.role == .system && $0.isPresent })
+        if let micRef, let systemRef {
+            return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
+        }
 
-        guard let micRef, let systemRef else { return nil }
+        if let importedRef = meeting.audioFiles.first(where: { $0.role == .imported && $0.isPresent }) {
+            return (mic: URL(fileURLWithPath: importedRef.path), system: nil)
+        }
+        return nil
+    }
 
-        return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
+    /// Whether the meeting was created from an uploaded audio file rather than
+    /// a live recording. Derived from the audio role, so it can't drift from the data.
+    func isImportedMeeting(id: UUID) throws -> Bool {
+        guard let meeting = try meeting(id: id) else { return false }
+        return meeting.audioFiles.contains { $0.role == .imported }
     }
 
     /// Returns the uncapped people data for a meeting, or nil if the meeting
@@ -557,7 +581,8 @@ public extension DataStore {
         guard let meeting = try meeting(id: meetingID) else {
             return AudioFileRefsResult(mic: nil, system: nil, present: false)
         }
-        let micRef = meeting.audioFiles.first(where: { $0.role == .mic && $0.isPresent })
+        // An imported file occupies the mic slot so playback works unchanged.
+        let micRef = meeting.audioFiles.first(where: { ($0.role == .mic || $0.role == .imported) && $0.isPresent })
         let systemRef = meeting.audioFiles.first(where: { $0.role == .system && $0.isPresent })
         let micURL = micRef.map { URL(fileURLWithPath: $0.path) }
         let systemURL = systemRef.map { URL(fileURLWithPath: $0.path) }
@@ -575,7 +600,7 @@ public extension DataStore {
         guard let meeting = try meeting(id: meetingID) else {
             return StoredAudioFileRefs(mic: nil, system: nil, present: false)
         }
-        let micRef = meeting.audioFiles.first(where: { $0.role == .mic })
+        let micRef = meeting.audioFiles.first(where: { $0.role == .mic || $0.role == .imported })
         let systemRef = meeting.audioFiles.first(where: { $0.role == .system })
         let present = (micRef?.isPresent ?? false) || (systemRef?.isPresent ?? false)
         return StoredAudioFileRefs(

@@ -32,7 +32,8 @@ public final class RecordingController {
 
     private let store: DataStore
     private let permissions: Permissions
-    private let storageRoot: URL
+    /// Root directory for per-meeting audio folders. Imported audio is stored here too.
+    public let storageRoot: URL
     private let makeRecorder: @Sendable () -> any RecorderControlling
 
     /// How long to wait before checking system-audio denial (injectable for tests).

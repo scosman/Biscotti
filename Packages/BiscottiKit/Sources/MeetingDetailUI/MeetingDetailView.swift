@@ -584,6 +584,17 @@ private extension MeetingDetailView {
     }
 
     var metaLine: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+            metaLineItems
+            if viewModel.isImported, viewModel.selectedTab == .transcript {
+                Text("Transcribed from an imported audio file. Speaker labels come from voice analysis only.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.inkTertiary)
+            }
+        }
+    }
+
+    private var metaLineItems: some View {
         HStack(spacing: Tokens.spacingSM) {
             Text(viewModel.formattedDate)
                 .font(.monoMeta)
@@ -601,6 +612,12 @@ private extension MeetingDetailView {
                 Text("\u{00B7}")
                     .foregroundStyle(.inkTertiary)
                 SourcePill(platform: platform)
+            }
+
+            if viewModel.isImported {
+                Text("\u{00B7}")
+                    .foregroundStyle(.inkTertiary)
+                ImportedAudioPill()
             }
         }
     }

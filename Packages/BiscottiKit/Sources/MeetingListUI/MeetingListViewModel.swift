@@ -310,10 +310,11 @@ public final class MeetingListViewModel {
     public nonisolated static func secondLineText(
         for meeting: MeetingSummary
     ) -> String {
-        TimeFormatting.meetingSecondLine(
+        let line = TimeFormatting.meetingSecondLine(
             date: meeting.date,
             duration: meeting.recordingDuration
         )
+        return meeting.isImported ? line + " \u{00B7} Imported" : line
     }
 
     /// The second line of a search result row. Never empty, so no result

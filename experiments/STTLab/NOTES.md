@@ -126,7 +126,10 @@ that has both Apple and Whisper results.
 ## Step 8: LLM Judging
 
 Feed each `disagreement_report.json` to an LLM (e.g. Claude) and ask it
-to write a `disagreement_decision.json` in the same directory. The
+to write a `disagreement_decision.json` in the same directory. The scripts
+and prompts in `scripts/judge/` do this in batches (`split_batches.py`,
+`prompts/region_judge.md`, `merge_decisions.py`); see
+`specs/projects/apple_stt_validation/results/how_to_retest.md`. The
 decision file contains one entry per disagreement, with a `decision`
 (`apple_wins`, `whisper_wins`, `both_acceptable`, or `unknown`) and a `severity`
 (`high`, `med`, or `low`). It must include the `report_fingerprint`
@@ -180,4 +183,7 @@ When the experiment is done:
 
 ## Findings
 
-*To be filled in after the experiment run.*
+Run 1 (2026-10-23, 16 meetings, 13.4 h): see
+`specs/projects/apple_stt_validation/results/overview.md`. Re-test steps:
+`specs/projects/apple_stt_validation/results/how_to_retest.md`. LLM judging
+scripts and prompts: `scripts/judge/`.

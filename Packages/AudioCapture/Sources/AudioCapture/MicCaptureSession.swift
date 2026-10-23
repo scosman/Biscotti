@@ -37,9 +37,9 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     ///    so the tap callback never allocates. --
     private static let ringCapacity = 256
     /// Maximum frames per ring slot. Sized for 2× the largest
-    /// realistic VPIO tap buffer: 96 kHz × 200 ms = 19,200 frames.
-    /// VPIO voice processing caps at 48 kHz; 96 kHz is a generous
-    /// ceiling. Total ring allocation: 256 × 19,200 × 4 ≈ 18.75 MB.
+    /// microphone tap buffer: 96 kHz × 200 ms = 19,200 frames.
+    /// This also covers 48 kHz hardware with substantial headroom.
+    /// Total ring allocation: 256 × 19,200 × 4 ≈ 18.75 MB.
     private static let slotMaxFrames: AVAudioFrameCount = 19200
     private let slotByteSize: Int
     private let slotData: UnsafeMutableRawPointer
@@ -106,7 +106,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             slotHeaders[idx] = SlotHeader()
         }
 
-        file = try VPIOFileHelper.createExtAudioFile(
+        file = try MicFileHelper.createExtAudioFile(
             url: url, encoder: encoder, processingFormat: processingFormat
         )
 
@@ -336,7 +336,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             bufferToWrite = mono
         } else {
             guard let converter = converterForSource(mono.format),
-                  let converted = VPIOBufferHelper.convert(
+                  let converted = MicBufferHelper.convert(
                       mono, to: processingFormat, using: converter
                   )
             else { return }
@@ -366,7 +366,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             expectedNextHostNanos = entry.hostTimeNanos + durationNanos
         }
 
-        let writeStatus = VPIOBufferHelper.writeBuffer(bufferToWrite, to: file)
+        let writeStatus = MicBufferHelper.writeBuffer(bufferToWrite, to: file)
         guard writeStatus == noErr else {
             if writeError == nil { writeError = writeStatus }
             return
@@ -433,7 +433,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             if let data = buf.floatChannelData?[0] {
                 memset(data, 0, Int(count) * MemoryLayout<Float>.size)
             }
-            let fillStatus = VPIOBufferHelper.writeBuffer(buf, to: file)
+            let fillStatus = MicBufferHelper.writeBuffer(buf, to: file)
             if fillStatus != noErr {
                 logger.error("Mic gap-fill write failed -- aborting fill")
                 if writeError == nil { writeError = fillStatus }

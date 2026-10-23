@@ -38,7 +38,7 @@ struct MicCaptureSessionTests {
     }
 
     /// Exercises tap replacement on the same session, matching the startup
-    /// restart path that keeps VPIO and the recording file alive.
+    /// restart path that keeps the input graph and recording file alive.
     @Test("A replaced tap cannot write audio, settle the new graph or consume its anchor")
     func replacedTapCallback() throws {
         let url = temporaryRecording()
@@ -535,12 +535,12 @@ struct MicCaptureWriterThreadTests {
 
 @Suite("Mic capture content fidelity")
 struct MicCaptureContentFidelityTests {
-    /// A phase-continuous tone sent as a 4-channel 48 kHz tap (as the VPIO
-    /// tap delivers on real hardware) must come out of the 24 kHz AAC file
+    /// A phase-continuous tone from mono, stereo, built-in 3-channel and
+    /// multichannel 48 kHz inputs must come out of the 24 kHz AAC file
     /// as the same clean tone. Duration-only tests cannot see corrupted
     /// samples; this decodes the file and checks every 100 ms window.
-    @Test("Resampled mic audio is a clean copy of channel 0", arguments: [4800, 1024, 441])
-    func resampledToneIsClean(bufferFrames: Int) throws {
+    @Test("Native microphone formats preserve recorded audio", arguments: [1, 2, 3, 4], [4800, 1024, 441])
+    func resampledToneIsClean(channelCount: Int, bufferFrames: Int) throws {
         let url = MicCaptureTestHelpers.temporaryRecording()
         defer { try? FileManager.default.removeItem(at: url) }
         let session = try MicCaptureSession(url: url, encoder: .voice, onFirstBuffer: nil)
@@ -551,7 +551,7 @@ struct MicCaptureContentFidelityTests {
         let toneHz = 400.0
         let totalFrames = Int(sourceRate * 3) // 3 s
         // More than 2 channels needs an explicit layout.
-        let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 4))
+        let layout = try #require(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(channelCount)))
         let format = AVAudioFormat(standardFormatWithSampleRate: sourceRate, channelLayout: layout)
         var noise = SystemRandomNumberGenerator()
         var frameIndex = 0
@@ -564,7 +564,7 @@ struct MicCaptureContentFidelityTests {
             for frame in 0 ..< count {
                 let phase = 2 * Double.pi * toneHz * Double(frameIndex + frame) / sourceRate
                 channels[0][frame] = Float(0.3 * sin(phase))
-                for channel in 1 ..< 4 {
+                for channel in 1 ..< channelCount {
                     channels[channel][frame] = Float.random(in: -0.3 ... 0.3, using: &noise)
                 }
             }

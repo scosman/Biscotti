@@ -171,20 +171,6 @@ enum CoreAudioHelpers {
         )
     }
 
-    /// Sets a device's nominal sample rate. HAL applies asynchronously.
-    @discardableResult
-    static func setNominalSampleRate(_ rate: Double, for deviceID: AudioObjectID) -> OSStatus {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyNominalSampleRate,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var value = rate
-        return AudioObjectSetPropertyData(
-            deviceID, &address, 0, nil, UInt32(MemoryLayout<Float64>.size), &value
-        )
-    }
-
     // MARK: - Process List Listener
 
     struct ProcessListListener: @unchecked Sendable {

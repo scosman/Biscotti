@@ -49,8 +49,9 @@ public enum SpeakerAlignment {
 
     /// Bridge an EngineTranscript into WhisperKit TranscriptionResults.
     ///
-    /// Groups timed words by segmentIndex (first-appearance order), builds
-    /// TranscriptionSegment + WordTiming. Words without times are dropped.
+    /// Groups timed words by segmentIndex, orders groups by the first word's
+    /// start time, and keeps words in time order inside each group. Words
+    /// without times are dropped.
     static func bridge(_ t: EngineTranscript) -> (results: [TranscriptionResult], dropped: Int) {
         // Group words by segmentIndex, preserving first-appearance order.
         var segmentOrder: [Int] = []
@@ -66,6 +67,18 @@ public enum SpeakerAlignment {
                 segmentOrder.append(word.segmentIndex)
             }
             segmentWords[word.segmentIndex, default: []].append(word)
+        }
+
+        // Sort words within each group by start time.
+        for key in segmentWords.keys {
+            segmentWords[key]?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+        }
+
+        // Order groups by the first word's start time.
+        segmentOrder.sort { a, b in
+            let aStart = segmentWords[a]?.first?.start ?? 0
+            let bStart = segmentWords[b]?.first?.start ?? 0
+            return aStart < bStart
         }
 
         var segments: [TranscriptionSegment] = []

@@ -34,8 +34,21 @@ public struct DisagreementRegion: Codable, Sendable {
     /// Time span from Whisper words (seconds).
     public var whisperTimeStart: Double?
     public var whisperTimeEnd: Double?
+    /// Time span from Reference words (seconds).
+    public var refTimeStart: Double?
+    public var refTimeEnd: Double?
     /// Meeting ID (set during aggregation; nil for per-meeting regions).
     public var meetingID: String?
+
+    /// Earliest start time across all engines that have times.
+    public var regionTimeStart: Double? {
+        [appleTimeStart, whisperTimeStart, refTimeStart].compactMap { $0 }.min()
+    }
+
+    /// Latest end time across all engines that have times.
+    public var regionTimeEnd: Double? {
+        [appleTimeEnd, whisperTimeEnd, refTimeEnd].compactMap { $0 }.max()
+    }
 
     // Codable conformance for tuples.
     enum CodingKeys: String, CodingKey {
@@ -43,6 +56,7 @@ public struct DisagreementRegion: Codable, Sendable {
         case classification, appleDistance, whisperDistance, size
         case appleText, whisperText, refText
         case appleTimeStart, appleTimeEnd, whisperTimeStart, whisperTimeEnd
+        case refTimeStart, refTimeEnd
         case meetingID
     }
 
@@ -51,6 +65,7 @@ public struct DisagreementRegion: Codable, Sendable {
                 size: Int, appleText: String, whisperText: String, refText: String,
                 appleTimeStart: Double? = nil, appleTimeEnd: Double? = nil,
                 whisperTimeStart: Double? = nil, whisperTimeEnd: Double? = nil,
+                refTimeStart: Double? = nil, refTimeEnd: Double? = nil,
                 meetingID: String? = nil) {
         self.whisperRange = whisperRange
         self.appleRange = appleRange
@@ -66,6 +81,8 @@ public struct DisagreementRegion: Codable, Sendable {
         self.appleTimeEnd = appleTimeEnd
         self.whisperTimeStart = whisperTimeStart
         self.whisperTimeEnd = whisperTimeEnd
+        self.refTimeStart = refTimeStart
+        self.refTimeEnd = refTimeEnd
         self.meetingID = meetingID
     }
 
@@ -88,6 +105,8 @@ public struct DisagreementRegion: Codable, Sendable {
         appleTimeEnd = try c.decodeIfPresent(Double.self, forKey: .appleTimeEnd)
         whisperTimeStart = try c.decodeIfPresent(Double.self, forKey: .whisperTimeStart)
         whisperTimeEnd = try c.decodeIfPresent(Double.self, forKey: .whisperTimeEnd)
+        refTimeStart = try c.decodeIfPresent(Double.self, forKey: .refTimeStart)
+        refTimeEnd = try c.decodeIfPresent(Double.self, forKey: .refTimeEnd)
         meetingID = try c.decodeIfPresent(String.self, forKey: .meetingID)
     }
 
@@ -110,6 +129,8 @@ public struct DisagreementRegion: Codable, Sendable {
         try c.encodeIfPresent(appleTimeEnd, forKey: .appleTimeEnd)
         try c.encodeIfPresent(whisperTimeStart, forKey: .whisperTimeStart)
         try c.encodeIfPresent(whisperTimeEnd, forKey: .whisperTimeEnd)
+        try c.encodeIfPresent(refTimeStart, forKey: .refTimeStart)
+        try c.encodeIfPresent(refTimeEnd, forKey: .refTimeEnd)
         try c.encodeIfPresent(meetingID, forKey: .meetingID)
     }
 }
@@ -222,6 +243,7 @@ public enum TieBreak {
             // Time spans.
             let aTimes = timeSpan(tokens: appleTokens, range: a0..<a1, words: appleWords)
             let wTimes = timeSpan(tokens: whisperTokens, range: w0..<w1, words: whisperWords)
+            let rTimes = timeSpan(tokens: refTokens, range: refSpan, words: refWords)
 
             regions.append(DisagreementRegion(
                 whisperRange: (w0, w1), appleRange: (a0, a1),
@@ -230,7 +252,8 @@ public enum TieBreak {
                 size: regionSize,
                 appleText: aDisplay, whisperText: wDisplay, refText: rDisplay,
                 appleTimeStart: aTimes?.0, appleTimeEnd: aTimes?.1,
-                whisperTimeStart: wTimes?.0, whisperTimeEnd: wTimes?.1
+                whisperTimeStart: wTimes?.0, whisperTimeEnd: wTimes?.1,
+                refTimeStart: rTimes?.0, refTimeEnd: rTimes?.1
             ))
 
             countByRegion[cls.rawValue, default: 0] += 1

@@ -116,6 +116,7 @@ public enum AnalyzeInputs {
         for result in results {
             for segment in result.segments {
                 if let timings = segment.words {
+                    var segmentHasWord = false
                     for timing in timings {
                         let trimmed = timing.word.trimmingCharacters(
                             in: CharacterSet.whitespaces
@@ -125,6 +126,15 @@ public enum AnalyzeInputs {
                         if specialTokenPattern.firstMatch(in: trimmed, range: range) != nil {
                             continue
                         }
+                        // WhisperKit splits some words into pieces with no leading
+                        // space (" 5" + ",000", " 3" + ".5", " AI" + "-based", " 50" + "%").
+                        // Join such a piece onto the previous word of the same segment.
+                        if segmentHasWord, let first = timing.word.first, !first.isWhitespace {
+                            words[words.count - 1].text += trimmed
+                            words[words.count - 1].end = Double(timing.end)
+                            continue
+                        }
+                        segmentHasWord = true
                         words.append(EngineWord(
                             text: trimmed,
                             start: Double(timing.start),
@@ -183,16 +193,18 @@ public enum AnalyzeInputs {
             if let refWords = response.words, !refWords.isEmpty {
                 for w in refWords {
                     // Find which segment this word belongs to (by midpoint).
+                    // Use chunk ordinal * 100_000 + segment index to ensure
+                    // unique, ordered indices across chunks.
                     let segIdx: Int
                     if let segs = response.segments {
                         let mid = (w.start + w.end) / 2
                         if let found = segs.firstIndex(where: { mid >= $0.start && mid <= $0.end }) {
-                            segIdx = found
+                            segIdx = chunkIdx * 100_000 + found
                         } else {
-                            segIdx = chunkIdx + 10_000  // fallback per spec
+                            segIdx = chunkIdx * 100_000 + 99_999
                         }
                     } else {
-                        segIdx = chunkIdx + 10_000
+                        segIdx = chunkIdx * 100_000 + 99_999
                     }
 
                     words.append(EngineWord(
@@ -221,7 +233,7 @@ public enum AnalyzeInputs {
                 for w in splitWords {
                     words.append(EngineWord(
                         text: String(w).trimmingCharacters(in: .whitespaces),
-                        segmentIndex: chunkIdx + 10_000
+                        segmentIndex: chunkIdx * 100_000 + 99_999
                     ))
                 }
                 textParts.append(text)

@@ -96,21 +96,22 @@ struct SelectCommand: AsyncParsableCommand {
         log.log("")
         log.log("Proposed selection:")
         log.log(String(repeating: "-", count: 90))
-        log.log(
-            String(format: "%-4s %-12s %5s %4s %5s %5s %-6s %s",
-                   "#", "Date", "Min", "Spkr", "Words", "WPM", "Bucket", "Title")
-        )
+        // Swift Strings are not C strings, so `String(format:)` with `%s` crashes.
+        // Pad columns by hand instead.
+        log.log(tableRow(["#", "Date", "Min", "Spkr", "Words", "WPM", "Bucket", "Title"]))
         log.log(String(repeating: "-", count: 90))
         for (i, entry) in selection.meetings.enumerated() {
-            let dateStr = formatDate(entry.date)
             let minutes = Int(entry.durationSeconds / 60)
-            let bucket = entry.bucket?.rawValue ?? "fill"
-            let title = String(entry.title.prefix(30))
-            log.log(
-                String(format: "%-4d %-12s %5d %4d %5d %5.0f %-6s %s",
-                       i + 1, dateStr, minutes, entry.speakerCount,
-                       entry.wordCount, entry.wordsPerMinute, bucket, title)
-            )
+            log.log(tableRow([
+                "\(i + 1)",
+                formatDate(entry.date),
+                "\(minutes)",
+                "\(entry.speakerCount)",
+                "\(entry.wordCount)",
+                "\(Int(entry.wordsPerMinute.rounded()))",
+                entry.bucket?.rawValue ?? "fill",
+                String(entry.title.prefix(30)),
+            ]))
         }
         log.log(String(repeating: "-", count: 90))
 
@@ -124,6 +125,18 @@ struct SelectCommand: AsyncParsableCommand {
         log.log("")
         log.log("Edit selection.json (remove entries, move entries from alternates, set appleLocale),")
         log.log("then run `sttlab confirm --workspace \(ws.path)`.")
+    }
+
+    /// Columns: (width, right-aligned). The last column is not padded.
+    private static let columns: [(width: Int, right: Bool)] = [
+        (4, false), (12, false), (5, true), (4, true), (5, true), (5, true), (6, false), (0, false),
+    ]
+
+    private func tableRow(_ cells: [String]) -> String {
+        zip(cells, Self.columns).map { cell, col in
+            let pad = String(repeating: " ", count: max(0, col.width - cell.count))
+            return col.right ? pad + cell : cell + pad
+        }.joined(separator: " ")
     }
 
     private func formatDate(_ date: Date) -> String {

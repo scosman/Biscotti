@@ -89,13 +89,17 @@ public enum MarkdownRenderer {
         let wWER = m.pooledWerWhisperVsRef?.wer.map { fmtPct($0) } ?? "n/a"
         lines.append("| WER vs reference | \(aWER) | \(wWER) |")
 
-        let tbA = tieBreakWins(m.overallTieBreakCounts, engine: "apple")
-        let tbW = tieBreakWins(m.overallTieBreakCounts, engine: "whisper")
-        lines.append("| Tie-break wins (region) | \(tbA) | \(tbW) |")
-
-        let tbTokA = tieBreakWinsByTokens(m.overallTieBreakCounts, engine: "apple")
-        let tbTokW = tieBreakWinsByTokens(m.overallTieBreakCounts, engine: "whisper")
-        lines.append("| Tie-break wins (tokens) | \(tbTokA) | \(tbTokW) |")
+        // LLM judgement wins replace algorithmic tie-break wins in the summary.
+        if let llm = m.llmJudgement {
+            let aTotal = llm.appleWins.total
+            let wTotal = llm.whisperWins.total
+            lines.append("| LLM wins (high) | \(llm.appleWins.high) | \(llm.whisperWins.high) |")
+            lines.append("| LLM wins (med) | \(llm.appleWins.med) | \(llm.whisperWins.med) |")
+            lines.append("| LLM wins (low) | \(llm.appleWins.low) | \(llm.whisperWins.low) |")
+            lines.append("| LLM wins (total) | \(aTotal) | \(wTotal) |")
+        } else {
+            lines.append("| LLM wins | n/a | n/a |")
+        }
 
         let aRTF = m.medianAppleRTF.map { fmt2($0) + "x" } ?? "n/a"
         let wRTF = m.medianWhisperRTF.map { fmt2($0) + "x" } ?? "n/a"
@@ -121,8 +125,8 @@ public enum MarkdownRenderer {
     static func renderPerMeetingTable(_ m: ReportModel, into lines: inout [String]) {
         lines.append("## Per-Meeting Results")
         lines.append("")
-        lines.append("| Meeting | Duration | Speakers | WER A | WER W | A-W disagree | TB A wins | TB W wins | Median |ΔStart| A-W | Speaker agree | Flags |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| Meeting | Duration | Speakers | WER A | WER W | A-W disagree | A wins | W wins | Both ok | Unknown | A high loss | W high loss | Median |ΔStart| A-W | Speaker agree | Flags |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 
         for mtg in m.meetings {
             let dur = formatDuration(mtg.durationSeconds)
@@ -131,14 +135,19 @@ public enum MarkdownRenderer {
             let wWER = mtg.werWhisperVsRef?.wer.map { fmtPct($0) } ?? "n/a"
             let awWER = mtg.werAppleVsWhisper?.wer.map { fmtPct($0) } ?? "n/a"
 
-            let tbA = tieBreakWins(mtg.tieBreakCounts, engine: "apple")
-            let tbW = tieBreakWins(mtg.tieBreakCounts, engine: "whisper")
+            let llm = mtg.llmCounts
+            let aWins = llm.map { "\($0.appleWins)" } ?? "n/a"
+            let wWins = llm.map { "\($0.whisperWins)" } ?? "n/a"
+            let bothOk = llm.map { "\($0.bothAcceptable)" } ?? "n/a"
+            let unk = llm.map { "\($0.unknown)" } ?? "n/a"
+            let aHighLoss = llm.map { "\($0.appleHighLosses)" } ?? "n/a"
+            let wHighLoss = llm.map { "\($0.whisperHighLosses)" } ?? "n/a"
 
             let medStart = mtg.timingAppleVsWhisper?.startStats.medianAbs.map { fmt3($0) + "s" } ?? "n/a"
             let spkAgree = mtg.speakerAgreementAW?.timeAgreement.map { fmtPct($0) } ?? "n/a"
             let flagStr = mtg.flags.isEmpty ? "—" : mtg.flags.joined(separator: ", ")
 
-            lines.append("| \(mtg.meetingID) | \(dur) | \(spkrs) | \(aWER) | \(wWER) | \(awWER) | \(tbA) | \(tbW) | \(medStart) | \(spkAgree) | \(flagStr) |")
+            lines.append("| \(mtg.meetingID) | \(dur) | \(spkrs) | \(aWER) | \(wWER) | \(awWER) | \(aWins) | \(wWins) | \(bothOk) | \(unk) | \(aHighLoss) | \(wHighLoss) | \(medStart) | \(spkAgree) | \(flagStr) |")
         }
         lines.append("")
     }
@@ -185,22 +194,8 @@ public enum MarkdownRenderer {
         }
         lines.append("")
 
-        // Tie-break classes.
-        lines.append("### Tie-Break Classification")
-        lines.append("")
-        if let tb = m.overallTieBreakCounts {
-            lines.append("| Class | By region | By tokens |")
-            lines.append("|---|---|---|")
-            for cls in TieBreakClass.allCases {
-                let r = tb.byRegion[cls.rawValue] ?? 0
-                let t = tb.byTokens[cls.rawValue] ?? 0
-                lines.append("| \(cls.rawValue) | \(r) | \(t) |")
-            }
-            lines.append("")
-        } else {
-            lines.append("n/a (reference or one local engine not available)")
-            lines.append("")
-        }
+        // LLM Judgement section (replaces algorithmic tie-break in the report).
+        renderLLMJudgement(m, into: &lines)
 
         // Flags.
         let flaggedMeetings = m.meetings.filter { !$0.flags.isEmpty }
@@ -214,17 +209,47 @@ public enum MarkdownRenderer {
             }
             lines.append("")
         }
+    }
 
-        // Disagreement sample.
-        if let sample = m.tieBreakSample, !sample.isEmpty {
-            lines.append("### Disagreement Sample")
+    // MARK: - LLM Judgement
+
+    static func renderLLMJudgement(_ m: ReportModel, into lines: inout [String]) {
+        lines.append("### LLM Judgement")
+        lines.append("")
+
+        guard let llm = m.llmJudgement else {
+            lines.append("No LLM judgement data available (run `analyze prep` then judge, then `analyze final`).")
             lines.append("")
-            lines.append("| Meeting | Time | Class | Size | Apple | Whisper | Reference |")
+            return
+        }
+
+        lines.append("Meetings judged: \(llm.meetingsJudged) / \(llm.meetingsJudged + llm.meetingsNotJudged)")
+        lines.append("")
+
+        // Per-engine overall wins by severity.
+        lines.append("| Decision | Low | Med | High | Total |")
+        lines.append("|---|---|---|---|---|")
+        lines.append("| Apple wins | \(llm.appleWins.low) | \(llm.appleWins.med) | \(llm.appleWins.high) | \(llm.appleWins.total) |")
+        lines.append("| Whisper wins | \(llm.whisperWins.low) | \(llm.whisperWins.med) | \(llm.whisperWins.high) | \(llm.whisperWins.total) |")
+        lines.append("| Both acceptable | — | — | — | \(llm.bothAcceptable) |")
+        lines.append("| Unknown | — | — | — | \(llm.unknown) |")
+        if llm.undecided > 0 {
+            lines.append("| Undecided | — | — | — | \(llm.undecided) |")
+        }
+        if llm.invalid > 0 {
+            lines.append("| Invalid | — | — | — | \(llm.invalid) |")
+        }
+        lines.append("")
+
+        // Mistakes that matter.
+        if !llm.mistakesThatMatter.isEmpty {
+            lines.append("### Mistakes That Matter")
+            lines.append("")
+            lines.append("| Meeting | Time | Decision | Severity | Apple | Whisper | Reference |")
             lines.append("|---|---|---|---|---|---|---|")
-            for r in sample {
-                let time = r.appleTimeStart.map { formatMmSs($0) } ?? "—"
-                let mid = r.meetingID ?? "—"
-                lines.append("| \(mid) | \(time) | \(r.classification.rawValue) | \(r.size) | \(truncate(r.appleText, 60)) | \(truncate(r.whisperText, 60)) | \(truncate(r.refText, 60)) |")
+            for entry in llm.mistakesThatMatter {
+                let ref = entry.referenceText.map { truncate($0, 120) } ?? "—"
+                lines.append("| \(entry.meetingID) | \(entry.time) | \(entry.decision) | \(entry.severity) | \(truncate(entry.appleText, 120)) | \(truncate(entry.whisperText, 120)) | \(ref) |")
             }
             lines.append("")
         }
@@ -533,24 +558,6 @@ public enum MarkdownRenderer {
         let m = Int(seconds) / 60
         let s = Int(seconds) % 60
         return "\(m):\(String(format: "%02d", s))"
-    }
-
-    static func tieBreakWins(_ counts: TieBreakCounts?, engine: String) -> String {
-        guard let c = counts else { return "n/a" }
-        let matchKey = engine == "apple" ? "appleMatches" : "whisperMatches"
-        let closerKey = engine == "apple" ? "appleCloser" : "whisperCloser"
-        let matches = c.byRegion[matchKey] ?? 0
-        let closer = c.byRegion[closerKey] ?? 0
-        return "\(matches + closer)"
-    }
-
-    static func tieBreakWinsByTokens(_ counts: TieBreakCounts?, engine: String) -> String {
-        guard let c = counts else { return "n/a" }
-        let matchKey = engine == "apple" ? "appleMatches" : "whisperMatches"
-        let closerKey = engine == "apple" ? "appleCloser" : "whisperCloser"
-        let matches = c.byTokens[matchKey] ?? 0
-        let closer = c.byTokens[closerKey] ?? 0
-        return "\(matches + closer)"
     }
 
     static func medianField(_ values: [Double]) -> String {

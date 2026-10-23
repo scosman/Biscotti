@@ -87,7 +87,7 @@ struct FlagsTests {
             audioDuration: 60
         )
         #expect(!flags.isEmpty)
-        if case .droppedStretch(let engine, _, _) = flags[0] {
+        if case .droppedStretch(let engine, _, _, _) = flags[0] {
             #expect(engine == .apple)
         }
     }

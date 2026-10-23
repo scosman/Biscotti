@@ -1,9 +1,22 @@
+/// A brief excerpt of what another engine said in a gap.
+public struct GapExcerpt: Codable, Sendable, Equatable {
+    public var engine: EngineID
+    /// First ~20 words the other engine has inside the gap.
+    public var text: String
+
+    public init(engine: EngineID, text: String) {
+        self.engine = engine
+        self.text = text
+    }
+}
+
 /// A flag raised on a meeting's analysis results.
 public enum MeetingFlag: Codable, Sendable, Equatable {
     /// Both WERs exist, the smaller > 0.02, and larger/smaller > 2.
     case werRatio(appleWER: Double, whisperWER: Double)
     /// An engine dropped a stretch of >= 30s where other engines have words.
-    case droppedStretch(engine: EngineID, gapStart: Double, gapEnd: Double)
+    case droppedStretch(engine: EngineID, gapStart: Double, gapEnd: Double,
+                        otherExcerpts: [GapExcerpt])
     /// An engine completed but produced zero words.
     case emptyResult(engine: EngineID)
 }
@@ -79,8 +92,22 @@ public enum Flags {
                 }
 
                 if enginesCovered >= requiredEngines {
+                    // Collect first ~20 words from each other engine inside the gap.
+                    var excerpts: [GapExcerpt] = []
+                    for (otherEngine, other) in others {
+                        let wordsInGap = other.words.filter { w in
+                            guard let s = w.start, let e = w.end else { return false }
+                            let mid = (s + e) / 2
+                            return mid >= gap.start && mid < gap.end
+                        }
+                        if !wordsInGap.isEmpty {
+                            let first20 = wordsInGap.prefix(20).map(\.text).joined(separator: " ")
+                            excerpts.append(GapExcerpt(engine: otherEngine, text: first20))
+                        }
+                    }
                     flags.append(.droppedStretch(engine: engine, gapStart: gap.start,
-                                                 gapEnd: gap.end))
+                                                 gapEnd: gap.end,
+                                                 otherExcerpts: excerpts))
                 }
             }
         }

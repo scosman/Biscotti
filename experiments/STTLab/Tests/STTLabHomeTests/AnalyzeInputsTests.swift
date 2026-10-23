@@ -69,6 +69,38 @@ struct AnalyzeInputsTests {
         #expect(words[0].text == "hello")
     }
 
+    @Test("buildWhisperTranscript joins pieces with no leading space onto the previous word")
+    func whisperJoinsContinuationPieces() {
+        let segment = TranscriptionSegment(
+            id: 0, seek: 0, start: 0, end: 3,
+            text: " 5,000 AI-based", tokens: [],
+            words: [
+                WordTiming(word: " 5", tokens: [], start: 0.0, end: 0.4, probability: 0.9),
+                WordTiming(word: ",000", tokens: [], start: 0.4, end: 0.8, probability: 0.9),
+                WordTiming(word: " AI", tokens: [], start: 1.0, end: 1.3, probability: 0.9),
+                WordTiming(word: "-based", tokens: [], start: 1.3, end: 1.8, probability: 0.9),
+            ]
+        )
+        // A segment that starts with a no-space piece keeps it as its own word.
+        let seg2 = TranscriptionSegment(
+            id: 1, seek: 0, start: 3, end: 4,
+            text: "%", tokens: [],
+            words: [WordTiming(word: "%", tokens: [], start: 3.0, end: 3.2, probability: 0.9)]
+        )
+        let result = TranscriptionResult(
+            text: "", segments: [segment, seg2], language: "en",
+            timings: TranscriptionTimings()
+        )
+
+        let (words, displayText) = AnalyzeInputs.buildWhisperTranscript([result])
+
+        #expect(words.map(\.text) == ["5,000", "AI-based", "%"])
+        #expect(words[0].start == 0.0)
+        #expect(abs((words[0].end ?? 0) - 0.8) < 0.001)
+        #expect(abs((words[1].end ?? 0) - 1.8) < 0.001)
+        #expect(displayText == "5,000 AI-based %")
+    }
+
     @Test("buildWhisperTranscript increments segment counter across segments")
     func whisperSegmentCounter() {
         let seg1 = TranscriptionSegment(

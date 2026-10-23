@@ -25,6 +25,9 @@ public struct MeetingMetrics: Codable, Sendable {
     // Flags.
     public var flags: [String]
 
+    // LLM judgement per meeting.
+    public var llmCounts: MeetingLLMCounts?
+
     // Text quality.
     public var textQualityApple: TextQualityResult?
     public var textQualityWhisper: TextQualityResult?
@@ -131,6 +134,11 @@ public struct ReportModel: Codable, Sendable {
     public var overallSpeakerAgreementWR: SpeakerAgreement?
 
     // Text quality summaries (pooled is not meaningful; per-meeting in the table).
+
+    // LLM judgement (overall).
+    public var llmJudgement: LLMJudgement?
+    /// Per-meeting LLM counts (keyed by meeting ID).
+    public var llmPerMeeting: [String: MeetingLLMCounts]?
 
     // Caveats.
     public var caveats: [String]

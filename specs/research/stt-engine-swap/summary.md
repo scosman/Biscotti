@@ -12,7 +12,7 @@ Researched 2026-10-21. Six subtopics; none failed.
 
 **Do not do the split strategy now.** Apple's `SpeechTranscriber` works for batch use in our setup, but its quality is about equal to today's Whisper, not better. It is worse than Parakeet, and much worse in noise. It also adds a second engine, and its assets still download once.
 
-> **Update 2026-10-23 (measured on our meetings):** the STTLab run on 16 real meetings (13.4 h) confirms WER is close (Apple 9.9 %, Whisper 9.3 %), but Apple makes about 2.2x as many mistakes that matter, almost all of them technical terms. Apple is about 4x faster and uses far less memory, and its word timings work with SpeakerKit. See `specs/projects/apple_stt_validation/results/overview.md`.
+> **Update 2026-10-23 (measured on our meetings):** the STTLab run on 16 real meetings (13.4 h) confirms WER is close (Apple 9.9 %, Whisper 9.3 %), but Apple makes about 2.2x as many mistakes that matter, almost all of them technical terms. Apple is about 4x faster and uses far less memory, and its word timings work with SpeakerKit. See `specs/projects/apple_stt_validation/results/overview.md`. A re-test on macOS 27.0.1 (same Mac) gave identical Apple text, so these results also apply to macOS 27; see `results/macos27.md`.
 
 **Gate the final decision on a hardware A/B with our own recordings.** Nobody has measured 1-hour real-meeting WER or energy for any candidate. FluidAudio's own 1-hour number is a warning sign (see Conflicts).
 

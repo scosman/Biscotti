@@ -19,8 +19,10 @@ public protocol TranscriptionEngine: Sendable {
 
     /// Process audio files and return a diarized transcript.
     ///
-    /// Both `micPath` and `systemPath` are required — the engine merges them
-    /// to mono 16 kHz in memory before running STT + diarization. The engine
+    /// `micPath` is required; `systemPath` is optional. The engine merges the
+    /// streams to mono 16 kHz in memory before running STT + diarization. A
+    /// `nil` `systemPath` means a single-track source (e.g. an imported audio
+    /// file stored as the mic track). The engine
     /// uses ``TranscriptionMethod/current`` internally; the result carries
     /// the method id in ``TranscriptResult/transcriptionMethodId``.
     ///
@@ -28,7 +30,7 @@ public protocol TranscriptionEngine: Sendable {
     ///   empty/unreadable.
     func processAudio(
         micPath: String,
-        systemPath: String,
+        systemPath: String?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult
 

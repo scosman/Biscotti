@@ -210,13 +210,6 @@ public final class AppCore {
     /// clock. Driven by the `AppScheduler` seam for testability.
     public private(set) var minuteTick: Date = .init()
 
-    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
-    /// The sidebar, menu bar, and home screen should use this instead of
-    /// `upcoming` directly.
-    public var displayedUpcoming: [CalendarEvent] {
-        upcoming.filter { $0.end > minuteTick }
-    }
-
     /// The current run state. UI + menu bar observe this.
     public private(set) var runState: RunState = .idle
 
@@ -242,6 +235,16 @@ public final class AppCore {
     /// A well-formed link whose meeting/event is missing. Non-nil presents
     /// the shell alert; a second failure overwrites the first.
     public internal(set) var linkError: AppLinkError?
+
+    /// Files from the last import batch that failed (or were skipped as
+    /// non-audio). Non-empty presents the shell's "Couldn't import" alert.
+    public internal(set) var audioImportFailures: [AudioImportFailure] = []
+
+    /// True while `importAudioFiles(at:)` is draining its queue.
+    public internal(set) var isImportingAudio = false
+
+    /// URLs waiting for the running import batch to reach them.
+    var pendingAudioImports: [URL] = []
 
     /// Cached menu bar lead time setting. Drives how far before a meeting
     /// the menu bar shows the detailed "next meeting" text.
@@ -341,8 +344,18 @@ public final class AppCore {
     /// Fires at each clock-minute boundary to refresh `minuteTick`.
     private var minuteTickTask: Task<Void, Never>?
 
-    /// The fire-and-forget transcription task spawned by `stopRecording()`.
+    /// The fire-and-forget transcription task most recently spawned by
+    /// `stopRecording()` or an audio import. Earlier tasks may still be
+    /// queued behind `transcriptionQueue`; `awaitPendingTranscription()`
+    /// waits for all of them.
     package var pendingTranscriptionTask: Task<Void, Never>?
+
+    /// Every fire-and-forget transcription task still running or queued,
+    /// keyed by a per-task ID so each removes itself when it finishes.
+    package var pendingTranscriptionTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// FIFO gate so only one `AppCore`-started transcription runs at a time.
+    let transcriptionQueue = TranscriptionQueue()
 
     /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
@@ -574,10 +587,7 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
-            await transcription.transcribe(meetingID: meetingID)
-            await intelligence.runAutoEnhancements(meetingID: meetingID)
-        }
+        spawnTranscription(meetingID: meetingID)
 
         // The audio engine and its capture buffers were just torn down;
         // reclaim that ~transient footprint back to the OS. Delayed so the
@@ -695,6 +705,14 @@ public extension AppCore {
 // stored properties (which must live in the class body for @Observable).
 
 public extension AppCore {
+    /// Upcoming events filtered to exclude those whose end < `minuteTick`.
+    /// The sidebar, menu bar, and home screen should use this instead of
+    /// `upcoming` directly. (Moved here to keep the class body within the
+    /// type_body_length limit after adding the audio-import state.)
+    var displayedUpcoming: [CalendarEvent] {
+        upcoming.filter { $0.end > minuteTick }
+    }
+
     /// Factory default summary prompt, surfaced without importing
     /// Intelligence in UI modules.
     var defaultSummaryPrompt: String {
@@ -1107,7 +1125,12 @@ package extension AppCore {
     /// Waits for any pending fire-and-forget transcription task spawned by
     /// `stopRecording()` to finish.
     func awaitPendingTranscription() async {
-        await pendingTranscriptionTask?.value
+        // Tasks spawned while waiting (e.g. a recording stopped mid-batch)
+        // are picked up by the loop.
+        while let (key, task) = pendingTranscriptionTasks.first {
+            await task.value
+            pendingTranscriptionTasks[key] = nil
+        }
         pendingTranscriptionTask = nil
     }
 
@@ -1909,6 +1932,13 @@ extension AppCore {
             )
             return false
         }
+
+        // 0. Stop any running or queued transcription for this meeting
+        // before its files vanish, and drop its job status. Cancelling a
+        // queued job dequeues it, so it is never transcribed and the queue
+        // moves on.
+        await cancelTranscription(meetingID: meetingID)
+        transcription.jobs[meetingID] = nil
 
         // 1. Collect on-disk paths from the store BEFORE deleting the row.
         let filePaths: [String]

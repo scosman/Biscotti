@@ -23,6 +23,14 @@ public final class TranscriptionService {
     /// without running the full transcription pipeline.
     public package(set) var jobs: [UUID: JobStatus] = [:]
 
+    /// When the currently running job for a meeting started. Present only
+    /// while that job is in flight (set in `runJob`, removed when the job is
+    /// cleaned up). The engine reports no numeric progress, so the UI shows
+    /// elapsed time derived from this instead.
+    ///
+    /// `package` setter so view-model tests can inject a start date.
+    public package(set) var jobStartedAt: [UUID: Date] = [:]
+
     // MARK: - Dependencies
 
     private let store: DataStore
@@ -45,6 +53,22 @@ public final class TranscriptionService {
     /// The meeting ID currently being transcribed, if any.
     /// Only one job runs at a time in the MVP.
     private var inFlightMeetingID: UUID?
+
+    /// Identifies the running job so late cleanup never touches a newer one.
+    private var currentJobToken: UUID?
+
+    /// The Task running the current job; `nil` once the job body finished.
+    private var currentTask: Task<Void, Never>?
+
+    /// Set by `cancel(meetingID:)`; suppresses all further status writes and
+    /// persistence from the cancelled job. Reset when the job is cleaned up.
+    private var cancelRequested = false
+
+    /// Token of the job that `cancel(meetingID:)` already shut the engine
+    /// down for. Unlike `cancelRequested` it is not reset by `finishJob`, so
+    /// `runJob` can tell "cancelled" regardless of which of the two callers
+    /// finishes the job first. Tokens are unique, so a stale value is inert.
+    private var cancelledJobToken: UUID?
 
     // MARK: - Init
 
@@ -81,6 +105,33 @@ public final class TranscriptionService {
         await runJob(meetingID: meetingID)
     }
 
+    // MARK: - Cancel
+
+    /// Cancels the running transcription job for `meetingID`.
+    ///
+    /// Cancels the job's Swift Task, shuts the engine down (killing the XPC
+    /// worker is the only way to actually stop inference), sets the job
+    /// status to `.cancelled`, and releases the in-flight guard so a later
+    /// job can start. Returns once the job has unwound. No transcript is
+    /// persisted for a cancelled job (see the race note in `executeJob`).
+    ///
+    /// No-op when `meetingID` is not the job currently running.
+    public func cancel(meetingID: UUID) async {
+        guard inFlightMeetingID == meetingID,
+              !cancelRequested,
+              let task = currentTask,
+              let token = currentJobToken
+        else { return }
+
+        cancelRequested = true
+        cancelledJobToken = token
+        jobs[meetingID] = .cancelled
+        task.cancel()
+        await engine.shutdown()
+        await task.value
+        finishJob(token: token)
+    }
+
     // MARK: - Model readiness (for onboarding)
 
     /// Downloads/compiles models if needed, forwarding status messages.
@@ -114,10 +165,30 @@ public final class TranscriptionService {
             return
         }
 
+        let token = UUID()
         inFlightMeetingID = meetingID
-        await executeJob(meetingID: meetingID)
-        // Release the XPC worker so its process (and multi-GB model memory)
-        // is freed promptly. The next transcription call will reconnect.
+        currentJobToken = token
+        cancelRequested = false
+        jobStartedAt[meetingID] = Date()
+
+        // The job runs in its own Task so `cancel(meetingID:)` has a handle
+        // to cancel. `runJob` still awaits it, so callers of `transcribe` /
+        // `reTranscribe` keep their "returns when the job is over" contract.
+        let task = Task { @MainActor [self] in
+            await executeJob(meetingID: meetingID)
+            // Drop the handle in the same MainActor turn as the final status
+            // write, so a late `cancel` cannot overwrite `.completed`.
+            currentTask = nil
+        }
+        currentTask = task
+        await task.value
+
+        // A cancelled job was already shut down by `cancel(meetingID:)`.
+        // Shutting down again here could kill the worker of a job that
+        // started right after the cancel.
+        //
+        // Otherwise release the XPC worker so its process (and multi-GB
+        // model memory) is freed promptly. The next call will reconnect.
         //
         // IMPORTANT: shutdown BEFORE clearing inFlightMeetingID. The
         // `await engine.shutdown()` crosses to the Transcriber actor,
@@ -127,8 +198,33 @@ public final class TranscriptionService {
         // pass the guard, call ensureConnected(), and spawn a second XPC
         // worker that nothing ever tears down. Keeping the guard held
         // through shutdown prevents this.
-        await engine.shutdown()
+        if cancelledJobToken != token {
+            await engine.shutdown()
+        }
+        finishJob(token: token)
+    }
+
+    /// Clears the in-flight state for the job identified by `token`.
+    ///
+    /// Idempotent and token-guarded: both `runJob` and `cancel` call it, and
+    /// whichever runs second must not clobber a job that has since started.
+    private func finishJob(token: UUID) {
+        guard currentJobToken == token else { return }
+        if let meetingID = inFlightMeetingID {
+            jobStartedAt[meetingID] = nil
+        }
         inFlightMeetingID = nil
+        currentJobToken = nil
+        currentTask = nil
+        cancelRequested = false
+    }
+
+    /// Writes a job status unless the running job has been cancelled, so a
+    /// cancelled job can never replace `.cancelled` with `.failed` (the
+    /// engine throws once its worker is killed) or `.completed`.
+    private func setStatus(_ status: JobStatus, for meetingID: UUID) {
+        guard !cancelRequested else { return }
+        jobs[meetingID] = status
     }
 
     /// How long to wait before surfacing download-phase status messages.
@@ -146,11 +242,13 @@ public final class TranscriptionService {
     private func executeJob(meetingID: UUID) async {
         // Start with a generic "Transcribing..." status. Download-phase
         // subtitles are only surfaced after a delay (see downloadModels).
-        jobs[meetingID] = .transcribing
+        setStatus(.transcribing, for: meetingID)
 
         guard let paths = await resolveAudioPaths(meetingID: meetingID) else { return }
+        guard !Task.isCancelled else { return }
 
         guard await downloadModels(meetingID: meetingID) else { return }
+        guard !Task.isCancelled else { return }
 
         // Compute vocabulary ONCE and thread the same array into both the
         // engine call and persistence, so `vocabularyUsed` is byte-identical
@@ -164,35 +262,42 @@ public final class TranscriptionService {
             )
         #endif
 
+        guard !Task.isCancelled else { return }
+
         guard let result = await runEngine(meetingID: meetingID, paths: paths, vocabulary: vocab) else { return }
+
+        // Last cancellation check before anything is persisted. A cancel that
+        // lands while `addTranscript` itself is awaiting the store cannot be
+        // honoured (the write is not interruptible); that window is tiny.
+        guard !Task.isCancelled else { return }
 
         guard await persistAndPromote(meetingID: meetingID, result: result, vocabularyUsed: vocab) else { return }
 
-        jobs[meetingID] = .completed
+        setStatus(.completed, for: meetingID)
     }
 
-    /// Resolves mic + system audio file paths from the store.
+    /// Resolves the mic (and optional system) audio file paths from the store.
     /// Sets a `.failed` job status and returns `nil` if paths are unavailable.
-    private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL)? {
+    private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL?)? {
         do {
             guard let resolved = try await store.audioPaths(meetingID: meetingID) else {
                 let meetingExists = try await store.meetingExists(id: meetingID)
                 if meetingExists {
-                    jobs[meetingID] = .failed(
+                    setStatus(.failed(
                         message: "No audio files available for this meeting.",
                         retriable: false
-                    )
+                    ), for: meetingID)
                 } else {
-                    jobs[meetingID] = .failed(message: "Meeting not found.", retriable: false)
+                    setStatus(.failed(message: "Meeting not found.", retriable: false), for: meetingID)
                 }
                 return nil
             }
             return resolved
         } catch {
-            jobs[meetingID] = .failed(
+            setStatus(.failed(
                 message: "Failed to resolve audio paths: \(error.localizedDescription)",
                 retriable: false
-            )
+            ), for: meetingID)
             return nil
         }
     }
@@ -208,14 +313,14 @@ public final class TranscriptionService {
         do {
             try await engine.ensureModelsDownloaded { [weak self] message in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    // Drop late messages from a job that already ended.
+                    guard let self, inFlightMeetingID == meetingID else { return }
                     if gate.hasElapsed {
-                        jobs[meetingID] = .downloadingModel(message: message)
+                        setStatus(.downloadingModel(message: message), for: meetingID)
                     } else {
                         gate.start { @MainActor [weak self] in
-                            self?.jobs[meetingID] = .downloadingModel(
-                                message: message
-                            )
+                            guard let self, inFlightMeetingID == meetingID else { return }
+                            setStatus(.downloadingModel(message: message), for: meetingID)
                         }
                     }
                 }
@@ -225,7 +330,7 @@ public final class TranscriptionService {
         } catch {
             gate.cancel()
             let (message, retriable) = mapEngineError(error)
-            jobs[meetingID] = .failed(message: message, retriable: retriable)
+            setStatus(.failed(message: message, retriable: retriable), for: meetingID)
             return false
         }
     }
@@ -233,10 +338,10 @@ public final class TranscriptionService {
     /// Runs STT + diarization. Returns `nil` (with `.failed` set) on error.
     private func runEngine(
         meetingID: UUID,
-        paths: (mic: URL, system: URL),
+        paths: (mic: URL, system: URL?),
         vocabulary: [String]
     ) async -> TranscriptResult? {
-        jobs[meetingID] = .transcribing
+        setStatus(.transcribing, for: meetingID)
         do {
             return try await engine.processAudio(
                 mic: paths.mic,
@@ -245,7 +350,7 @@ public final class TranscriptionService {
             )
         } catch {
             let (message, retriable) = mapEngineError(error)
-            jobs[meetingID] = .failed(message: message, retriable: retriable)
+            setStatus(.failed(message: message, retriable: retriable), for: meetingID)
             return nil
         }
     }
@@ -268,10 +373,10 @@ public final class TranscriptionService {
             try await store.setPreferredTranscript(transcriptID, for: meetingID)
             return true
         } catch {
-            jobs[meetingID] = .failed(
+            setStatus(.failed(
                 message: "Failed to save transcript: \(error.localizedDescription)",
                 retriable: true
-            )
+            ), for: meetingID)
             return false
         }
     }

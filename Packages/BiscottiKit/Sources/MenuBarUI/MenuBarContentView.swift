@@ -67,6 +67,12 @@ public struct MenuBarContentView: View {
                 )
             }
         }
+
+        Button {
+            Task { await viewModel.importAudioFiles() }
+        } label: {
+            Label("Import Audio File\u{2026}", systemImage: "square.and.arrow.down")
+        }
     }
 
     @ViewBuilder

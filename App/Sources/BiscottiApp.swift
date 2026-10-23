@@ -79,6 +79,21 @@ struct BiscottiApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
+            // File > Import Audio File...: transcribe an existing audio
+            // file. Funnels through the shell view model (open panel seam
+            // + AppCore.importAudioFiles).
+            CommandGroup(after: .newItem) {
+                Button("Import Audio File\u{2026}") {
+                    guard let shellVM = appDelegate.launchState.shellViewModel
+                    else { return }
+                    appDelegate.showMainWindow()
+                    Task { @MainActor in
+                        await shellVM.importAudioFiles()
+                    }
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
+
             // Replace the `.textEditing` group (Find submenu, Spelling &
             // Grammar, Substitutions, Transformations, Speech) with our
             // single "Find..." item. This eliminates the system's Find

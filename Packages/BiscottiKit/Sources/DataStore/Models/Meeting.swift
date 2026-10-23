@@ -46,6 +46,19 @@ import SwiftData
     /// Additive field -- defaults nil, no migration needed.
     public var importBatch: Int?
 
+    /// JSON-encoded backing store for `sentExports`. Additive -- defaults
+    /// empty, no migration needed. Same Data-backed pattern as
+    /// `TranscriptRecord.vocabularyUsedData`. Internal (not private) so
+    /// tests can inject corrupt bytes to verify the `?? []` fallback.
+    var sentExportsData = Data()
+
+    /// Records of notes sent to third-party apps (Obsidian, Bear, Apple Notes).
+    /// At most one record per destination; a resend replaces it.
+    @Transient public var sentExports: [SentExport] {
+        get { (try? JSONDecoder().decode([SentExport].self, from: sentExportsData)) ?? [] }
+        set { sentExportsData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
+
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []
 

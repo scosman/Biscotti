@@ -6,6 +6,7 @@ import DataStore
 import DesignSystem
 import Formatting
 import Foundation
+import ImportExport
 import Intelligence
 import SummaryPromptUI
 import TranscriptionService
@@ -23,6 +24,23 @@ public enum MeetingDetailState: Sendable, Equatable {
 
     /// The job failed; the user may retry if `retriable` is true.
     case failed(message: String, retriable: Bool)
+}
+
+/// Alert states for the send-to-app feature.
+public enum SendAlert: Equatable, Identifiable {
+    /// A record exists for this destination. The user may open the app,
+    /// send again, or cancel.
+    case alreadySent(ExportDestination, sentAt: Date, changed: Bool)
+    /// The note was too large for a URL scheme; the content was copied
+    /// to the clipboard.
+    case tooLarge(ExportDestination)
+
+    public var id: String {
+        switch self {
+        case let .alreadySent(dest, _, _): "alreadySent-\(dest.rawValue)"
+        case let .tooLarge(dest): "tooLarge-\(dest.rawValue)"
+        }
+    }
 }
 
 /// View model for the Meeting Detail screen.
@@ -176,6 +194,18 @@ public final class MeetingDetailViewModel {
 
     /// Whether the tag picker popover is open.
     public var tagPickerOpen: Bool = false
+
+    // MARK: - Send to app
+
+    /// Sent-export records for this meeting, loaded from the store.
+    public private(set) var sentExports: [SentExport] = []
+
+    /// Installed export destinations (Obsidian, Bear, Apple Notes), in
+    /// `CaseIterable` order. Updated on `load()` and `refreshData()`.
+    public private(set) var sendDestinations: [ExportDestination] = []
+
+    /// The active alert for send-to interactions: "already sent" or "too large".
+    public var sendAlert: SendAlert?
 
     // MARK: - Voiceprint debug (`#if DEBUG`)
 
@@ -1137,6 +1167,8 @@ private extension MeetingDetailViewModel {
         catalogueTags = try await core.store.allTags()
         let settings = try? await core.store.settings()
         aiAnalysisEnabled = settings?.aiAnalysisEnabled ?? true
+        sentExports = detail?.sentExports ?? []
+        sendDestinations = core.installedSendDestinations()
     }
 
     func loadAudioPlayer() async {
@@ -1831,5 +1863,73 @@ public extension MeetingDetailViewModel {
         } catch {
             // Non-fatal
         }
+    }
+
+    // MARK: - Send to app
+
+    /// The export source assembled from live VM state, including unsaved
+    /// edits (title, summary, notes, tags). Returns nil when no detail
+    /// data is loaded.
+    var sendSource: ExportSource? {
+        guard let detail else { return nil }
+        var source = ExportSource(detail: detail)
+        // Overlay with the live VM state so that unsaved edits are included.
+        source.title = editableTitle
+        source.summary = summaryText
+        source.notes = notes
+        source.tags = catalogueTags
+            .filter { tag in detail.tags.contains(where: { applied in applied.id == tag.id }) }
+            .map(\.name)
+        return source
+    }
+
+    /// Whether there is content to send.
+    var canSend: Bool {
+        sendSource?.hasContent ?? false
+    }
+
+    /// Called when the user taps a send-to button. Shows the "already sent"
+    /// alert if a record exists, otherwise sends immediately.
+    func sendTapped(_ destination: ExportDestination) async {
+        guard let source = sendSource else { return }
+
+        let zone = core.sendEnvironment.timeZone()
+        let payload = SendPayload.build(source, for: destination, timeZone: zone)
+        let decision = SendDecision.decide(
+            sentExports, for: destination, currentHash: payload.contentHash
+        )
+
+        switch decision {
+        case .send:
+            await performSend(destination)
+        case let .alreadySent(sentAt, changed):
+            sendAlert = .alreadySent(destination, sentAt: sentAt, changed: changed)
+        }
+    }
+
+    /// Called from the "already sent" alert's "Send Again" button.
+    func sendAgain(_ destination: ExportDestination) async {
+        await performSend(destination)
+    }
+
+    /// Called from the "already sent" alert's "Open" button.
+    func openApp(_ destination: ExportDestination) {
+        core.openDestinationApp(destination)
+    }
+
+    /// Sends the content and handles the outcome.
+    private func performSend(_ destination: ExportDestination) async {
+        guard let source = sendSource else { return }
+        let outcome = await core.send(source, to: destination)
+
+        switch outcome {
+        case .copiedToClipboard:
+            sendAlert = .tooLarge(destination)
+        case .sent, .failed:
+            break
+        }
+
+        // Reload records from the store so the next tap reflects the new state.
+        sentExports = await (try? core.store.sentExports(meetingID: meetingID)) ?? []
     }
 }

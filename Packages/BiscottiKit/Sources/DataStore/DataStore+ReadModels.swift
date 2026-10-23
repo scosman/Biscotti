@@ -70,6 +70,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let editedTitle: Bool
     /// Tags applied to this meeting, sorted alphabetically.
     public let tags: [TagData]
+    /// Records of notes sent to third-party apps (Obsidian, Bear, Apple Notes).
+    public let sentExports: [SentExport]
 
     public init(
         id: UUID,
@@ -86,7 +88,8 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         summary: String = "",
         editedSummary: Bool = false,
         editedTitle: Bool = false,
-        tags: [TagData] = []
+        tags: [TagData] = [],
+        sentExports: [SentExport] = []
     ) {
         self.id = id
         self.title = title
@@ -103,6 +106,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.editedSummary = editedSummary
         self.editedTitle = editedTitle
         self.tags = tags
+        self.sentExports = sentExports
     }
 }
 
@@ -512,7 +516,8 @@ public extension DataStore {
             summary: meeting.summary,
             editedSummary: meeting.editedSummary,
             editedTitle: meeting.editedTitle,
-            tags: mappedTags
+            tags: mappedTags,
+            sentExports: meeting.sentExports
         )
     }
 

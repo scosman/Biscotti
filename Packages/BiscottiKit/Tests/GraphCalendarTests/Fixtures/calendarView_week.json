@@ -1,0 +1,506 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jane%40synderys.com')/calendars('cal-own')/calendarView(id,iCalUId,seriesMasterId,type,subject,start,end,originalStart,originalStartTimeZone,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,onlineMeetingUrl,location,body,showAs,responseStatus,attendees,organizer)",
+  "value": [
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-teams",
+      "iCalUId": "040000008200E00074C5B7101A82E00800000000A1B2C3D4E5F6A701000000000000000010000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Q4 pipeline review",
+      "start": {
+        "dateTime": "2026-10-27T16:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-27T17:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": true,
+      "onlineMeetingProvider": "teamsForBusiness",
+      "onlineMeeting": {
+        "joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_NTk3ZGE4%40thread.v2/0?context=%7b%22Tid%22%3a%22t-1%22%2c%22Oid%22%3a%22o-1%22%7d"
+      },
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "Microsoft Teams Meeting",
+        "locationType": "default",
+        "uniqueId": "Microsoft Teams Meeting",
+        "uniqueIdType": "private"
+      },
+      "body": {
+        "contentType": "html",
+        "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">\r\n<style type=\"text/css\" style=\"display:none\">\r\n<!--\r\np\r\n\t{margin-top:0;\r\n\tmargin-bottom:0}\r\n-->\r\n</style></head><body dir=\"ltr\"><div class=\"elementToProof\" style=\"font-family:Aptos,Arial,Helvetica,sans-serif; font-size:12pt\">Agenda:</div><ul><li>Pipeline by stage</li><li>Forecast &amp; risks</li></ul><div style=\"width:100%\">________________________________________________________________________________</div><div class=\"me-email-text\" lang=\"en-US\" style=\"color:#242424; font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif\"><div style=\"margin-bottom:24px; overflow:hidden; white-space:nowrap\"><span class=\"me-email-text\" style=\"font-size:24px; font-weight:700\">Microsoft Teams meeting</span></div><div style=\"margin-bottom:20px\"><div style=\"margin-top:0px; margin-bottom:0px; font-weight:bold\"><span style=\"font-size:14px; font-weight:600\">Join on your computer, mobile app or room device</span></div><a class=\"me-email-headline\" href=\"https://teams.microsoft.com/l/meetup-join/19%3ameeting_NTk3ZGE4%40thread.v2/0?context=%7b%22Tid%22%3a%22t-1%22%2c%22Oid%22%3a%22o-1%22%7d\" target=\"_blank\" rel=\"noreferrer noopener\" style=\"font-size:14px; text-decoration:underline\">Click here to join the meeting</a></div><div style=\"margin-bottom:20px; margin-top:20px\"><span class=\"me-email-text-secondary\" style=\"font-size:14px\">Meeting ID: </span><span class=\"me-email-text\" style=\"font-size:14px\">255 123 456 789</span></div><div style=\"margin-bottom:24px\"><a class=\"me-email-link\" href=\"https://aka.ms/JoinTeamsMeeting?omkt=en-US\" target=\"_blank\" rel=\"noreferrer noopener\" style=\"font-size:14px\">Join with a video conferencing device</a></div></div>________________________________________________________________________________</body></html>"
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "accepted",
+        "time": "2026-10-20T17:02:11.0000000Z"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "accepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Jane Doe",
+            "address": "JANE.DOE@synderys.com"
+          }
+        },
+        {
+          "type": "required",
+          "status": {
+            "response": "tentativelyAccepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Pat Smith",
+            "address": "pat@synderys.com"
+          }
+        },
+        {
+          "type": "optional",
+          "status": {
+            "response": "notResponded",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Lee Wong",
+            "address": "lee@partner.example"
+          }
+        },
+        {
+          "type": "resource",
+          "status": {
+            "response": "accepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Conf Room 4",
+            "address": "room4@synderys.com"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Sam Lee",
+          "address": "sam@synderys.com"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-occ-2",
+      "iCalUId": "040000008200E00074C5B7101A82E00807EA0A1C0000000000000000000000000000000010000000",
+      "seriesMasterId": "series-standup",
+      "type": "occurrence",
+      "subject": "Daily standup",
+      "start": {
+        "dateTime": "2026-10-28T15:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-28T15:45:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": "2026-10-28T15:30:00Z",
+      "originalStartTimeZone": "Eastern Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "text",
+        "content": "Standup notes:\r\nhttps://example.com/standup\r\n"
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "organizer",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "accepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Pat Smith",
+            "address": "pat@synderys.com"
+          }
+        },
+        {
+          "type": "required",
+          "status": {
+            "response": "declined",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Lee Wong",
+            "address": "lee@partner.example"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-exc",
+      "iCalUId": "040000008200E00074C5B7101A82E00807EA0A1D0000000000000000000000000000000010000000",
+      "seriesMasterId": "series-standup",
+      "type": "exception",
+      "subject": "Daily standup (moved)",
+      "start": {
+        "dateTime": "2026-10-29T17:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-29T17:15:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": "2026-10-29T15:30:00.0000000Z",
+      "originalStartTimeZone": "Eastern Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "organizer",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "accepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Pat Smith",
+            "address": "pat@synderys.com"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-allday",
+      "iCalUId": "040000008200E00074C5B7101A82E0080000000011223344556677880000000000000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Company offsite",
+      "start": {
+        "dateTime": "2026-10-30T00:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-31T00:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": true,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "oof",
+      "responseStatus": {
+        "response": "organizer",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "attendees": [],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-cancelled",
+      "iCalUId": "040000008200E00074C5B7101A82E00800000000CA9CE11ED0000000000000000000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Canceled: Vendor sync",
+      "start": {
+        "dateTime": "2026-10-27T20:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-27T20:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": false,
+      "isCancelled": true,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "free",
+      "responseStatus": {
+        "response": "notResponded",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "none",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Jane Doe",
+            "address": "jane@synderys.com"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Vendor Rep",
+          "address": "rep@vendor.example"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-zoom-body",
+      "iCalUId": "040000008200E00074C5B7101A82E008000000002002002002002000000000000000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Partner planning",
+      "start": {
+        "dateTime": "2026-10-28T18:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-28T19:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "  ",
+        "locationType": "default",
+        "uniqueIdType": "unknown"
+      },
+      "body": {
+        "contentType": "html",
+        "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">\r\n<style>p{margin:0}</style></head><body><p>Hi all,</p><p>Let&#8217;s review &amp; plan.</p><p><a href=\"https://us02web.zoom.us/j/85512345678?pwd=abcDEF123\">Join Zoom Meeting</a></p><p>Meeting ID: 855 1234 5678</p></body></html>"
+      },
+      "showAs": "tentative",
+      "responseStatus": {
+        "response": "tentativelyAccepted",
+        "time": "2026-10-21T09:00:00.0000000Z"
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "tentativelyAccepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Jane Doe",
+            "address": "Jane.Doe@synderys.com"
+          }
+        },
+        {
+          "type": "required",
+          "status": {
+            "response": "accepted",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Ana Ruiz",
+            "address": "ana@partner.example"
+          }
+        },
+        {
+          "type": "optional",
+          "status": {
+            "response": "none",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": null,
+            "address": null
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Ana Ruiz",
+          "address": "ana@partner.example"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-focus",
+      "iCalUId": "040000008200E00074C5B7101A82E0080000000F0C05F0C05F0C0000000000000000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Focus time",
+      "start": {
+        "dateTime": "2026-10-29T21:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-29T23:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Customized Time Zone",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "organizer",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "attendees": [],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    },
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-bad-date",
+      "iCalUId": "040000008200E00074C5B7101A82E008000000BAD0DA7E000000000000000000000000",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Corrupt",
+      "start": {
+        "dateTime": "2026-02-30T10:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-29T11:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "accepted",
+        "time": "2026-10-20T17:02:11.0000000Z"
+      },
+      "attendees": [],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    }
+  ]
+}

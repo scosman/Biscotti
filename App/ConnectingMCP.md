@@ -14,6 +14,24 @@ The server binds to `127.0.0.1` (local to this machine only). Any app on this Ma
 your meetings while it is on. Biscotti data doesn't leave your machine, unless another app or agent
 you sends it somewhere.
 
+## Changing the port
+
+The server listens on port `8516` by default. If that port is taken (for example, upstream
+Biscotti is also running), type another one into the **Port** field under
+**Settings → General → MCP** and press Return. The server moves to the new port at once.
+
+Ports from 1024 to 65535 are accepted. The URL in **Settings → General → MCP → How to
+connect** shows the port in use. Replace `8516` in the examples below with your port, and
+update any agent you already connected. To go back to the default, enter `8516`.
+
+The same setting can be changed from Terminal; this takes effect the next time Biscotti
+launches:
+
+```sh
+defaults write com.synderys.biscotti mcpServerPort -int 8517
+defaults delete com.synderys.biscotti mcpServerPort   # back to 8516
+```
+
 ## Instructions for clients
 
 Each client has different connection instructions. Check your agent's docs, or use one of the common ones below:

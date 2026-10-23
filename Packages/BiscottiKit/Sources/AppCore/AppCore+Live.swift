@@ -24,7 +24,7 @@ public extension AppCore {
     ///     stored under `Recordings/` within this directory; the DataStore
     ///     file is placed at `<storageRoot>/Biscotti.store`.
     ///   - transcriberServiceName: The Mach service name for the XPC
-    ///     transcription worker (e.g. `"net.scosman.biscotti.BiscottiTranscriber"`).
+    ///     transcription worker (e.g. `"com.synderys.biscotti.BiscottiTranscriber"`).
     /// - Returns: A ready-to-use `AppCore`. Call `onLaunch()` after presenting the UI.
     static func live(
         storageRoot: URL,

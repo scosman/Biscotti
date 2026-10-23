@@ -28,10 +28,11 @@ public final class MCPServerController {
     public private(set) var state: MCPServerState = .stopped
 
     private let store: DataStore
-    /// The port every start attempts. Production keeps the fixed default
-    /// (8516); tests inject 0 for an ephemeral port — they must never bind
-    /// the production port, which the real app dogfoods.
-    private let port: Int
+    /// The port every start attempts. Production uses the configured port
+    /// (`MCPServerConfiguration.port`, 8516 unless overridden); tests inject
+    /// 0 for an ephemeral port — they must never bind the production port,
+    /// which the real app dogfoods. Changed live by ``setPort(_:)``.
+    public private(set) var port: Int
     /// Server version reported in `initialize`; from the app bundle when
     /// present (tests and SPM contexts get "0.0.0").
     private let serverVersion: String
@@ -82,8 +83,9 @@ public final class MCPServerController {
     /// Starts the server. Idempotent: a no-op when already running or
     /// starting; a fresh attempt after `.failed` (the Retry path).
     public func start() async {
-        await enqueue { [weak self, port] in
-            await self?.performStart(port: port)
+        await enqueue { [weak self] in
+            guard let self else { return }
+            await performStart(port: port)
         }.value
     }
 
@@ -110,6 +112,16 @@ public final class MCPServerController {
         }
     }
 
+    /// Moves the server to `newPort` (the Settings port field). A server
+    /// that is running or failed restarts on the new port, so changing the
+    /// port is also how a "port in use" failure is fixed; a stopped one
+    /// binds it on its next start. No-op when the port is unchanged.
+    public func setPort(_ newPort: Int) async {
+        await enqueue { [weak self] in
+            await self?.performSetPort(newPort)
+        }.value
+    }
+
     // MARK: - Lifecycle
 
     private func performStart(port: Int) async {
@@ -124,9 +136,9 @@ public final class MCPServerController {
         mcpServerLog.info("Starting MCP server on \(MCPServerConfiguration.host):\(port)")
 
         // Bind first: the per-request transports' OriginValidator must be
-        // pinned to the port we actually own (8516 in production, the
-        // ephemeral port in tests) or it would 421 every request whose
-        // Host header names another port.
+        // pinned to the port we actually own (the configured port in
+        // production, the ephemeral port in tests) or it would 421 every
+        // request whose Host header names another port.
         let listener = HTTPListener { [handlerBox] request in
             guard let handle = handlerBox.withLockedValue({ $0 }) else {
                 return MCP.HTTPResponse.error(
@@ -262,6 +274,15 @@ public final class MCPServerController {
 
         state = .stopped
         mcpServerLog.info("MCP server stopped")
+    }
+
+    /// Runs on the work queue, so `state` is never `.starting` here.
+    private func performSetPort(_ newPort: Int) async {
+        guard newPort != port else { return }
+        port = newPort
+        guard state != .stopped else { return }
+        await performStop()
+        await performStart(port: newPort)
     }
 
     private nonisolated static let instructions = """

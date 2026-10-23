@@ -158,15 +158,15 @@ struct ScriptShapeTests {
         #expect(script.id == "mcp_server")
     }
 
-    @Test("MCP Server script has exactly 2 steps")
+    @Test("MCP Server script has exactly 3 steps")
     func mcpStepCount() {
-        #expect(TestScript.mcp.steps.count == 2)
+        #expect(TestScript.mcp.steps.count == 3)
     }
 
     @Test("MCP Server step IDs match the canonical set")
     func mcpStepIDs() {
         let ids = Set(TestScript.mcp.steps.map(\.id))
-        #expect(ids == ["mcp_connect", "mcp_real_client"])
+        #expect(ids == ["mcp_connect", "mcp_real_client", "mcp_port_change"])
     }
 
     @Test("Every step ID in MCP Server is non-empty")

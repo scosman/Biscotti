@@ -416,7 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate,
             let appCore = try AppCore.live(
                 storageRoot: storageRoot,
                 transcriberServiceName:
-                "net.scosman.biscotti.BiscottiTranscriber"
+                "com.synderys.biscotti.BiscottiTranscriber"
             )
             logger.info("buildCore: AppCore.live complete")
 

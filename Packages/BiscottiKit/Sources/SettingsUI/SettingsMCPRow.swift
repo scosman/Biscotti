@@ -27,6 +27,7 @@ extension SettingsView {
     /// server's live state (`mcpServerState`). The toggle stays on after a
     /// start failure — intent is preserved, the caption explains (§2.3).
     /// The endpoint URL and its Copy button live only in the help sheet.
+    /// While MCP is on, a Port field follows the caption.
     var mcpRow: some View {
         VStack(alignment: .leading, spacing: Tokens.spacingXS) {
             Toggle("MCP", isOn: mcpEnabledBinding)
@@ -66,6 +67,10 @@ extension SettingsView {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+            }
+
+            if viewModel.mcpServerEnabled {
+                MCPPortField(viewModel: viewModel)
             }
         }
         .sheet(isPresented: $showMCPHelp) {

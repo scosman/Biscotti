@@ -1,6 +1,6 @@
 name: Biscotti
 options:
-  bundleIdPrefix: net.scosman
+  bundleIdPrefix: com.synderys
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -42,7 +42,7 @@ targets:
       - Resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti
+        PRODUCT_BUNDLE_IDENTIFIER: com.synderys.biscotti
         INFOPLIST_FILE: Resources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         CODE_SIGN_ENTITLEMENTS: Biscotti.entitlements
@@ -85,7 +85,7 @@ targets:
           - "*.entitlements"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiTranscriber
+        PRODUCT_BUNDLE_IDENTIFIER: com.synderys.biscotti.BiscottiTranscriber
         INFOPLIST_FILE: ../XPCServices/BiscottiTranscriber/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiTranscriber/BiscottiTranscriber.entitlements
         MARKETING_VERSION: "1.1.0"
@@ -105,7 +105,7 @@ targets:
           - "*.entitlements"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.BiscottiLLM
+        PRODUCT_BUNDLE_IDENTIFIER: com.synderys.biscotti.BiscottiLLM
         INFOPLIST_FILE: ../XPCServices/BiscottiLLM/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../XPCServices/BiscottiLLM/BiscottiLLM.entitlements
         MARKETING_VERSION: "1.1.0"

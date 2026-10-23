@@ -64,6 +64,11 @@ public final class SettingsViewModel {
     /// (functional spec §5.2). Injected in tests.
     let presentSavePanel: @MainActor (String) -> URL?
 
+    /// Where `setMCPServerPort` saves the `mcpServerPort` override. Not the
+    /// DataStore: the port is per machine, and `AppSettings` would need a
+    /// schema change. Tests swap in an isolated suite.
+    @ObservationIgnored var mcpPortDefaults: UserDefaults = .standard
+
     // MARK: - General
 
     /// Launch at login toggle state. Reflects `SMAppService.mainApp.status`
@@ -533,6 +538,13 @@ public extension SettingsViewModel {
     var mcpServerState: MCPServerState {
         core.mcpServer.state
     }
+
+    /// The MCP server's port, forwarded from AppCore. In the app it starts
+    /// as the configured port (`MCPServerConfiguration.port`) and follows
+    /// `setMCPServerPort`.
+    var mcpServerPort: Int {
+        core.mcpServer.port
+    }
 }
 
 // MARK: - Notification settings actions
@@ -638,6 +650,30 @@ public extension SettingsViewModel {
     /// Re-attempts the MCP server bind after a failure (the Retry button).
     func retryMCPServer() async {
         await core.mcpServer.start()
+    }
+
+    /// Sets the MCP port. Persists the `mcpServerPort` user default and
+    /// moves the live server, which restarts on the new port when it is
+    /// running or failed. Returns false, changing nothing, for a port
+    /// outside `MCPServerConfiguration.allowedPortRange`.
+    @discardableResult
+    func setMCPServerPort(_ port: Int) async -> Bool {
+        guard MCPServerConfiguration.allowedPortRange.contains(port) else { return false }
+        mcpPortDefaults.set(port, forKey: MCPServerConfiguration.portDefaultsKey)
+        await core.mcpServer.setPort(port)
+        return true
+    }
+
+    /// The port typed into the Settings field, or nil unless it is all
+    /// digits and within `MCPServerConfiguration.allowedPortRange`.
+    nonisolated static func mcpPort(fromText text: String) -> Int? {
+        // `allSatisfy` rejects signs; `Int(_:)` rejects empty text and
+        // non-ASCII digits.
+        let digits = text.trimmingCharacters(in: .whitespaces)
+        guard digits.allSatisfy(\.isWholeNumber), let port = Int(digits),
+              MCPServerConfiguration.allowedPortRange.contains(port)
+        else { return nil }
+        return port
     }
 }
 

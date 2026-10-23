@@ -1,0 +1,52 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jane%40synderys.com')/calendars('cal-project')/calendarView(id,iCalUId,seriesMasterId,type,subject,start,end,originalStart,originalStartTimeZone,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,onlineMeetingUrl,location,body,showAs,responseStatus,attendees,organizer)",
+  "value": [
+    {
+      "@odata.etag": "W/\"DwAAABYAAAA\"",
+      "id": "evt-early",
+      "iCalUId": "ical-evt-early",
+      "seriesMasterId": null,
+      "type": "singleInstance",
+      "subject": "Early sync",
+      "start": {
+        "dateTime": "2026-10-26T15:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-26T15:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "originalStart": null,
+      "originalStartTimeZone": "Pacific Standard Time",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOnlineMeeting": false,
+      "onlineMeetingProvider": "unknown",
+      "onlineMeeting": null,
+      "onlineMeetingUrl": null,
+      "location": {
+        "displayName": "",
+        "locationType": "default",
+        "uniqueIdType": "unknown",
+        "address": {},
+        "coordinates": {}
+      },
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "showAs": "busy",
+      "responseStatus": {
+        "response": "accepted",
+        "time": "2026-10-20T17:02:11.0000000Z"
+      },
+      "attendees": [],
+      "organizer": {
+        "emailAddress": {
+          "name": "Jane Doe",
+          "address": "Jane.Doe@synderys.com"
+        }
+      }
+    }
+  ]
+}

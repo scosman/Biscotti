@@ -513,7 +513,7 @@ struct AppCoreMicUserAutoStopTests {
                 input: true, output: true
             ),
             makeAudioProcess(
-                bundleID: "net.scosman.biscotti",
+                bundleID: "com.synderys.biscotti",
                 input: true, output: false, pid: 99
             )
         ])
@@ -530,7 +530,7 @@ struct AppCoreMicUserAutoStopTests {
         // auto-stop because Biscotti is excluded from mic user tracking
         fix.fakeActivitySource.emit([
             makeAudioProcess(
-                bundleID: "net.scosman.biscotti",
+                bundleID: "com.synderys.biscotti",
                 input: true, output: false, pid: 99
             )
         ])

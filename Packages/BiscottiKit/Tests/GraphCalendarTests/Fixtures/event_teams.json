@@ -1,0 +1,94 @@
+{
+  "@odata.etag": "W/\"DwAAABYAAAA\"",
+  "id": "evt-teams",
+  "iCalUId": "040000008200E00074C5B7101A82E00800000000A1B2C3D4E5F6A701000000000000000010000000",
+  "seriesMasterId": null,
+  "type": "singleInstance",
+  "subject": "Q4 pipeline review",
+  "start": {
+    "dateTime": "2026-10-27T16:00:00.0000000",
+    "timeZone": "UTC"
+  },
+  "end": {
+    "dateTime": "2026-10-27T17:00:00.0000000",
+    "timeZone": "UTC"
+  },
+  "originalStart": null,
+  "originalStartTimeZone": "Pacific Standard Time",
+  "isAllDay": false,
+  "isCancelled": false,
+  "isOnlineMeeting": true,
+  "onlineMeetingProvider": "teamsForBusiness",
+  "onlineMeeting": {
+    "joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_NTk3ZGE4%40thread.v2/0?context=%7b%22Tid%22%3a%22t-1%22%2c%22Oid%22%3a%22o-1%22%7d"
+  },
+  "onlineMeetingUrl": null,
+  "location": {
+    "displayName": "Microsoft Teams Meeting",
+    "locationType": "default",
+    "uniqueId": "Microsoft Teams Meeting",
+    "uniqueIdType": "private"
+  },
+  "body": {
+    "contentType": "html",
+    "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">\r\n<style type=\"text/css\" style=\"display:none\">\r\n<!--\r\np\r\n\t{margin-top:0;\r\n\tmargin-bottom:0}\r\n-->\r\n</style></head><body dir=\"ltr\"><div class=\"elementToProof\" style=\"font-family:Aptos,Arial,Helvetica,sans-serif; font-size:12pt\">Agenda:</div><ul><li>Pipeline by stage</li><li>Forecast &amp; risks</li></ul><div style=\"width:100%\">________________________________________________________________________________</div><div class=\"me-email-text\" lang=\"en-US\" style=\"color:#242424; font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif\"><div style=\"margin-bottom:24px; overflow:hidden; white-space:nowrap\"><span class=\"me-email-text\" style=\"font-size:24px; font-weight:700\">Microsoft Teams meeting</span></div><div style=\"margin-bottom:20px\"><div style=\"margin-top:0px; margin-bottom:0px; font-weight:bold\"><span style=\"font-size:14px; font-weight:600\">Join on your computer, mobile app or room device</span></div><a class=\"me-email-headline\" href=\"https://teams.microsoft.com/l/meetup-join/19%3ameeting_NTk3ZGE4%40thread.v2/0?context=%7b%22Tid%22%3a%22t-1%22%2c%22Oid%22%3a%22o-1%22%7d\" target=\"_blank\" rel=\"noreferrer noopener\" style=\"font-size:14px; text-decoration:underline\">Click here to join the meeting</a></div><div style=\"margin-bottom:20px; margin-top:20px\"><span class=\"me-email-text-secondary\" style=\"font-size:14px\">Meeting ID: </span><span class=\"me-email-text\" style=\"font-size:14px\">255 123 456 789</span></div><div style=\"margin-bottom:24px\"><a class=\"me-email-link\" href=\"https://aka.ms/JoinTeamsMeeting?omkt=en-US\" target=\"_blank\" rel=\"noreferrer noopener\" style=\"font-size:14px\">Join with a video conferencing device</a></div></div>________________________________________________________________________________</body></html>"
+  },
+  "showAs": "busy",
+  "responseStatus": {
+    "response": "accepted",
+    "time": "2026-10-20T17:02:11.0000000Z"
+  },
+  "attendees": [
+    {
+      "type": "required",
+      "status": {
+        "response": "accepted",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "emailAddress": {
+        "name": "Jane Doe",
+        "address": "JANE.DOE@synderys.com"
+      }
+    },
+    {
+      "type": "required",
+      "status": {
+        "response": "tentativelyAccepted",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "emailAddress": {
+        "name": "Pat Smith",
+        "address": "pat@synderys.com"
+      }
+    },
+    {
+      "type": "optional",
+      "status": {
+        "response": "notResponded",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "emailAddress": {
+        "name": "Lee Wong",
+        "address": "lee@partner.example"
+      }
+    },
+    {
+      "type": "resource",
+      "status": {
+        "response": "accepted",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "emailAddress": {
+        "name": "Conf Room 4",
+        "address": "room4@synderys.com"
+      }
+    }
+  ],
+  "organizer": {
+    "emailAddress": {
+      "name": "Sam Lee",
+      "address": "sam@synderys.com"
+    }
+  },
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jane%40synderys.com')/calendars('cal-own')/events(id,subject)/$entity"
+}

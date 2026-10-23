@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>net.scosman.biscotti.BiscottiLLM</string>
+    <string>com.synderys.biscotti.BiscottiLLM</string>
     <key>CFBundleName</key>
     <string>BiscottiLLM</string>
     <key>CFBundlePackageType</key>

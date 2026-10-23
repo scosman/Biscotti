@@ -1,0 +1,37 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jane%40synderys.com')/calendars(id,name,hexColor,isDefaultCalendar,canEdit,owner)",
+  "value": [
+    {
+      "id": "cal-own",
+      "name": "Calendar",
+      "hexColor": "",
+      "isDefaultCalendar": true,
+      "canEdit": true,
+      "owner": { "name": "Jane Doe", "address": "Jane.Doe@synderys.com" }
+    },
+    {
+      "id": "cal-project",
+      "name": "Project X",
+      "hexColor": "#a3c4ff",
+      "isDefaultCalendar": false,
+      "canEdit": true,
+      "owner": { "name": "Jane Doe", "address": "jane.doe@synderys.com" }
+    },
+    {
+      "id": "cal-shared",
+      "name": "Calendar",
+      "hexColor": "#ffb878",
+      "isDefaultCalendar": false,
+      "canEdit": false,
+      "owner": { "name": "Pat Smith", "address": "pat@synderys.com" }
+    },
+    {
+      "id": "cal-partner",
+      "name": "Calendar",
+      "hexColor": "blue",
+      "isDefaultCalendar": false,
+      "canEdit": false,
+      "owner": { "name": "", "address": "lee@partner.example" }
+    }
+  ]
+}

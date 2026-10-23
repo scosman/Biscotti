@@ -6,7 +6,7 @@ import LocalLLM
 /// model, runs the closure, and closes the connection.
 public struct LiveLLMRunner: LLMRunning {
     /// The XPC service bundle identifier for BiscottiLLM.
-    static let serviceName = "net.scosman.biscotti.BiscottiLLM"
+    static let serviceName = "com.synderys.biscotti.BiscottiLLM"
 
     public init() {}
 

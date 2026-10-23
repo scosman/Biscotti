@@ -20,6 +20,7 @@ let package = Package(
         .library(name: "MeetingDetailUI", targets: ["MeetingDetailUI"]),
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
         .library(name: "Calendar", targets: ["Calendar"]),
+        .library(name: "GraphCalendar", targets: ["GraphCalendar"]),
         .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
         .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
         .library(name: "Notifications", targets: ["Notifications"]),
@@ -421,6 +422,26 @@ let package = Package(
                 "DataStore",
                 "MeetingCatalog"
             ],
+            swiftSettings: warningsAsErrors
+        ),
+        // Synderys fork: Microsoft 365 calendars via Microsoft Graph
+        // (specs/projects/o365_calendar). Nothing upstream depends on it.
+        .target(
+            name: "GraphCalendar",
+            dependencies: [
+                "Calendar",
+                "MeetingCatalog"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "GraphCalendarTests",
+            dependencies: [
+                "GraphCalendar",
+                "Calendar",
+                "MeetingCatalog"
+            ],
+            resources: [.copy("Fixtures")],
             swiftSettings: warningsAsErrors
         ),
         .target(

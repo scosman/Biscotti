@@ -44,7 +44,7 @@ enum WiredScripts {
 
     /// Shared transcriber instance (actor -- hosted via BiscottiTranscriber.xpc).
     private static let transcriber = Transcriber(
-        backend: .hosted(serviceName: "net.scosman.biscotti.BiscottiTranscriber")
+        backend: .hosted(serviceName: "com.synderys.biscotti.BiscottiTranscriber")
     )
 
     /// Directory for captured audio files.
@@ -140,7 +140,7 @@ enum WiredScripts {
 
     /// The XPC service name for BiscottiLLM, matching the embedded xpc-service
     /// bundle identifier in project.yml.
-    private static let llmServiceName = "net.scosman.biscotti.BiscottiLLM"
+    private static let llmServiceName = "com.synderys.biscotti.BiscottiLLM"
 
     /// Guard that the model file exists before attempting XPC inference.
     /// Throws a clear error directing the user to run the download step first,

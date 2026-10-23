@@ -18,7 +18,7 @@ struct StandardOutputWriter {
 // MARK: - App running guard
 
 enum AppRunningGuard {
-    private static let biscottiBundleID = "net.scosman.biscotti"
+    private static let biscottiBundleID = "com.synderys.biscotti"
 
     /// Checks whether the Biscotti app is running. If so, prints a message
     /// to stderr and throws `ExitCode(2)`.

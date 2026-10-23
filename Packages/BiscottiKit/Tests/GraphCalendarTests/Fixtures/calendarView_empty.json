@@ -1,0 +1,4 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jane%40synderys.com')/calendars('cal-own')/calendarView(id,iCalUId,seriesMasterId,type,subject,start,end,originalStart,originalStartTimeZone,isAllDay,isCancelled,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,onlineMeetingUrl,location,body,showAs,responseStatus,attendees,organizer)",
+  "value": []
+}

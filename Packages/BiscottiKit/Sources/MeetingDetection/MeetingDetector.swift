@@ -94,7 +94,7 @@ public final class MeetingDetector {
         catalog: any MeetingCatalog,
         source: any ActivitySource,
         clock: AnyClock,
-        selfBundlePrefix: String = "net.scosman.biscotti"
+        selfBundlePrefix: String = "com.synderys.biscotti"
     ) {
         self.catalog = catalog
         self.source = source

@@ -139,7 +139,7 @@ Vocabulary guard: `tapDownload(.apple)` / `tapChoose(.apple)` → if `core.speec
 ### 4.2 `OnboardingViewModel`
 
 - Remove `downloadStatus`, `isDownloading`, `downloadComplete`, `downloadFailed`, `transcriptionDownloaded`, `requiredDiskSpaceMB`, `checkDiskSpace`, `hasSufficientDisk` (state now lives in the manager) and `startTranscriptionDownload()`.
-- Add: `func startTranscriptionDownload() { Task { await core.speechEngines.download(core.speechEngines.target) } }`, `func startSpeakerIDDownload() { Task { await core.speechEngines.downloadSpeakerID() } }`, `var showSpeechSheet = false`, `var transcriptionLineText: String { engines.summaryLabel }`, `var showsSpeechOptionsLink: Bool { engines.appleAvailability == .available }`.
+- Add: `func startTranscriptionDownload() { Task { await core.speechEngines.download(core.speechEngines.target) } }`, `func startSpeakerIDDownload() { Task { await core.speechEngines.downloadSpeakerID() } }`, `var showSpeechSheet = false`, `var transcriptionLineText: String { "Model: \(engines.summaryLabel)" }`, `var languageLineText: String? { guard let name = languageTargetDisplayName else { return nil }; return "Model: \(name)" }`.
 - `runModelProbes()`: `await core.modelManager.refresh(); await core.speechEngines.refresh()`.
 - `advance()`: if `currentStep == .modelDownload` → `await core.speechEngines.persistTargetIfUnset()` before `proceed()`. `skip()` does not persist.
 - `footerButton(.modelDownload)` uses `allModelsStarted`.
@@ -147,8 +147,9 @@ Vocabulary guard: `tapDownload(.apple)` / `tapChoose(.apple)` → if `core.speec
 ### 4.3 Views
 
 - `ModelCard`: rows Transcription (`waveform`, "Transcription", "Turns speech into text."), Speaker ID (`person.2`, "Speaker ID", "Labels who’s speaking."), Language Model (unchanged), with `InsetDivider(leadingInset: 48)` between each.
-- Transcription `extraContent`: when state is not `.downloading` → `RecommendationLine(modelName: transcriptionLineText, showsSeeAll: showsSpeechOptionsLink, onSeeAll: { showSpeechSheet = true })`.
-- `RecommendationLine`: drop `isRecommended` and the "Recommended · " prefix (both rows); add `showsSeeAll: Bool = true`.
+- Transcription `extraContent`: when state is not `.downloading` → `RecommendationLine(modelName: transcriptionLineText, onChange: { showSpeechSheet = true })`. "Change…" shows on every OS including macOS 15.
+- Language Model `extraContent`: when state is not `.downloading` → `RecommendationLine(modelName: languageLineText, onChange: { showVariantSheet = true })`.
+- `RecommendationLine`: model name in `.biscottiMono(11.5)`, `.inkSecondary`, tracking ~0.01em; "Change…" link in SF 12.5 semibold, `.inkSecondary` (hover/pressed `.ink`). `FlowLayout(horizontalSpacing: 12)`, top padding 7pt. Model text `.lineLimit(1)` + `.fixedSize()`. `showsSeeAll` parameter removed.
 - `DownloadControl` `.ready(caption)`: `GrantedTag("READY")` + optional caption in `.biscottiMono(11)`, `.inkTertiary`.
 - `modelDownloadStep`: add `.sheet(isPresented: $viewModel.showSpeechSheet) { SpeechModelSheet(viewModel: SpeechModelSheetViewModel(core: viewModel.appCore)) }` next to the LLM sheet.
 

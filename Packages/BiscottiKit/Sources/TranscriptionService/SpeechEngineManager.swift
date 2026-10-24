@@ -101,10 +101,11 @@ public final class SpeechEngineManager {
     }
 
     /// Summary label for the current target engine (used in Settings/onboarding).
+    /// Apple format: "Apple Speech ({Language} only)". Whisper: "Whisper".
     public var summaryLabel: String {
         switch target {
         case .apple:
-            "Apple Speech \u{00B7} \(appleLanguageName) Only"
+            "Apple Speech (\(appleLanguageName) only)"
         case .whisper:
             "Whisper"
         }

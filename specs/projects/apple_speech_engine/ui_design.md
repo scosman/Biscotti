@@ -9,10 +9,9 @@ Visual reference: `design_handoff/Speech to Text Model.html` (sheet variant **B*
 ## 1. Surfaces and Navigation
 
 ```
-Onboarding ─ Download Local AI Models ─┬─ Transcription row ─ "See all options ›" ─► Speech to Text Model sheet
-                                       │                       (hidden on macOS 15 / Apple unavailable)
+Onboarding ─ Download Local AI Models ─┬─ Transcription row ─ "Change…" ─► Speech to Text Model sheet (all OSes)
                                        ├─ Speaker ID row (no sheet)
-                                       └─ Language Model row ─ "See all options ›" ─► AI Language Model sheet (unchanged)
+                                       └─ Language Model row ─ "Change…" ─► AI Language Model sheet (unchanged)
 
 Settings ─ AI Enhancements ─ "Speech to Text Model" row ─ Manage / Download… ─► Speech to Text Model sheet
 Settings ─ Custom Vocabulary ─ toggle ─► "Requires Whisper Transcription" alert (when Apple is target)
@@ -111,7 +110,7 @@ HStack {
 }
 ```
 
-- `summaryLabel`: "Apple Speech · {Language} Only" or "Whisper".
+- `summaryLabel`: "Apple Speech ({Language} only)" or "Whisper".
 - Not affected by the "AI Analysis & Summary" toggle (transcription always runs).
 - On macOS 15 the sheet opens with the Apple row disabled (§2.2).
 
@@ -133,15 +132,16 @@ Title, lead, progress header, footer chrome and Skip/Continue placement are unch
 
 | # | Icon | Name | Why | Extra line | Trailing (`DownloadControl`) |
 |---|---|---|---|---|---|
-| 1 | `waveform` | Transcription | "Turns speech into text." | `RecommendationLine`: target summary label + "See all options ›" | See §5.1 |
+| 1 | `waveform` | Transcription | "Turns speech into text." | `RecommendationLine`: "Model: {summary label}" + "Change…" | See §5.1 |
 | 2 | `person.2` | Speaker ID | "Labels who’s speaking." | none | idle "~11 MB" / indeterminate progress / READY / failed / disk |
-| 3 | `sparkles` | Language Model | unchanged | `RecommendationLine` without the "Recommended · " prefix | unchanged |
+| 3 | `sparkles` | Language Model | unchanged | `RecommendationLine`: "Model: {display name}" + "Change…" | unchanged |
 
 ### 5.1 Transcription row
 
-- **Extra line** (`RecommendationLine`, no "Recommended · " prefix): "Apple Speech · {Language} Only" or "Whisper".
-  - Shown in every state except downloading (differs from today's language row, which shows it only when idle; Apple can be READY with no click).
-  - **"See all options ›" hidden on macOS 15 / Apple unavailable**: the line shows only "Whisper". `RecommendationLine` gets an option to hide the link.
+- **Model line** (`RecommendationLine`): "Model: Apple Speech ({Language} only)" or "Model: Whisper", in `.biscottiMono(11.5)`, `.inkSecondary`, tracking ~0.01em. Paired with **"Change…"** (SF 12.5 semibold, `.inkSecondary`, hover/pressed `.ink`, plain button style). Layout: `FlowLayout(horizontalSpacing: 12)`, top padding 7pt. Model text uses `.lineLimit(1)` + `.fixedSize()`; if the row is too narrow, "Change…" wraps to a second line.
+  - Shown in every state except `.downloading`.
+  - **"Change…" shows on every OS**, including macOS 15 / Apple unavailable. On macOS 15 it opens the STT sheet with Apple shown disabled.
+- Language Model row follows the same pattern: "Model: {display name}" + "Change…". If no display name exists, "Change…" still shows without the "Model:" text. Shown in every state except `.downloading`.
 - **Trailing control:**
 
 | Target state | Control |

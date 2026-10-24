@@ -101,7 +101,7 @@ public func isReady(_ engine: SpeechEngine) -> Bool   // apple: available && app
 public var targetReady: Bool
 public var isAnyDownloadInFlight: Bool     // apple/whisper/speakerID .downloading
 public var appleLanguageName: String       // from appleLocales; fallback Locale display of appleLocale
-public var summaryLabel: String            // "Apple Speech · English Only" | "Whisper"
+public var summaryLabel: String            // "Apple Speech (English only)" | "Whisper"
 public var osMajorVersion: Int
 public func jobConfig() -> TranscriptionConfig   // target == .apple ? .apple(locale: appleLocale) : .whisper()
 public func jobComponents() -> Set<ModelComponent>  // apple: [.speakerID]; whisper: .all

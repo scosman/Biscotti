@@ -124,7 +124,7 @@ Mirror the LLM sheet: while one engine is downloading, the other engine's Downlo
 3. Else `en_US`. (In this case Recommended is Whisper per §4.2.)
 
 ### 6.3 Display name
-- Summary labels show the **language only**: "Apple Speech · English Only". The region appears only in the picker.
+- Summary labels show the **language only**: "Apple Speech ({Language} only)" (e.g. "Apple Speech (English only)"). The region appears only in the picker. Onboarding prepends "Model: " (e.g. "Model: Apple Speech (English only)"); Settings shows the label without the prefix.
 
 ## 7. Custom Vocabulary
 
@@ -157,7 +157,7 @@ When the effective custom vocabulary is on and the user acts to make Apple the t
 Detail in `ui_design.md`.
 
 ### 8.1 Speech to Text Model sheet
-- Opened from onboarding ("See all options ›") and Settings ("Manage" / "Download…").
+- Opened from onboarding ("Change…") and Settings ("Manage" / "Download…").
 - Two rows: Apple Speech, Whisper. Each shows: Recommended badge (on the recommended engine only), name, selection control (✓ Default if ready + target; Choose Model if ready + not target), 2×2 trait grid, technical line, and the primary action (Download / progress / Delete / none).
 - Apple row on macOS 15 or when unavailable: dimmed, no controls, warning chip "Requires macOS 26 or later" + "Learn more…" → alert "Apple Speech requires macOS 26" with **Not Now** / **Software Update…** (opens Software Update settings). When macOS is 26+ but `isAvailable` is false: chip "Not available on this Mac", no Learn more.
 - Done closes the sheet.
@@ -169,12 +169,10 @@ Detail in `ui_design.md`.
 
 ### 8.3 Onboarding → Download Local AI Models
 - Rows: **Transcription**, **Speaker ID**, **Language Model**.
-- Transcription row shows the target's summary line ("Apple Speech · English Only" / "Whisper") with **See all options ›**, except:
-  - **macOS 15 / Apple unavailable: "See all options ›" is hidden** (the line shows "Whisper" only).
-  - Hidden while the row is downloading.
+- Transcription row shows "Model: {summary label}" (e.g. "Model: Apple Speech (English only)" / "Model: Whisper") in `.biscottiMono(11.5)` with a **"Change…"** link (SF 12.5 semibold, `.inkSecondary`, hover/pressed `.ink`). "Change…" opens the STT sheet on every OS (including macOS 15, where the Apple row shows disabled). The line is shown in every state except `.downloading`.
+- Language Model row shows "Model: {display name}" (e.g. "Model: Gemma 4 E2B") with a **"Change…"** link opening the Manage Models sheet. If no display name is available, "Change…" still shows but the "Model:" text is omitted. The line is shown in every state except `.downloading`.
 - Transcription trailing control: Apple ready → READY + "Built in" (no click); Apple not installed → Download + "System download"; Whisper not ready → Download + "626 MB"; downloading → progress; Whisper ready → READY.
 - Speaker ID: Download + "~11 MB" / progress / READY.
-- Language Model row: unchanged except the summary line drops "Recommended · " (design).
 - Footer Skip/Continue logic: "all three rows started or ready" (was two).
 - Disk check: per row (Whisper and Speaker ID need disk; Apple install is system-managed).
 

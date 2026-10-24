@@ -553,8 +553,8 @@ public extension SettingsViewModel {
         core.speechEngines.targetReady
     }
 
-    /// Summary label for the target speech engine (e.g. "Apple Speech ·
-    /// English Only" or "Whisper").
+    /// Summary label for the target speech engine (e.g. "Apple Speech
+    /// (English only)" or "Whisper").
     var speechSummaryLabel: String {
         core.speechEngines.summaryLabel
     }

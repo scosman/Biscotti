@@ -419,31 +419,13 @@ struct OnboardingPersistTargetTests {
     }
 }
 
-// MARK: - Speech options link and transcription label
+// MARK: - Onboarding model line labels
 
-@Suite("OnboardingViewModel -- speech engine UI properties")
+@Suite("OnboardingViewModel -- onboarding model line labels")
 @MainActor
-struct OnboardingSpeechUIPropertyTests {
-    @Test("showsSpeechOptionsLink is true when Apple Speech available")
-    func showsLinkWhenAppleAvailable() async throws {
-        let fixture = try makeCoreFixture(
-            calendarAuthStatus: .denied,
-            appleAvailability: .available,
-            appleLocales: ["en_US"],
-            appleEquivalent: "en_US"
-        )
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-        await model.advance() // welcome -> permissions (triggers refresh)
-        await model.skip() // -> modelDownload
-
-        #expect(model.showsSpeechOptionsLink == true)
-    }
-
-    @Test("showsSpeechOptionsLink is false when Apple Speech unavailable")
-    func hidesLinkWhenAppleUnavailable() async throws {
-        // Default fixture on macOS 15: Apple is unavailable
+struct OnboardingModelLineLabelTests {
+    @Test("transcriptionLineText prepends Model: to summary label")
+    func transcriptionLineTextPrependsModelPrefix() async throws {
         let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
         defer { fixture.cleanup() }
 
@@ -451,38 +433,11 @@ struct OnboardingSpeechUIPropertyTests {
         await model.advance()
         await model.skip()
 
-        #expect(model.showsSpeechOptionsLink == false)
+        #expect(model.transcriptionLineText == "Model: \(fixture.speechEngines.summaryLabel)")
+        #expect(model.transcriptionLineText.hasPrefix("Model: "))
     }
 
-    @Test("showsSpeechOptionsLink is false when Apple requires OS update")
-    func hidesLinkWhenRequiresOSUpdate() async throws {
-        let fixture = try makeCoreFixture(
-            calendarAuthStatus: .denied,
-            appleAvailability: .requiresOSUpdate(currentMajor: 15)
-        )
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-        await model.advance()
-        await model.skip()
-
-        #expect(model.showsSpeechOptionsLink == false)
-    }
-
-    @Test("transcriptionLineText returns summary label from SpeechEngineManager")
-    func transcriptionLineTextMatchesSummaryLabel() async throws {
-        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
-        defer { fixture.cleanup() }
-
-        let model = OnboardingViewModel(core: fixture.core)
-        await model.advance()
-        await model.skip()
-
-        #expect(model.transcriptionLineText == fixture.speechEngines.summaryLabel)
-        #expect(!model.transcriptionLineText.isEmpty)
-    }
-
-    @Test("transcriptionLineText reflects Apple engine when targeted")
+    @Test("transcriptionLineText shows Apple Speech with language in parentheses")
     func transcriptionLineTextApple() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied,
@@ -497,7 +452,56 @@ struct OnboardingSpeechUIPropertyTests {
         await model.advance()
         await model.skip()
 
-        // After refresh, Apple target is auto-selected when available
         #expect(model.transcriptionLineText.contains("Apple Speech"))
+        #expect(model.transcriptionLineText.contains("only)"))
+        #expect(model.transcriptionLineText.hasPrefix("Model: "))
+    }
+
+    @Test("transcriptionLineText for Whisper shows Model: Whisper")
+    func transcriptionLineTextWhisper() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        // Default on macOS 15: target is Whisper
+        #expect(model.transcriptionLineText == "Model: Whisper")
+    }
+
+    @Test("languageLineText prepends Model: to display name")
+    func languageLineTextPrependsModelPrefix() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        let displayName = model.languageTargetDisplayName
+        let lineText = model.languageLineText
+
+        if let displayName {
+            #expect(lineText == "Model: \(displayName)")
+        } else {
+            #expect(lineText == nil)
+        }
+    }
+
+    @Test("languageLineText is nil when no target display name")
+    func languageLineTextNilWhenNoTarget() throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            hardwareRAMBytes: 1 // extreme low RAM, but catalog still returns something
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        // If recommendedModelID returns nil (unlikely with catalog), lineText is nil
+        if model.languageTargetDisplayName == nil {
+            #expect(model.languageLineText == nil)
+        }
+        // Otherwise it has the prefix
+        if let lineText = model.languageLineText {
+            #expect(lineText.hasPrefix("Model: "))
+        }
     }
 }

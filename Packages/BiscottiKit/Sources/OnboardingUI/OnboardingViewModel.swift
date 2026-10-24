@@ -85,7 +85,7 @@ public final class OnboardingViewModel {
     /// background. Model rows show a spinner while set.
     public internal(set) var isPreparingModelStep: Bool = false
 
-    /// Presentation state for the "See all options" Manage Models sheet.
+    /// Presentation state for the "Change…" Manage Models sheet.
     public var showVariantSheet: Bool = false
 
     /// Presentation state for the Speech to Text Model sheet.
@@ -96,18 +96,18 @@ public final class OnboardingViewModel {
 
     // MARK: - Transcription row properties
 
-    /// Summary label for the transcription row (e.g. "Apple Speech · English Only" or "Whisper").
+    /// Onboarding model label for the transcription row.
+    /// Adds the "Model: " prefix to the engine summary label.
+    /// e.g. "Model: Apple Speech (English only)" or "Model: Whisper".
     public var transcriptionLineText: String {
-        core.speechEngines.summaryLabel
+        "Model: \(core.speechEngines.summaryLabel)"
     }
 
-    /// Whether to show the "See all options" link on the transcription row.
-    /// Hidden on macOS 15 / when Apple Speech is unavailable.
-    public var showsSpeechOptionsLink: Bool {
-        if case .available = core.speechEngines.appleAvailability {
-            return true
-        }
-        return false
+    /// Onboarding model label for the language model row.
+    /// Returns "Model: {displayName}" when a target name exists, nil otherwise.
+    public var languageLineText: String? {
+        guard let name = languageTargetDisplayName else { return nil }
+        return "Model: \(name)"
     }
 
     // MARK: - Granted-state derivation

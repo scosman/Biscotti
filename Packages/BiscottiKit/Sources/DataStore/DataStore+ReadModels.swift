@@ -205,6 +205,12 @@ public struct AppSettingsData: Sendable, Equatable {
     /// Whether the local MCP server runs. Off by default.
     public var mcpServerEnabled: Bool
 
+    /// STT engine selection: "" (no explicit choice), "apple", or "whisper".
+    public var sttEngineSelection: String
+
+    /// Apple Speech locale identifier (e.g. "en_US"). Empty = unresolved.
+    public var appleSpeechLocale: String
+
     /// The shipped default for `customVocabularyEnabled` when the user has made
     /// no choice. Custom vocabulary is in beta, so it starts off. Flipping this
     /// to `true` turns the feature on for everyone who never touched the
@@ -234,7 +240,9 @@ public struct AppSettingsData: Sendable, Equatable {
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true,
-        mcpServerEnabled: Bool = false
+        mcpServerEnabled: Bool = false,
+        sttEngineSelection: String = "",
+        appleSpeechLocale: String = ""
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -252,6 +260,8 @@ public struct AppSettingsData: Sendable, Equatable {
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
         self.mcpServerEnabled = mcpServerEnabled
+        self.sttEngineSelection = sttEngineSelection
+        self.appleSpeechLocale = appleSpeechLocale
     }
 }
 
@@ -615,7 +625,9 @@ public extension DataStore {
                 summaryPrompt: existing.summaryPrompt,
                 customVocabularyEnabled: existing.customVocabularyEnabled,
                 calendarVocabularyEnabled: existing.calendarVocabularyEnabled,
-                mcpServerEnabled: existing.mcpServerEnabled
+                mcpServerEnabled: existing.mcpServerEnabled,
+                sttEngineSelection: existing.sttEngineSelection,
+                appleSpeechLocale: existing.appleSpeechLocale
             )
         }
         // Create the singleton with defaults
@@ -653,7 +665,9 @@ public extension DataStore {
             summaryPrompt: model.summaryPrompt,
             customVocabularyEnabled: model.customVocabularyEnabled,
             calendarVocabularyEnabled: model.calendarVocabularyEnabled,
-            mcpServerEnabled: model.mcpServerEnabled
+            mcpServerEnabled: model.mcpServerEnabled,
+            sttEngineSelection: model.sttEngineSelection,
+            appleSpeechLocale: model.appleSpeechLocale
         )
         mutate(&dto)
 
@@ -673,6 +687,8 @@ public extension DataStore {
         model.customVocabularyEnabled = dto.customVocabularyEnabled
         model.calendarVocabularyEnabled = dto.calendarVocabularyEnabled
         model.mcpServerEnabled = dto.mcpServerEnabled
+        model.sttEngineSelection = dto.sttEngineSelection
+        model.appleSpeechLocale = dto.appleSpeechLocale
         try save()
     }
 

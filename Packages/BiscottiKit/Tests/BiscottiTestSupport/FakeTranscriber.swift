@@ -16,6 +16,9 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         public var lastMicURL: URL?
         public var lastSystemURL: URL?
         public var lastVocabulary: [String]?
+        public var lastConfig: TranscriptionConfig?
+        public var lastComponents: Set<ModelComponent>?
+        public var lastDeleteComponents: Set<ModelComponent>?
 
         /// Number of times `ensureModelsDownloaded` has been called.
         public var ensureModelsCallCount = 0
@@ -32,15 +35,30 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         /// Error to throw from `processAudio`, if any.
         public var processAudioError: (any Error)?
 
+        /// Error to throw from `deleteModels`, if any.
+        public var deleteModelsError: (any Error)?
+
         /// The canned result to return from `processAudio`.
         public var cannedResult: TranscriptResult
 
         /// Status messages to emit during `ensureModelsDownloaded`.
         public var statusMessages: [String]
 
-        /// The value returned by `modelsPresent()`. Defaults to `true`
-        /// (models present on disk) to match the common test scenario.
-        public var modelsPresentResult: Bool = true
+        /// Per-component presence. Defaults to `true` for all.
+        public var componentPresent: [ModelComponent: Bool] = [
+            .whisper: true,
+            .speakerID: true
+        ]
+
+        /// Convenience: sets all components at once. Backward-compatible
+        /// with old tests that used `modelsPresentResult`.
+        public var modelsPresentResult: Bool {
+            get { componentPresent.values.allSatisfy(\.self) }
+            set {
+                componentPresent[.whisper] = newValue
+                componentPresent[.speakerID] = newValue
+            }
+        }
 
         public init(
             cannedResult: TranscriptResult,
@@ -72,10 +90,12 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     }
 
     public func ensureModelsDownloaded(
+        _ components: Set<ModelComponent>,
         status: (@Sendable (String) -> Void)?
     ) async throws {
         backing.ensureModelsCalled = true
         backing.ensureModelsCallCount += 1
+        backing.lastComponents = components
         for message in backing.statusMessages {
             status?(message)
         }
@@ -87,22 +107,36 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     public func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
         backing.lastMicURL = mic
         backing.lastSystemURL = system
         backing.lastVocabulary = customVocabulary
+        backing.lastConfig = config
         if let error = backing.processAudioError {
             throw error
         }
         return backing.cannedResult
     }
 
-    public func modelsPresent() async -> Bool {
+    public func modelsPresent(_ components: Set<ModelComponent>) async -> Bool {
         backing.modelsPresentCalled = true
         backing.modelsPresentCallCount += 1
-        return backing.modelsPresentResult
+        backing.lastComponents = components
+        // All requested components must be present
+        return components.allSatisfy { backing.componentPresent[$0] ?? false }
+    }
+
+    public func deleteModels(_ components: Set<ModelComponent>) async throws {
+        backing.lastDeleteComponents = components
+        if let error = backing.deleteModelsError {
+            throw error
+        }
+        for component in components {
+            backing.componentPresent[component] = false
+        }
     }
 
     public func shutdown() async {

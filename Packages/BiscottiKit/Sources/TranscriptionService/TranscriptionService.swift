@@ -28,6 +28,7 @@ public final class TranscriptionService {
     private let store: DataStore
     private let engine: any Transcribing
     private let vocabulary: VocabularyService
+    private let engines: SpeechEngineManager?
 
     #if DEBUG
         /// DEBUG-only diagnostics logger. Logs the effective vocabulary handed to
@@ -43,8 +44,12 @@ public final class TranscriptionService {
     // MARK: - In-flight guard
 
     /// The meeting ID currently being transcribed, if any.
-    /// Only one job runs at a time in the MVP.
     private var inFlightMeetingID: UUID?
+
+    /// Whether a transcription job is currently in flight.
+    public var isJobInFlight: Bool {
+        inFlightMeetingID != nil
+    }
 
     // MARK: - Init
 
@@ -54,10 +59,18 @@ public final class TranscriptionService {
     ///   - store: The `DataStore` actor for resolving audio paths and persisting transcripts.
     ///   - engine: The transcription engine (shared instance, not a factory).
     ///   - vocabulary: The vocabulary service that assembles the effective word list per job.
-    public init(store: DataStore, engine: any Transcribing, vocabulary: VocabularyService) {
+    ///   - engines: The speech engine manager that provides per-job config. Optional for
+    ///     backward compatibility (nil falls back to Whisper defaults).
+    public init(
+        store: DataStore,
+        engine: any Transcribing,
+        vocabulary: VocabularyService,
+        engines: SpeechEngineManager? = nil
+    ) {
         self.store = store
         self.engine = engine
         self.vocabulary = vocabulary
+        self.engines = engines
     }
 
     // MARK: - Transcribe
@@ -89,7 +102,7 @@ public final class TranscriptionService {
     public func ensureModelsReady(
         status: @escaping @Sendable (String) -> Void
     ) async throws {
-        try await engine.ensureModelsDownloaded(status: status)
+        try await engine.ensureModelsDownloaded(.all, status: status)
     }
 
     /// Returns `true` when models are already present on disk and do NOT
@@ -99,7 +112,7 @@ public final class TranscriptionService {
     /// Unlike the removed `modelsReady()` (which called the download path),
     /// this method never triggers a download or mutates engine state.
     public func modelsArePresent() async -> Bool {
-        await engine.modelsPresent()
+        await engine.modelsPresent(.all)
     }
 
     // MARK: - Private
@@ -129,6 +142,9 @@ public final class TranscriptionService {
         // through shutdown prevents this.
         await engine.shutdown()
         inFlightMeetingID = nil
+
+        // Refresh engine state so job-time downloads/installs flip the UI
+        await engines?.refresh()
     }
 
     /// How long to wait before surfacing download-phase status messages.
@@ -144,19 +160,24 @@ public final class TranscriptionService {
     /// the caller can deterministically `await engine.shutdown()` after
     /// completion on every exit path (success, failure, or cancellation).
     private func executeJob(meetingID: UUID) async {
+        // Capture config at job start (user changes during the job do not apply)
+        let config = engines?.jobConfig() ?? .whisper()
+        let components = engines?.jobComponents() ?? .all
+
         // Start with a generic "Transcribing..." status. Download-phase
         // subtitles are only surfaced after a delay (see downloadModels).
         jobs[meetingID] = .transcribing
 
         guard let paths = await resolveAudioPaths(meetingID: meetingID) else { return }
 
-        guard await downloadModels(meetingID: meetingID) else { return }
+        guard await downloadModels(meetingID: meetingID, components: components) else { return }
 
-        // Compute vocabulary ONCE and thread the same array into both the
-        // engine call and persistence, so `vocabularyUsed` is byte-identical
-        // to what the engine received. Re-transcription goes through the same
-        // path and naturally recomputes.
-        let vocab = await vocabulary.effectiveVocabulary(meetingID: meetingID)
+        // Compute vocabulary: empty for Apple (no custom vocab support), normal for Whisper
+        let vocab: [String] = if config.engine == .apple {
+            []
+        } else {
+            await vocabulary.effectiveVocabulary(meetingID: meetingID)
+        }
 
         #if DEBUG
             Self.vocabDebugLog.debug(
@@ -164,7 +185,9 @@ public final class TranscriptionService {
             )
         #endif
 
-        guard let result = await runEngine(meetingID: meetingID, paths: paths, vocabulary: vocab) else { return }
+        guard let result = await runEngine(
+            meetingID: meetingID, paths: paths, vocabulary: vocab, config: config
+        ) else { return }
 
         guard await persistAndPromote(meetingID: meetingID, result: result, vocabularyUsed: vocab) else { return }
 
@@ -200,13 +223,16 @@ public final class TranscriptionService {
     /// Ensures models are downloaded, forwarding status messages to `jobs`
     /// only after a delay (so cache hits never flash a download subtitle).
     /// Returns `false` (with `.failed` set) on error.
-    private func downloadModels(meetingID: UUID) async -> Bool {
+    private func downloadModels(
+        meetingID: UUID,
+        components: Set<ModelComponent>
+    ) async -> Bool {
         // Gate: only surface download-phase messages after a delay so
         // cache-hit loads (which finish quickly) never show a subtitle.
         let gate = DownloadPhaseGate(delay: Self.downloadPhaseDelay)
 
         do {
-            try await engine.ensureModelsDownloaded { [weak self] message in
+            try await engine.ensureModelsDownloaded(components) { [weak self] message in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if gate.hasElapsed {
@@ -234,14 +260,16 @@ public final class TranscriptionService {
     private func runEngine(
         meetingID: UUID,
         paths: (mic: URL, system: URL),
-        vocabulary: [String]
+        vocabulary: [String],
+        config: TranscriptionConfig
     ) async -> TranscriptResult? {
         jobs[meetingID] = .transcribing
         do {
             return try await engine.processAudio(
                 mic: paths.mic,
                 system: paths.system,
-                customVocabulary: vocabulary
+                customVocabulary: vocabulary,
+                config: config
             )
         } catch {
             let (message, retriable) = mapEngineError(error)

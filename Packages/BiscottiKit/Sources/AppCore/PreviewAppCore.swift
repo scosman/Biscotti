@@ -121,15 +121,20 @@
     }
 
     private struct PreviewTranscriber: Transcribing {
-        func ensureModelsDownloaded(status _: (@Sendable (String) -> Void)?) async throws {}
-        func modelsPresent() async -> Bool {
+        func ensureModelsDownloaded(
+            _: Set<ModelComponent>,
+            status _: (@Sendable (String) -> Void)?
+        ) async throws {}
+
+        func modelsPresent(_: Set<ModelComponent>) async -> Bool {
             false
         }
 
         func processAudio(
             mic _: URL,
             system _: URL,
-            customVocabulary _: [String]
+            customVocabulary _: [String],
+            config _: TranscriptionConfig
         ) async throws -> TranscriptResult {
             TranscriptResult(
                 id: UUID(),
@@ -142,6 +147,7 @@
             )
         }
 
+        func deleteModels(_: Set<ModelComponent>) async throws {}
         func shutdown() async {}
     }
 

@@ -40,6 +40,7 @@ public enum VocabularyTermError: Equatable, Sendable {
 /// View model for the Settings screen: calendar include/exclude, permissions
 /// overview with inline request actions, and general preferences.
 @MainActor @Observable
+// swiftlint:disable:next type_body_length
 public final class SettingsViewModel {
     /// Exposed (read-only) so `ManageModelsSheet` can be constructed from the
     /// same `AppCore` instance. Not used for direct mutations outside this VM.
@@ -109,10 +110,22 @@ public final class SettingsViewModel {
 
     // MARK: - Custom Vocabulary
 
-    /// Master switch for custom vocabulary biasing. Seeded from the shipped
-    /// default so the toggle does not flash "on" before `load()` resolves it.
+    /// Master switch for custom vocabulary biasing (stored value). Seeded from
+    /// the shipped default so the toggle does not flash "on" before `load()`
+    /// resolves it.
     public private(set) var customVocabularyEnabled: Bool =
         AppSettingsData.customVocabularyDefault
+
+    /// Whether custom vocabulary is effectively on (stored AND Whisper target).
+    /// The UI toggle and child-row visibility use this, not `customVocabularyEnabled`.
+    public var customVocabularyDisplayed: Bool {
+        appCore.speechEngines.effectiveCustomVocabulary(
+            storedPreference: customVocabularyEnabled
+        )
+    }
+
+    /// Whether the "Requires Whisper Transcription" alert is showing.
+    public var showRequiresWhisperAlert: Bool = false
 
     /// Whether calendar-derived terms are included.
     public private(set) var calendarVocabularyEnabled: Bool = true
@@ -681,6 +694,39 @@ public extension SettingsViewModel {
 // MARK: - Custom Vocabulary actions
 
 public extension SettingsViewModel {
+    /// Handles a request to toggle custom vocabulary. When turning on while
+    /// Apple is the target, shows the "Requires Whisper" alert instead of
+    /// flipping the toggle.
+    func requestCustomVocabularyEnabled(_ enabled: Bool) async {
+        if enabled, appCore.speechEngines.target == .apple {
+            showRequiresWhisperAlert = true
+            return
+        }
+        await setCustomVocabularyEnabled(enabled)
+    }
+
+    /// Switches to Whisper and enables custom vocabulary. Called from the
+    /// "Requires Whisper Transcription" alert's confirm action.
+    func switchToWhisperForVocabulary() async {
+        showRequiresWhisperAlert = false
+        if appCore.speechEngines.isReady(.whisper) {
+            await appCore.speechEngines.choose(.whisper)
+        } else {
+            await appCore.speechEngines.download(.whisper)
+        }
+        await setCustomVocabularyEnabled(true)
+    }
+
+    /// Alert message for "Requires Whisper Transcription". Two variants
+    /// depending on whether Whisper is already downloaded.
+    var requiresWhisperAlertMessage: String {
+        if appCore.speechEngines.isReady(.whisper) {
+            "Custom vocabulary only works with the Whisper speech to text model. Switching uses Whisper for new transcripts."
+        } else {
+            "Custom vocabulary only works with the Whisper speech to text model. Switching downloads Whisper (626 MB) and uses it for new transcripts."
+        }
+    }
+
     /// Toggles the master custom vocabulary switch. Persists with
     /// optimistic update; reverts on failure.
     func setCustomVocabularyEnabled(_ enabled: Bool) async {

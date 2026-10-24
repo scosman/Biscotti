@@ -1094,6 +1094,8 @@ extension MeetingDetailViewModel {
     func shouldOfferReTranscribe() async -> Bool {
         guard let newest = versions.first else { return false }
         guard detail?.hasAudio == true else { return false }
+        // Re-transcribe with keywords only applies to Whisper (Apple has no custom vocab)
+        guard core.speechEngines.target == .whisper else { return false }
         guard let settings = try? await core.store.settings(),
               settings.customVocabularyResolved,
               settings.calendarVocabularyEnabled

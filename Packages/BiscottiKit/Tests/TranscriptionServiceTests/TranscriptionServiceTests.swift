@@ -543,6 +543,7 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
     let backing = Backing()
 
     func ensureModelsDownloaded(
+        _: Set<ModelComponent>,
         status _: (@Sendable (String) -> Void)?
     ) async throws {
         backing.ensureModelsCallCount += 1
@@ -551,14 +552,17 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
     }
 
-    func modelsPresent() async -> Bool {
+    func modelsPresent(_: Set<ModelComponent>) async -> Bool {
         true
     }
+
+    func deleteModels(_: Set<ModelComponent>) async throws {}
 
     func shutdown() async {
         backing.shutdownCallCount += 1
@@ -601,6 +605,7 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
     let backing = Backing()
 
     func ensureModelsDownloaded(
+        _: Set<ModelComponent>,
         status _: (@Sendable (String) -> Void)?
     ) async throws {
         // no-op
@@ -609,7 +614,8 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
         // Poll until unblocked (simulates a long-running operation)
@@ -619,9 +625,11 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         return FakeTranscriber.defaultResult
     }
 
-    func modelsPresent() async -> Bool {
+    func modelsPresent(_: Set<ModelComponent>) async -> Bool {
         true
     }
+
+    func deleteModels(_: Set<ModelComponent>) async throws {}
 
     func shutdown() async {}
 }
@@ -900,6 +908,7 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     let backing = Backing()
 
     func ensureModelsDownloaded(
+        _: Set<ModelComponent>,
         status: (@Sendable (String) -> Void)?
     ) async throws {
         status?("Downloading speech-to-text model")
@@ -912,14 +921,17 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     func processAudio(
         mic _: URL,
         system _: URL,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
         FakeTranscriber.defaultResult
     }
 
-    func modelsPresent() async -> Bool {
+    func modelsPresent(_: Set<ModelComponent>) async -> Bool {
         true
     }
+
+    func deleteModels(_: Set<ModelComponent>) async throws {}
 
     func shutdown() async {}
 }

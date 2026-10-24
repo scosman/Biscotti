@@ -72,6 +72,14 @@ import SwiftData
     /// default; AppCore starts/stops the server to match.
     public var mcpServerEnabled: Bool = false
 
+    /// The user's STT engine selection: "" (no explicit choice), "apple", or
+    /// "whisper". Empty means follow the recommendation policy.
+    public var sttEngineSelection: String = ""
+
+    /// The user's chosen Apple Speech locale identifier (e.g. "en_US").
+    /// Empty means unresolved (default locale applies).
+    public var appleSpeechLocale: String = ""
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -112,7 +120,9 @@ import SwiftData
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true,
-        mcpServerEnabled: Bool = false
+        mcpServerEnabled: Bool = false,
+        sttEngineSelection: String = "",
+        appleSpeechLocale: String = ""
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -132,5 +142,7 @@ import SwiftData
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
         self.mcpServerEnabled = mcpServerEnabled
+        self.sttEngineSelection = sttEngineSelection
+        self.appleSpeechLocale = appleSpeechLocale
     }
 }

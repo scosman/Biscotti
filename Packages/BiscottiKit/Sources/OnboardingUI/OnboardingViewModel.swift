@@ -81,16 +81,6 @@ public final class OnboardingViewModel {
     public internal(set) var calendarGroups: [OnboardingCalendarGroup] = []
     public internal(set) var enabledCalendarIDs: Set<String>?
 
-    /// Model download state (transcription).
-    public private(set) var downloadStatus: String?
-    public internal(set) var isDownloading: Bool = false
-    public private(set) var downloadComplete: Bool = false
-    public private(set) var downloadFailed: Bool = false
-
-    /// True when transcription models were already on disk when the step
-    /// was entered (set by `prepareModelStep()`).
-    public private(set) var transcriptionDownloaded: Bool = false
-
     /// True while `prepareModelStep()` is probing readiness/disk in the
     /// background. Model rows show a spinner while set.
     public internal(set) var isPreparingModelStep: Bool = false
@@ -98,8 +88,27 @@ public final class OnboardingViewModel {
     /// Presentation state for the "See all options" Manage Models sheet.
     public var showVariantSheet: Bool = false
 
+    /// Presentation state for the Speech to Text Model sheet.
+    public var showSpeechSheet: Bool = false
+
     /// Presentation state for the "Connect a calendar" how-to sheet.
     public var showConnectCalendarSheet: Bool = false
+
+    // MARK: - Transcription row properties
+
+    /// Summary label for the transcription row (e.g. "Apple Speech · English Only" or "Whisper").
+    public var transcriptionLineText: String {
+        core.speechEngines.summaryLabel
+    }
+
+    /// Whether to show the "See all options" link on the transcription row.
+    /// Hidden on macOS 15 / when Apple Speech is unavailable.
+    public var showsSpeechOptionsLink: Bool {
+        if case .available = core.speechEngines.appleAvailability {
+            return true
+        }
+        return false
+    }
 
     // MARK: - Granted-state derivation
 
@@ -151,7 +160,7 @@ public final class OnboardingViewModel {
         case .permissions:
             allPermissionsGranted ? .continueButton : .skip
         case .modelDownload:
-            bothModelsStarted ? .continueButton : .skip
+            allModelsStarted ? .continueButton : .skip
         }
     }
 
@@ -160,55 +169,26 @@ public final class OnboardingViewModel {
         footerButton(for: currentStep) == .continueButton
     }
 
-    /// Disk space check for the model download step.
-    public private(set) var hasSufficientDisk: Bool = true
-
-    /// Approximate disk space required for the transcription model (MB).
-    /// Aligned with the ~1.5 GB WhisperKit model bundle.
-    public static let requiredDiskSpaceMB: Int = 1500
-
     /// Pre-warm task that runs model probes early (on the permissions
     /// screen) so the model-download screen arrives spinner-free when
     /// probes finish in time. Nil until `beginModelPrep()` is called.
     private var modelPrepTask: Task<Void, Never>?
 
-    /// Seam for reading available disk bytes. Defaults to the real
-    /// filesystem check. Override in tests for determinism.
-    private let availableDiskBytes: @MainActor () -> Int64
-
     // MARK: - Init
 
-    /// - Parameters:
-    ///   - core: The application core coordinator.
-    ///   - availableDiskBytes: Closure returning available disk space in
-    ///     bytes. Defaults to reading
-    ///     `volumeAvailableCapacityForImportantUsage`. Override in tests.
-    public init(
-        core: AppCore,
-        availableDiskBytes: (@MainActor () -> Int64)? = nil
-    ) {
+    public init(core: AppCore) {
         self.core = core
-        self.availableDiskBytes = availableDiskBytes ?? {
-            let home = FileManager.default
-                .homeDirectoryForCurrentUser
-            if let values = try? home.resourceValues(
-                forKeys: [
-                    .volumeAvailableCapacityForImportantUsageKey
-                ]
-            ),
-                let available = values
-                .volumeAvailableCapacityForImportantUsage
-            {
-                return available
-            }
-            return Int64.max // Assume OK if check fails
-        }
     }
 
     // MARK: - Actions
 
     /// Advance to the next step. Called by the Continue button.
+    /// When leaving the model download step, persists the target engine
+    /// if no explicit selection was made (functional spec §4.3).
     public func advance() async {
+        if currentStep == .modelDownload {
+            await core.speechEngines.persistTargetIfUnset()
+        }
         await proceed()
     }
 
@@ -256,25 +236,14 @@ public final class OnboardingViewModel {
         notificationsGranted = granted
     }
 
-    /// Start the transcription model download.
+    /// Start the transcription engine download (delegates to SpeechEngineManager).
     public func startTranscriptionDownload() async {
-        isDownloading = true
-        downloadFailed = false
-        downloadStatus = "Preparing\u{2026}"
-        do {
-            try await core.transcription
-                .ensureModelsReady { [weak self] message in
-                    Task { @MainActor in
-                        self?.downloadStatus = message
-                    }
-                }
-            downloadComplete = true
-        } catch {
-            downloadFailed = true
-            downloadStatus =
-                "Download failed. You can retry or skip."
-        }
-        isDownloading = false
+        await core.speechEngines.download(core.speechEngines.target)
+    }
+
+    /// Start the Speaker ID model download (delegates to SpeechEngineManager).
+    public func startSpeakerIDDownload() async {
+        await core.speechEngines.downloadSpeakerID()
     }
 
     /// Start the language model download for the current target model.
@@ -326,15 +295,10 @@ public final class OnboardingViewModel {
         showFixPermissionsAlert = false
         calendarGroups = []
         enabledCalendarIDs = nil
-        downloadStatus = nil
-        isDownloading = false
-        downloadComplete = false
-        downloadFailed = false
-        transcriptionDownloaded = false
         isPreparingModelStep = false
         showVariantSheet = false
+        showSpeechSheet = false
         showConnectCalendarSheet = false
-        hasSufficientDisk = true
     }
 
     // MARK: - Private
@@ -388,12 +352,11 @@ public final class OnboardingViewModel {
         }
     }
 
-    /// Runs the actual model probes: ModelManager refresh, read-only
-    /// transcription presence check, and disk space check.
+    /// Runs the actual model probes: ModelManager refresh and
+    /// speech engine manager refresh.
     private func runModelProbes() async {
         await core.modelManager.refresh()
-        transcriptionDownloaded = await core.transcription.modelsArePresent()
-        checkDiskSpace()
+        await core.speechEngines.refresh()
     }
 
     /// Reads the live system permission state for the current step
@@ -418,12 +381,5 @@ public final class OnboardingViewModel {
         default:
             break
         }
-    }
-
-    private func checkDiskSpace() {
-        let requiredBytes = Int64(Self.requiredDiskSpaceMB)
-            * 1_048_576
-        let available = availableDiskBytes()
-        hasSufficientDisk = available >= requiredBytes
     }
 }

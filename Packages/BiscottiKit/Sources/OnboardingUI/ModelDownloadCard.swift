@@ -3,15 +3,19 @@ import SwiftUI
 
 // MARK: - ModelCard
 
-/// Two-row card for the model download onboarding step.
-/// Transcription row on top, language row on bottom, separated
-/// by an inset divider matching the permission card chrome.
+/// Three-row card for the model download onboarding step.
+/// Transcription, Speaker ID, and Language Model rows separated
+/// by inset dividers matching the permission card chrome.
 struct ModelCard: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
         VStack(spacing: 0) {
             transcriptionRow
+
+            InsetDivider(leadingInset: 48)
+
+            speakerIDRow
 
             InsetDivider(leadingInset: 48)
 
@@ -22,13 +26,35 @@ struct ModelCard: View {
     }
 
     private var transcriptionRow: some View {
-        ModelDownloadRow(
+        let state = viewModel.transcriptionRowState()
+        return ModelDownloadRow(
             icon: "waveform",
-            name: "Transcription & Speaker ID",
-            why: "Turns speech into text and labels who\u{2019}s speaking.",
-            state: viewModel.transcriptionRowState(),
+            name: "Transcription",
+            why: "Turns speech into text.",
+            state: state,
             onDownload: {
                 Task { await viewModel.startTranscriptionDownload() }
+            },
+            extraContent: {
+                if case .downloading = state {} else {
+                    RecommendationLine(
+                        modelName: viewModel.transcriptionLineText,
+                        showsSeeAll: viewModel.showsSpeechOptionsLink,
+                        onSeeAll: { viewModel.showSpeechSheet = true }
+                    )
+                }
+            }
+        )
+    }
+
+    private var speakerIDRow: some View {
+        ModelDownloadRow(
+            icon: "person.2",
+            name: "Speaker ID",
+            why: "Labels who\u{2019}s speaking.",
+            state: viewModel.speakerIDRowState(),
+            onDownload: {
+                Task { await viewModel.startSpeakerIDDownload() }
             }
         )
     }
@@ -47,7 +73,6 @@ struct ModelCard: View {
                 if case .idle = state {
                     RecommendationLine(
                         modelName: viewModel.languageTargetDisplayName,
-                        isRecommended: viewModel.languageTargetIsRecommended,
                         onSeeAll: { viewModel.showVariantSheet = true }
                     )
                 }
@@ -196,8 +221,13 @@ struct DownloadControl: View {
             case let .downloading(progress):
                 downloadingContent(progress)
 
-            case .ready:
+            case let .ready(caption):
                 GrantedTag("READY")
+                if let caption {
+                    Text(caption)
+                        .font(.biscottiMono(11))
+                        .foregroundStyle(.inkTertiary)
+                }
 
             case .insufficientDisk:
                 diskWarning
@@ -291,32 +321,43 @@ struct DownloadControl: View {
 
 // MARK: - RecommendationLine
 
-/// Grey line showing the target model name and a "See all options"
-/// affordance. Shown only when the language row is idle.
-/// When `isRecommended` is true, prefixes the name with "Recommended ·".
+/// Grey line showing the target model name and an optional "See all options"
+/// link. Used by both Transcription and Language Model rows in onboarding.
 struct RecommendationLine: View {
     let modelName: String?
-    let isRecommended: Bool
+    let showsSeeAll: Bool
     let onSeeAll: () -> Void
+
+    init(
+        modelName: String?,
+        showsSeeAll: Bool = true,
+        onSeeAll: @escaping () -> Void
+    ) {
+        self.modelName = modelName
+        self.showsSeeAll = showsSeeAll
+        self.onSeeAll = onSeeAll
+    }
 
     var body: some View {
         HStack(spacing: 10) {
             if let modelName {
-                Text(isRecommended ? "Recommended \u{00B7} \(modelName)" : modelName)
+                Text(modelName)
                     .font(.system(size: 12.5))
                     .foregroundStyle(.inkSecondary)
             }
 
-            Button(action: onSeeAll) {
-                HStack(spacing: 3) {
-                    Text("See all options")
-                        .font(.system(size: 12.5, weight: .semibold))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11))
+            if showsSeeAll {
+                Button(action: onSeeAll) {
+                    HStack(spacing: 3) {
+                        Text("See all options")
+                            .font(.system(size: 12.5, weight: .semibold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(.inkSecondary)
                 }
-                .foregroundStyle(.inkSecondary)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.top, 6)
     }

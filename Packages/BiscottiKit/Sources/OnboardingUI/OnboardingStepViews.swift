@@ -341,6 +341,11 @@ extension OnboardingView {
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
             )
         }
+        .sheet(isPresented: $viewModel.showSpeechSheet) {
+            SpeechModelSheet(
+                viewModel: SpeechModelSheetViewModel(core: viewModel.appCore)
+            )
+        }
     }
 
     // MARK: - Done

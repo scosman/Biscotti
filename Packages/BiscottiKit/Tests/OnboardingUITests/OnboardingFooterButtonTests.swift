@@ -123,30 +123,29 @@ struct OnboardingFooterButtonTests {
 
     // MARK: - Model download: Skip before download, Continue after
 
-    @Test("model download step shows Skip before download, Continue when both ready")
+    @Test("model download step shows Skip before download, Continue when all three ready")
     func modelDownloadSkipThenContinue() async throws {
-        // Language model pre-downloaded so only transcription is needed
+        // All three model classes pre-downloaded
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied,
-            modelDownloaded: true
+            modelDownloaded: true,
+            whisperPresent: true,
+            speakerIDPresent: true
         )
         defer { fixture.cleanup() }
 
         let model = OnboardingViewModel(core: fixture.core)
 
-        // Before downloading: should show Skip (transcription not ready)
+        // Before entering model step: should show Skip (probes have not run)
         #expect(model.footerButton(for: .modelDownload) == .skip)
 
-        // Walk to model download step (prepareModelStep refreshes ModelManager)
+        // Walk to model download step (prepareModelStep refreshes engines)
         await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
         #expect(model.currentStep == .modelDownload)
-        // Language is ready (pre-downloaded), but transcription is not yet
-        // downloaded via startTranscriptionDownload -- however prepareModelStep
-        // probes modelsArePresent() which succeeds on the FakeTranscriber, so
-        // transcriptionDownloaded is true. Both models are ready.
-        #expect(model.bothModelsReady == true)
+        // All three models are ready after probes.
+        #expect(model.allModelsReady == true)
         #expect(
             model.footerButton(for: .modelDownload)
                 == .continueButton
@@ -156,9 +155,10 @@ struct OnboardingFooterButtonTests {
 
     @Test("model download step shows Skip when only transcription ready")
     func modelDownloadSkipWhenOnlyTranscription() async throws {
-        // No language model pre-downloaded
+        // Only transcription (Whisper) pre-downloaded; no language or speaker ID
         let fixture = try makeCoreFixture(
-            calendarAuthStatus: .denied
+            calendarAuthStatus: .denied,
+            whisperPresent: true
         )
         defer { fixture.cleanup() }
 
@@ -168,9 +168,9 @@ struct OnboardingFooterButtonTests {
         await model.advance() // welcome -> permissions
         await model.skip() // -> modelDownload
 
-        // Transcription is ready (FakeTranscriber succeeds on modelsArePresent),
-        // but language model is not downloaded
+        // Transcription is ready, but language and speaker ID are not
         #expect(model.transcriptionReady == true)
+        #expect(model.speakerIDReady == false)
         #expect(model.languageReady == false)
         #expect(model.footerButton(for: .modelDownload) == .skip)
     }

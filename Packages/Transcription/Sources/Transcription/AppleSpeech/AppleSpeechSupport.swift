@@ -1,4 +1,9 @@
 import Foundation
+import os.log
+
+#if canImport(Speech)
+    import Speech
+#endif
 
 /// Whether Apple Speech is available on this machine.
 public enum AppleSpeechAvailability: Sendable, Equatable {
@@ -14,56 +19,136 @@ public enum AppleSpeechAvailability: Sendable, Equatable {
 ///
 /// Safe to call on macOS 15 (returns unavailable / empty). The real Speech
 /// framework calls are behind `#if canImport(Speech)` + `@available(macOS 26, *)`.
-/// Phase 2 adds the full implementation; this phase provides the availability check
-/// and empty stubs so the UI layer can consume the API immediately.
 public enum AppleSpeechSupport {
+    private static let log = Logger(
+        subsystem: "net.scosman.biscotti",
+        category: "AppleSpeech"
+    )
+
     /// Check whether Apple Speech is available on this OS version.
     public static func availability() -> AppleSpeechAvailability {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         guard version.majorVersion >= 26 else {
             return .requiresOSUpdate(currentMajor: version.majorVersion)
         }
-        // Phase 2 adds the real SpeechTranscriber.isAvailable check.
-        // For now, report available on macOS 26+ (the spike will confirm).
-        return .available
+        #if canImport(Speech)
+            if #available(macOS 26, *) {
+                return SpeechTranscriber.isAvailable ? .available : .unavailable
+            }
+        #endif
+        return .unavailable
     }
 
     /// Supported locale identifiers. Empty when Apple Speech is unavailable.
-    /// Phase 2 provides the real implementation via SpeechTranscriber.supportedLocales.
     public static func supportedLocales() async -> [String] {
         guard case .available = availability() else { return [] }
-        // Phase 2 fills this in.
+        #if canImport(Speech)
+            if #available(macOS 26, *) {
+                return await SpeechTranscriber.supportedLocales.map(\.identifier)
+            }
+        #endif
         return []
     }
 
     /// Find the supported locale equivalent to the given identifier.
     /// Returns nil when unsupported or unavailable.
-    /// Phase 2 provides the real implementation.
-    public static func supportedLocale(equivalentTo _: String) async -> String? {
+    public static func supportedLocale(equivalentTo identifier: String) async -> String? {
         guard case .available = availability() else { return nil }
-        // Phase 2 fills this in.
+        #if canImport(Speech)
+            if #available(macOS 26, *) {
+                let locale = Locale(identifier: identifier)
+                guard let resolved = await SpeechTranscriber.supportedLocale(
+                    equivalentTo: locale
+                ) else {
+                    return nil
+                }
+                return resolved.identifier
+            }
+        #endif
         return nil
     }
 
     /// Check whether assets are installed for a locale.
-    /// Phase 2 provides the real implementation.
-    public static func assetsInstalled(locale _: String) async throws -> Bool {
+    ///
+    /// Side effect: reserves the locale for this process (A6 releases others first).
+    /// Returns true when `assetInstallationRequest(supporting:)` returns nil
+    /// (research recommendation: status(forModules:) is unreliable).
+    public static func assetsInstalled(locale: String) async throws -> Bool {
         guard case .available = availability() else { return false }
-        // Phase 2 fills this in.
+        #if canImport(Speech)
+            if #available(macOS 26, *) {
+                let transcriber = try await AppleLocaleReservations.prepare(
+                    locale: Locale(identifier: locale)
+                )
+                let request = try await AssetInventory.assetInstallationRequest(
+                    supporting: [transcriber]
+                )
+                return request == nil
+            }
+        #endif
         return false
     }
 
     /// Install assets for a locale, reporting progress.
-    /// Phase 2 provides the real implementation.
+    ///
+    /// No-op when already installed. Reports `Progress.fractionCompleted`
+    /// (nil until `totalUnitCount > 0`).
     public static func installAssets(
-        locale _: String,
-        progress _: @escaping @Sendable (Double?) -> Void
+        locale: String,
+        progress: @escaping @Sendable (Double?) -> Void
     ) async throws {
         guard case .available = availability() else {
             throw TranscriptionError.engineUnavailable(
                 "Apple Speech requires macOS 26 or later"
             )
         }
-        // Phase 2 fills this in.
+        #if canImport(Speech)
+            if #available(macOS 26, *) {
+                let transcriber = try await AppleLocaleReservations.prepare(
+                    locale: Locale(identifier: locale)
+                )
+                guard let request = try await AssetInventory.assetInstallationRequest(
+                    supporting: [transcriber]
+                ) else {
+                    log.info("Assets already installed for locale \(locale)")
+                    return
+                }
+
+                log.info("Installing Apple speech assets for locale \(locale)")
+
+                // Observe progress on a background task. The observation
+                // fires on an arbitrary thread; the @Sendable callback
+                // lets the caller dispatch to @MainActor if needed.
+                let observationTask = Task.detached {
+                    let requestProgress = request.progress
+                    while !Task.isCancelled {
+                        let fraction: Double? = if requestProgress.totalUnitCount > 0 {
+                            requestProgress.fractionCompleted
+                        } else {
+                            nil
+                        }
+                        progress(fraction)
+                        try await Task.sleep(for: .milliseconds(250))
+                    }
+                }
+
+                do {
+                    try await request.downloadAndInstall()
+                    observationTask.cancel()
+                    progress(1.0)
+                    log.info("Asset installation complete for locale \(locale)")
+                } catch {
+                    observationTask.cancel()
+                    log.error("Asset installation failed for locale \(locale): \(error)")
+                    throw TranscriptionError.downloadFailed(
+                        "Apple speech assets: \(error.localizedDescription)"
+                    )
+                }
+                return
+            }
+        #endif
+        throw TranscriptionError.engineUnavailable(
+            "Apple Speech requires macOS 26 or later"
+        )
     }
 }

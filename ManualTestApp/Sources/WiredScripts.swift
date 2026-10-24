@@ -595,6 +595,69 @@ enum WiredScripts {
                     return .action(id: id, label: label) { status in
                         try await transcriber.ensureModelsDownloaded(status: status)
                     }
+                case "tx_apple_status":
+                    return .action(id: id, label: label) { status in
+                        let avail = AppleSpeechSupport.availability()
+                        status("Availability: \(avail)")
+                        let locales = await AppleSpeechSupport.supportedLocales()
+                        status("Supported locales: \(locales.count)")
+                        do {
+                            let installed = try await AppleSpeechSupport.assetsInstalled(
+                                locale: "en_US"
+                            )
+                            status("Assets installed (en_US): \(installed)")
+                        } catch {
+                            status("Assets check error: \(error)")
+                        }
+                    }
+                case "tx_apple_install":
+                    return .action(id: id, label: label) { status in
+                        try await AppleSpeechSupport.installAssets(
+                            locale: "en_US"
+                        ) { fraction in
+                            if let fraction {
+                                let pct = Int(fraction * 100)
+                                status("Installing Apple speech assets: \(pct)%")
+                            } else {
+                                status("Installing Apple speech assets...")
+                            }
+                        }
+                        status("Apple speech assets installed")
+                    }
+                case "tx_apple_transcribe":
+                    return .action(id: id, label: label) { status in
+                        guard let mic = Bundle.main.url(
+                            forResource: "mic_fixture", withExtension: "wav"
+                        ) else {
+                            status("Error: mic_fixture.wav not found in bundle")
+                            return
+                        }
+                        guard let sys = Bundle.main.url(
+                            forResource: "system_fixture", withExtension: "wav"
+                        ) else {
+                            status("Error: system_fixture.wav not found in bundle")
+                            return
+                        }
+
+                        status("Transcribing with Apple Speech via XPC...")
+                        let result = try await transcriber.processAudio(
+                            mic: mic, system: sys,
+                            config: .apple(locale: "en_US")
+                        )
+
+                        status("Method: \(result.transcriptionMethodId)")
+                        status("Language: \(result.language)")
+                        status("Segments: \(result.segments.count)")
+                        let speakers = Set(result.segments.map(\.speakerID))
+                        status("Speakers: \(speakers.count)")
+                        for (idx, seg) in result.segments.prefix(5).enumerated() {
+                            let preview = String(seg.text.prefix(80))
+                            status("  [\(idx)] speaker \(seg.speakerID): \(preview)")
+                        }
+                        if result.segments.count > 5 {
+                            status("  ... and \(result.segments.count - 5) more segments")
+                        }
+                    }
                 default:
                     return step
                 }

@@ -105,9 +105,14 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
             if settings.sequentialLoading { await unloadWhisperKit() }
 
         case .apple:
-            // Phase 2 adds the real Apple Speech runtime. For now, reject.
-            throw TranscriptionError.engineUnavailable(
-                "Apple Speech requires macOS 26 or later"
+            guard let locale = config.locale else {
+                throw TranscriptionError.engineUnavailable("No locale specified for Apple Speech")
+            }
+            sttResults = try await runAppleSTT(
+                samples: mergeResult.samples,
+                duration: mergeResult.duration,
+                locale: locale,
+                status: { _ in } // status messages go through the XPC status channel
             )
         }
 
@@ -269,6 +274,36 @@ private extension InProcessTranscriptionEngine {
             return try await whisper.transcribe(
                 audioArray: audioArray,
                 decodeOptions: decodingOptions
+            )
+        } catch let error as TranscriptionError {
+            await statusMachine.transition(to: .error(error))
+            throw error
+        } catch {
+            let wrappedError = TranscriptionError.transcriptionFailed(error.localizedDescription)
+            await statusMachine.transition(to: .error(wrappedError))
+            throw wrappedError
+        }
+    }
+
+    func runAppleSTT(
+        samples: [Float],
+        duration: TimeInterval,
+        locale: String,
+        status: @escaping @Sendable (String) -> Void
+    ) async throws -> [TranscriptionResult] {
+        do {
+            #if canImport(Speech)
+                if #available(macOS 26, *) {
+                    return try await AppleSpeechSTT.transcribe(
+                        samples: samples,
+                        duration: duration,
+                        locale: locale,
+                        status: status
+                    )
+                }
+            #endif
+            throw TranscriptionError.engineUnavailable(
+                "Apple Speech requires macOS 26 or later"
             )
         } catch let error as TranscriptionError {
             await statusMachine.transition(to: .error(error))

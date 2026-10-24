@@ -35,6 +35,12 @@ targets:
     sources:
       - Sources
       - Resources
+      - path: ../Packages/Transcription/Tests/TranscriptionTests/Fixtures/mic_fixture.wav
+        type: file
+        buildPhase: resources
+      - path: ../Packages/Transcription/Tests/TranscriptionTests/Fixtures/system_fixture.wav
+        type: file
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: net.scosman.biscotti.manualtest

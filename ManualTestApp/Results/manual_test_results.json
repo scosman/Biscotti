@@ -311,6 +311,31 @@
     "stepID": "tx_ai_test_passed",
     "timestamp": "2026-10-01T18:24:12Z"
   },
+  "tx_apple_install": {
+    "status": "not-run",
+    "stepID": "tx_apple_install",
+    "timestamp": "2026-10-23T00:00:00Z"
+  },
+  "tx_apple_no_prompt": {
+    "status": "not-run",
+    "stepID": "tx_apple_no_prompt",
+    "timestamp": "2026-10-23T00:00:00Z"
+  },
+  "tx_apple_output_ok": {
+    "status": "not-run",
+    "stepID": "tx_apple_output_ok",
+    "timestamp": "2026-10-23T00:00:00Z"
+  },
+  "tx_apple_status": {
+    "status": "not-run",
+    "stepID": "tx_apple_status",
+    "timestamp": "2026-10-23T00:00:00Z"
+  },
+  "tx_apple_transcribe": {
+    "status": "not-run",
+    "stepID": "tx_apple_transcribe",
+    "timestamp": "2026-10-23T00:00:00Z"
+  },
   "tx_clear_cache": {
     "status": "not-run",
     "stepID": "tx_clear_cache",

@@ -29,6 +29,8 @@
     <string>Biscotti needs microphone access to record your voice during meetings.</string>
     <key>NSAudioCaptureUsageDescription</key>
     <string>Biscotti needs system audio access to record other meeting participants.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Biscotti transcribes meetings on your Mac with Apple's built-in speech model.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Biscotti reads your calendar to show upcoming meetings and enrich recordings with event details.</string>
     <key>CFBundleURLTypes</key>

@@ -1,11 +1,10 @@
 /// The Transcription manual test script.
 ///
-/// Reduced to model download/cache steps plus an AI-test tracker. Quality and
-/// crash-isolation checks are covered by `make test-ai` (the automated AI test
-/// set) and are no longer duplicated here.
+/// Covers Whisper model download/cache steps, AI-test tracker, and the Apple
+/// Speech engine hardware spike steps.
 public extension TestScript {
     /// Transcription test script — covers model download and cache verification,
-    /// plus a tracker for the automated AI test outcome.
+    /// the automated AI test outcome, and Apple Speech engine validation.
     static let transcription = TestScript(
         id: "transcription",
         title: "Transcription",
@@ -33,6 +32,34 @@ public extension TestScript {
                 prompt: "Run `make test-ai` (downloads models; runs the automated "
                     + "transcription / diarization / custom-vocab quality tests). "
                     + "Did all AI tests pass?"
+            ),
+
+            // MARK: - Apple Speech engine steps (Phase 2 hardware spike)
+
+            .action(
+                id: "tx_apple_status",
+                label: "Apple Speech: check availability and asset status",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .action(
+                id: "tx_apple_install",
+                label: "Apple Speech: install assets for en_US",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .action(
+                id: "tx_apple_transcribe",
+                label: "Apple Speech: transcribe 3-speaker fixture via XPC",
+                run: { _ in /* wired by the app target */ }
+            ),
+            .humanQuestion(
+                id: "tx_apple_no_prompt",
+                prompt: "Did any permission prompt appear during the Apple Speech "
+                    + "steps above (status, install, transcribe)? Pass = no prompt appeared."
+            ),
+            .humanQuestion(
+                id: "tx_apple_output_ok",
+                prompt: "Is the Apple Speech transcript readable with plausible "
+                    + "speaker turns? (Check the transcribe step output above.)"
             )
         ]
     )

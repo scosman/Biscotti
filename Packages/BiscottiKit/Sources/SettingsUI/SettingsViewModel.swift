@@ -461,6 +461,7 @@ public final class SettingsViewModel {
         }
 
         await core.modelManager.refresh()
+        await core.speechEngines.refresh()
 
         // SMAppService is the source of truth for launch-at-login
         launchAtLogin = readLaunchAtLoginStatus()
@@ -545,6 +546,17 @@ public extension SettingsViewModel {
     /// reflects `mcpServerEnabled` (intent).
     var mcpServerState: MCPServerState {
         core.mcpServer.state
+    }
+
+    /// Whether the target speech engine is downloaded and ready.
+    var speechTargetReady: Bool {
+        core.speechEngines.targetReady
+    }
+
+    /// Summary label for the target speech engine (e.g. "Apple Speech ·
+    /// English Only" or "Whisper").
+    var speechSummaryLabel: String {
+        core.speechEngines.summaryLabel
     }
 }
 

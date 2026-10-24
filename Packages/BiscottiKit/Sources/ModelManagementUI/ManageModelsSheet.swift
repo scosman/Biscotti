@@ -174,7 +174,7 @@ struct ModelRowView: View {
                     .fontWeight(.medium)
 
                 if choice.isRecommended {
-                    recommendedBadge
+                    RecommendedBadge()
                 }
 
                 Spacer()
@@ -197,23 +197,6 @@ struct ModelRowView: View {
         .opacity(choice.blockedReason == .cannotRun ? 0.5 : 1.0)
     }
 
-    // MARK: - Recommended badge
-
-    private var recommendedBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "star.fill")
-                .font(.caption2)
-            Text("Recommended")
-                .font(.caption)
-        }
-        .foregroundStyle(.sage)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            Capsule().fill(Color.sage.opacity(0.15))
-        )
-    }
-
     // MARK: - Selection control (trailing, line 1)
 
     @ViewBuilder
@@ -221,14 +204,7 @@ struct ModelRowView: View {
         if choice.blockedReason == .cannotRun {
             EmptyView()
         } else if choice.isDownloaded, choice.isSelected {
-            // Default indicator
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.sage)
-                Text("Default")
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-            }
+            DefaultIndicator()
         } else if choice.isDownloaded, choice.runnable {
             Button("Choose Model") {
                 onChoose()
@@ -292,18 +268,7 @@ struct ModelRowView: View {
     }
 
     private func warningLabel(for reason: ModelBlockedReason) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption2)
-            Text(reason.warningText)
-                .font(.caption)
-        }
-        .foregroundStyle(Tokens.warningChipText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            Capsule().fill(Tokens.warningChipFill)
-        )
+        WarningChip(text: reason.warningText)
     }
 
     // MARK: - Primary action (trailing, line 2)

@@ -76,6 +76,14 @@ Quality numbers are WER (lower is better). "AMI" is short meeting clips. "Long" 
 - **Not measured:** peak RAM, Mac first-load (ANE compile) time, binary-size cost of keeping the WhisperKit module, and whether `Packages/Transcription` can move to tools-version 6.2 (to drop FluidAudio's unused targets).
 - **No published tolerance for word-timestamp error** in alignment. The current guidance (keep errors well under 0.15 s) is inference.
 
+## Decision Outcome (2026-10-23)
+
+The user chose the **dual-engine** path: keep Whisper and add Apple Speech (`SpeechTranscriber`) as a second local STT engine. Apple is the default on macOS 26+ when it supports the user's language; Whisper stays the only engine on macOS 15, and stays available on all OS versions for users who need jargon accuracy, custom vocabulary, or an unsupported language.
+
+The single-engine FluidAudio/Parakeet swap was not pursued. The STTLab validation (`specs/projects/apple_stt_validation/results/overview.md`) showed Apple is about 4x faster with 3-10x less engine memory, and its word timings work with SpeakerKit alignment. Accuracy is close to Whisper except for technical vocabulary. The dual-engine approach gives a zero-download default on macOS 26+ while keeping Whisper for users who need it.
+
+Built by the `apple_speech_engine` spec project (`specs/projects/apple_speech_engine/`). Apple Speech runs inside `BiscottiTranscriber.xpc` (same per-job lifecycle as Whisper), and its output is bridged into WhisperKit's `TranscriptionResult` type so speaker attribution, segmentation and storage stay untouched.
+
 ## Subtopics
 
 - [App contract & SpeakerKit decoupling](./app-contract-and-speakerkit/summary.md) — what the app consumes, and how SpeakerKit couples to WhisperKit. Headline: the swap is clean; wrap new word timings in WhisperKit types and reuse `addSpeakerInfo`.

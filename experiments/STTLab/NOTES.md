@@ -192,3 +192,21 @@ Run 2 (2026-10-23, same meetings and Mac, macOS 27.0.1): Apple text identical
 to macOS 26.5.2; only timestamps (better) and memory (higher) changed. See
 `specs/projects/apple_stt_validation/results/macos27.md`. To compare two Apple
 runs: `scripts/compare_apple_runs.py <old-results> <new-results>`.
+
+---
+
+## Graduated
+
+The Apple Speech engine path validated by this experiment has been productionized
+into `Packages/Transcription` by the `apple_speech_engine` spec project
+(`specs/projects/apple_speech_engine/`). Key code mappings:
+
+- `STTLabRunner/AppleTranscription.swift` -> `Packages/Transcription/Sources/Transcription/AppleSpeech/AppleSpeechSTT.swift`
+- `STTLabAnalysis/AppleWordGrouper.swift` -> `Packages/Transcription/Sources/Transcription/AppleSpeech/AppleWordGrouping.swift`
+- `STTLabHome/SpeakerAlignment.swift` bridge logic -> `AppleWordGrouping.transcriptionResults(from:language:)`
+- Locale reservation logic -> `Packages/Transcription/Sources/Transcription/AppleSpeech/AppleLocaleReservations.swift`
+
+The experiment itself is disposable and can be removed per the cleanup
+instructions above. The workspace data (`~/STTLabData/`) and the validation
+results (`specs/projects/apple_stt_validation/results/`) are the durable
+artifacts.

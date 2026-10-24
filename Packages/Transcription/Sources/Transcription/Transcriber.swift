@@ -102,10 +102,11 @@ public actor Transcriber {
 
     /// Download models if not already cached.
     ///
-    /// - Parameter status: Optional callback receiving a human-readable status
-    ///   message for each download stage (e.g. "Downloading speech-to-text
-    ///   model"). There is no numeric percentage — see ``TranscriptionEngine``.
+    /// - Parameters:
+    ///   - components: Which model components to download. Defaults to all.
+    ///   - status: Optional callback receiving a human-readable status message.
     public func ensureModelsDownloaded(
+        _ components: Set<ModelComponent> = .all,
         status: (@Sendable (String) -> Void)? = nil
     ) async throws {
         Self.log.info("client: ensureModelsDownloaded called")
@@ -120,6 +121,7 @@ public actor Transcriber {
         defer { xpcConnection?.setStatusHandler(nil) }
         do {
             try await activeEngine.ensureModelsDownloaded(
+                components: components,
                 status: status ?? { _ in }
             )
             emitStatus(.ready)
@@ -140,21 +142,25 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms for biasing.
+    ///   - config: Per-call engine and locale. Nil uses the Transcriber's default method.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = []
+        customVocabulary: [String] = [],
+        config: TranscriptionConfig? = nil
     ) async throws -> TranscriptResult {
         Self.log.info("client: processAudio called")
         try checkInterrupted()
         let activeEngine = ensureConnected()
         emitStatus(.running)
+        let effectiveConfig = config ?? TranscriptionConfig(method: method)
         do {
             let result = try await activeEngine.processAudio(
                 micPath: mic.path,
                 systemPath: system.path,
-                customVocabulary: customVocabulary
+                customVocabulary: customVocabulary,
+                config: effectiveConfig
             )
             emitStatus(.ready)
             return result
@@ -171,13 +177,18 @@ public actor Transcriber {
     ///   - mic: URL to the mic audio file.
     ///   - system: URL to the system audio file.
     ///   - customVocabulary: Custom vocabulary terms.
+    ///   - config: Per-call engine and locale.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
         mic: URL,
         system: URL,
-        customVocabulary: [String] = []
+        customVocabulary: [String] = [],
+        config: TranscriptionConfig? = nil
     ) async throws -> TranscriptResult {
-        try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)
+        try await processAudio(
+            mic: mic, system: system,
+            customVocabulary: customVocabulary, config: config
+        )
     }
 
     /// Explicitly unload all models from memory.
@@ -188,7 +199,7 @@ public actor Transcriber {
 
     /// Delete all downloaded models from disk and unload them from memory,
     /// returning to a clean `needsDownload` state. The next
-    /// ``ensureModelsDownloaded(status:)`` will re-download.
+    /// ``ensureModelsDownloaded(_:status:)`` will re-download.
     ///
     /// Unloads first so the worker releases the models before the files are
     /// removed, and so its in-memory "already downloaded" state is reset.
@@ -197,14 +208,24 @@ public actor Transcriber {
         try ModelStorage.clearCache()
     }
 
+    /// Delete specific model components from disk.
+    ///
+    /// Unloads first (so the worker releases file handles), then removes the
+    /// component directories. The next download will re-fetch them.
+    public func deleteModels(_ components: Set<ModelComponent>) async throws {
+        let activeEngine = ensureConnected()
+        try await activeEngine.deleteModels(components)
+        emitStatus(.needsDownload)
+    }
+
     /// Tear down the XPC connection, allowing the worker process to exit
     /// and release its memory (loaded ML models are multi-GB).
     ///
     /// For `.inProcess` this is a no-op. For `.hosted` this invalidates
     /// the underlying `NSXPCConnection`, which causes `launchd` to terminate
-    /// the idle worker. The next ``ensureModelsDownloaded(status:)`` or
-    /// ``processAudio(mic:system:customVocabulary:)`` call will transparently
-    /// re-establish the connection.
+    /// the idle worker. The next ``ensureModelsDownloaded(_:status:)`` or
+    /// ``processAudio(mic:system:customVocabulary:config:)`` call will
+    /// transparently re-establish the connection.
     ///
     /// Callers should call this after a transcription batch completes so the
     /// heavyweight worker does not linger.
@@ -247,24 +268,28 @@ public actor Transcriber {
         }
     }
 
-    /// Returns `true` when the transcription models are already present on
-    /// disk and do NOT need downloading.
+    /// Returns `true` when the requested model components are present on disk
+    /// and do NOT need downloading.
     ///
     /// This is a **read-only** probe: it checks the filesystem without
     /// downloading, loading, or mutating any engine state.
-    public func modelsPresent() async -> Bool {
+    public func modelsPresent(
+        _ components: Set<ModelComponent> = .all
+    ) async -> Bool {
         // For the .inProcess backend, use the existing engine directly.
         // For .hosted, delegate to the static disk check (no XPC round-trip
         // needed since model files are at a shared filesystem path).
         if let existing = engine {
-            return await existing.modelsPresent()
+            return await existing.modelsPresent(components: components)
         }
         // No engine yet (hosted, pre-connection). Use the static check.
         let settings = MethodResolver.resolve(method)
-        return InProcessTranscriptionEngine.whisperKitModelsPresent(
-            repo: settings.sttModelRepo,
-            model: settings.sttModel
-        ) && InProcessTranscriptionEngine.speakerKitModelsPresent()
+        for component in components
+            where !InProcessTranscriptionEngine.componentPresent(component, settings: settings)
+        {
+            return false
+        }
+        return true
     }
 
     /// Check if the backend is available and responsive.

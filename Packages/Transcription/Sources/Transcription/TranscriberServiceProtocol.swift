@@ -10,27 +10,28 @@ import Foundation
 @objc public protocol TranscriberServiceProtocol {
     /// Process audio files and return a diarized transcript.
     ///
-    /// Audio paths and vocabulary are bundled into a single
+    /// Audio paths, vocabulary, and engine config are bundled into a single
     /// JSON-encoded `Data` parameter (`requestData`) to keep the `@objc`
     /// parameter count manageable. The request shape is defined by
     /// `XPCProcessRequest` (internal to the Transcription package).
     ///
     /// - Parameters:
     ///   - requestData: JSON-encoded `XPCProcessRequest` containing audio
-    ///     paths and custom vocabulary.
+    ///     paths, custom vocabulary, and transcription config.
     ///   - reply: Callback with JSON-encoded `TranscriptResult` data or an error.
     func processAudio(
         requestData: Data,
         reply: @escaping @Sendable (Data?, Error?) -> Void
     )
 
-    /// Download models if not already cached.
+    /// Download model components if not already cached.
     ///
-    /// The worker resolves the appropriate model variant internally
-    /// using `TranscriptionMethod.current`.
-    ///
-    /// - Parameter reply: Callback with nil on success, or an error on failure.
+    /// - Parameters:
+    ///   - requestData: JSON-encoded `XPCDownloadRequest` containing the
+    ///     components to download. Empty data or decode failure = all components.
+    ///   - reply: Callback with nil on success, or an error on failure.
     func ensureModelsDownloaded(
+        requestData: Data,
         reply: @escaping @Sendable (Error?) -> Void
     )
 

@@ -328,7 +328,8 @@ struct XPCEngineAdapterTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], config: .whisper()
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -341,7 +342,9 @@ struct XPCEngineAdapterTests {
         let adapter = XPCEngineAdapter(proxyProvider: { nil })
 
         do {
-            try await adapter.ensureModelsDownloaded(status: { _ in })
+            try await adapter.ensureModelsDownloaded(
+                components: .all, status: { _ in }
+            )
             Issue.record("Expected workerUnavailable")
         } catch {
             #expect(error as? TranscriptionError == .workerUnavailable)
@@ -370,7 +373,8 @@ struct XPCEngineAdapterRoundTripTests {
         let result = try await adapter.processAudio(
             micPath: "/tmp/mic.wav",
             systemPath: "/tmp/system.wav",
-            customVocabulary: ["Biscotti", "WhisperKit"]
+            customVocabulary: ["Biscotti", "WhisperKit"],
+            config: .whisper()
         )
 
         // Verify the result round-tripped correctly
@@ -385,6 +389,40 @@ struct XPCEngineAdapterRoundTripTests {
         #expect(receivedRequest?.micPath == "/tmp/mic.wav")
         #expect(receivedRequest?.systemPath == "/tmp/system.wav")
         #expect(receivedRequest?.customVocabulary == ["Biscotti", "WhisperKit"])
+    }
+
+    @Test("processAudio sends config through XPC")
+    func processAudioSendsConfig() async throws {
+        let mockService = MockTranscriberService()
+        mockService.processAudioResult = makeFixtureResult()
+
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+
+        let config = TranscriptionConfig.apple(locale: "en_US")
+        _ = try await adapter.processAudio(
+            micPath: "/tmp/mic.wav",
+            systemPath: "/tmp/system.wav",
+            customVocabulary: [],
+            config: config
+        )
+
+        let request = mockService.lastProcessRequest
+        #expect(request?.config?.method == .appleV1)
+        #expect(request?.config?.locale == "en_US")
+    }
+
+    @Test("ensureModelsDownloaded sends components through XPC")
+    func ensureModelsSendsComponents() async throws {
+        let mockService = MockTranscriberService()
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+
+        try await adapter.ensureModelsDownloaded(
+            components: [.speakerID], status: { _ in }
+        )
+
+        let request = mockService.lastDownloadRequest
+        #expect(request != nil)
+        #expect(request?.componentSet == [.speakerID])
     }
 
     @Test("unloadModels round-trips through mock service")
@@ -407,7 +445,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], config: .whisper()
             )
             Issue.record("Expected workerInterrupted")
         } catch {
@@ -425,7 +464,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], config: .whisper()
             )
             Issue.record("Expected workerUnavailable")
         } catch {
@@ -445,7 +485,8 @@ struct XPCEngineAdapterRoundTripTests {
 
         do {
             _ = try await adapter.processAudio(
-                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav",
+                customVocabulary: [], config: .whisper()
             )
             Issue.record("Expected transcriptionFailed")
         } catch {
@@ -466,7 +507,9 @@ struct XPCEngineAdapterRoundTripTests {
         let adapter = XPCEngineAdapter(proxyProvider: { mockService })
 
         do {
-            try await adapter.ensureModelsDownloaded(status: { _ in })
+            try await adapter.ensureModelsDownloaded(
+                components: .all, status: { _ in }
+            )
             Issue.record("Expected workerInterrupted")
         } catch {
             #expect(error as? TranscriptionError == .workerInterrupted)

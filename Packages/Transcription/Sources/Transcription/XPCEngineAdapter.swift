@@ -12,7 +12,7 @@ import Foundation
 ///
 /// **Interruption handling** is the `Transcriber` actor's responsibility.
 /// The adapter does not check or gate on the interrupted flag; it only
-/// maps XPC-level errors (connection codes) to the appropriate
+/// maps XPC-layer errors (connection codes) to the appropriate
 /// `TranscriptionError` cases. The `Transcriber` checks the flag before
 /// forwarding calls to the adapter and clears it after raising
 /// `workerInterrupted`.
@@ -29,6 +29,7 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     // MARK: - TranscriptionEngine
 
     func ensureModelsDownloaded(
+        components: Set<ModelComponent>,
         status _: @escaping @Sendable (String) -> Void
     ) async throws {
         // Status is NOT delivered through this call's reply handler — a
@@ -37,9 +38,10 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         // channel, which the `Transcriber` actor wires to the caller's closure
         // before invoking this method. Here we only await completion.
         let proxy = try requireProxy()
+        let requestData = try encodeDownloadRequest(XPCDownloadRequest(components: components))
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            proxy.ensureModelsDownloaded { error in
+            proxy.ensureModelsDownloaded(requestData: requestData) { error in
                 if let error {
                     continuation.resume(throwing: self.mapError(error))
                 } else {
@@ -52,13 +54,15 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult {
         let proxy = try requireProxy()
         let request = XPCProcessRequest(
             micPath: micPath,
             systemPath: systemPath,
-            customVocabulary: customVocabulary
+            customVocabulary: customVocabulary,
+            config: config
         )
         let requestData = try encodeRequest(request)
 
@@ -101,22 +105,39 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         }
     }
 
-    func modelsPresent() async -> Bool {
+    func modelsPresent(components: Set<ModelComponent>) async -> Bool {
         // The XPC adapter delegates to the static disk check on
         // InProcessTranscriptionEngine. Model files live at a shared
         // filesystem path (ModelStorage), so the client process can
         // check without involving the XPC worker.
-        //
-        // Note: this resolves the *current* method's model repo/name
-        // via MethodResolver. If a future transcription method ships
-        // with a different model name, the method would need to be
-        // plumbed in (the Transcriber actor already stores its method
-        // and could pass it through).
         let settings = MethodResolver.resolve(.current)
-        return InProcessTranscriptionEngine.whisperKitModelsPresent(
-            repo: settings.sttModelRepo,
-            model: settings.sttModel
-        ) && InProcessTranscriptionEngine.speakerKitModelsPresent()
+        for component in components
+            where !InProcessTranscriptionEngine.componentPresent(component, settings: settings)
+        {
+            return false
+        }
+        return true
+    }
+
+    func deleteModels(_ components: Set<ModelComponent>) async throws {
+        // Delete is a filesystem operation on the shared model cache.
+        // No need to go through XPC — the client can remove files directly.
+        // Unload via XPC first so the worker releases file handles.
+        await unloadModels()
+        let settings = MethodResolver.resolve(.current)
+        for component in components {
+            switch component {
+            case .whisper:
+                try ModelStorage.removeDirectory(
+                    ModelStorage.whisperModelDirectory(
+                        repo: settings.sttModelRepo,
+                        model: settings.sttModel
+                    )
+                )
+            case .speakerID:
+                try ModelStorage.removeDirectory(ModelStorage.speakerIDDirectory)
+            }
+        }
     }
 
     func status() async -> ModelStatus {
@@ -140,6 +161,16 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         } catch {
             throw TranscriptionError.invalidInput(
                 "Failed to encode XPCProcessRequest: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func encodeDownloadRequest(_ request: XPCDownloadRequest) throws -> Data {
+        do {
+            return try JSONEncoder().encode(request)
+        } catch {
+            throw TranscriptionError.invalidInput(
+                "Failed to encode XPCDownloadRequest: \(error.localizedDescription)"
             )
         }
     }

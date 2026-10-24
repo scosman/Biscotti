@@ -16,30 +16,43 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     var unloadCallCount = 0
     var modelsPresentCallCount = 0
     var modelsPresentResult = true
+    var lastConfig: TranscriptionConfig?
+    var lastComponents: Set<ModelComponent>?
 
-    func ensureModelsDownloaded(status: @escaping @Sendable (String) -> Void) async throws {
+    func ensureModelsDownloaded(
+        components: Set<ModelComponent>,
+        status: @escaping @Sendable (String) -> Void
+    ) async throws {
         ensureModelsCallCount += 1
+        lastComponents = components
         if let error = ensureModelsError { throw error }
         status("Downloading test model")
         status("Models ready")
     }
 
-    func modelsPresent() async -> Bool {
+    func modelsPresent(components: Set<ModelComponent>) async -> Bool {
         modelsPresentCallCount += 1
+        lastComponents = components
         return modelsPresentResult
     }
 
     func processAudio(
         micPath _: String,
         systemPath _: String,
-        customVocabulary _: [String]
+        customVocabulary _: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult {
         processAudioCallCount += 1
+        lastConfig = config
         if let error = processAudioError { throw error }
         guard let result = processAudioResult else {
             throw TranscriptionError.invalidInput("No result configured in stub")
         }
         return result
+    }
+
+    func deleteModels(_ components: Set<ModelComponent>) async throws {
+        lastComponents = components
     }
 
     func unloadModels() async {
@@ -189,6 +202,14 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
         return _lastProcessRequest
     }
 
+    /// The most recent `XPCDownloadRequest` received by `ensureModelsDownloaded`.
+    private var _lastDownloadRequest: XPCDownloadRequest?
+    var lastDownloadRequest: XPCDownloadRequest? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _lastDownloadRequest
+    }
+
     /// The result to return from `processAudio`.
     var processAudioResult: TranscriptResult?
 
@@ -242,8 +263,16 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
     }
 
     func ensureModelsDownloaded(
+        requestData: Data,
         reply: @escaping @Sendable (Error?) -> Void
     ) {
+        if let downloadRequest = try? JSONDecoder().decode(
+            XPCDownloadRequest.self, from: requestData
+        ) {
+            lock.lock()
+            _lastDownloadRequest = downloadRequest
+            lock.unlock()
+        }
         reply(ensureModelsError)
     }
 

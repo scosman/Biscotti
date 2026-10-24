@@ -7,7 +7,7 @@
 /// ``TranscriptResult/transcriptionMethodId``.
 ///
 /// Adding a new method later is purely additive.
-public struct TranscriptionMethod: Sendable, Equatable {
+public struct TranscriptionMethod: Sendable, Equatable, Codable {
     /// The opaque method identifier (e.g. `"v1"`).
     public let id: String
 
@@ -20,6 +20,15 @@ public struct TranscriptionMethod: Sendable, Equatable {
     /// non-English audio is transcribed in its spoken language.
     public static let v2 = TranscriptionMethod(id: "v2") // swiftlint:disable:this identifier_name
 
+    /// Apple Speech method: SpeechTranscriber on macOS 26+. Words are grouped
+    /// from attributed-string runs; diarization uses SpeakerKit (same as Whisper).
+    public static let appleV1 = TranscriptionMethod(id: "apple-v1")
+
     /// The current default method the engine uses.
     public static let current: TranscriptionMethod = .v2
+
+    /// Which STT engine this method uses.
+    public var engine: SpeechEngine {
+        id.hasPrefix("apple") ? .apple : .whisper
+    }
 }

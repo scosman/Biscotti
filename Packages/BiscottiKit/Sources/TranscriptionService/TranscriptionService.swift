@@ -286,8 +286,16 @@ public final class TranscriptionService {
         guard let transcriptionError = error as? TranscriptionError else {
             return (error.localizedDescription, false)
         }
+        return Self.mapTranscriptionError(transcriptionError)
+    }
 
-        switch transcriptionError {
+    /// Maps a typed `TranscriptionError` to a user-facing message and
+    /// retriability flag. Extracted from ``mapEngineError(_:)`` to keep
+    /// per-function cyclomatic complexity within lint thresholds.
+    private static func mapTranscriptionError(
+        _ error: TranscriptionError
+    ) -> (message: String, retriable: Bool) {
+        switch error {
         case .workerInterrupted:
             return ("Transcription worker stopped unexpectedly. Tap Retry.", true)
 
@@ -316,6 +324,9 @@ public final class TranscriptionService {
 
         case let .diarizationFailed(detail):
             return ("Speaker detection failed: \(detail)", false)
+
+        case let .engineUnavailable(detail):
+            return ("Speech engine not available: \(detail)", false)
         }
     }
 }

@@ -53,13 +53,15 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
             return
         }
 
+        let config = request.config ?? .whisper()
         let engine = engine
         Task {
             do {
                 let result = try await engine.processAudio(
                     micPath: request.micPath,
                     systemPath: request.systemPath,
-                    customVocabulary: request.customVocabulary
+                    customVocabulary: request.customVocabulary,
+                    config: config
                 )
                 let data = try JSONEncoder().encode(result)
                 reply(data, nil)
@@ -70,8 +72,17 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
     }
 
     func ensureModelsDownloaded(
+        requestData: Data,
         reply: @escaping @Sendable ((any Error)?) -> Void
     ) {
+        let components: Set<ModelComponent> = if let downloadRequest = try? JSONDecoder().decode(
+            XPCDownloadRequest.self, from: requestData
+        ) {
+            downloadRequest.componentSet
+        } else {
+            .all
+        }
+
         let engine = engine
         // Grab the client's status callback proxy now (on the XPC queue) and
         // box it so it can cross into the @Sendable Task. NSXPC proxies are
@@ -82,7 +93,9 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
         )
         Task {
             do {
-                try await engine.ensureModelsDownloaded { status in
+                try await engine.ensureModelsDownloaded(
+                    components: components
+                ) { status in
                     statusBox.value?.reportDownloadStatus(status)
                 }
                 reply(nil)

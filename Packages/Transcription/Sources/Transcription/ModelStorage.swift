@@ -36,6 +36,19 @@ enum ModelStorage {
         downloadBase.appendingPathComponent("models", isDirectory: true)
     }
 
+    /// Directory for a specific WhisperKit model.
+    static func whisperModelDirectory(repo: String, model: String) -> URL {
+        modelsDirectory
+            .appendingPathComponent(repo, isDirectory: true)
+            .appendingPathComponent(model, isDirectory: true)
+    }
+
+    /// Directory for SpeakerKit models.
+    static var speakerIDDirectory: URL {
+        modelsDirectory
+            .appendingPathComponent("argmaxinc/speakerkit-coreml", isDirectory: true)
+    }
+
     /// Delete all downloaded models from disk. No-op if nothing is cached.
     /// Only removes the model cache (`models/`), leaving any sibling app data
     /// under the base directory untouched.
@@ -43,5 +56,13 @@ enum ModelStorage {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: modelsDirectory.path) else { return }
         try fileManager.removeItem(at: modelsDirectory)
+    }
+
+    /// Remove a specific directory from the model cache.
+    /// No-op if the directory does not exist.
+    static func removeDirectory(_ url: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
     }
 }

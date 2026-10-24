@@ -30,4 +30,8 @@ public enum TranscriptionError: Error, Sendable, Equatable {
 
     /// SpeakerKit diarization returned an error.
     case diarizationFailed(String)
+
+    /// The requested engine is not available (e.g. Apple Speech on macOS < 26,
+    /// or an unsupported locale).
+    case engineUnavailable(String)
 }

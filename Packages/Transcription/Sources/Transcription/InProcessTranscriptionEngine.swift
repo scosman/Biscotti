@@ -15,34 +15,35 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     )
 
     private let method: TranscriptionMethod
-    private let resolvedSettings: ResolvedMethodSettings
+    private let defaultSettings: ResolvedMethodSettings
     private let statusMachine: ModelStatusMachine
     private let diskSpaceChecker: DiskSpaceChecking
     private var whisperKit: WhisperKit?
     private var speakerKit: SpeakerKit?
 
-    /// Estimated bytes required for model download (STT + diarization).
-    /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
-    /// We use a conservative estimate based on the model name.
-    private var estimatedDownloadBytes: Int64 {
-        if resolvedSettings.sttModel.contains("1307MB") {
+    /// Estimated bytes required for the Whisper model download.
+    private var estimatedWhisperDownloadBytes: Int64 {
+        if defaultSettings.sttModel.contains("1307MB") {
             1_400_000_000 // ~1.3 GB + headroom
-        } else if resolvedSettings.sttModel.contains("1049MB") {
+        } else if defaultSettings.sttModel.contains("1049MB") {
             1_150_000_000
-        } else if resolvedSettings.sttModel.contains("954MB") {
+        } else if defaultSettings.sttModel.contains("954MB") {
             1_050_000_000
-        } else if resolvedSettings.sttModel.contains("626MB") {
-            750_000_000 // ~626 MB + headroom + SpeakerKit ~33 MB
+        } else if defaultSettings.sttModel.contains("626MB") {
+            750_000_000
         } else {
             3_300_000_000 // full-precision ~3.1 GB + headroom
         }
     }
 
+    /// Estimated bytes for SpeakerKit download.
+    private static let estimatedSpeakerIDDownloadBytes: Int64 = 50_000_000
+
     public init(
         method: TranscriptionMethod = .current
     ) {
         self.method = method
-        resolvedSettings = MethodResolver.resolve(method)
+        defaultSettings = MethodResolver.resolve(method)
         statusMachine = ModelStatusMachine(initial: .needsDownload)
         diskSpaceChecker = SystemDiskSpaceChecker()
     }
@@ -53,7 +54,7 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         diskSpaceChecker: DiskSpaceChecking
     ) {
         self.method = method
-        resolvedSettings = MethodResolver.resolve(method)
+        defaultSettings = MethodResolver.resolve(method)
         statusMachine = ModelStatusMachine(initial: .needsDownload)
         self.diskSpaceChecker = diskSpaceChecker
     }
@@ -61,27 +62,31 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     // MARK: - TranscriptionEngine
 
     public func ensureModelsDownloaded(
+        components: Set<ModelComponent>,
         status: @escaping @Sendable (String) -> Void
     ) async throws {
-        Self.log.debug("ensureModelsDownloaded: begin")
-        try await checkDiskSpace()
+        Self.log.debug("ensureModelsDownloaded: begin, components=\(components.map(\.rawValue))")
+        try await checkDiskSpace(components: components)
         await statusMachine.transition(to: .downloading(progress: 0.0))
 
-        // No numeric progress: the SDK's only progress signal is file-count
-        // weighted (one ~3 GB file counts the same as a tiny config), which is
-        // misleading, so we report a status message per stage instead.
-        try await downloadWhisperKitIfNeeded(status: status)
-        try await downloadSpeakerKitIfNeeded(status: status)
+        if components.contains(.whisper) {
+            try await downloadWhisperKitIfNeeded(status: status)
+        }
+        if components.contains(.speakerID) {
+            try await downloadSpeakerKitIfNeeded(status: status)
+        }
         Self.log.debug("ensureModelsDownloaded: complete")
     }
 
     public func processAudio(
         micPath: String,
         systemPath: String,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult {
-        Self.log.debug("processAudio: begin")
+        Self.log.debug("processAudio: begin, engine=\(config.engine.rawValue)")
         let startTime = CFAbsoluteTimeGetCurrent()
+        let settings = MethodResolver.resolve(config.method)
 
         let mergeResult = try loadAndMergeAudio(
             micPath: micPath, systemPath: systemPath
@@ -89,19 +94,39 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
         await statusMachine.transition(to: .running)
 
-        let sttResults = try await runSTT(
-            audioArray: mergeResult.samples, customVocabulary: customVocabulary
-        )
+        let sttResults: [TranscriptionResult]
+        switch settings.engine {
+        case .whisper:
+            sttResults = try await runWhisperSTT(
+                audioArray: mergeResult.samples,
+                customVocabulary: customVocabulary,
+                settings: settings
+            )
+            if settings.sequentialLoading { await unloadWhisperKit() }
 
-        if resolvedSettings.sequentialLoading { await unloadWhisperKit() }
+        case .apple:
+            // Phase 2 adds the real Apple Speech runtime. For now, reject.
+            throw TranscriptionError.engineUnavailable(
+                "Apple Speech requires macOS 26 or later"
+            )
+        }
 
         let diarization = try await runDiarization(audioArray: mergeResult.samples)
 
-        if resolvedSettings.sequentialLoading { await unloadSpeakerKit() }
+        if settings.sequentialLoading { await unloadSpeakerKit() }
+
+        let language: String = switch settings.engine {
+        case .whisper:
+            sttResults.first?.language ?? "unknown"
+        case .apple:
+            config.locale ?? "unknown"
+        }
 
         let result = assembleResult(
             sttResults: sttResults, diarization: diarization,
-            audioDuration: mergeResult.duration, startTime: startTime
+            audioDuration: mergeResult.duration, startTime: startTime,
+            methodId: config.method.id, language: language,
+            settings: settings
         )
 
         await statusMachine.transition(to: .ready)
@@ -117,15 +142,32 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         Self.log.debug("unloadModels: complete")
     }
 
-    public func modelsPresent() async -> Bool {
-        Self.log.debug("modelsPresent: checking disk")
-        let sttPresent = Self.whisperKitModelsPresent(
-            repo: resolvedSettings.sttModelRepo,
-            model: resolvedSettings.sttModel
-        )
-        let speakerPresent = Self.speakerKitModelsPresent()
-        Self.log.debug("modelsPresent: stt=\(sttPresent), speaker=\(speakerPresent)")
-        return sttPresent && speakerPresent
+    public func modelsPresent(components: Set<ModelComponent>) async -> Bool {
+        Self.log.debug("modelsPresent: checking components=\(components.map(\.rawValue))")
+        for component in components
+            where !Self.componentPresent(component, settings: defaultSettings)
+        {
+            return false
+        }
+        return true
+    }
+
+    public func deleteModels(_ components: Set<ModelComponent>) async throws {
+        Self.log.debug("deleteModels: \(components.map(\.rawValue))")
+        await unloadModels()
+        for component in components {
+            switch component {
+            case .whisper:
+                try ModelStorage.removeDirectory(
+                    ModelStorage.whisperModelDirectory(
+                        repo: defaultSettings.sttModelRepo,
+                        model: defaultSettings.sttModel
+                    )
+                )
+            case .speakerID:
+                try ModelStorage.removeDirectory(ModelStorage.speakerIDDirectory)
+            }
+        }
     }
 
     public func status() async -> ModelStatus {
@@ -136,6 +178,22 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 // MARK: - Read-only disk checks
 
 extension InProcessTranscriptionEngine {
+    /// Check if a specific model component is present on disk.
+    static func componentPresent(
+        _ component: ModelComponent,
+        settings: ResolvedMethodSettings
+    ) -> Bool {
+        switch component {
+        case .whisper:
+            whisperKitModelsPresent(
+                repo: settings.sttModelRepo,
+                model: settings.sttModel
+            )
+        case .speakerID:
+            speakerKitModelsPresent()
+        }
+    }
+
     /// Check if WhisperKit model files are present on disk at the expected
     /// download location. Does NOT load, compile, or download anything.
     ///
@@ -146,9 +204,7 @@ extension InProcessTranscriptionEngine {
         repo: String,
         model: String
     ) -> Bool {
-        let modelDir = ModelStorage.modelsDirectory
-            .appendingPathComponent(repo, isDirectory: true)
-            .appendingPathComponent(model, isDirectory: true)
+        let modelDir = ModelStorage.whisperModelDirectory(repo: repo, model: model)
         return directoryContainsMLModel(modelDir)
     }
 
@@ -159,9 +215,7 @@ extension InProcessTranscriptionEngine {
     /// We check for at least one `.mlmodelc` directory inside that folder
     /// (or its subdirectories, since SpeakerKit nests models).
     static func speakerKitModelsPresent() -> Bool {
-        let speakerDir = ModelStorage.modelsDirectory
-            .appendingPathComponent("argmaxinc/speakerkit-coreml", isDirectory: true)
-        return directoryContainsMLModel(speakerDir)
+        directoryContainsMLModel(ModelStorage.speakerIDDirectory)
     }
 
     /// Returns `true` if `directory` (or any immediate subdirectory) contains
@@ -190,15 +244,17 @@ private extension InProcessTranscriptionEngine {
         try AudioLoading.loadAndMerge(micPath: micPath, systemPath: systemPath)
     }
 
-    func runSTT(
-        audioArray: [Float], customVocabulary: [String]
+    func runWhisperSTT(
+        audioArray: [Float],
+        customVocabulary: [String],
+        settings: ResolvedMethodSettings
     ) async throws -> [TranscriptionResult] {
         do {
             try await ensureWhisperKitLoaded()
 
             var decodingOptions = DecodingOptions(
-                detectLanguage: resolvedSettings.detectLanguage,
-                wordTimestamps: resolvedSettings.enableWordTimestamps
+                detectLanguage: settings.detectLanguage,
+                wordTimestamps: settings.enableWordTimestamps
             )
 
             if let promptText = VocabularyFormatter.formatPrompt(from: customVocabulary) {
@@ -245,13 +301,17 @@ private extension InProcessTranscriptionEngine {
         }
     }
 
+    // swiftlint:disable:next function_parameter_count
     func assembleResult(
         sttResults: [TranscriptionResult],
         diarization: DiarizationResult,
         audioDuration: TimeInterval,
-        startTime: CFAbsoluteTime
+        startTime: CFAbsoluteTime,
+        methodId: String,
+        language: String,
+        settings: ResolvedMethodSettings
     ) -> TranscriptResult {
-        let strategy: SpeakerInfoStrategy = switch resolvedSettings.diarizationStrategy {
+        let strategy: SpeakerInfoStrategy = switch settings.diarizationStrategy {
         case .subsegment: .subsegment
         case .segment: .segment
         }
@@ -261,13 +321,12 @@ private extension InProcessTranscriptionEngine {
             strategy: strategy
         )
 
-        let language = sttResults.first?.language ?? "unknown"
         let segments = SegmentBuilder.buildSegments(from: speakerSegmentGroups)
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
         let spans = SpeakerDurations.spans(from: diarization)
 
         let rawResult = TranscriptResult(
-            transcriptionMethodId: method.id,
+            transcriptionMethodId: methodId,
             language: language,
             speakerCount: diarization.speakerCount,
             segments: segments,
@@ -341,15 +400,29 @@ private extension InProcessTranscriptionEngine {
 // MARK: - Download helpers
 
 private extension InProcessTranscriptionEngine {
-    func checkDiskSpace() async throws {
+    func checkDiskSpace(components: Set<ModelComponent>) async throws {
+        var requiredBytes: Int64 = 0
+        if components.contains(.whisper),
+           !Self.whisperKitModelsPresent(
+               repo: defaultSettings.sttModelRepo,
+               model: defaultSettings.sttModel
+           )
+        {
+            requiredBytes += estimatedWhisperDownloadBytes
+        }
+        if components.contains(.speakerID), !Self.speakerKitModelsPresent() {
+            requiredBytes += Self.estimatedSpeakerIDDownloadBytes
+        }
+        guard requiredBytes > 0 else { return }
+
         do {
-            try diskSpaceChecker.checkAvailableSpace(requiredBytes: estimatedDownloadBytes)
+            try diskSpaceChecker.checkAvailableSpace(requiredBytes: requiredBytes)
         } catch let error as TranscriptionError {
             await statusMachine.transition(to: .error(error))
             throw error
         } catch {
             let wrappedError = TranscriptionError.insufficientDisk(
-                requiredBytes: estimatedDownloadBytes,
+                requiredBytes: requiredBytes,
                 availableBytes: 0
             )
             await statusMachine.transition(to: .error(wrappedError))
@@ -388,9 +461,9 @@ private extension InProcessTranscriptionEngine {
     /// Build a WhisperKit configuration anchored at the shared cache location.
     func makeWhisperConfig(load: Bool, download: Bool) -> WhisperKitConfig {
         WhisperKitConfig(
-            model: resolvedSettings.sttModel,
+            model: defaultSettings.sttModel,
             downloadBase: ModelStorage.downloadBase,
-            modelRepo: resolvedSettings.sttModelRepo,
+            modelRepo: defaultSettings.sttModelRepo,
             verbose: false,
             load: load,
             download: download

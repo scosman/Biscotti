@@ -218,7 +218,40 @@ public final class AppShellViewModel {
         core.searchFocusToken
     }
 
+    /// Token that increments when File > Import Audio… is chosen.
+    public var audioImportRequestToken: UInt {
+        core.audioImportRequestToken
+    }
+
+    /// Import is unavailable while a recording is in progress.
+    public var canImportAudio: Bool {
+        !isRecording
+    }
+
+    /// A user-facing summary of files that failed to import; nil when none.
+    /// Set by `importAudio(urls:)`, cleared by `dismissImportFailure()`.
+    public private(set) var importFailureMessage: String?
+
     // MARK: - Actions
+
+    /// Imports the chosen audio files as new meetings and starts
+    /// transcribing them. Files that can't be imported are summarized in
+    /// `importFailureMessage`.
+    public func importAudio(urls: [URL]) async {
+        guard !urls.isEmpty else { return }
+        let result = await core.importAudio(urls: urls)
+        if result.failures.isEmpty {
+            importFailureMessage = nil
+        } else {
+            importFailureMessage = result.failures
+                .map { "\($0.fileName): \($0.message)" }
+                .joined(separator: "\n\n")
+        }
+    }
+
+    public func dismissImportFailure() {
+        importFailureMessage = nil
+    }
 
     /// Starts a new recording session.
     public func startRecording() async {

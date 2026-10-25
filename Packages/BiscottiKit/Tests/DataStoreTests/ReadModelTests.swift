@@ -182,7 +182,41 @@ struct ReadModelTests {
         let paths = try await store.audioPaths(meetingID: id)
         #expect(paths != nil)
         #expect(paths?.mic.path == "/audio/mic.aac")
-        #expect(paths?.system.path == "/audio/system.aac")
+        #expect(paths?.system?.path == "/audio/system.aac")
+    }
+
+    @Test("audioPaths returns the single imported file as mic with no system path")
+    func audioPathsImported() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Imported")
+        let ref = AudioFileRef(role: .imported, path: "/audio/imported.m4a", byteSize: 100, isPresent: true)
+        try await store.attachAudio([ref], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths?.mic.path == "/audio/imported.m4a")
+        #expect(paths?.system == nil)
+    }
+
+    @Test("imported meetings report isImported and expose their file as the playable mic slot")
+    func importedReadModels() async throws {
+        let store = try makeStore()
+        let importedID = try await store.createMeeting(title: "Imported")
+        try await store.attachAudio(
+            [AudioFileRef(role: .imported, path: "/audio/imported.m4a", byteSize: 1, isPresent: true)],
+            to: importedID
+        )
+        let recordedID = try await store.createMeeting(title: "Recorded")
+        try await store.attachAudio(
+            [AudioFileRef(role: .mic, path: "/audio/mic.aac", byteSize: 1, isPresent: true)],
+            to: recordedID
+        )
+
+        #expect(try await store.isImportedMeeting(id: importedID))
+        #expect(try await !store.isImportedMeeting(id: recordedID))
+        #expect(try await store.meetingDetail(id: importedID)?.isImported == true)
+        #expect(try await store.meetingDetail(id: recordedID)?.isImported == false)
+        #expect(try await store.audioFileRefs(meetingID: importedID).mic?.path == "/audio/imported.m4a")
+        #expect(try await store.audioFileRefs(meetingID: importedID).system == nil)
     }
 
     @Test("audioPaths returns nil when no audio refs")

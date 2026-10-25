@@ -496,6 +496,7 @@ public func makeCoreFixture(
     useFakeScheduler: Bool = false,
     useImmediateDetectorClock: Bool = false,
     modelDownloaded: Bool = false,
+    audioInspector: (any AudioImportInspecting)? = nil,
     hardwareRAMBytes: UInt64 = 32_000_000_000,
     hardwareDiskBytes: Int64? = 100_000_000_000,
     mcpServerPort: Int = 0,
@@ -619,7 +620,8 @@ public func makeCoreFixture(
         intelligence: intelligence,
         modelManager: modelManager,
         scheduler: scheduler,
-        mcpServer: MCPServerController(store: store, port: mcpServerPort)
+        mcpServer: MCPServerController(store: store, port: mcpServerPort),
+        audioInspector: audioInspector ?? AudioImporter()
     )
 
     return CoreFixture(

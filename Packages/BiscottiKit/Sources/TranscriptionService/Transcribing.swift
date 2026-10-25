@@ -13,10 +13,11 @@ public protocol Transcribing: Sendable {
         status: (@Sendable (String) -> Void)?
     ) async throws
 
-    /// Run STT + diarization on mic + system audio files.
+    /// Run STT + diarization on mic + system audio files. `system` is `nil`
+    /// for an imported single-file recording (the file is passed as `mic`.
     func processAudio(
         mic: URL,
-        system: URL,
+        system: URL?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult
 

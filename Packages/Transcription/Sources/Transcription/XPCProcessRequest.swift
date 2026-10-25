@@ -8,10 +8,12 @@ import Foundation
 /// fully `Codable`.
 public struct XPCProcessRequest: Codable {
     public let micPath: String
-    public let systemPath: String
+    /// `nil` for a single-file (imported) recording. Optional so older payloads
+    /// that always carried a system path still decode.
+    public let systemPath: String?
     public let customVocabulary: [String]
 
-    public init(micPath: String, systemPath: String, customVocabulary: [String]) {
+    public init(micPath: String, systemPath: String?, customVocabulary: [String]) {
         self.micPath = micPath
         self.systemPath = systemPath
         self.customVocabulary = customVocabulary

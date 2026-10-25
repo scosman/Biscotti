@@ -132,9 +132,8 @@ public actor Transcriber {
 
     /// Process audio files and return a diarized transcript.
     ///
-    /// Both `mic` and `system` URLs are required. The engine merges them
-    /// internally. If only one stream was recorded, pass an empty/silent
-    /// file for the other.
+    /// `mic` is required. `system` is `nil` for a single-file (imported)
+    /// recording; otherwise the engine merges both streams internally.
     ///
     /// - Parameters:
     ///   - mic: URL to the mic audio file.
@@ -143,7 +142,7 @@ public actor Transcriber {
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
         mic: URL,
-        system: URL,
+        system: URL?,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         Self.log.info("client: processAudio called")
@@ -153,7 +152,7 @@ public actor Transcriber {
         do {
             let result = try await activeEngine.processAudio(
                 micPath: mic.path,
-                systemPath: system.path,
+                systemPath: system?.path,
                 customVocabulary: customVocabulary
             )
             emitStatus(.ready)
@@ -174,7 +173,7 @@ public actor Transcriber {
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
         mic: URL,
-        system: URL,
+        system: URL?,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)

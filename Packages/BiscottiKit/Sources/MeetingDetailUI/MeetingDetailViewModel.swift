@@ -506,6 +506,11 @@ public extension MeetingDetailViewModel {
         }
     }
 
+    /// Whether this meeting came from an uploaded audio file (not a live recording).
+    var isImported: Bool {
+        detail?.isImported ?? false
+    }
+
     /// Formatted date for display.
     var formattedDate: String {
         guard let detail else { return "" }

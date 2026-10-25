@@ -86,7 +86,7 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
 
     public func processAudio(
         mic: URL,
-        system: URL,
+        system: URL?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true

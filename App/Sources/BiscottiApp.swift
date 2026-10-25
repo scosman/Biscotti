@@ -79,6 +79,15 @@ struct BiscottiApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
+            // File > Import Audio… (⌘O): transcribe + summarize an existing audio file.
+            CommandGroup(after: .newItem) {
+                Button("Import Audio\u{2026}") {
+                    appDelegate.showMainWindow()
+                    appDelegate.core?.requestAudioImport()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+
             // Replace the `.textEditing` group (Find submenu, Spelling &
             // Grammar, Substitutions, Transformations, Speech) with our
             // single "Find..." item. This eliminates the system's Find

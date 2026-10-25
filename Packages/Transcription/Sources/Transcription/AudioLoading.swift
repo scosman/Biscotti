@@ -33,10 +33,11 @@ enum AudioLoading {
     }
 
     static func loadAndMerge(
-        micPath: String, systemPath: String
+        micPath: String, systemPath: String?
     ) throws -> MergeResult {
         let micSamples = try loadSamples(fromPath: micPath)
-        let systemSamples = try loadSamples(fromPath: systemPath)
+        // A single-file (imported) recording has no system stream.
+        let systemSamples = try systemPath.map { try loadSamples(fromPath: $0) } ?? []
         let merged = try AudioMerger.merge(mic: micSamples, system: systemSamples)
         return MergeResult(samples: merged.samples, duration: merged.duration)
     }

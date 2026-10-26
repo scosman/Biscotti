@@ -53,11 +53,14 @@ mkdir -p "$OUT"
 
 # --- Archive and export. Apple silicon only, so arm64 only.
 
+# project.yml already signs the app and XPC targets with Developer ID. Don't
+# pass CODE_SIGN_IDENTITY here: it would also reach the Swift package targets,
+# which sign automatically, and xcodebuild fails the archive on the conflict.
 echo "release: archiving (Release, signed as $IDENTITY)"
 xcodebuild -quiet -project "$ROOT/App/Biscotti.xcodeproj" -scheme Biscotti \
     -configuration Release -destination 'generic/platform=macOS' \
     -archivePath "$ARCHIVE" \
-    ARCHS=arm64 CODE_SIGN_IDENTITY="$IDENTITY" DEVELOPMENT_TEAM="$TEAM_ID" \
+    ARCHS=arm64 DEVELOPMENT_TEAM="$TEAM_ID" \
     MICROSOFT_GRAPH_CLIENT_ID="$GRAPH_CLIENT_ID" MICROSOFT_GRAPH_TENANT_ID="$GRAPH_TENANT_ID" \
     archive
 

@@ -15,10 +15,16 @@
 #        xcrun notarytool store-credentials biscotti-notary \
 #          --apple-id <id> --team-id 9Y6C5MKG87 --password <app-specific>
 #      NOTARY_PROFILE (in Makefile.local) overrides the profile name.
+#   3. Put the Microsoft 365 app registration's IDs in Makefile.local
+#      (docs/entra_app_registration.md); they fill the Info.plist placeholders:
+#        MICROSOFT_GRAPH_CLIENT_ID := <Application (client) ID>
+#        MICROSOFT_GRAPH_TENANT_ID := <Directory (tenant) ID>
 set -euo pipefail
 
 TEAM_ID="${TEAM_ID:-9Y6C5MKG87}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-biscotti-notary}"
+GRAPH_CLIENT_ID="${MICROSOFT_GRAPH_CLIENT_ID:-}"
+GRAPH_TENANT_ID="${MICROSOFT_GRAPH_TENANT_ID:-}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build/release"
 ARCHIVE="$OUT/Biscotti.xcarchive"
@@ -31,6 +37,10 @@ die() {
 
 # --- Preflight: fail before a long build if signing or notarizing can't work.
 
+# Without the IDs the app falls back to Apple Calendar, which is not what
+# Synderys employees should get.
+[ -n "$GRAPH_CLIENT_ID" ] && [ -n "$GRAPH_TENANT_ID" ] \
+    || die "set MICROSOFT_GRAPH_CLIENT_ID and MICROSOFT_GRAPH_TENANT_ID in Makefile.local (see Tools/release.sh)"
 IDENTITY=$(security find-identity -v -p codesigning \
     | sed -nE "s/.*\"(Developer ID Application: .*\($TEAM_ID\))\".*/\1/p" | head -1)
 [ -n "$IDENTITY" ] \
@@ -48,6 +58,7 @@ xcodebuild -quiet -project "$ROOT/App/Biscotti.xcodeproj" -scheme Biscotti \
     -configuration Release -destination 'generic/platform=macOS' \
     -archivePath "$ARCHIVE" \
     ARCHS=arm64 CODE_SIGN_IDENTITY="$IDENTITY" DEVELOPMENT_TEAM="$TEAM_ID" \
+    MICROSOFT_GRAPH_CLIENT_ID="$GRAPH_CLIENT_ID" MICROSOFT_GRAPH_TENANT_ID="$GRAPH_TENANT_ID" \
     archive
 
 cat > "$OUT/ExportOptions.plist" << EOF
@@ -72,6 +83,10 @@ xcodebuild -quiet -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
     -exportOptionsPlist "$OUT/ExportOptions.plist"
 APP="$EXPORT/Biscotti.app"
 codesign --verify --deep --strict "$APP"
+for key in MicrosoftGraphClientID MicrosoftGraphTenantID; do
+    [ -n "$(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" 2> /dev/null)" ] \
+        || die "$key is missing from the built Info.plist"
+done
 
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
 BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")

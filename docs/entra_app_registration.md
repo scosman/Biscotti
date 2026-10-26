@@ -76,7 +76,17 @@ and the **Directory (tenant) ID**. Biscotti reads them, in this order, from:
    preference domain `com.synderys.biscotti`.
 
 2. **The app's `Info.plist`,** under the same keys, for a build that ships
-   with the IDs.
+   with the IDs. `Info.plist` holds `$(MICROSOFT_GRAPH_CLIENT_ID)` and
+   `$(MICROSOFT_GRAPH_TENANT_ID)` placeholders, which `make build-app` and
+   `make release` fill from the git-ignored `Makefile.local`:
+
+   ```make
+   MICROSOFT_GRAPH_CLIENT_ID := <application-id>
+   MICROSOFT_GRAPH_TENANT_ID := <directory-id>
+   ```
+
+   `make release` refuses to build without them. A build without them (CI,
+   a fresh checkout) has blank values, which count as not configured.
 
 Quit and reopen Biscotti after setting them. **Settings → Calendars →
 Microsoft 365** then shows **Connect…** instead of "Not configured". The

@@ -103,7 +103,7 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make format` | Auto-format (SwiftFormat then SwiftLint `--fix`) | — |
 | `make precommit-checks` | The pre-commit checks: `format` + `lint` + `test` (hook & `hooks-mcp` both call this) | Yes |
 | `make build-app` | `make generate` + `xcodebuild` the app (ad-hoc signed, unless a git-ignored `Makefile.local` sets `APP_SIGN_IDENTITY`/`APP_SIGN_TEAM` for a stable local identity) | Non-gating |
-| `make release` | Archive (Release, arm64), export with Developer ID, package `build/release/Biscotti-<version>.dmg`, notarize and staple. Needs the Developer ID Application cert in the keychain and a `notarytool` profile (one-time setup in `Tools/release.sh`'s header). Human-run, not CI. | — |
+| `make release` | Archive (Release, arm64), export with Developer ID, package `build/release/Biscotti-<version>.dmg`, notarize and staple. Needs the Developer ID Application cert in the keychain, a `notarytool` profile, and the Microsoft 365 client/tenant IDs in `Makefile.local` (filled into `Info.plist`; one-time setup in `Tools/release.sh`'s header). Human-run, not CI. | — |
 | `make test-app` | App/UI test scheme (empty for now) | Non-gating |
 | `make hooks` | Opt-in: point git at `.githooks/pre-commit` | — |
 | `make ci` | What the gating CI job runs: `lint` + `test` + `build` | — |

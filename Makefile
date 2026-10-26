@@ -35,10 +35,18 @@ SWIFTFORMAT := $(SWIFTFORMAT_DIR)/swiftformat
 #   APP_SIGN_TEAM := <team ID>
 # `make release` signs with Developer ID regardless; Makefile.local can
 # override its notarytool keychain profile with NOTARY_PROFILE.
+#
+# The Microsoft 365 app registration's IDs go in Makefile.local too, never in
+# source (docs/entra_app_registration.md). build-app and release fill the
+# Info.plist placeholders with them; release refuses to run without them.
+#   MICROSOFT_GRAPH_CLIENT_ID := <Application (client) ID>
+#   MICROSOFT_GRAPH_TENANT_ID := <Directory (tenant) ID>
 -include Makefile.local
 APP_SIGN_IDENTITY ?= -
 APP_SIGN_TEAM ?=
 NOTARY_PROFILE ?= biscotti-notary
+MICROSOFT_GRAPH_CLIENT_ID ?=
+MICROSOFT_GRAPH_TENANT_ID ?=
 
 .PHONY: help bootstrap generate build test test-ai bench lint format build-app release test-app precommit-checks hooks ci clean manual-tests-check
 
@@ -131,13 +139,17 @@ build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc unless
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES \
-	  CODE_SIGN_IDENTITY="$(APP_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(APP_SIGN_TEAM)" build
+	  CODE_SIGN_IDENTITY="$(APP_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(APP_SIGN_TEAM)" \
+	  MICROSOFT_GRAPH_CLIENT_ID="$(MICROSOFT_GRAPH_CLIENT_ID)" \
+	  MICROSOFT_GRAPH_TENANT_ID="$(MICROSOFT_GRAPH_TENANT_ID)" build
 	cd ManualTestApp && xcodebuild -quiet -project ManualTestApp.xcodeproj -scheme ManualTestApp \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
 
 release: generate ## Developer ID-signed, notarized DMG in build/release (one-time setup: Tools/release.sh)
-	NOTARY_PROFILE="$(NOTARY_PROFILE)" Tools/release.sh
+	NOTARY_PROFILE="$(NOTARY_PROFILE)" \
+	  MICROSOFT_GRAPH_CLIENT_ID="$(MICROSOFT_GRAPH_CLIENT_ID)" \
+	  MICROSOFT_GRAPH_TENANT_ID="$(MICROSOFT_GRAPH_TENANT_ID)" Tools/release.sh
 
 test-app: generate ## NON-GATING: app test scheme (empty for now)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \

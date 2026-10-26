@@ -10,7 +10,9 @@ import Foundation
 ///        defaults write com.synderys.biscotti MicrosoftGraphClientID <guid>
 ///        defaults write com.synderys.biscotti MicrosoftGraphTenantID <guid>
 ///
-/// 2. The same keys in the app's `Info.plist`.
+/// 2. The same keys in the app's `Info.plist`, filled at build time from
+///    `MICROSOFT_GRAPH_CLIENT_ID` / `MICROSOFT_GRAPH_TENANT_ID` in the
+///    git-ignored `Makefile.local`.
 ///
 /// The redirect URI follows the MSAL convention for the bundle ID, so the
 /// registration Entra generates for the iOS/macOS platform matches it.

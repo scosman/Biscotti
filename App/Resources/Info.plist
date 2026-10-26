@@ -31,6 +31,10 @@
     <string>Biscotti needs system audio access to record other meeting participants.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Biscotti reads your calendar to show upcoming meetings and enrich recordings with event details.</string>
+    <key>MicrosoftGraphClientID</key>
+    <string>$(MICROSOFT_GRAPH_CLIENT_ID)</string>
+    <key>MicrosoftGraphTenantID</key>
+    <string>$(MICROSOFT_GRAPH_TENANT_ID)</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

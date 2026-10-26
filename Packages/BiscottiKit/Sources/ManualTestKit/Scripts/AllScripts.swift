@@ -7,5 +7,6 @@ public let allScripts: [TestScript] = [
     .transcription,
     .localLLM,
     .mcp,
-    .appURLs
+    .appURLs,
+    .microsoft365Calendar
 ]

@@ -4,6 +4,7 @@ import DataStore
 import DesignSystem
 import Formatting
 import Foundation
+import GraphAuth
 
 /// View model for the Home screen.
 ///
@@ -121,14 +122,50 @@ public final class HomeViewModel {
     }
 
     /// Show "No meetings coming up" when authorized but no upcoming events
-    /// (including events that have since ended).
+    /// (including events that have since ended). With Microsoft 365
+    /// configured, "authorized" means signed in to Microsoft 365: after the
+    /// sign-in expires, an empty list may only mean nothing can be read.
     public var showNoUpcoming: Bool {
-        calendarAccess == .authorized && upcomingPreview.isEmpty
+        let connected = usesMicrosoft365
+            ? core.microsoft365.state.isSignedIn
+            : calendarAccess == .authorized
+        return connected && upcomingPreview.isEmpty
     }
 
-    /// Show "Connect your calendar" when not authorized.
+    /// Show "Connect your calendar" (Apple Calendar) when not authorized.
+    /// Synderys fork: never with Microsoft 365 configured, which replaces
+    /// Apple Calendar (o365_calendar).
     public var showConnectCalendar: Bool {
-        calendarAccess != .authorized
+        !usesMicrosoft365 && calendarAccess != .authorized
+    }
+
+    // MARK: - Microsoft 365 (Synderys fork, o365_calendar)
+
+    /// A Microsoft 365 registration is configured, so Home offers Microsoft
+    /// 365 instead of Apple Calendar, and the upcoming list holds Microsoft
+    /// 365 events (`AppCore+Live`). Without one, Home is upstream's.
+    var usesMicrosoft365: Bool {
+        core.microsoft365.state.isConfigured
+    }
+
+    /// Show "Connect Microsoft 365" when configured but not connected.
+    public var showConnectMicrosoft365: Bool {
+        switch core.microsoft365.state {
+        case .signedOut, .signingIn: true
+        case .notConfigured, .signedIn, .needsReconnect: false
+        }
+    }
+
+    /// The browser sign-in is open; the Connect button is disabled.
+    public var microsoft365SigningIn: Bool {
+        core.microsoft365.state == .signingIn
+    }
+
+    /// The Microsoft 365 sign-in has expired: Home shows a reconnect banner
+    /// above the upcoming cards.
+    public var microsoft365NeedsReconnect: Bool {
+        if case .needsReconnect = core.microsoft365.state { return true }
+        return false
     }
 
     /// Show the "No recordings yet" empty state when there are no meetings.
@@ -146,6 +183,12 @@ public final class HomeViewModel {
     /// Request calendar access (from the "Connect" empty state).
     public func requestCalendarAccess() async {
         _ = await core.calendar.requestAccess()
+    }
+
+    /// Opens the Microsoft sign-in window from the Connect card or the
+    /// reconnect banner (which pre-fills the account).
+    public func connectMicrosoft365() async {
+        await core.microsoft365.signIn()
     }
 
     /// Select an upcoming event to preview its detail.

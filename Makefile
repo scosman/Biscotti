@@ -26,7 +26,21 @@ SWIFTFORMAT_SHA256  := b990400779aceb7d7020796eb9ba814d4480543f671d38fc0ff48cb72
 SWIFTFORMAT_DIR := $(TOOLS_DIR)/swiftformat-$(SWIFTFORMAT_VERSION)
 SWIFTFORMAT := $(SWIFTFORMAT_DIR)/swiftformat
 
-.PHONY: help bootstrap generate build test test-ai bench lint format build-app test-app precommit-checks hooks ci clean manual-tests-check
+# build-app signs ad-hoc by default (CI, fresh checkouts). An ad-hoc build gets
+# a new code signature on every rebuild, so macOS treats it as a new app: it
+# asks again for the Microsoft 365 keychain item and drops TCC grants. To sign
+# local builds with a stable identity instead, set these in a git-ignored
+# Makefile.local:
+#   APP_SIGN_IDENTITY := Apple Development
+#   APP_SIGN_TEAM := <team ID>
+# `make release` signs with Developer ID regardless; Makefile.local can
+# override its notarytool keychain profile with NOTARY_PROFILE.
+-include Makefile.local
+APP_SIGN_IDENTITY ?= -
+APP_SIGN_TEAM ?=
+NOTARY_PROFILE ?= biscotti-notary
+
+.PHONY: help bootstrap generate build test test-ai bench lint format build-app release test-app precommit-checks hooks ci clean manual-tests-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -113,14 +127,17 @@ precommit-checks: ## The pre-commit checks (format + lint + test); the hook and 
 	$(MAKE) lint
 	$(MAKE) test
 
-build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc)
+build-app: generate ## NON-GATING: build both apps via xcodebuild (ad-hoc unless Makefile.local sets an identity)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES \
-	  CODE_SIGN_IDENTITY="-" DEVELOPMENT_TEAM="" build
+	  CODE_SIGN_IDENTITY="$(APP_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(APP_SIGN_TEAM)" build
 	cd ManualTestApp && xcodebuild -quiet -project ManualTestApp.xcodeproj -scheme ManualTestApp \
 	  -destination 'platform=macOS,arch=arm64' \
 	  -configuration Debug CODE_SIGNING_ALLOWED=YES build
+
+release: generate ## Developer ID-signed, notarized DMG in build/release (one-time setup: Tools/release.sh)
+	NOTARY_PROFILE="$(NOTARY_PROFILE)" Tools/release.sh
 
 test-app: generate ## NON-GATING: app test scheme (empty for now)
 	cd App && xcodebuild -quiet -project Biscotti.xcodeproj -scheme Biscotti \
@@ -137,7 +154,7 @@ manual-tests-check: ## Check that all manual test step IDs have been run (expect
 	swift run --package-path Packages/BiscottiKit manual-tests-check ManualTestApp/Results/manual_test_results.json
 
 clean: ## Remove build artifacts + generated projects
-	rm -rf .build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj
+	rm -rf .build build App/Biscotti.xcodeproj ManualTestApp/ManualTestApp.xcodeproj
 	@for pkg in $(PACKAGES); do rm -rf $$pkg/.build; done
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Biscotti-*
 	rm -rf ~/Library/Developer/Xcode/DerivedData/ManualTestApp-*

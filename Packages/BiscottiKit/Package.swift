@@ -21,6 +21,7 @@ let package = Package(
         .library(name: "AppShellUI", targets: ["AppShellUI"]),
         .library(name: "Calendar", targets: ["Calendar"]),
         .library(name: "GraphCalendar", targets: ["GraphCalendar"]),
+        .library(name: "GraphAuth", targets: ["GraphAuth"]),
         .library(name: "MeetingCatalog", targets: ["MeetingCatalog"]),
         .library(name: "MeetingDetection", targets: ["MeetingDetection"]),
         .library(name: "Notifications", targets: ["Notifications"]),
@@ -175,6 +176,8 @@ let package = Package(
             dependencies: [
                 "AppLinks",
                 "DataStore",
+                "GraphAuth",
+                "GraphCalendar",
                 "ImportExport",
                 "Intelligence",
                 "MCPServer",
@@ -202,6 +205,8 @@ let package = Package(
                 "AppCore",
                 "Calendar",
                 "DataStore",
+                "GraphAuth",
+                "GraphCalendar",
                 "Intelligence",
                 "MCPServer",
                 "MeetingCatalog",
@@ -228,6 +233,8 @@ let package = Package(
                 "DataStore",
                 "DesignSystem",
                 "Formatting",
+                "GraphAuth",
+                "GraphCalendar",
                 "ImportExport",
                 "Intelligence",
                 "MCPServer",
@@ -349,7 +356,8 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
-                "Formatting"
+                "Formatting",
+                "GraphAuth"
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -362,6 +370,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "Formatting",
+                "GraphAuth",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",
@@ -444,6 +453,18 @@ let package = Package(
             resources: [.copy("Fixtures")],
             swiftSettings: warningsAsErrors
         ),
+        // Synderys fork: Microsoft 365 sign-in (OAuth code + PKCE, login
+        // keychain) for GraphCalendar. Nothing upstream depends on it.
+        .target(
+            name: "GraphAuth",
+            dependencies: ["GraphCalendar"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "GraphAuthTests",
+            dependencies: ["GraphAuth", "GraphCalendar"],
+            swiftSettings: warningsAsErrors
+        ),
         .target(
             name: "SettingsUI",
             dependencies: [
@@ -451,6 +472,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "GraphAuth",
                 "ImportExport",
                 "Intelligence",
                 "LocalLLM",
@@ -470,6 +492,8 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "GraphAuth",
+                "GraphCalendar",
                 "ImportExport",
                 "Intelligence",
                 "MCPServer",
@@ -522,6 +546,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
+                "GraphAuth",
                 "Intelligence",
                 "ModelManagementUI",
                 "Permissions",
@@ -538,6 +563,7 @@ let package = Package(
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
+                "GraphAuth",
                 "Intelligence",
                 "MeetingCatalog",
                 "Permissions",

@@ -48,7 +48,8 @@ enum FakeTransportError: Error {
 
 /// Replays canned responses by URL path, in order, repeating the last one,
 /// and records every request. `latency` holds each request in flight so
-/// the client's concurrency cap is observable.
+/// the client's concurrency cap is observable; `hold()` parks requests
+/// until `release()`.
 actor FakeGraphTransport: GraphHTTPTransport {
     private var routes: [String: [Stub]] = [:]
     private(set) var requests: [URLRequest] = []
@@ -56,6 +57,9 @@ actor FakeGraphTransport: GraphHTTPTransport {
     private var inFlight = 0
     private var failure: (any Error)?
     private let latency: Duration?
+    private var isHolding = false
+    private var parked: [CheckedContinuation<Void, Never>] = []
+    private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     init(latency: Duration? = nil) {
         self.latency = latency
@@ -70,11 +74,39 @@ actor FakeGraphTransport: GraphHTTPTransport {
         failure = error
     }
 
+    func hold() {
+        isHolding = true
+    }
+
+    func release() {
+        isHolding = false
+        let waiting = parked
+        parked = []
+        waiting.forEach { $0.resume() }
+    }
+
+    /// Returns once `count` requests have arrived.
+    func waitForRequests(_ count: Int) async {
+        if requests.count >= count { return }
+        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+    }
+
+    /// The requests made to `path`.
+    func requests(to path: String) -> [URLRequest] {
+        requests.filter { $0.url?.path(percentEncoded: false) == path }
+    }
+
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
+        let ready = requestWaiters.filter { $0.count <= requests.count }
+        requestWaiters.removeAll { $0.count <= requests.count }
+        ready.forEach { $0.continuation.resume() }
         inFlight += 1
         maxInFlight = max(maxInFlight, inFlight)
         defer { inFlight -= 1 }
+        if isHolding {
+            await withCheckedContinuation { parked.append($0) }
+        }
         if let latency {
             try await Task.sleep(for: latency)
         }

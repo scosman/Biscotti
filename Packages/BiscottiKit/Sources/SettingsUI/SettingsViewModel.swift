@@ -466,7 +466,7 @@ public final class SettingsViewModel {
     /// Re-fetches the calendar list from EventKit. Called on app-foreground
     /// so that newly added accounts appear without restarting.
     public func reloadCalendars() async {
-        guard calendarState == .authorized else { return }
+        guard showsCalendarList else { return }
         let infos = await core.calendar.calendars()
         calendarGroups = Self.groupCalendars(infos)
     }
@@ -493,9 +493,9 @@ public final class SettingsViewModel {
 // MARK: - Computed forwarding properties (extracted for type_body_length)
 
 public extension SettingsViewModel {
-    /// The update checker status, forwarded from AppCore.
-    var updateStatus: UpdateStatus {
-        core.updateChecker.status
+    /// The running app's marketing version (`CFBundleShortVersionString`).
+    var appVersion: String? {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }
 
     /// Whether any AI model is available (active model exists).
@@ -527,9 +527,12 @@ public extension SettingsViewModel {
     }
 
     /// Whether the calendar notification picker should be disabled
-    /// (calendar access not authorized).
+    /// (calendar access not authorized). Synderys fork: with Microsoft 365
+    /// configured, the calendar is Microsoft 365, so it needs a signed-in
+    /// account instead.
     var calendarNotificationsDisabled: Bool {
-        calendarState != .authorized
+        if microsoft365State.isConfigured { return !microsoft365State.isSignedIn }
+        return calendarState != .authorized
     }
 
     /// The MCP server's live lifecycle state, forwarded from AppCore. The
@@ -820,20 +823,5 @@ public extension SettingsViewModel {
             vocabularyTerms[index] = previous
         }
         return nil
-    }
-}
-
-// MARK: - Update actions
-
-public extension SettingsViewModel {
-    /// Triggers a one-off update check.
-    func checkForUpdate() async {
-        await core.updateChecker.check()
-    }
-
-    /// Opens the release page for an available update.
-    func openUpdate() {
-        guard let url = core.updateChecker.releaseURL else { return }
-        NSWorkspace.shared.open(url)
     }
 }

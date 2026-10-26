@@ -300,6 +300,61 @@
     "stepID" : "llm_xpc_inference",
     "timestamp" : "2026-10-23T13:41:37Z"
   },
+  "m365_all_day" : {
+    "status" : "not-run",
+    "stepID" : "m365_all_day",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_connect" : {
+    "status" : "not-run",
+    "stepID" : "m365_connect",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_disconnect" : {
+    "status" : "not-run",
+    "stepID" : "m365_disconnect",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_new_event" : {
+    "status" : "not-run",
+    "stepID" : "m365_new_event",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_offline" : {
+    "status" : "not-run",
+    "stepID" : "m365_offline",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_onboarding" : {
+    "status" : "not-run",
+    "stepID" : "m365_onboarding",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_picker" : {
+    "status" : "not-run",
+    "stepID" : "m365_picker",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_relaunch" : {
+    "status" : "not-run",
+    "stepID" : "m365_relaunch",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_shared_calendar" : {
+    "status" : "not-run",
+    "stepID" : "m365_shared_calendar",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_speaker_names" : {
+    "status" : "not-run",
+    "stepID" : "m365_speaker_names",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
+  "m365_upcoming" : {
+    "status" : "not-run",
+    "stepID" : "m365_upcoming",
+    "timestamp" : "2026-10-26T16:49:47Z"
+  },
   "mcp_port_change" : {
     "note" : "8516 -> 8517 moved the live server; 80 showed the range error and changed nothing; 8517 survived a relaunch; set back to 8516",
     "status" : "pass",

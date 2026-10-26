@@ -92,18 +92,8 @@ public struct GraphEventMapper: Sendable {
     public func event(_ event: Graph.Event, calendar: CalendarInfo) throws -> EKEventDTO {
         let isAllDay = event.isAllDay ?? false
         let eventZone = event.originalStartTimeZone.flatMap(GraphDateParsing.timeZone(named:))
-        let start: Date
-        let end: Date
-        let occurrenceDate: Date
-        if isAllDay {
-            start = try GraphDateParsing.startOfDay(from: event.start, eventZone: eventZone, in: localTimeZone)
-            end = try GraphDateParsing.startOfDay(from: event.end, eventZone: eventZone, in: localTimeZone)
-            occurrenceDate = start
-        } else {
-            start = try GraphDateParsing.date(from: event.start)
-            end = try GraphDateParsing.date(from: event.end)
-            occurrenceDate = GraphDateParsing.offsetDate(event.originalStart) ?? start
-        }
+        let (start, end) = try bounds(of: event, isAllDay: isAllDay, eventZone: eventZone)
+        let occurrenceDate = isAllDay ? start : GraphDateParsing.offsetDate(event.originalStart) ?? start
 
         let location = event.location?.displayName?.nonBlank
         let bodyText = Self.bodyText(event.body)
@@ -144,6 +134,26 @@ public struct GraphEventMapper: Sendable {
             attendees: attendees,
             organizer: organizer
         )
+    }
+
+    /// Start and end. All-day bounds are local midnights of the days the
+    /// event names.
+    private func bounds(
+        of event: Graph.Event,
+        isAllDay: Bool,
+        eventZone: TimeZone?
+    ) throws -> (start: Date, end: Date) {
+        guard isAllDay else {
+            return try (GraphDateParsing.date(from: event.start), GraphDateParsing.date(from: event.end))
+        }
+        // Spec §8 Q1: which form Graph sends all-day bounds in under the
+        // UTC Prefer header. Both are handled.
+        graphCalendarLog.debug(
+            "All-day bounds: \(event.start.dateTime, privacy: .public) \(event.start.timeZone ?? "-", privacy: .public) to \(event.end.dateTime, privacy: .public), organizer zone \(event.originalStartTimeZone ?? "-", privacy: .public)"
+        )
+        let start = try GraphDateParsing.startOfDay(from: event.start, eventZone: eventZone, in: localTimeZone)
+        let end = try GraphDateParsing.startOfDay(from: event.end, eventZone: eventZone, in: localTimeZone)
+        return (start, end)
     }
 
     /// The join link Graph reports, else the first conference link in the

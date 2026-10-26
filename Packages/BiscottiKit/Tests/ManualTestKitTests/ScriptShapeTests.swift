@@ -183,6 +183,7 @@ struct ScriptShapeTests {
             + TestScript.localLLM.steps
             + TestScript.mcp.steps
             + TestScript.appURLs.steps
+            + TestScript.microsoft365Calendar.steps
         let ids = allSteps.map(\.id)
         let uniqueIDs = Set(ids)
         #expect(ids.count == uniqueIDs.count, "Duplicate step IDs found")
@@ -196,7 +197,8 @@ struct ScriptShapeTests {
         #expect(ids.contains("local_llm"))
         #expect(ids.contains("mcp_server"))
         #expect(ids.contains("app_urls"))
-        #expect(allScripts.count == 5)
+        #expect(ids.contains("m365_calendar"))
+        #expect(allScripts.count == 6)
     }
 
     @Test("Step IDs within Audio Capture are unique")
@@ -290,5 +292,40 @@ struct AppURLsScriptShapeTests {
     func internalUniqueness() {
         let ids = TestScript.appURLs.steps.map(\.id)
         #expect(ids.count == Set(ids).count)
+    }
+}
+
+@Suite("M365 Calendar script structural invariants")
+struct Microsoft365CalendarScriptShapeTests {
+    @Test("M365 Calendar script has a non-empty id and title")
+    func identity() {
+        let script = TestScript.microsoft365Calendar
+        #expect(!script.title.isEmpty)
+        #expect(script.id == "m365_calendar")
+    }
+
+    @Test("M365 Calendar step IDs match the canonical set, in order")
+    func stepIDs() {
+        let ids = TestScript.microsoft365Calendar.steps.map(\.id)
+        #expect(ids == [
+            "m365_setup",
+            "m365_connect",
+            "m365_upcoming",
+            "m365_new_event",
+            "m365_all_day",
+            "m365_shared_calendar",
+            "m365_picker",
+            "m365_speaker_names",
+            "m365_onboarding",
+            "m365_relaunch",
+            "m365_offline",
+            "m365_disconnect"
+        ])
+    }
+
+    @Test("Only the setup step is display-only")
+    func recordableSteps() {
+        let instructions = TestScript.microsoft365Calendar.steps.filter { !$0.isRecordable }
+        #expect(instructions.map(\.id) == ["m365_setup"])
     }
 }

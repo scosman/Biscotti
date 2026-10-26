@@ -5,8 +5,8 @@ status: complete
 # Architecture: Microsoft 365 Calendar (Graph)
 
 Implements `functional_spec.md`. Phase 1 is fully decided below. Phases 2 and 3
-are sketched to the depth needed to keep Phase 1's seams right, and their
-details are settled in their own phase plans.
+were first sketched to the depth needed to keep Phase 1's seams right. §4 and
+§5 now describe them as built, and their phase plans hold the details.
 
 ## 1. Shape of the change
 
@@ -15,12 +15,16 @@ Packages/BiscottiKit/Sources/GraphCalendar/   ← new module (Phase 1)
 Packages/BiscottiKit/Tests/GraphCalendarTests/ ← fixture tests (Phase 1)
 Packages/BiscottiKit/Package.swift             ← + GraphCalendar product/target/tests
 — Phase 2 —
-GraphCalendar (+ MSAL token provider), SettingsUI (Microsoft 365 row),
-App/project.yml + Info.plist (MSAL redirect scheme, client/tenant IDs)
+GraphAuth (new module: OAuth + PKCE sign-in, token provider, keychain),
+AppCore (owns the account controller), SettingsUI (Microsoft 365 row,
+replacing the Apple calendar list),
+HomeUI (reconnect banner), docs/entra_app_registration.md
 — Phase 3 —
-GraphCalendar (GraphEventStore, CompositeEventStore, poller),
-Calendar (provider-agnostic change signal), AppCore+Live (composition),
-OnboardingUI, ManualTestKit/ManualTestApp ("M365 Calendar" tab)
+GraphCalendar (GraphEventStore, poller),
+Calendar (provider-agnostic change signal), AppCore (Microsoft365CalendarSync,
+composition in AppCore+Live), OnboardingUI and SettingsUI (Microsoft 365 in
+place of Apple Calendar when a registration is configured),
+ManualTestKit/ManualTestApp ("M365 Calendar" tab)
 ```
 
 **Dependency direction:** `GraphCalendar → Calendar, MeetingCatalog`. Nothing
@@ -83,35 +87,79 @@ and links. The test week is 2026-10-26 to 2026-11-02 (UTC).
 last one. It records requests and the peak number in flight. `FakeTokens` and
 `SleepRecorder` record refreshes and waits.
 
-## 4. Phase 2 sketch: auth
+## 4. Phase 2: auth (as built)
 
-- **MSAL dependency:** `AzureAD/microsoft-authentication-library-for-objc`,
-  SPM. It goes in a separate target (`GraphAuth`), so `GraphCalendar` and its
-  tests stay free of MSAL and keychain access.
-- **`MSALGraphTokenProvider: GraphAccessTokenProviding`:** silent acquisition
-  with `forceRefresh` passed through. Interactive sign-in is a separate call
-  that takes the parent window (MSAL 2.x on macOS).
-- **Configuration:** client ID and tenant ID come from `Info.plist`
-  (overridable by managed preferences). The redirect URI is
-  `msauth.com.synderys.biscotti://auth`. The scheme is registered in
-  `App/project.yml`.
-- **UI:** the Settings → Calendar "Microsoft 365" row (Connect /
-  account + last sync / Disconnect) and the reconnect banner.
+MSAL was dropped for a small OAuth client of our own; see
+`phase_plans/phase_2.md` for why.
 
-## 5. Phase 3 sketch: integration
+- **`GraphAuth` target** (deps `GraphCalendar`). `GraphCalendar` and its
+  tests stay free of sign-in and keychain code.
+- **Flow:** OAuth 2.0 authorization code + PKCE (S256) against Entra ID's v2
+  endpoints for the configured tenant, as a public client (no secret, no
+  `Origin` header). The browser part runs in `ASWebAuthenticationSession`
+  with a `.customScheme` callback, so no URL scheme is registered in
+  `App/project.yml`. Scopes: `openid profile offline_access User.Read
+  Calendars.Read Calendars.Read.Shared`. Redirect:
+  `msauth.com.synderys.biscotti://auth`.
+- **`GraphTokenProvider` (actor): `GraphAccessTokenProviding`.** It keeps the
+  access token in memory, refreshes 5 min before expiry, and shares one
+  refresh among concurrent callers. A rotated refresh token is saved. If
+  Entra refuses the refresh token with an OAuth error, the session is marked
+  for reconnect and `GraphError.unauthorized` is thrown. Outages, proxies
+  and captive portals throw `GraphError.transport` and keep the session.
+- **`GraphTokenStore`:** `KeychainGraphTokenStore` keeps the refresh token
+  and account as one item in the login keychain. It uses the file-based
+  keychain, so no keychain-access-group entitlement is needed.
+  `InMemoryGraphTokenStore` is for tests.
+- **`GraphAccountController` (`@MainActor @Observable`):** exposes
+  `GraphAccountState` (`notConfigured`, `signedOut`, `signingIn`, `signedIn`,
+  `needsReconnect`) and `lastError`. It restores the session at launch and
+  runs sign-in and sign-out. `AppCore.microsoft365` owns it.
+- **Configuration:** `MicrosoftGraphClientID` / `MicrosoftGraphTenantID`,
+  read from user defaults (including MDM managed preferences), then
+  `Info.plist`. Without them the controller is `.notConfigured`.
+- **UI:** the Settings → Calendars "Microsoft 365" row (Connect…, the
+  account, Reconnect…, Disconnect…) and the Home "sign-in has expired"
+  banner. The last-sync time waits for Phase 3's poller. The row is the whole
+  Calendars section: the Apple calendar include/exclude list was removed
+  (functional spec §7).
 
-- **`GraphEventStore: EventStoreProviding`:** synchronous reads from a locked
-  snapshot (`calendars`, events covering the window, a by-ID index for
-  `refreshEvent`). `authorizationStatus` reports signed-in state, and
-  `requestAccess` is a no-op that returns the current state, because sign-in
-  is Phase 2's UI.
-- **`GraphCalendarPoller`:** refreshes the snapshot through
-  `GraphCalendarReader` every 5 min, on wake, on network change, and before
-  the record prompt. On failure it keeps the snapshot and marks it stale. It
-  posts the change signal.
-- **`CompositeEventStore: EventStoreProviding`:** unions providers and dedupes
-  by iCalUID, with Graph winning (functional spec §7–8).
-- **`CalendarService.startObserving`:** additionally observes a
-  provider-agnostic notification. This is the single upstream edit in
-  `Calendar`.
-- **`AppCore+Live`:** builds `CalendarService(provider: CompositeEventStore(...))`.
+## 5. Phase 3: integration (as built)
+
+See `phase_plans/phase_3.md` for the details and deviations.
+
+- **`GraphEventStore: EventStoreProviding` (GraphCalendar):** synchronous
+  reads from a `Mutex`-guarded snapshot (calendars, events, window, fetch
+  time) plus the events around one past date for the picker.
+  `refreshEvent` answers from memory. `authorizationStatus` is set by the
+  account (`.authorized` while signed in or expired), and `requestAccess`
+  prompts for nothing, because sign-in is Phase 2's UI.
+- **`GraphCalendarPoller` (actor, GraphCalendar):** fills the store through
+  `GraphCalendarReader` every 5 min and 1 min before each timed event, over
+  the last day and the next 8 days. Concurrent refreshes share one poll. A
+  failed poll keeps the snapshot and marks it stale. A generation counter
+  stops a poll from before a sign-out writing. `loadNearby` reads around an
+  older date for the picker.
+- **`Microsoft365CalendarSync` (AppCore):** the glue between the account and
+  the poller:
+  - follows `GraphAccountController.state`, and runs the poller while
+    signed in;
+  - polls on wake and when the network comes back;
+  - posts the change signal;
+  - resets the calendar selection once per account;
+  - surfaces the last sync and its error to Settings.
+  It lives in AppCore, not GraphCalendar, because it needs `GraphAuth`,
+  `DataStore` and AppKit.
+- **No `CompositeEventStore`.** With a registration, Microsoft 365 replaces
+  Apple Calendar (functional spec §7), so `GraphEventStore` is the only
+  provider and nothing is deduped.
+- **`CalendarService` (Calendar):** `startObserving` also observes
+  `.calendarProviderDidChange`, and `refreshUpcoming` re-reads `auth`. These
+  are the only upstream edits in `Calendar`.
+- **`AppCore+Live`:** builds `CalendarService(provider:)` with the sync's
+  `GraphEventStore` when `GraphAccountController.live()` is configured, and
+  with `LiveEventStore` otherwise.
+- **UI:** with a registration, onboarding's Calendar permission becomes a
+  Microsoft 365 Connect row, and Settings lists the account's calendars
+  under the Microsoft 365 row with the existing include/exclude selection.
+  Without one, every screen is upstream's.

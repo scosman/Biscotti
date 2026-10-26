@@ -113,9 +113,12 @@ public final class OnboardingViewModel {
         systemAudioResult == .approved
     }
 
-    /// Whether calendar access has been granted in this session.
+    /// Whether calendar access has been granted in this session. With
+    /// Microsoft 365 as the calendar source, whether an account is signed
+    /// in (Synderys fork).
     public var calendarGranted: Bool {
-        calendarResult == .authorized
+        if usesMicrosoft365 { return microsoft365State.isSignedIn }
+        return calendarResult == .authorized
     }
 
     /// Whether all four permissions have been granted.
@@ -348,7 +351,9 @@ public final class OnboardingViewModel {
             currentStep = .permissions
             beginModelPrep()
         case .permissions:
-            if calendarResult == .authorized {
+            if calendarGranted {
+                // Synderys fork: Microsoft 365 calendars arrive with a poll.
+                await core.microsoft365Calendar?.refresh()
                 let infos = await core.calendar.calendars()
                 calendarGroups = Self.groupCalendars(infos)
                 currentStep = .calendarSelection

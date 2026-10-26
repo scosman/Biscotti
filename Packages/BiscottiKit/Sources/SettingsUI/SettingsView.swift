@@ -132,7 +132,7 @@ public struct SettingsView: View {
                     Text(option.displayText).tag(option)
                 }
             }
-            appUpdatesRow
+            appVersionRow
             mcpRow
         }
     }
@@ -165,9 +165,11 @@ public struct SettingsView: View {
                 "Microphone", state: viewModel.microphoneState, kind: .microphone
             )
             systemAudioRow
-            permissionRow(
-                "Calendar", state: viewModel.calendarState, kind: .calendar
-            )
+            if viewModel.showsAppleCalendarPermission {
+                permissionRow(
+                    "Calendar", state: viewModel.calendarState, kind: .calendar
+                )
+            }
             permissionRow(
                 "Notifications", state: viewModel.notificationsState, kind: .notifications
             )
@@ -499,7 +501,7 @@ private extension SettingsView {
     }
 }
 
-// MARK: - General section bindings & App Updates row
+// MARK: - General section bindings & App Version row
 
 private extension SettingsView {
     var launchAtLoginBinding: Binding<Bool> {
@@ -551,63 +553,18 @@ private extension SettingsView {
         )
     }
 
-    /// Static title for the update row.
-    static let appUpdatesTitle = "App Version"
+    /// Static title for the version row.
+    static let appVersionTitle = "App Version"
 
-    var appUpdatesRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
-                Text(Self.appUpdatesTitle)
-                Text(updateSubtitle)
-                    .font(Tokens.metadataFont)
-                    .foregroundStyle(Tokens.secondaryText)
-            }
-
-            Spacer()
-
-            updateActionButton
-        }
-    }
-
-    var updateSubtitle: String {
-        switch viewModel.updateStatus {
-        case .idle, .checking:
-            "Checking\u{2026}"
-        case let .upToDate(version):
-            "You're up to date: \(version)"
-        case let .updateAvailable(version, _):
-            "Update available: \(version)"
-        case let .failed(version):
-            if let version {
-                "Update check failed. Current version: \(version)"
-            } else {
-                "Update check failed."
-            }
-        }
-    }
-
-    @ViewBuilder
-    var updateActionButton: some View {
-        switch viewModel.updateStatus {
-        case .idle, .checking:
-            Button("Check for Update") {}
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(true)
-
-        case .upToDate, .failed:
-            Button("Check for Update") {
-                Task { await viewModel.checkForUpdate() }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-        case .updateAvailable:
-            Button("Update") {
-                viewModel.openUpdate()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+    /// The running version. Synderys fork: no update check; rollout is
+    /// managed, so the row only reports the version.
+    var appVersionRow: some View {
+        VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+            Text(Self.appVersionTitle)
+            Text(viewModel.appVersion ?? "Unknown")
+                .font(Tokens.metadataFont)
+                .foregroundStyle(Tokens.secondaryText)
+                .textSelection(.enabled)
         }
     }
 }

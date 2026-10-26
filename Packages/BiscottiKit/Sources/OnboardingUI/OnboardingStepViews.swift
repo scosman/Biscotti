@@ -77,7 +77,11 @@ extension OnboardingView {
 
             InsetDivider(leadingInset: 48)
 
-            calendarRow
+            if viewModel.usesMicrosoft365 {
+                microsoft365Row
+            } else {
+                calendarRow
+            }
 
             InsetDivider(leadingInset: 48)
 
@@ -214,17 +218,22 @@ extension OnboardingView {
                 .foregroundStyle(.inkSecondary)
                 .padding(.top, 12)
 
-            if viewModel.calendarGroups.isEmpty {
+            if viewModel.calendarGroups.isEmpty, viewModel.usesMicrosoft365 {
+                microsoft365CalendarEmptyState
+                    .padding(.top, 20)
+            } else if viewModel.calendarGroups.isEmpty {
                 calendarEmptyState
                     .padding(.top, 20)
             } else {
                 calendarToggles
                     .padding(.top, 20)
 
-                MissingCalendarsHint(onMoreInfo: {
-                    viewModel.showConnectCalendarSheet = true
-                })
-                .padding(.top, Tokens.spacingSM)
+                if !viewModel.usesMicrosoft365 {
+                    MissingCalendarsHint(onMoreInfo: {
+                        viewModel.showConnectCalendarSheet = true
+                    })
+                    .padding(.top, Tokens.spacingSM)
+                }
             }
 
             Button("Continue") {

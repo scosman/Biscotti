@@ -3,6 +3,7 @@ import AppLinks
 import Calendar
 import DataStore
 import Foundation
+import GraphAuth
 import Intelligence
 import MCPServer
 import MeetingCatalog
@@ -288,12 +289,18 @@ public final class AppCore {
     /// Model state owner (selection, downloads, suitability).
     public let modelManager: ModelManager
 
-    /// Checks for newer releases on GitHub.
-    public let updateChecker: UpdateChecker
-
     /// Local MCP server lifecycle (loopback HTTP, read-only meeting tools).
     /// Only starts when the user enables it in Settings.
     public let mcpServer: MCPServerController
+
+    /// The Microsoft 365 account (Synderys fork, o365_calendar). Not
+    /// configured unless the build or machine supplies an Entra app
+    /// registration.
+    public let microsoft365: GraphAccountController
+
+    /// Reads the account's calendars into `calendar`'s provider. Nil without
+    /// an app registration, when `calendar` reads EventKit.
+    public let microsoft365Calendar: Microsoft365CalendarSync?
 
     // MARK: - Private
 
@@ -379,8 +386,9 @@ public final class AppCore {
         intelligence: Intelligence,
         modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler(),
-        updateChecker: UpdateChecker? = nil,
-        mcpServer: MCPServerController? = nil
+        mcpServer: MCPServerController? = nil,
+        microsoft365: GraphAccountController? = nil,
+        microsoft365Calendar: Microsoft365CalendarSync? = nil
     ) {
         self.store = store
         self.permissions = permissions
@@ -392,8 +400,9 @@ public final class AppCore {
         self.intelligence = intelligence
         self.modelManager = modelManager
         self.scheduler = scheduler
-        self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
+        self.microsoft365 = microsoft365 ?? GraphAccountController(notConfigured: .missingClientID)
+        self.microsoft365Calendar = microsoft365Calendar
     }
 
     // MARK: - Lifecycle
@@ -410,6 +419,10 @@ public final class AppCore {
         }
         hasLaunched = true
         logger.info("onLaunch: enter")
+
+        // Synderys fork: before the onboarding gate, so Settings shows the
+        // right account either way.
+        await startMicrosoft365()
 
         logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
@@ -444,8 +457,6 @@ public final class AppCore {
 
         logger.info("onLaunch: routing to home")
         route = .home
-
-        updateChecker.startPeriodicChecks()
 
         await startBackgroundServices()
 
@@ -619,13 +630,6 @@ public final class AppCore {
         route = .meetings
     }
 
-    /// Set selection from WITHIN the list (`List(selection:)` setter).
-    /// Preserves the current mode (keeps the query if searching).
-    /// Empty set = placeholder (no selection).
-    public func selectFromList(_ ids: Set<UUID>) {
-        meetingsSelection = ids
-    }
-
     /// "Past Meetings" (sidebar) and "See all" (Home): browse mode,
     /// KEEP selection (D4).
     public func showMeetings() {
@@ -633,12 +637,6 @@ public final class AppCore {
         meetingsQuery = ""
         meetingsResults = []
         route = .meetings
-    }
-
-    /// Routes to the recording screen (sidebar recording indicator tap).
-    public func navigateToRecording() {
-        guard recording.state.isRecording else { return }
-        route = .recording
     }
 
     /// Marks onboarding complete and transitions to Home.
@@ -652,8 +650,6 @@ public final class AppCore {
         }
 
         route = .home
-
-        updateChecker.startPeriodicChecks()
 
         // Start background services deferred during onboarding
         await startBackgroundServices()
@@ -693,6 +689,8 @@ public extension AppCore {
 // Extracted to an extension to keep the main class body within the
 // type_body_length lint limit after adding notification-settings
 // stored properties (which must live in the class body for @Observable).
+// `selectFromList` and `navigateToRecording` moved here when the
+// Microsoft 365 account property was added.
 
 public extension AppCore {
     /// Factory default summary prompt, surfaced without importing
@@ -726,6 +724,19 @@ public extension AppCore {
     /// Routes to the Home screen.
     func showHome() {
         route = .home
+    }
+
+    /// Set selection from WITHIN the list (`List(selection:)` setter).
+    /// Preserves the current mode (keeps the query if searching).
+    /// Empty set = placeholder (no selection).
+    func selectFromList(_ ids: Set<UUID>) {
+        meetingsSelection = ids
+    }
+
+    /// Routes to the recording screen (sidebar recording indicator tap).
+    func navigateToRecording() {
+        guard recording.state.isRecording else { return }
+        route = .recording
     }
 
     // MARK: - Onboarding support
@@ -1665,8 +1676,10 @@ extension AppCore {
     /// Fetches calendar events near a given date for the association
     /// picker. Delegates to `CalendarService.eventsNear(_:)` which
     /// uses a +/- 1.5h window and caches DTOs for snapshot resolution.
+    /// Microsoft 365 first reads the events around an older `date`.
     public func eventsNear(_ date: Date) async -> [CalendarEvent] {
-        await calendar.eventsNear(date)
+        await microsoft365Calendar?.prepare(around: date)
+        return await calendar.eventsNear(date)
     }
 
     /// Corrects the calendar association for a meeting. Pass `nil` to

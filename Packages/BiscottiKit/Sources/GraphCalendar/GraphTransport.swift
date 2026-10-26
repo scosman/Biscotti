@@ -1,8 +1,8 @@
 import Foundation
 
-/// Supplies the bearer token for Graph requests. Phase 2 implements this
-/// with MSAL's silent token acquisition; Phase 1 tests and tools inject a
-/// fixed token.
+/// Supplies the bearer token for Graph requests. The app's implementation is
+/// `GraphAuth`'s token provider, which refreshes silently; tests and tools
+/// inject a fixed token.
 public protocol GraphAccessTokenProviding: Sendable {
     /// Returns an access token with the calendar scopes. `forceRefresh` is
     /// true after Graph rejected the previous token with 401, so a cached

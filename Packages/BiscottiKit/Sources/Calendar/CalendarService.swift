@@ -43,8 +43,8 @@ public final class CalendarService {
     /// evict a past-event entry while the picker is open.
     private var candidateDTOs: [String: EKEventDTO] = [:]
 
-    /// Observation token for `.EKEventStoreChanged`.
-    /// Wrapped in a class so deinit (nonisolated in Swift 6) can clean up
+    /// Observation tokens for `.EKEventStoreChanged` and
+    /// `.calendarProviderDidChange`. Wrapped in a class so deinit (nonisolated in Swift 6) can clean up
     /// without accessing MainActor-isolated storage.
     private let observationBox = ObservationBox()
 
@@ -91,8 +91,11 @@ public final class CalendarService {
         }.value
     }
 
-    /// Re-fetch meeting-like events in the given window. Updates `upcoming`.
+    /// Re-fetch meeting-like events in the given window. Updates `upcoming`,
+    /// and `auth`, which a provider other than EventKit can change without
+    /// `requestAccess()` (Microsoft 365 sign-in and sign-out).
     public func refreshUpcoming(window: DateInterval) async {
+        auth = provider.authorizationStatus()
         let dtos = await fetchDTOs(in: window)
 
         var events: [CalendarEvent] = []
@@ -226,19 +229,23 @@ public final class CalendarService {
         return mapToSnapshotInput(dto)
     }
 
-    /// Subscribe to `.EKEventStoreChanged` and auto-refresh.
+    /// Subscribe to `.EKEventStoreChanged` and `.calendarProviderDidChange`
+    /// and auto-refresh.
     public func startObserving() {
         logger.info("startObserving: registering EKEventStoreChanged")
-        let token = NotificationCenter.default.addObserver(
-            forName: .EKEventStoreChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.handleStoreChanged()
+        observationBox.removeObserver()
+        for name in [Notification.Name.EKEventStoreChanged, .calendarProviderDidChange] {
+            let token = NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.handleStoreChanged()
+                }
             }
+            observationBox.addToken(token)
         }
-        observationBox.setToken(token)
         logger.info("startObserving: done")
     }
 
@@ -407,27 +414,27 @@ private extension CalendarService {
 // MARK: - Observation cleanup helper
 
 /// Thread-safe wrapper so `CalendarService.deinit` (nonisolated in Swift 6)
-/// can remove the NotificationCenter observer without accessing
+/// can remove the NotificationCenter observers without accessing
 /// MainActor-isolated storage. Uses `NSLock` for synchronization;
 /// `@unchecked Sendable` is needed because `NSObjectProtocol` is not
 /// `Sendable`, but access is guarded by the lock.
 final class ObservationBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var token: (any NSObjectProtocol)?
+    private var tokens: [any NSObjectProtocol] = []
 
-    func setToken(_ newToken: any NSObjectProtocol) {
+    func addToken(_ newToken: any NSObjectProtocol) {
         lock.lock()
-        token = newToken
+        tokens.append(newToken)
         lock.unlock()
     }
 
     func removeObserver() {
         lock.lock()
-        let captured = token
-        token = nil
+        let captured = tokens
+        tokens = []
         lock.unlock()
-        if let captured {
-            NotificationCenter.default.removeObserver(captured)
+        for token in captured {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 }

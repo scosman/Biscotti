@@ -22,3 +22,9 @@ calibration.json
 clean-worktree*
 
 .worktrees/
+
+# Per-machine Makefile overrides (e.g. build-app signing identity)
+Makefile.local
+
+# make release output (archive, export, notarized DMG)
+/build/

@@ -24,6 +24,13 @@ public protocol EventStoreProviding: Sendable {
     func refreshEvent(eventIdentifier: String, occurrenceStart: Date) -> EKEventDTO?
 }
 
+public extension Notification.Name {
+    /// Posted when a provider other than EventKit (which posts
+    /// `.EKEventStoreChanged`) has new calendars, events or authorization.
+    /// `CalendarService.startObserving()` refreshes on either.
+    static let calendarProviderDidChange = Notification.Name("net.scosman.biscotti.calendarProviderDidChange")
+}
+
 // MARK: - EKEventDTO
 
 /// Thin, Sendable mirror of EKEvent fields. No EKEvent reference retained.

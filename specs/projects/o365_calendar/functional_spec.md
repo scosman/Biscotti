@@ -18,17 +18,24 @@ meeting details in summaries.
 
 - **Read-only.** It reads calendars, events and `/me`, and never writes.
 - **Delegated, single-tenant.** The app reads on behalf of the signed-in
-  Synderys user, using MSAL (Phase 2).
+  Synderys user, signed in with OAuth 2.0 authorization code + PKCE
+  (Phase 2).
 - **Never blocks recording.** A Graph failure costs calendar context, never a
   recording.
+- **Replaces Apple Calendar** (decided 2026-10-26). Microsoft 365 becomes the
+  only calendar source; EventKit is not read alongside it. *Overview
+  difference:* the overview merged both sources with iCalUID dedupe and an
+  "Also read Apple Calendar" setting. Showing two calendar sources in
+  Settings confused the user, so the dedupe and the setting are both
+  dropped (§7).
 
 ## 2. Phases
 
 | Phase | Delivers | User-visible? |
 |---|---|---|
 | 1 | `GraphCalendar` module: Graph client, the Graph → DTO mapping, fixture tests. The access token is injected; there is no sign-in. | No |
-| 2 | MSAL sign-in, keychain token cache, the Settings → Calendar "Microsoft 365" row, the Entra registration doc. | Settings row |
-| 3 | `GraphEventStore` + `CompositeEventStore`, iCalUID dedupe, polling and the change signal, the onboarding step, the ManualTestApp "M365 Calendar" tab. | Yes |
+| 2 | `GraphAuth`: OAuth + PKCE sign-in, the refresh token in the keychain, the Settings → Calendar "Microsoft 365" row (replacing the Apple calendar list), the Home reconnect banner, the Entra registration doc. | Settings row |
+| 3 | `GraphEventStore` replaces EventKit as the calendar source; polling and the change signal; a "Connect Microsoft 365" onboarding step replacing the Apple Calendar one; the Apple Calendar permission row removed; the ManualTestApp "M365 Calendar" tab. | Yes |
 
 Sections 3–6 specify Phase 1 in full. Section 7 records what Phases 2 and 3 must
 honor. Those phases get their own phase plans when they start.
@@ -224,34 +231,67 @@ text as follows:
 
 ## 7. Requirements carried to Phases 2 and 3
 
-- **Token source (Phase 2).** MSAL implements `GraphAccessTokenProviding`
-  (`accessToken(forceRefresh:)`). `forceRefresh` maps to
-  `acquireTokenSilent` with `forceRefresh = true`. `MSALErrorInteractionRequired`
-  surfaces as `GraphError.unauthorized`, or as a distinct error if the banner
-  needs one. Scopes, authority and redirect are as in the overview, with
-  redirect `msauth.com.synderys.biscotti://auth`.
-- **Sync seam (Phase 3).** `EventStoreProviding` is synchronous, but Graph is
-  not. `GraphEventStore` serves `calendars()`, `events(in:calendars:)` and
-  `refreshEvent` from an in-memory snapshot that a poller fills through
-  `GraphCalendarReader`. Every 5 minutes, on wake, on network change, and
-  before the record prompt (best-effort, time-boxed), it posts a
-  provider-agnostic "changed" signal. A failed poll keeps the last snapshot,
-  marked stale.
+- **Token source (Phase 2, as built).** `GraphAuth`'s `GraphTokenProvider`
+  implements `GraphAccessTokenProviding` (`accessToken(forceRefresh:)`).
+  `forceRefresh` skips the cached access token and redeems the refresh
+  token. A refresh token Entra refuses surfaces as `GraphError.unauthorized`
+  and switches the account to "reconnect" (the banner reads the account
+  state, not the error). Scopes and authority are as in the overview, with
+  redirect `msauth.com.synderys.biscotti://auth`. MSAL was not used; see
+  `phase_plans/phase_2.md`.
+- **Sync seam (Phase 3, as built).** `EventStoreProviding` is synchronous,
+  but Graph is not. `GraphEventStore` serves `calendars()`,
+  `events(in:calendars:)` and `refreshEvent` from an in-memory snapshot that
+  `GraphCalendarPoller` fills through `GraphCalendarReader`. It polls:
+  - every 5 minutes;
+  - 1 minute before each timed event, which stands in for "before the record
+    prompt";
+  - on wake and when the network comes back.
+  A poll that changes anything posts `.calendarProviderDidChange`. A failed
+  poll keeps the last snapshot, marked stale, and Settings shows the error.
+  The event picker on an older recording waits up to 5 s while the events
+  around it are read.
 - **Window.** `CalendarService`'s 7-day upcoming window, plus the ±1.5 h
   `eventsNear` association window.
-- **Dedupe.** `CompositeEventStore` matches Graph `iCalUId` against EventKit
-  `calendarItemExternalIdentifier`, and Graph wins. Because of §8, it must not
-  assume `iCalUId` is shared across a series.
+- **Source (decided 2026-10-26).** `GraphEventStore` replaces
+  `LiveEventStore` as `CalendarService`'s provider. There is no
+  `CompositeEventStore` and no dedupe. As built, this applies when an app
+  registration is configured. Without one, the app keeps upstream's
+  EventKit, because a build with no IDs would otherwise have no calendar
+  (`phase_plans/phase_3.md`). With a registration, Phase 3 also:
+  - replaces the Apple Calendar permission row in onboarding with a
+    "Connect Microsoft 365" row, and lists Graph calendars in the
+    onboarding calendar step;
+  - keeps the calendar selection state in `SettingsViewModel` for Graph
+    calendars, listed under the Microsoft 365 row. It is cleared the first
+    time each account signs in, so EventKit's or another account's
+    calendar IDs never hide the new account's calendars;
+  - makes sure attendee emails reach speaker identification. Invitees and
+    their emails already feed the speaker prompt's invitee list and the
+    voiceprint matcher's invitee boost (`VoiceprintConfig.inviteeBoost`,
+    matched by person ID or email). EventKit can give Exchange attendees
+    X500 URLs, which `EmailParser` drops. Graph attendees always carry
+    `emailAddress.address`, which the mapper turns into a `mailto:` URL. A
+    test covers the whole path: a recording linked to a Graph event yields
+    invitees with emails in the speaker turn and the voiceprint matcher;
+  - leaves meetings already linked to EventKit events alone. Their stored
+    `CalendarSnapshot` is kept, and `CalendarService.snapshot(forKey:)` only
+    resolves cached upcoming or candidate events, so the old EventKit IDs are
+    never looked up in Graph.
 
 ## 8. Open questions (verify on hardware, Phase 3)
 
+Q1 and Q4 are steps `m365_all_day` and `m365_shared_calendar` in the
+ManualTestApp "M365 Calendar" tab. Record the answers here once they have
+run on the Synderys tenant.
+
 1. **All-day form under the UTC Prefer header** (§5.2).
-2. **iCalUID parity:** does Graph `iCalUId` equal EventKit's
-   `calendarItemExternalIdentifier` for the same Exchange event? This comes
-   from the overview and is still unverified.
-3. **Per-occurrence `iCalUId`:** Graph documents that occurrences of a series
-   can carry distinct `iCalUId` values. If EventKit uses the series UID, dedupe
-   needs `(iCalUId or series UID, occurrence start)` rather than UID alone.
+2. ~~**iCalUID parity**~~ (Graph `iCalUId` vs. EventKit
+   `calendarItemExternalIdentifier`): moot. Microsoft 365 replaces Apple
+   Calendar, so nothing is deduped (§7).
+3. ~~**Per-occurrence `iCalUId`**~~: moot for the same reason.
+   `calendarItemExternalIdentifier` isn't part of `CompositeKey`, so
+   per-occurrence values are harmless.
 4. **Shared-calendar 403s:** whether `Calendars.Read.Shared` is needed for the
    EA case, or `Calendars.Read` is enough for calendars the user added.
 

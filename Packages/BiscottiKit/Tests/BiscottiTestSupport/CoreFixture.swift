@@ -3,6 +3,7 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import GraphAuth
 import Intelligence
 import LocalLLM
 import MCPServer
@@ -38,6 +39,10 @@ public struct CoreFixture {
     public let modelManager: ModelManager
     public let fakeLLMRunner: FakeCoreLLMRunner
     public let fakeModelProvider: FakeCoreModelProvider
+    /// The Microsoft 365 calendar sync, when the fixture was made with one.
+    /// Its store is then `CalendarService`'s provider instead of
+    /// `fakeEventStore`.
+    public let microsoft365Calendar: Microsoft365CalendarSync?
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -478,6 +483,11 @@ public struct FakeCoreHardwareProbe: HardwareProbing {
 /// `mcpServerPort` defaults to 0 (ephemeral): tests must never bind the
 /// production port 8516, which the real app dogfoods. Bind-conflict tests
 /// pass a port held by another controller.
+///
+/// `microsoft365` defaults to AppCore's unconfigured controller; account
+/// tests pass one built on an in-memory store and a fake browser.
+/// `microsoft365Calendar` builds the calendar sync on the fixture's store
+/// (`Microsoft365Fixture.makeCalendarSync`), which then serves calendars.
 @MainActor
 // swiftlint:disable:next function_body_length
 public func makeCoreFixture(
@@ -499,6 +509,8 @@ public func makeCoreFixture(
     hardwareRAMBytes: UInt64 = 32_000_000_000,
     hardwareDiskBytes: Int64? = 100_000_000_000,
     mcpServerPort: Int = 0,
+    microsoft365: GraphAccountController? = nil,
+    microsoft365Calendar: (@MainActor (DataStore) -> Microsoft365CalendarSync)? = nil,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -546,10 +558,11 @@ public func makeCoreFixture(
         refreshResult: calendarRefreshResult
     )
     let catalog = BundledMeetingCatalog()
+    let microsoft365Sync = microsoft365Calendar?(store)
     let calendarService = CalendarService(
         store: store,
         catalog: catalog,
-        provider: fakeEventStore
+        provider: microsoft365Sync?.store ?? fakeEventStore
     )
 
     let fakeActivitySource = FakeActivitySource()
@@ -619,7 +632,9 @@ public func makeCoreFixture(
         intelligence: intelligence,
         modelManager: modelManager,
         scheduler: scheduler,
-        mcpServer: MCPServerController(store: store, port: mcpServerPort)
+        mcpServer: MCPServerController(store: store, port: mcpServerPort),
+        microsoft365: microsoft365,
+        microsoft365Calendar: microsoft365Sync
     )
 
     return CoreFixture(
@@ -639,6 +654,7 @@ public func makeCoreFixture(
         intelligence: intelligence,
         modelManager: modelManager,
         fakeLLMRunner: fakeLLMRunner,
-        fakeModelProvider: fakeModelProvider
+        fakeModelProvider: fakeModelProvider,
+        microsoft365Calendar: microsoft365Sync
     )
 }

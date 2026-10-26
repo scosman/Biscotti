@@ -85,12 +85,27 @@ public struct HomeView: View {
 private struct HomeUpcomingSection: View {
     let viewModel: HomeViewModel
 
+    static let microsoft365ReconnectMessage = "Your Microsoft 365 sign-in has expired."
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HomeSharedViews.groupLabel("UPCOMING")
                 .padding(.bottom, Tokens.groupToCardGap)
 
-            if viewModel.showConnectCalendar {
+            if viewModel.microsoft365NeedsReconnect {
+                Banner(
+                    Self.microsoft365ReconnectMessage,
+                    style: .warning,
+                    actionLabel: "Reconnect\u{2026}"
+                ) {
+                    Task { await viewModel.connectMicrosoft365() }
+                }
+                .padding(.bottom, Tokens.groupToCardGap)
+            }
+
+            if viewModel.showConnectMicrosoft365 {
+                connectMicrosoft365Card
+            } else if viewModel.showConnectCalendar {
                 connectCalendarCard
             } else if viewModel.showNoUpcoming {
                 noUpcomingCard
@@ -110,6 +125,25 @@ private struct HomeUpcomingSection: View {
                 Task { await viewModel.requestCalendarAccess() }
             }
             .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Tokens.spacingLG)
+        .homeCard()
+    }
+
+    /// Synderys fork (o365_calendar): replaces the Apple Calendar card when
+    /// a Microsoft 365 registration is configured.
+    private var connectMicrosoft365Card: some View {
+        VStack(spacing: Tokens.spacingSM) {
+            Text("Connect Microsoft 365 to see upcoming meetings")
+                .font(Tokens.metaText)
+                .foregroundStyle(.inkSecondary)
+
+            Button("Connect Microsoft 365\u{2026}") {
+                Task { await viewModel.connectMicrosoft365() }
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.microsoft365SigningIn)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Tokens.spacingLG)

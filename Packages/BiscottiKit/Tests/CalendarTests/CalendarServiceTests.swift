@@ -1191,3 +1191,80 @@ private final class CallCountProvider: EventStoreProviding, @unchecked Sendable 
         nil
     }
 }
+
+// MARK: - Provider change tests (Synderys fork, o365_calendar Phase 3)
+
+/// A provider (like Microsoft 365) whose authorization and events change
+/// without `requestAccess()`.
+@Suite("CalendarService — provider changes")
+struct ProviderChangeTests {
+    @Test("refreshUpcoming picks up the provider's authorization")
+    @MainActor
+    func refreshUpcomingUpdatesAuth() async throws {
+        let provider = SwitchableProvider()
+        let service = try CalendarService(store: makeStore(), catalog: BundledMeetingCatalog(), provider: provider)
+        #expect(service.auth == .notDetermined)
+
+        provider.update(auth: .authorized, events: [makeDTO(attendeeCount: 3)])
+        await service.refreshUpcoming(window: DateInterval(start: now.addingTimeInterval(-60), duration: 7200))
+
+        #expect(service.auth == .authorized)
+        #expect(service.upcoming.count == 1)
+    }
+
+    @Test("calendarProviderDidChange refreshes upcoming")
+    @MainActor
+    func providerChangeRefreshes() async throws {
+        let provider = SwitchableProvider()
+        let service = try CalendarService(store: makeStore(), catalog: BundledMeetingCatalog(), provider: provider)
+        service.startObserving()
+
+        let startDate = Date()
+        provider.update(
+            auth: .authorized,
+            events: [makeDTO(occurrenceDate: startDate, startDate: startDate, endDate: startDate.addingTimeInterval(3600), attendeeCount: 3)]
+        )
+        NotificationCenter.default.post(name: .calendarProviderDidChange, object: nil)
+
+        // Iteration-bound like the EKEventStoreChanged test above.
+        for _ in 0 ..< 200 {
+            if service.auth == .authorized, !service.upcoming.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(service.auth == .authorized)
+        #expect(service.upcoming.count == 1)
+    }
+}
+
+private final class SwitchableProvider: EventStoreProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var auth = CalendarAuthStatus.notDetermined
+    private var events: [EKEventDTO] = []
+
+    func update(auth: CalendarAuthStatus, events: [EKEventDTO]) {
+        lock.withLock {
+            self.auth = auth
+            self.events = events
+        }
+    }
+
+    func authorizationStatus() -> CalendarAuthStatus {
+        lock.withLock { auth }
+    }
+
+    func requestAccess() async throws -> Bool {
+        authorizationStatus() == .authorized
+    }
+
+    func calendars() -> [CalendarInfo] {
+        []
+    }
+
+    func events(in _: DateInterval, calendars _: [String]?) -> [EKEventDTO] {
+        lock.withLock { events }
+    }
+
+    func refreshEvent(eventIdentifier _: String, occurrenceStart _: Date) -> EKEventDTO? {
+        nil
+    }
+}

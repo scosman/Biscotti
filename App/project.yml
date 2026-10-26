@@ -18,7 +18,7 @@ settings:
     OTHER_SWIFT_FLAGS: "$(inherited) -warnings-as-errors"
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Developer ID Application"   # Developer ID for distribution; make build-app overrides to ad-hoc
-    DEVELOPMENT_TEAM: B5L5M4B62J                      # Stephen Cosman (Developer ID Application)
+    DEVELOPMENT_TEAM: 9Y6C5MKG87                      # DigitalMonks LLC (Synderys fork; upstream is B5L5M4B62J)
     INFOPLIST_KEY_CFBundleDisplayName: "Biscotti"
     ENABLE_HARDENED_RUNTIME: YES
 

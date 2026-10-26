@@ -2,6 +2,7 @@ import AudioCapture
 import Calendar
 import DataStore
 import Foundation
+import GraphAuth
 import Intelligence
 import MeetingCatalog
 import MeetingDetection
@@ -58,7 +59,7 @@ public extension AppCore {
 
         logger.info("AppCore.live: CalendarService init")
         let catalog = BundledMeetingCatalog()
-        let calendar = CalendarService(store: store, catalog: catalog)
+        let calendar = buildCalendar(store: store, catalog: catalog)
 
         logger.info("AppCore.live: MeetingDetector init")
         let detector = MeetingDetector(catalog: catalog)
@@ -79,14 +80,50 @@ public extension AppCore {
             permissions: permissions,
             recording: recording,
             transcription: transcription,
-            calendar: calendar,
+            calendar: calendar.service,
             detector: detector,
             notifications: notifications,
             intelligence: intelligence,
-            modelManager: modelManager
+            modelManager: modelManager,
+            microsoft365: calendar.microsoft365,
+            microsoft365Calendar: calendar.microsoft365Calendar
         )
         logger.info("AppCore.live: done")
         return core
+    }
+
+    /// What `buildCalendar` returns: the calendar service, the Microsoft 365
+    /// account, and the account's calendar sync when a registration is
+    /// configured.
+    private struct LiveCalendar {
+        let service: CalendarService
+        let microsoft365: GraphAccountController
+        let microsoft365Calendar: Microsoft365CalendarSync?
+    }
+
+    /// Builds the live `CalendarService` and the Microsoft 365 account.
+    /// Synderys fork: with an Entra app registration, Microsoft 365
+    /// replaces EventKit as the calendar source. Extracted to keep
+    /// `live(storageRoot:…)` under the function body length lint limit.
+    @MainActor
+    private static func buildCalendar(
+        store: DataStore,
+        catalog: BundledMeetingCatalog
+    ) -> LiveCalendar {
+        let microsoft365 = GraphAccountController.live()
+        let microsoft365Calendar = microsoft365.isConfigured
+            ? Microsoft365CalendarSync(account: microsoft365, dataStore: store, catalog: catalog)
+            : nil
+        let provider: any EventStoreProviding = if let microsoft365Calendar {
+            microsoft365Calendar.store
+        } else {
+            LiveEventStore()
+        }
+        return LiveCalendar(
+            service: CalendarService(store: store, catalog: catalog, provider: provider),
+            microsoft365: microsoft365,
+            microsoft365Calendar: microsoft365Calendar
+        )
     }
 
     /// Builds the live `ModelManager` + `Intelligence` with real LocalLLM-backed

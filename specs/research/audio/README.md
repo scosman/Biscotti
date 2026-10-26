@@ -291,6 +291,21 @@ let encoderSettings: [String: Any] = [
 **Sources:**
 - [AudioCap AudioRecordingPermission.swift](https://github.com/insidegui/AudioCap/blob/main/AudioCap/ProcessTap/AudioRecordingPermission.swift)
 
+#### 6f. Notification and app sounds in the global tap
+
+**Symptom**: The global tap records every sound the Mac makes, so Outlook's new-mail bing, notification sounds and music land in the system track.
+
+**Findings** (measured on macOS 26.6.2, 2026-10-26, with side-by-side mono global taps metering a quiet 19 kHz tone):
+- **Notification sounds for every app are played by `systemsoundserverd`** (Core Audio reports that literal string as its bundle ID), not by the app: Notification Center hands them over. `AudioServicesPlaySystemSound` goes through the same daemon. Excluding `systemsoundserverd` removes all of them.
+- **Classic Outlook and Apple Mail hand their new-mail sounds to `systemsoundserverd` too.** The daemon logs `Incoming Request … inClientPID <pid>(Microsoft Outloo)` / `(Mail)` and its process object goes to running-output; the mail client's own process plays nothing, even though Outlook bundles `newmail.wav`.
+- **A process has no Core Audio process object until it first plays audio**, so an app that only makes sound mid-meeting usually has none when recording starts.
+- **`CATapDescription.bundleIDs` (macOS 26) excludes apps that start making sound after the tap is created**, from their first sample. On readback the description's `processes` already lists the resolved object IDs and `exclusive` is true.
+- **Excluding process object IDs (`monoGlobalTapButExcludeProcesses:`) only covers processes that exist when the tap is created.** A player started afterwards leaked into the tap at full level.
+- **A running tap refuses a new description.** Setting `kAudioTapPropertyDescription` on an existing tap fails with `'!hog'` (`kAudioDevicePermissionsError`) in every variant tried, even though `AudioObjectIsPropertySettable` says it is settable. Before macOS 26 a newly sounding app can only be excluded by rebuilding the tap.
+- **Unexplained**: in these probes `AudioDeviceStart` on the tap's aggregate sometimes returned `'nope'` (`kAudioHardwareIllegalOperationError`), yet the IOProc still delivered frames. It was not tied to `bundleIDs`. Production throws on a nonzero start status, so watch for it in hardware validation.
+
+**Mitigation** (built in `AudioCapture`, `SystemAudioExclusions`): the system tap excludes a fixed list of bundle IDs (`systemsoundserverd`, mail clients, music players), by `bundleIDs` on macOS 26 and by the running processes' object IDs before that (taken at each start and reconnect). Meeting apps and Biscotti itself are never excluded; the permission probe's tone plays from Biscotti's own process. Validated in the app on macOS 26.6.2 (2026-10-26, recording `ECE1FBEC`): the same Glass sound played from a plain process matched in `system.aac` at NCC 0.98, while its `systemsoundserverd` copy, Mail's new-mail ding and Outlook's bing left the track at digital silence (−180 dBFS; Outlook's `newmail.wav` best NCC 0.07). Do Not Disturb has no public API to turn on and wouldn't stop sounds an app plays itself.
+
 ---
 
 ### 7. CPU/memory/NPU cost

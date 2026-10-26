@@ -247,13 +247,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     // MARK: - Setup
 
     private func createTapAndAggregate() throws {
-        // Mono mixdown global tap — the tap itself mixes all system audio
-        // to a single channel, so the IOProc gets a clean mono feed
-        // regardless of the output device's speaker topology.
-        let tapDesc = CATapDescription(monoGlobalTapButExcludeProcesses: [])
-        tapDesc.name = "biscotti-system-tap"
-        tapDesc.muteBehavior = .unmuted
-        tapDesc.isPrivate = true
+        let tapDesc = Self.makeTapDescription()
 
         var tapID: AudioObjectID = kAudioObjectUnknown
         var status = AudioHardwareCreateProcessTap(tapDesc, &tapID)
@@ -565,6 +559,37 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 // MARK: - Tap / Aggregate Helpers + Audio File Setup
 
 extension LiveSystemCaptureEngine {
+    /// Mono mixdown global tap — the tap itself mixes all system audio to a
+    /// single channel, so the IOProc gets a clean mono feed regardless of the
+    /// output device's speaker topology — minus `SystemAudioExclusions`.
+    ///
+    /// On macOS 26 the exclusions go in by bundle ID, which also covers apps
+    /// that start making sound after the tap exists: a process has no Core
+    /// Audio process object until it first plays audio. Before macOS 26 a tap
+    /// can only exclude process objects that already exist, and a running tap
+    /// refuses a new description (`'!hog'`), so an app that first makes sound
+    /// mid-recording is only excluded from the next start or reconnect.
+    private static func makeTapDescription() -> CATapDescription {
+        let tapDesc: CATapDescription
+        if #available(macOS 26.0, *) {
+            tapDesc = CATapDescription(monoGlobalTapButExcludeProcesses: [])
+            tapDesc.bundleIDs = SystemAudioExclusions.bundleIDs
+            let excluded = SystemAudioExclusions.bundleIDs.joined(separator: ", ")
+            logger.notice("System tap excludes bundle IDs: \(excluded, privacy: .public)")
+        } else {
+            let processes = SystemAudioExclusions.processes(in: CoreAudioHelpers.allAudioProcesses())
+            tapDesc = CATapDescription(monoGlobalTapButExcludeProcesses: processes.map(\.id))
+            let excluded = processes.map { "\($0.bundleID ?? "?") (\($0.id))" }.joined(separator: ", ")
+            logger.notice(
+                "System tap excludes \(processes.count, privacy: .public) running process(es): \(excluded, privacy: .public)"
+            )
+        }
+        tapDesc.name = "biscotti-system-tap"
+        tapDesc.muteBehavior = .unmuted
+        tapDesc.isPrivate = true
+        return tapDesc
+    }
+
     /// Queries the tap's UID string from kAudioTapPropertyUID.
     private func queryTapUID() throws -> CFString {
         var address = AudioObjectPropertyAddress(

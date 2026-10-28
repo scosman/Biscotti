@@ -1,4 +1,5 @@
 import AudioToolbox
+import AVFoundation
 import Foundation
 import os
 
@@ -44,17 +45,19 @@ final class SystemGapFillWriter: @unchecked Sendable {
     ///     (from `AudioConvertHostTimeToNanos`).
     ///   - bufferFrameCount: number of frames in this buffer (at the
     ///     tap's native rate, not a resampled count).
-    ///   - channelCount: channel count of this buffer.
-    ///   - sampleRate: the tap's sample rate (Hz). Silence is written
-    ///     at this rate (the ExtAudioFile client format).
+    ///   - bufferSampleRate: the tap's sample rate (Hz) for this buffer.
+    ///     With `bufferFrameCount`, it gives the buffer's duration.
+    ///   - clientFormat: the file's interleaved client format. Silence is
+    ///     written in it.
     ///   - file: ExtAudioFile to write silence into.
-    /// - Returns: number of silence frames written (0 if no gap).
+    /// - Returns: number of silence frames written, in `clientFormat`
+    ///   (0 if no gap).
     @discardableResult
     func processBuffer(
         hostTimeNanos: UInt64,
         bufferFrameCount: UInt32,
-        channelCount: UInt32,
-        sampleRate: Double,
+        bufferSampleRate: Double,
+        clientFormat: AVAudioFormat,
         file: ExtAudioFileRef
     ) -> Int {
         var filledFrames = 0
@@ -63,8 +66,7 @@ final class SystemGapFillWriter: @unchecked Sendable {
             filledFrames = writeSilenceForGap(
                 expected: expectedNextHostNanos,
                 actual: hostTimeNanos,
-                channelCount: channelCount,
-                sampleRate: sampleRate,
+                clientFormat: clientFormat,
                 file: file
             )
         }
@@ -74,7 +76,7 @@ final class SystemGapFillWriter: @unchecked Sendable {
         // does not cause re-insertion on the next call.
         if hostTimeNanos > 0 {
             let durationNanos = UInt64(
-                Double(bufferFrameCount) / sampleRate * 1_000_000_000
+                Double(bufferFrameCount) / bufferSampleRate * 1_000_000_000
             )
             expectedNextHostNanos = hostTimeNanos + durationNanos
         }
@@ -91,17 +93,19 @@ final class SystemGapFillWriter: @unchecked Sendable {
 
     // MARK: - Silence writing
 
+    /// Writes client-format silence for the time from `expected` to
+    /// `actual`, in `chunkFrames` chunks. Returns the gap's frame count
+    /// (0 below the jitter threshold); a failed write lands in `writeError`.
     private func writeSilenceForGap(
         expected: UInt64,
         actual: UInt64,
-        channelCount: UInt32,
-        sampleRate: Double,
+        clientFormat: AVAudioFormat,
         file: ExtAudioFileRef
     ) -> Int {
         var framesRemaining = gapSilenceFrameCount(
             expectedNextHostNanos: expected,
             actualHostNanos: actual,
-            sampleRate: sampleRate
+            sampleRate: clientFormat.sampleRate
         )
         guard framesRemaining > 0 else { return 0 }
 
@@ -111,6 +115,7 @@ final class SystemGapFillWriter: @unchecked Sendable {
             "System gap fill: \(gapSeconds, privacy: .public)s (\(totalFrames, privacy: .public) frames)"
         )
 
+        let channelCount = clientFormat.channelCount
         let channels = Int(max(channelCount, 1))
         let chunk = Self.chunkFrames
         ensureSilenceCapacity(channels: channels, chunkFrames: chunk)

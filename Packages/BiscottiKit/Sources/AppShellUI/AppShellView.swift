@@ -98,9 +98,7 @@ public struct AppShellView: View {
         .searchFocused($searchFieldFocused)
         .toolbar {
             homeToolbarItem
-            ToolbarItem(placement: .primaryAction) {
-                recordButton
-            }
+            recordToolbarItem
         }
         .onChange(of: viewModel.searchFocusToken) { _, _ in
             searchFieldFocused = true
@@ -275,6 +273,23 @@ private extension AppShellView {
             }
             .help("Home")
             .disabled(viewModel.isHome)
+        }
+    }
+
+    /// Wraps `recordButton` in a `ToolbarItem`. On macOS 26+, hides the
+    /// shared (Liquid Glass) background so the custom sage/red fill renders
+    /// without extra system-drawn edges.
+    @ToolbarContentBuilder
+    var recordToolbarItem: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .primaryAction) {
+                recordButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                recordButton
+            }
         }
     }
 

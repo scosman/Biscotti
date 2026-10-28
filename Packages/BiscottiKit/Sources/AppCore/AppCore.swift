@@ -157,6 +157,7 @@ public struct AutoStopState: Sendable, Equatable {
 /// auto-association, detection -> notification -> record flow,
 /// calendar-start timers, auto-stop countdown).
 @MainActor @Observable
+// swiftlint:disable:next type_body_length
 public final class AppCore {
     // MARK: - Published state
 
@@ -295,6 +296,9 @@ public final class AppCore {
     /// Only starts when the user enables it in Settings.
     public let mcpServer: MCPServerController
 
+    /// Injectable environment for the send-to-app feature (Obsidian, Bear, Notes).
+    public let sendEnvironment: SendEnvironment
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -380,7 +384,8 @@ public final class AppCore {
         modelManager: ModelManager,
         scheduler: any AppScheduler = LiveAppScheduler(),
         updateChecker: UpdateChecker? = nil,
-        mcpServer: MCPServerController? = nil
+        mcpServer: MCPServerController? = nil,
+        sendEnvironment: SendEnvironment = .live
     ) {
         self.store = store
         self.permissions = permissions
@@ -394,6 +399,7 @@ public final class AppCore {
         self.scheduler = scheduler
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
+        self.sendEnvironment = sendEnvironment
     }
 
     // MARK: - Lifecycle

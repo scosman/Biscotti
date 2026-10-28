@@ -2,6 +2,7 @@ import AppCore
 import AppKit
 import DataStore
 import DesignSystem
+import ImportExport
 import Intelligence
 import MarkdownEditorUI
 import SummaryPromptUI
@@ -226,6 +227,18 @@ public struct MeetingDetailView: View {
                 )
             }
         #endif
+            .alert(
+                sendAlertTitle,
+                isPresented: Binding(
+                    get: { viewModel.sendAlert != nil },
+                    set: { if !$0 { viewModel.sendAlert = nil } }
+                ),
+                presenting: viewModel.sendAlert
+            ) { alert in
+                sendAlertActions(alert)
+            } message: { alert in
+                sendAlertMessage(alert)
+            }
     }
 
     // MARK: - Loaded content
@@ -329,6 +342,59 @@ public struct MeetingDetailView: View {
             + 1 // divider pixel height
             + Self.transportSpacing // gap between content and transport bar
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
+    }
+}
+
+// MARK: - Send alert helpers
+
+private extension MeetingDetailView {
+    var sendAlertTitle: String {
+        switch viewModel.sendAlert {
+        case let .alreadySent(destination, _, _):
+            "Already sent to \(destination.displayName)"
+        case let .tooLarge(destination):
+            "Too large for \(destination.displayName)"
+        case nil:
+            ""
+        }
+    }
+
+    @ViewBuilder
+    func sendAlertActions(_ alert: SendAlert) -> some View {
+        switch alert {
+        case let .alreadySent(destination, _, _):
+            Button("Open \(destination.displayName)") {
+                viewModel.openApp(destination)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Send Again") {
+                Task { await viewModel.sendAgain(destination) }
+            }
+            Button("Cancel", role: .cancel) {}
+        case .tooLarge:
+            Button("OK") {}
+                .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    @ViewBuilder
+    func sendAlertMessage(_ alert: SendAlert) -> some View {
+        switch alert {
+        case let .alreadySent(destination, sentAt, changed):
+            if changed {
+                Text(
+                    "This meeting was sent to \(destination.displayName) on \(sentAt.formatted(date: .abbreviated, time: .omitted)) and has changed since."
+                )
+            } else {
+                Text(
+                    "This meeting was sent to \(destination.displayName) on \(sentAt.formatted(date: .abbreviated, time: .omitted))."
+                )
+            }
+        case let .tooLarge(destination):
+            Text(
+                "This note is too large to send to \(destination.displayName) directly. It\u{2019}s been copied to your clipboard. Paste it into a new note in \(destination.displayName)."
+            )
+        }
     }
 }
 
@@ -525,6 +591,17 @@ private extension MeetingDetailView {
                 .disabled(viewModel.isEnhancing)
             }
 
+            if !viewModel.sendDestinations.isEmpty {
+                Menu("Send to") {
+                    ForEach(viewModel.sendDestinations, id: \.self) { dest in
+                        Button(dest.displayName) {
+                            Task { await viewModel.sendTapped(dest) }
+                        }
+                        .disabled(!viewModel.canSend)
+                    }
+                }
+            }
+
             Divider()
 
             if viewModel.hasCalendarContext {
@@ -606,7 +683,7 @@ private extension MeetingDetailView {
     }
 
     var tabBar: some View {
-        HStack {
+        HStack(spacing: 12) {
             Picker("", selection: $viewModel.selectedTab) {
                 ForEach(MeetingDetailViewModel.Tab.allCases, id: \.self) { option in
                     Text(option.rawValue).tag(option)
@@ -619,6 +696,15 @@ private extension MeetingDetailView {
 
             if viewModel.selectedTab == .transcript, viewModel.versions.count > 1 {
                 versionPicker
+            }
+
+            ForEach(viewModel.sendDestinations, id: \.self) { destination in
+                SendToButton(
+                    destination: destination,
+                    enabled: viewModel.canSend
+                ) {
+                    Task { await viewModel.sendTapped(destination) }
+                }
             }
 
             Button {
@@ -638,16 +724,18 @@ private extension MeetingDetailView {
                     didCopy = false
                 }
             } label: {
-                Label(
-                    didCopy ? "Copied" : "Copy",
-                    systemImage: didCopy ? "checkmark" : "doc.on.doc"
-                )
+                HStack(spacing: 3) {
+                    Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                    Text(didCopy ? "Copied" : "Copy")
+                }
                 .transaction { $0.animation = nil }
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
             .foregroundStyle(didCopy ? .sage : .inkSecondary)
             .disabled(!canCopy)
+            .help("Copy to Clipboard")
+            .accessibilityLabel(didCopy ? "Copied" : "Copy")
         }
     }
 

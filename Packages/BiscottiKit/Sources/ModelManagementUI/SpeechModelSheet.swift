@@ -208,6 +208,8 @@ struct SpeechEngineRowView: View {
                     Text(trait.text)
                         .font(.system(size: 12.5))
                         .foregroundStyle(trait.isPro ? .ink : .inkSecondary)
+                        .fixedSize()
+                        .layoutPriority(1)
 
                     localePicker
                 }
@@ -231,7 +233,6 @@ struct SpeechEngineRowView: View {
         .pickerStyle(.menu)
         .controlSize(.small)
         .labelsHidden()
-        .fixedSize()
     }
 
     // MARK: - Progress content

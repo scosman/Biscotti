@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Passive Capture (AudioCapture + CaptureFiles)

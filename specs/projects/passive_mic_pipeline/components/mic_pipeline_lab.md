@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Mic Pipeline Lab (ManualTestApp)

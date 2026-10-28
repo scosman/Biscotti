@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Test-Signal Kit and Metrics (`AudioProcessingTestSupport`)

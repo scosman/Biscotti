@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: Echo Cancellation Engines, Packaging and Bake-off

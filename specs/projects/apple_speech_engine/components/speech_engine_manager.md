@@ -200,3 +200,23 @@ public extension SpeechEngineManager {
 | `ReTranscribeOfferTests` (MeetingDetailUI): not offered when target apple even with vocab on | §7.1 |
 | `SettingsVocabularyEngineTests`: displayed off when apple + stored on; on-request while apple → alert, no write; switch to Whisper (ready → choose; not ready → download) + stored on; message variants | §7.2–7.3 |
 | `DataStore` settings round-trip for the two new fields | §4.1 |
+
+## Re-transcribe engine override (amendment, Phase 6)
+
+Functional spec §12, architecture A13–A15.
+
+```swift
+// TranscriptionService
+public func reTranscribe(meetingID: UUID, config: TranscriptionConfig? = nil) async
+private func runJob(meetingID: UUID, configOverride: TranscriptionConfig? = nil) async
+private func executeJob(meetingID: UUID, configOverride: TranscriptionConfig?) async
+```
+
+- `executeJob`: `let config = configOverride ?? engines?.jobConfig() ?? .whisper()`. Components: with an override, `config.engine == .apple ? [.speakerID] : .all`; without, `engines?.jobComponents() ?? .all` (unchanged). Vocabulary: unchanged line `config.engine == .apple ? [] : await vocabulary.effectiveVocabulary(meetingID:)` — so it follows the job's engine.
+- First transcriptions (`Transcribe now`, the automatic job after recording) never pass an override.
+- The override is never written to settings. `engines.refresh()` after the job is unchanged.
+- `SpeechEngineManager`: no new API. Callers build the Apple config with `TranscriptionConfig.apple(locale: engines.appleLocale)`.
+
+| Suite / test | Verifies |
+|---|---|
+| `TranscriptionServiceOverrideTests`: Whisper override with target Apple → config whisper, components `.all`, vocab from service (stored on), stored `vocabularyUsed`; Apple override with target Whisper → config apple(saved locale), components `[.speakerID]`, vocab `[]`; nil override = target (regression); selection and locale unchanged after an override job | §12.1, A13–A14 |

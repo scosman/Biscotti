@@ -954,6 +954,45 @@ public extension MeetingDetailViewModel {
     }
 }
 
+// MARK: - Re-transcribe engine submenu
+
+public extension MeetingDetailViewModel {
+    /// The engine that produced the newest transcript version.
+    /// Empty or unknown method IDs map to `.whisper` (pre-Apple transcripts).
+    /// Returns nil when no versions exist.
+    var currentTranscriptEngine: SpeechEngine? {
+        guard let newest = versions.first else { return nil }
+        // Mirrors TranscriptionMethod.engine: apple-prefixed IDs are Apple
+        return newest.methodId.hasPrefix("apple") ? .apple : .whisper
+    }
+
+    /// Menu items for the Re-transcribe engine submenu.
+    var reTranscribeMenuItems: [ReTranscribeMenuItem] {
+        ReTranscribeMenuBuilder.items(
+            appleAvailability: core.speechEngines.appleAvailability,
+            apple: core.speechEngines.apple,
+            whisper: core.speechEngines.whisper,
+            currentEngine: currentTranscriptEngine
+        )
+    }
+
+    /// Re-transcribes this meeting with a specific engine (one-off override).
+    /// Does not change the user's engine selection.
+    func reTranscribe(with engine: SpeechEngine) async {
+        let config: TranscriptionConfig = switch engine {
+        case .apple:
+            .apple(locale: core.speechEngines.appleLocale)
+        case .whisper:
+            .whisper()
+        }
+        await core.transcription.reTranscribe(
+            meetingID: meetingID, config: config
+        )
+        await load()
+        await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+    }
+}
+
 // MARK: - Transcription & association actions
 
 public extension MeetingDetailViewModel {

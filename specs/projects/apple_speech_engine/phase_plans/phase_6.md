@@ -2,24 +2,26 @@
 status: complete
 ---
 
-# Phase 6: Docs + Final Pass
+# Phase 6: Re-transcribe With a Chosen Model
 
 ## Overview
 
-Update the four documentation targets listed in architecture.md section 8. Verify that all `tx_*` manual-test steps exist in the results file and are marked `not-run`, ready for the human's on-hardware pass on macOS 26/27 and macOS 15.
+Add a per-engine re-transcribe option to the meeting detail overflow menu. The user can re-transcribe a single meeting with a specific engine (Apple or Whisper) without changing their default engine selection. The job's engine determines its components and vocabulary, not the target.
 
 ## Steps
 
-1. **`specs/projects/initial_implementation/architecture.md`** -- update the Transcription package card (component 2) to mention two engines (Whisper + Apple Speech via `SpeechTranscriber`), the `SpeechEngine`/`ModelComponent` split, and the app-side `AppleSpeechSupport` API. Add a note that Apple code compiles on macOS 15 (26 SDK) behind `#if canImport(Speech)` + `@available`.
+1. **`TranscriptionService` override** -- add `reTranscribe(meetingID:config:)` with an optional `TranscriptionConfig`. `runJob` and `executeJob` gain a `configOverride` parameter. When present, the override supplies config, components, and vocabulary rules instead of the manager's `jobConfig()`.
 
-2. **`specs/research/stt-engine-swap/summary.md`** -- add a "Decision Outcome" section after "Implications" recording that the user chose the dual-engine path (Apple Speech + Whisper), not the FluidAudio single-engine swap. Reference the `apple_speech_engine` spec project.
+2. **`ReTranscribeMenuItem` and `ReTranscribeMenuBuilder`** -- new file `Packages/BiscottiKit/Sources/MeetingDetailUI/ReTranscribeMenuBuilder.swift`. Pure model: `ReTranscribeMenuItem` (engine, title, isEnabled) and a static builder that maps engine states + current engine into two items (Apple, Whisper) with reason text per functional spec section 12.2.
 
-3. **`CLAUDE.md`** -- update the current-stage paragraph to mention the `apple_speech_engine` spec project (Apple Speech as a second STT engine, engine selection, Speech to Text Model sheet, onboarding 3-row model card). Add an entry in the "Process & planning records" section for `specs/projects/apple_speech_engine/`.
+3. **`MeetingDetailViewModel` additions** -- add `currentTranscriptEngine` (derived from newest version's methodId), `reTranscribeMenuItems` (builder over `core.speechEngines` state), and `reTranscribe(with:)` (builds config from engine, calls the override, runs auto-enhancements).
 
-4. **`experiments/STTLab/NOTES.md`** -- add a "Graduated" section noting that the Apple Speech engine path validated by STTLab has been productionized into `Packages/Transcription` (the `AppleSpeech/` directory) by the `apple_speech_engine` spec project. The experiment's `AppleWordGrouping` logic now lives in `Packages/Transcription/Sources/Transcription/AppleSpeech/AppleWordGrouping.swift`.
+4. **`MeetingDetailView` overflow menu** -- replace the single Re-transcribe `Button` with a nested `Menu` containing engine items per ui_design section 7.
 
-5. **Verify manual-test readiness** -- confirm all `tx_*` entries in `ManualTestApp/Results/manual_test_results.json` are present and `not-run`. The steps are: `tx_apple_status`, `tx_apple_install`, `tx_apple_transcribe`, `tx_apple_no_prompt`, `tx_apple_output_ok`, `tx_ai_test_passed`, `tx_clear_cache`, `tx_model_disk`, `tx_model_download`.
+5. **Tests** -- `TranscriptionServiceOverrideTests`, `ReTranscribeMenuBuilderTests`, `MeetingDetailReTranscribeEngineTests`.
 
 ## Tests
 
-- No new tests (docs-only phase). Existing tests must still pass.
+- `TranscriptionServiceOverrideTests`: Whisper override with Apple target sends whisper config + .all components + vocab; Apple override with Whisper target sends apple config + .speakerID + empty vocab; nil override uses target; selection unchanged after override job.
+- `ReTranscribeMenuBuilderTests`: each disabled-reason row; current marker; order Apple then Whisper; macOS 15 Apple disabled; empty methodId maps to whisper current.
+- `MeetingDetailReTranscribeEngineTests`: `reTranscribe(with: .apple)` passes apple config with saved locale; `.whisper` passes whisper config; `currentTranscriptEngine` from methodId; empty/nil methodId maps to whisper; no versions returns nil.

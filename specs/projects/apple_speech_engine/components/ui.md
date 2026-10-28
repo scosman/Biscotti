@@ -186,3 +186,39 @@ Only the two questions and the three actions are recordable; mark all `tx_*` `no
 | `OnboardingFooterButtonTests` (extend): Continue requires all three started | §4.1 |
 | `OnboardingViewModelTests` (extend): Continue persists target when unset; Skip doesn't; See-all link hidden when Apple unavailable | §4.2 |
 | `ManualTestKit` script tests: new step ids present; recordable ids exclude instruction steps | §5 |
+
+## 6. Meeting Detail Re-transcribe Submenu (amendment, Phase 6, `MeetingDetailUI`)
+
+Functional spec §12, ui_design §7, architecture A16.
+
+```swift
+struct ReTranscribeMenuItem: Equatable, Identifiable {
+    let engine: SpeechEngine
+    let title: String          // e.g. "Apple Speech (current transcription)", "Whisper (not downloaded)"
+    let isEnabled: Bool
+    var id: SpeechEngine { engine }
+}
+
+enum ReTranscribeMenuBuilder {
+    /// Pure. Order: Apple, Whisper. Reason text replaces the current marker when disabled.
+    static func items(
+        appleAvailability: AppleSpeechAvailability,
+        apple: EngineDownloadState,
+        whisper: EngineDownloadState,
+        currentEngine: SpeechEngine?
+    ) -> [ReTranscribeMenuItem]
+}
+```
+
+`MeetingDetailViewModel` additions:
+- `var currentTranscriptEngine: SpeechEngine?` — newest `versions` entry's `methodId` → `TranscriptionMethod(id:).engine`; nil when there are no versions.
+- `var reTranscribeMenuItems: [ReTranscribeMenuItem]` — builder over `core.speechEngines` state.
+- `func reTranscribe(with engine: SpeechEngine) async` — builds `.apple(locale: core.speechEngines.appleLocale)` or `.whisper()`, calls `core.transcription.reTranscribe(meetingID:config:)`, then `load()` and `core.intelligence.runAutoEnhancements(meetingID:)` (same tail as `reTranscribe()`).
+- `reTranscribe()` (no engine) stays for Transcribe now and the post-correction offer.
+
+`MeetingDetailView.overflowMenu`: inside the existing `if viewModel.canReTranscribe`, replace the Re-transcribe `Button` with `Menu { ForEach(viewModel.reTranscribeMenuItems) { Button(item.title) { Task { await viewModel.reTranscribe(with: item.engine) } }.disabled(!item.isEnabled) } } label: { Label("Re-transcribe", systemImage: "arrow.triangle.2.circlepath") }`. The menu reads observable manager state, so text is current each time it opens.
+
+| Suite / test | Verifies |
+|---|---|
+| `ReTranscribeMenuBuilderTests`: every row of the functional spec §12.2 table; current marker on Apple / Whisper / none; reason replaces marker; order Apple then Whisper; macOS 15 → Apple disabled "(requires macOS 26)", Whisper enabled | §12.2 |
+| `MeetingDetailReTranscribeEngineTests`: `reTranscribe(with: .apple)` passes apple(saved locale); `.whisper` passes whisper; selection unchanged; `currentTranscriptEngine` from newest version, empty id → whisper, no versions → nil; Transcribe now path passes no override | §12.1, §12.3 |

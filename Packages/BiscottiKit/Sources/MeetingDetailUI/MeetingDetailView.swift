@@ -503,8 +503,17 @@ private extension MeetingDetailView {
             }
 
             if viewModel.canReTranscribe {
-                Button {
-                    Task { await viewModel.reTranscribe() }
+                Menu {
+                    ForEach(viewModel.reTranscribeMenuItems) { item in
+                        Button(item.title) {
+                            Task {
+                                await viewModel.reTranscribe(
+                                    with: item.engine
+                                )
+                            }
+                        }
+                        .disabled(!item.isEnabled)
+                    }
                 } label: {
                     Label(
                         "Re-transcribe",

@@ -87,11 +87,17 @@ public final class TranscriptionService {
     /// Re-transcribes a meeting from its stored audio files, adding a new
     /// transcript version and promoting it.
     ///
-    /// MVP: identical to `transcribe` -- both run the same resolve-download-
-    /// transcribe-persist pipeline. Later phases may add custom vocabulary from
-    /// the previous transcript, different model selection, or partial re-runs.
-    public func reTranscribe(meetingID: UUID) async {
-        await runJob(meetingID: meetingID)
+    /// - Parameters:
+    ///   - meetingID: The meeting to re-transcribe.
+    ///   - config: Optional per-job engine override. When non-nil the job uses
+    ///     this config (and derives components/vocabulary from it) instead of
+    ///     the target from `SpeechEngineManager`. Does not write the engine
+    ///     selection. When nil, uses the current target (same as `transcribe`).
+    public func reTranscribe(
+        meetingID: UUID,
+        config: TranscriptionConfig? = nil
+    ) async {
+        await runJob(meetingID: meetingID, configOverride: config)
     }
 
     // MARK: - Model readiness (for onboarding)
@@ -117,7 +123,10 @@ public final class TranscriptionService {
 
     // MARK: - Private
 
-    private func runJob(meetingID: UUID) async {
+    private func runJob(
+        meetingID: UUID,
+        configOverride: TranscriptionConfig? = nil
+    ) async {
         // Single in-flight guard
         guard inFlightMeetingID == nil else {
             jobs[meetingID] = .failed(
@@ -128,7 +137,7 @@ public final class TranscriptionService {
         }
 
         inFlightMeetingID = meetingID
-        await executeJob(meetingID: meetingID)
+        await executeJob(meetingID: meetingID, configOverride: configOverride)
         // Release the XPC worker so its process (and multi-GB model memory)
         // is freed promptly. The next transcription call will reconnect.
         //
@@ -159,10 +168,21 @@ public final class TranscriptionService {
     /// The inner work of a transcription job. Separated from `runJob` so
     /// the caller can deterministically `await engine.shutdown()` after
     /// completion on every exit path (success, failure, or cancellation).
-    private func executeJob(meetingID: UUID) async {
+    ///
+    /// - Parameter configOverride: When non-nil, the job uses this config
+    ///   and derives components/vocabulary from its engine. When nil, uses
+    ///   the current target from `SpeechEngineManager`.
+    private func executeJob(
+        meetingID: UUID,
+        configOverride: TranscriptionConfig? = nil
+    ) async {
         // Capture config at job start (user changes during the job do not apply)
-        let config = engines?.jobConfig() ?? .whisper()
-        let components = engines?.jobComponents() ?? .all
+        let config = configOverride ?? engines?.jobConfig() ?? .whisper()
+        let components: Set<ModelComponent> = if configOverride != nil {
+            config.engine == .apple ? [.speakerID] : .all
+        } else {
+            engines?.jobComponents() ?? .all
+        }
 
         // Start with a generic "Transcribing..." status. Download-phase
         // subtitles are only surfaced after a delay (see downloadModels).

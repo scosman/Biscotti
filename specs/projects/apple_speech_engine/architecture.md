@@ -121,3 +121,24 @@ public enum AppleSpeechSupport { ... }     // availability, supported locales, a
 ## 8. Docs to Update (last phase)
 
 `specs/architecture.md` (Transcription responsibilities: two engines), `specs/research/stt-engine-swap/summary.md` (decision outcome), `CLAUDE.md` current-stage line, `experiments/STTLab/NOTES.md` (graduated pointer).
+
+## 9. Re-transcribe With a Chosen Model (amendment, Phase 6)
+
+Behavior: `functional_spec.md` §12; UI: `ui_design.md` §7. Detail: `components/speech_engine_manager.md` ("Re-transcribe engine override") and `components/ui.md` §6.
+
+**Decisions**
+- **A13 — Per-job engine override in `TranscriptionService`.** `reTranscribe(meetingID:config:)` gains an optional `TranscriptionConfig`. `nil` keeps today's behavior (the target from `SpeechEngineManager.jobConfig()`). With an override, the job uses that config, and derives components and vocabulary from the **override's** engine. No `Transcribing`, `Transcriber`, XPC or `Packages/Transcription` change: `processAudio` already takes a config.
+- **A14 — Vocabulary follows the job's engine.** `executeJob` already branches on `config.engine`; a Whisper override sends `vocabulary.effectiveVocabulary(meetingID:)` (stored preference), even when the target is Apple. The target-based display rules (A10) are unchanged.
+- **A15 — No data model change.** The "current transcription" marker reads `TranscriptVersionData.methodId` of the newest version → `TranscriptionMethod(id:).engine` (empty/unknown → `.whisper`).
+- **A16 — Menu model is a pure builder in `MeetingDetailUI`.** `ReTranscribeMenuBuilder` maps engine states + current engine to item text/enabled. It reads `SpeechEngineManager.isReady(_:)`, `appleAvailability`, `apple`, `whisper` (no new manager API).
+
+**Risks**
+
+| Risk | Answer |
+|---|---|
+| Nested SwiftUI `Menu` inside the overflow `Menu` renders badly on some macOS 15 builds. | The app already uses nested menus; check on macOS 15 in the final pass (Phase 7). |
+| The override is accidentally persisted. | The override path never calls `SpeechEngineManager` write methods; a test asserts the selection is unchanged after an override job. |
+| Vocabulary sent to a Whisper override while Settings shows vocab off (target Apple). | Intended (user decision); documented in functional spec §12.1. |
+| Old transcripts have an empty method id. | Empty → Whisper, which is correct for every pre-Apple transcript. |
+
+**Testing:** `TranscriptionServiceOverrideTests`, `ReTranscribeMenuBuilderTests`, `MeetingDetailReTranscribeEngineTests` (lists in the component docs). No Transcription-package or manual-test changes.

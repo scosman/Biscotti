@@ -199,3 +199,41 @@ Detail in `ui_design.md`.
 | D4 | Size caption from catalog bytes | Apple shows "System download" (no size API) | Required by platform |
 | D5 | Determinate progress | Whisper and Speaker ID indeterminate (no fraction from WhisperKit) | Confirmed by user |
 | D6 | Width 480 | Width 520 (trait grid) | From design |
+
+## 12. Re-transcribe With a Chosen Model (amendment, Phase 6)
+
+Added after the first build. It lets the user keep Apple as the default and re-transcribe a single meeting with Whisper (for example, a meeting that is not in the Apple language). Where this section conflicts with §4.3 ("Re-transcribe uses the current target engine and locale") or §7.1, this section wins **for the submenu only**.
+
+### 12.1 Behavior
+- In the meeting detail overflow menu, **Re-transcribe** becomes a submenu with one item per engine: Apple Speech, then Whisper. The submenu shows on **every OS**. On macOS 15, Apple shows as disabled with its reason (§12.2).
+- Selecting an item re-transcribes this meeting once with that engine. It is a **one-off**: it does not write the engine selection (§4.3), the Apple locale, or any other setting.
+- An Apple re-transcribe uses the saved Apple locale (§6.2 resolution).
+- A Whisper re-transcribe sends custom vocabulary when the stored preference is on, **even when the target is Apple**. Rule: the job's vocabulary follows the **job's** engine, not the target (Apple → none; Whisper → the normal effective list from the stored preference). Settings is unchanged: its toggle still shows the effective state for the target (§7.2).
+- An item is enabled only when its engine is ready (§2) and no job is in flight for this meeting (existing re-transcribe guard). An engine that is not ready is **disabled**. The submenu does not start downloads.
+- After the job: the new transcript version is saved and auto-enhancements run, the same as today's re-transcribe.
+
+### 12.2 Item text
+- Base names: "Apple Speech", "Whisper".
+- When the item's engine produced the meeting's newest transcript version (from the version's method id; an empty or unknown id counts as Whisper): append " (current transcription)".
+- When disabled, append the reason instead (a reason replaces the current marker):
+
+| Engine | Condition | Text |
+|---|---|---|
+| Apple | requires OS update (macOS 15) | "Apple Speech (requires macOS 26)" |
+| Apple | `SpeechTranscriber` unavailable | "Apple Speech (not available on this Mac)" |
+| Apple | assets not installed | "Apple Speech (not downloaded)" |
+| Apple / Whisper | downloading | "… (downloading…)" |
+| Apple / Whisper | download failed | "… (download failed)" |
+| Whisper | not downloaded | "Whisper (not downloaded)" |
+
+- No technical names (no SpeechTranscriber, no Whisper V3 Turbo). "…" is the ellipsis character.
+
+### 12.3 Unchanged entry points
+- **Transcribe now** (meeting with audio but no transcript): one button, uses the target engine. No picker.
+- **"Re-transcribe with keywords from this event?"** offer: unchanged. Still shown only when the target is Whisper (§7.1) and still uses the target.
+
+### 12.4 Edge cases
+- Job in flight for this meeting: the Re-transcribe submenu is hidden, as the item is today (`canReTranscribe`).
+- Engine starts downloading in the sheet while the menu is closed: the item shows "(downloading…)" the next time the menu opens.
+- Engine assets are evicted after the menu is shown: the job downloads/installs what is missing (§5.5), same as today.
+- Meeting with no transcript version: no item has the current marker. (The meeting shows Transcribe now instead, so this case appears only if versions exist without a preferred transcript.)

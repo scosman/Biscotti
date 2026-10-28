@@ -165,3 +165,24 @@ Title, lead, progress header, footer chrome and Skip/Continue placement are unch
 ## 6. States Checklist (for tests)
 
 Sheet rows: {Apple, Whisper} × {available, unavailable(15), unavailable(26)} × {not ready, downloading(fraction/nil), failed, ready} × {target, not target} × {recommended, not}; Whisper also insufficient disk. Onboarding transcription row: each target state in §5.1, plus macOS 15 (no link). Settings row: ready/not ready × engine. Alerts: each trigger in §2.4 and §4, with vocab on/off and Whisper downloaded/not.
+
+## 7. Meeting Detail → Re-transcribe Submenu (amendment, Phase 6)
+
+Behavior: `functional_spec.md` §12. The existing "Re-transcribe" item in the overflow (`ellipsis.circle`) menu becomes a nested SwiftUI `Menu` with the same label and icon (`arrow.triangle.2.circlepath`). It shows on every OS.
+
+```
+Re-transcribe ▸ │ Apple Speech (current transcription)
+                │ Whisper
+```
+
+```
+Re-transcribe ▸ │ Apple Speech (requires macOS 26)     ← disabled (macOS 15)
+                │ Whisper (current transcription)
+```
+
+- Items are plain `Button`s with text only (no icons, no subtitle). Disabled items use `.disabled(true)`; the reason is in the text in parentheses (functional spec §12.2). `NSMenuItem.subtitle` is not used (it needs AppKit bridging).
+- Order: Apple Speech, then Whisper, on every OS.
+- No alert or confirmation on select; the meeting shows the normal transcribing state.
+- "Transcribe now" and the post-correction re-transcribe alert are unchanged.
+
+States checklist (for tests): each engine × {ready, not downloaded, downloading, failed} plus Apple {requires OS update, unavailable}; current marker on Apple / Whisper / none; empty method id → Whisper current.

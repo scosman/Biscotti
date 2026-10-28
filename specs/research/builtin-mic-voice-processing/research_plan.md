@@ -19,7 +19,7 @@ Find a mic-capture strategy that produces clean, well-levelled, echo-free mic au
 
 - [x] Internal evidence — what the repo, experiments, issue #66 and the related PRs already establish
 - [x] VPIO behaviour and side effects — why VPIO disrupts other apps, which apps, and which knobs exist
-- [ ] Built-in mic array and multi-channel input — getting good built-in mic audio without VPIO; channel handling in general
+- [x] Built-in mic array and multi-channel input — getting good built-in mic audio without VPIO; channel handling in general
 - [ ] Prior art — how other meeting recorders and voice apps on macOS capture the mic
 - [x] Post-processing — offline/near-real-time AEC, voice isolation and levelling, using our separate system-audio track as the echo reference
 

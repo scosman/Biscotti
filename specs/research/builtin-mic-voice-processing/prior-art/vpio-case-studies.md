@@ -38,7 +38,7 @@ Points to note:
 - In the failure state, HAL enumeration showed `VPAUAggregateAudioDevice` and `CADefaultDeviceAggregate-<PID>-<N>` virtual devices that "persisted after the `MicrophoneCapture` `AVAudioEngine` was stopped and deallocated" and disappeared only at process exit.
 - Starting the tap before enabling VPIO did not fix it; both streams went silent.
 - Their wording of the mechanism, after an independent review, is "VPIO activation introduces process-scoped aggregate-device state … that alters HAL device topology or selection behavior in ways that cause Core Audio process taps … to bind to the wrong or unstable device chain." They label this an unproven hypothesis.
-- *Relevance to Biscotti:* Biscotti runs a process tap and VPIO in the same process. The internal-evidence subtopic should check whether Biscotti's system track ever goes silent while VPIO is on. Biscotti's AudioLab runs reported a working tap, so this conflict may depend on the version or on the order operations happen in.
+- *Relevance to Biscotti:* Biscotti also runs a Core Audio process tap and VPIO in the same process. This research did not establish whether our system track ever goes silent or stalls while VPIO is on. The internal-evidence subtopic and the hardware logs should check it. If the tap is unaffected for us, the conflict may depend on macOS version, the order operations happen in, or MacParakeet's concurrent second engine.
 
 **What they replaced VPIO with** ([`plans/active/2026-06-28-meeting-aec-full-close.md`](https://github.com/moona3k/macparakeet/blob/main/plans/active/2026-06-28-meeting-aec-full-close.md)):
 

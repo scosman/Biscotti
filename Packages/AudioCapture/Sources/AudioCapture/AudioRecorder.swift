@@ -58,16 +58,15 @@ public actor AudioRecorder {
 
     /// Timeout for waiting on the mic engine's first buffer before
     /// proceeding to start the system engine (seconds). Prevents a
-    /// VPIO DSP fault from hanging start() indefinitely.
+    /// hardware startup fault from hanging start() indefinitely.
     static let micFirstBufferTimeout: Duration = .seconds(3)
 
     private static let micStartMaxAttempts = 2
 
     /// Maximum number of retry attempts for system engine start failures.
     /// The system engine (Core Audio process tap) can fail intermittently
-    /// when the audio HAL is mid-reconfiguration (e.g. VPIO just reclocked
-    /// the output device). A short retry with a settle delay resolves most
-    /// transient failures.
+    /// when the audio HAL is mid-reconfiguration after a route change.
+    /// A short retry with a settle delay resolves most transient failures.
     ///
     /// 2 retries (3 total attempts) balances resilience against start-time
     /// latency (~500ms worst case). The HAL device-graph reconfiguration on
@@ -75,7 +74,7 @@ public actor AudioRecorder {
     static let systemStartMaxRetries = 2
 
     /// Delay between system engine start retries. 250ms matches the observed
-    /// HAL settle time on Apple Silicon after VPIO reclocks the output device.
+    /// HAL settle time on Apple Silicon after an audio route changes.
     static let systemStartRetryDelay: Duration = .milliseconds(250)
 
     /// Maximum number of retry attempts for system engine reconnect failures
@@ -190,9 +189,7 @@ public actor AudioRecorder {
 
         (lastSystemWriteError, lastMicWriteError) = (nil, nil)
 
-        // Start mic first: VPIO reclocks the output device to the input
-        // sample rate. The system tap must query the device after this
-        // completes so its ExtAudioFile client format matches the final rate.
+        // Start mic first so its first written buffer anchors both tracks.
         //
         // Wire the first-buffer callback BEFORE start so it's ready when
         // the real-time tap delivers the first buffer (which can happen
@@ -205,7 +202,7 @@ public actor AudioRecorder {
 
         // Start system audio with retry. The system engine (Core Audio process
         // tap + aggregate device) can fail intermittently when the HAL is
-        // mid-reconfiguration (e.g. VPIO just reclocked the output device).
+        // mid-reconfiguration after an audio route changes.
         // A short retry with a settle delay resolves most transient failures.
         // On exhausted retries, tear down the mic engine.
         do {
@@ -302,9 +299,9 @@ public actor AudioRecorder {
     /// Starts the system engine with retry on transient failures.
     ///
     /// The system engine (Core Audio process tap + aggregate device) can fail
-    /// intermittently when the audio HAL is mid-reconfiguration -- typically
-    /// right after VPIO reclocked the output device. A short settle delay
-    /// between attempts resolves most transient failures.
+    /// intermittently when the audio HAL is mid-reconfiguration after a
+    /// route change. A short settle delay between attempts resolves most
+    /// transient failures.
     private func startSystemEngineWithRetry(path: URL) async throws {
         var lastError: (any Error)?
         for attempt in 0 ... Self.systemStartMaxRetries {

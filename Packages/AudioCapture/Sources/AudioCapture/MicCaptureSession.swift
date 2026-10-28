@@ -25,6 +25,11 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     private let processingFormat: AVAudioFormat
     private let onFirstBuffer: (@Sendable (Double) -> Void)?
 
+    /// Engine-owned buffer-flow timestamps for the recorder's stall watchdog.
+    /// Shared across the engine's sessions so a rebuilt session keeps
+    /// reporting through the same tracker.
+    private let healthTracker: StreamHealthTracker
+
     // -- Tap ownership (tapLock) --
     private let tapLock = OSAllocatedUnfairLock()
     private var activeTap: Tap?
@@ -92,9 +97,15 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     /// Opens a new file, starts the writer thread, and captures this
     /// attempt's callback immutably. A later recorder retry cannot redirect
     /// an old tap to its own file or callback.
-    init(url: URL, encoder: EncoderSettings, onFirstBuffer: (@Sendable (Double) -> Void)?) throws {
+    init(
+        url: URL,
+        encoder: EncoderSettings,
+        onFirstBuffer: (@Sendable (Double) -> Void)?,
+        healthTracker: StreamHealthTracker = StreamHealthTracker()
+    ) throws {
         processingFormat = encoder.processingFormat
         self.onFirstBuffer = onFirstBuffer
+        self.healthTracker = healthTracker
 
         slotByteSize = Int(Self.slotMaxFrames) * MemoryLayout<Float>.size
         slotData = .allocate(
@@ -225,6 +236,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
         let hostTimeNanos: UInt64 = when.isHostTimeValid
             ? AudioConvertHostTimeToNanos(when.hostTime) : 0
+        healthTracker.recordBuffer(hostTime: when.isHostTimeValid ? when.hostTime : 0)
 
         slotHeaders[head] = SlotHeader(
             frameCount: frameCount,
@@ -329,6 +341,16 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     /// fills gaps, writes to file, and fires the first-buffer anchor.
     private func processEntry(_ entry: WriteEntry) {
         guard let file else { return }
+
+        // Stall-watchdog gate: the system stream is only judged silent while
+        // the mic is audibly live, so stamp non-zero mic buffers here.
+        let hasAudio = StreamHealthTracker.containsNonZero(
+            UnsafeBufferPointer(start: entry.data, count: Int(entry.frameCount))
+        )
+        if hasAudio {
+            healthTracker.recordNonZero(hostNanos: entry.hostTimeNanos)
+        }
+
         guard let mono = inputBuffer(for: entry) else { return }
 
         let bufferToWrite: AVAudioPCMBuffer

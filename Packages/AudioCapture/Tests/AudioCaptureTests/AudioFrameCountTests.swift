@@ -300,3 +300,29 @@ struct GapSilenceFrameCountTests {
         #expect(frames == 0)
     }
 }
+
+@Suite("Written timeline")
+struct WrittenTimelineTests {
+    @Test("Times are whole frames at the written rate")
+    func timesAreFrameExact() {
+        var timeline = WrittenTimeline()
+        #expect(timeline.seconds == 0)
+        for _ in 0 ..< 1000 {
+            timeline.advance(frames: 441, sampleRate: 24000)
+        }
+        #expect(timeline.seconds == 441_000.0 / 24000)
+        timeline.advance(frames: 0, sampleRate: 24000)
+        timeline.advance(frames: 10, sampleRate: 0)
+        #expect(timeline.seconds == 441_000.0 / 24000)
+    }
+
+    @Test("A rate change continues from the written end")
+    func rateChangeContinuesFromTheWrittenEnd() {
+        var timeline = WrittenTimeline()
+        timeline.advance(frames: 48000, sampleRate: 48000)
+        timeline.advance(frames: 22050, sampleRate: 44100)
+        #expect(timeline.seconds == 1.5)
+        timeline.advance(frames: 24000, sampleRate: 48000)
+        #expect(timeline.seconds == 2)
+    }
+}

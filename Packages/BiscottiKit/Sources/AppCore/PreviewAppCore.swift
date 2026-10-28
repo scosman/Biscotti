@@ -4,6 +4,7 @@
     import DataStore
     import Foundation
     import Intelligence
+    import LiveTranscriptionService
     import LocalLLM
     import MeetingCatalog
     import MeetingDetection
@@ -21,8 +22,15 @@
     /// All UI modules import this through `AppCore` to drive their preview providers.
     public enum PreviewAppCore {
         /// Creates a preview-ready `AppCore` with an in-memory store.
+        ///
+        /// - Parameters:
+        ///   - liveTranscription: A live transcript service with a scripted
+        ///     engine, to preview the recording screen's drawer. Defaults to an
+        ///     inert one.
+        ///   - freeDiskBytes: The startup disk's free space the preview reads;
+        ///     unknown by default, which is not low.
         @MainActor
-        public static func make() throws -> AppCore {
+        public static func make(liveTranscription: LiveTranscriptionService? = nil, freeDiskBytes: Int64? = nil) throws -> AppCore {
             let store = try DataStore(storage: .inMemory)
             let permissions = Permissions(mic: PreviewMicAuthorizer())
             let storageRoot = FileManager.default.temporaryDirectory
@@ -38,7 +46,8 @@
             let transcription = TranscriptionService(
                 store: store,
                 engine: PreviewTranscriber(),
-                vocabulary: VocabularyService(store: store)
+                vocabulary: VocabularyService(store: store),
+                diskSpace: DiskSpace { freeDiskBytes }
             )
 
             let catalog = BundledMeetingCatalog()
@@ -57,18 +66,7 @@
                 provider: PreviewNotificationCenter()
             )
 
-            let modelManager = ModelManager(
-                store: store,
-                models: PreviewModelProvider(),
-                hardware: PreviewHardwareProbe()
-            )
-
-            let intelligence = Intelligence(
-                store: store,
-                llm: PreviewLLMRunner(),
-                modelManager: modelManager,
-                settings: { AISettings(enabled: true) }
-            )
+            let (modelManager, intelligence) = makeIntelligence(store: store)
 
             return AppCore(
                 store: store,
@@ -79,8 +77,25 @@
                 detector: detector,
                 notifications: notifications,
                 intelligence: intelligence,
-                modelManager: modelManager
+                modelManager: modelManager,
+                liveTranscription: liveTranscription
             )
+        }
+
+        @MainActor
+        private static func makeIntelligence(store: DataStore) -> (ModelManager, Intelligence) {
+            let modelManager = ModelManager(
+                store: store,
+                models: PreviewModelProvider(),
+                hardware: PreviewHardwareProbe()
+            )
+            let intelligence = Intelligence(
+                store: store,
+                llm: PreviewLLMRunner(),
+                modelManager: modelManager,
+                settings: { AISettings(enabled: true) }
+            )
+            return (modelManager, intelligence)
         }
     }
 
@@ -101,7 +116,12 @@
             true
         }
 
-        func start(paths _: CapturePaths) async throws {}
+        func start(paths _: CapturePaths, liveTap _: LiveAudioTap?) async throws {}
+
+        func timelineOffset() async -> TimeInterval? {
+            nil
+        }
+
         func stop() async {}
         func stateStream() -> AsyncStream<CaptureState> {
             AsyncStream { $0.finish() }
@@ -141,6 +161,16 @@
                 processingDuration: 0
             )
         }
+
+        func cancelActiveWork() async {}
+
+        func waitUntilWorkerIdle() async {}
+
+        func prepareModels(_: [String], keepLoaded _: String?, reloadingKept _: Bool) async throws -> [String] {
+            []
+        }
+
+        func unloadFinalPassModels() async {}
 
         func shutdown() async {}
     }

@@ -208,6 +208,10 @@ public struct AppSettingsData: Sendable, Equatable {
     public var calendarVocabularyEnabled: Bool
     /// Whether the local MCP server runs. Off by default.
     public var mcpServerEnabled: Bool
+    /// Whether a live transcript runs while recording, as stored. `nil` means
+    /// the user has never touched the toggle. Read
+    /// `liveTranscriptResolved(physicalMemory:)` instead.
+    public var liveTranscriptEnabled: Bool?
 
     /// The shipped default for `customVocabularyEnabled` when the user has made
     /// no choice. Custom vocabulary is in beta, so it starts off. Flipping this
@@ -220,6 +224,18 @@ public struct AppSettingsData: Sendable, Equatable {
     /// shipped default. This is the only value callers should branch on.
     public var customVocabularyResolved: Bool {
         customVocabularyEnabled ?? Self.customVocabularyDefault
+    }
+
+    /// Macs with this much physical memory or less start with live transcription
+    /// off, the same limit `MethodResolver` uses for sequential model loading.
+    public static let liveTranscriptMemoryLimit: UInt64 = 8 * 1024 * 1024 * 1024
+
+    /// Whether live transcription is on. A user who never chose gets it on,
+    /// except on Macs with `liveTranscriptMemoryLimit` of memory or less.
+    public func liveTranscriptResolved(
+        physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
+    ) -> Bool {
+        liveTranscriptEnabled ?? (physicalMemory > Self.liveTranscriptMemoryLimit)
     }
 
     public init(
@@ -238,7 +254,8 @@ public struct AppSettingsData: Sendable, Equatable {
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true,
-        mcpServerEnabled: Bool = false
+        mcpServerEnabled: Bool = false,
+        liveTranscriptEnabled: Bool? = nil
     ) {
         self.customVocabulary = customVocabulary
         self.launchAtLogin = launchAtLogin
@@ -256,6 +273,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
         self.mcpServerEnabled = mcpServerEnabled
+        self.liveTranscriptEnabled = liveTranscriptEnabled
     }
 }
 
@@ -620,7 +638,8 @@ public extension DataStore {
                 summaryPrompt: existing.summaryPrompt,
                 customVocabularyEnabled: existing.customVocabularyEnabled,
                 calendarVocabularyEnabled: existing.calendarVocabularyEnabled,
-                mcpServerEnabled: existing.mcpServerEnabled
+                mcpServerEnabled: existing.mcpServerEnabled,
+                liveTranscriptEnabled: existing.liveTranscriptEnabled
             )
         }
         // Create the singleton with defaults
@@ -658,7 +677,8 @@ public extension DataStore {
             summaryPrompt: model.summaryPrompt,
             customVocabularyEnabled: model.customVocabularyEnabled,
             calendarVocabularyEnabled: model.calendarVocabularyEnabled,
-            mcpServerEnabled: model.mcpServerEnabled
+            mcpServerEnabled: model.mcpServerEnabled,
+            liveTranscriptEnabled: model.liveTranscriptEnabled
         )
         mutate(&dto)
 
@@ -678,6 +698,7 @@ public extension DataStore {
         model.customVocabularyEnabled = dto.customVocabularyEnabled
         model.calendarVocabularyEnabled = dto.calendarVocabularyEnabled
         model.mcpServerEnabled = dto.mcpServerEnabled
+        model.liveTranscriptEnabled = dto.liveTranscriptEnabled
         try save()
     }
 

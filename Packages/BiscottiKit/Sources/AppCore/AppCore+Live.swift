@@ -3,6 +3,7 @@ import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import LiveTranscriptionService
 import MeetingCatalog
 import MeetingDetection
 import Notifications
@@ -83,7 +84,8 @@ public extension AppCore {
             detector: detector,
             notifications: notifications,
             intelligence: intelligence,
-            modelManager: modelManager
+            modelManager: modelManager,
+            liveTranscription: buildLiveTranscription(store: store, serviceName: transcriberServiceName)
         )
         logger.info("AppCore.live: done")
         return core
@@ -122,6 +124,23 @@ public extension AppCore {
         return (modelManager, intelligence)
     }
 
+    /// Builds the live transcript service. Each live session gets its own
+    /// `Transcriber`, so its connection to the worker ends with it. The
+    /// setting is applied at launch (`onLaunch`).
+    @MainActor
+    private static func buildLiveTranscription(
+        store: DataStore, serviceName: String
+    ) -> LiveTranscriptionService {
+        let vocabulary = VocabularyService(store: store)
+        let engine: LiveEngineFactory = { WhisperXPCSession(client: Transcriber(backend: .hosted(serviceName: serviceName))) }
+        return LiveTranscriptionService(
+            engine: engine,
+            model: WhisperLiveModel(),
+            vocabulary: { await vocabulary.effectiveVocabulary(meetingID: $0) },
+            isEnabled: AppSettingsData().liveTranscriptResolved()
+        )
+    }
+
     /// Builds the live `TranscriptionService` with XPC engine and vocabulary.
     /// Extracted to keep `live(storageRoot:…)` under the function body
     /// length lint limit.
@@ -134,7 +153,9 @@ public extension AppCore {
         return TranscriptionService(
             store: store,
             engine: LiveTranscriberAdapter(transcriber: transcriber),
-            vocabulary: VocabularyService(store: store)
+            vocabulary: VocabularyService(store: store),
+            preparedModels: PreparedModels(build: PreparedModels.buildIdentity(), defaults: .standard),
+            diskSpace: .system
         )
     }
 }
@@ -149,8 +170,12 @@ private struct LiveRecorderAdapter: RecorderControlling {
         await recorder.requestPermissions(systemProbePath: systemProbePath)
     }
 
-    func start(paths: CapturePaths) async throws {
-        try await recorder.start(paths: paths)
+    func start(paths: CapturePaths, liveTap: LiveAudioTap?) async throws {
+        try await recorder.start(paths: paths, liveTap: liveTap)
+    }
+
+    func timelineOffset() async -> TimeInterval? {
+        await recorder.timelineOffset
     }
 
     func stop() async {
@@ -219,13 +244,13 @@ private struct LiveNotificationAuthorizerAdapter: NotificationAuthorizing,
 private struct LiveTranscriberAdapter: Transcribing {
     let transcriber: Transcriber
 
-    func ensureModelsDownloaded(
+    nonisolated(nonsending) func ensureModelsDownloaded(
         status: (@Sendable (String) -> Void)?
     ) async throws {
         try await transcriber.ensureModelsDownloaded(status: status)
     }
 
-    func processAudio(
+    nonisolated(nonsending) func processAudio(
         mic: URL,
         system: URL,
         customVocabulary: [String]
@@ -237,11 +262,35 @@ private struct LiveTranscriberAdapter: Transcribing {
         )
     }
 
-    func modelsPresent() async -> Bool {
+    nonisolated(nonsending) func modelsPresent() async -> Bool {
         await transcriber.modelsPresent()
     }
 
-    func shutdown() async {
+    nonisolated(nonsending) func cancelActiveWork() async {
+        await transcriber.cancelActiveWork()
+    }
+
+    nonisolated(nonsending) func waitUntilWorkerIdle() async {
+        await transcriber.waitUntilWorkerIdle()
+    }
+
+    nonisolated(nonsending) func prepareModels(_ models: [String], keepLoaded: String?, reloadingKept: Bool) async throws -> [String] {
+        try await transcriber.prepareModels(models, keepLoaded: keepLoaded, reloadingKept: reloadingKept)
+    }
+
+    nonisolated(nonsending) func unloadFinalPassModels() async {
+        await transcriber.unloadModels()
+    }
+
+    nonisolated(nonsending) func observeWorkerInterruptions(_ handler: @escaping @Sendable () -> Void) async {
+        await transcriber.observeInterruptions(handler)
+    }
+
+    nonisolated(nonsending) func observeModelLoads(_ handler: @escaping @Sendable (Bool) -> Void) async {
+        await transcriber.observeModelLoads(handler)
+    }
+
+    nonisolated(nonsending) func shutdown() async {
         await transcriber.shutdown()
     }
 }

@@ -6,7 +6,7 @@ import Foundation
 /// JSON-encoded `Data` blob for transport across the XPC boundary. This keeps
 /// the `@objc` protocol's parameter count within lint limits while remaining
 /// fully `Codable`.
-public struct XPCProcessRequest: Codable {
+public struct XPCProcessRequest: Codable, Sendable {
     public let micPath: String
     public let systemPath: String
     public let customVocabulary: [String]

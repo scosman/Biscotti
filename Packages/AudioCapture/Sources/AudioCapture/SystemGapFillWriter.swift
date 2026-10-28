@@ -8,12 +8,12 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 ///
 /// Tracks host-clock timing between audio buffers and writes silence
 /// to an `ExtAudioFile` for any gap exceeding the jitter threshold
-/// (100 ms). Used by `LiveSystemCaptureEngine`; tested independently
+/// (100 ms). Used by `SystemWriteStep`; tested independently
 /// via `SystemGapFillTests`.
 ///
 /// **Thread-safety:** `@unchecked Sendable` — all calls must come from
-/// a single thread (the writer thread). Owned by `LiveSystemCaptureEngine`
-/// which serializes access.
+/// a single thread (the writer thread). Owned by `SystemWriteStep`,
+/// which runs only there.
 final class SystemGapFillWriter: @unchecked Sendable {
     /// Host-clock nanoseconds when the next sample is expected.
     /// Zero until the first buffer is processed.

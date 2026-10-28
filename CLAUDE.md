@@ -67,6 +67,7 @@ Spec-driven-development artifacts (see the `spec` skill). Mostly historical cont
 - **`specs/projects/graduate_llm_package/`** — the spec project that graduated `experiments/llm` → `Packages/LocalLLM`, replaced the pipe transport with real NSXPC (`BiscottiLLM.xpc`), and added the `Local LLM` ManualTestApp tab.
 - **`specs/projects/llm_features/`** — the spec project that built the app-level AI features: `Intelligence` module (summarization + speaker-name inference), wired into `AppCore`, `MeetingDetailUI` (Summary tab, speaker names, mapping sheet), and `SettingsUI` (AI Enhancements section with model download).
 - **`specs/projects/custom_vocabulary/`** — the spec project that built custom vocabulary (Project 14): the `Vocabulary` module (assembly, extraction, bundled common-word list), `TranscriptionService` wiring, Settings section (toggles + term editor sheet), and the re-transcribe alert on association change.
+- **`specs/projects/live_transcript/`** — the spec project that built the live transcript: the live audio tap in `AudioCapture`, the `LiveTranscriptModel` and `LiveTranscription` targets (whisper-small live session) and the shared worker (`TranscriberWorker`) in `Transcription`, the `LiveTranscriptionService` and `TranscriptUI` modules, the recording-screen drawer, and the Transcript tab as bubbles. The engine experiment and its results are in `specs/research/live_transcription/README.md`.
 - **`.specs_skill_state/current_project.md`** — which spec project is active (git-ignored, per-worktree).
 
 ---

@@ -8,6 +8,7 @@ import MarkdownEditorUI
 import SummaryPromptUI
 import SwiftUI
 import TranscriptionService
+import TranscriptUI
 
 /// The Meeting Detail screen showing metadata, transcript, calendar
 /// context, audio playback, notes, and status.
@@ -15,14 +16,14 @@ import TranscriptionService
 /// Layout: while loading, shows a centered spinner. Once loaded, there
 /// are two layout paths depending on the active tab:
 ///
-/// 1. **Transcript list path** -- when the transcript tab has segments,
-///    the recycling `List` in `TranscriptListView` is the sole scroll
-///    container. Chrome (header + calendar card + tab bar) is a
+/// 1. **Transcript list path** -- when the transcript tab has segments
+///    or a live draft, the recycling `List` in `TranscriptBubbleList` is
+///    the sole scroll container. Chrome (header + calendar card + tab bar) is a
 ///    non-recycled header row inside the same `List`, so everything
 ///    scrolls together with no nested scroll views.
 ///
 /// 2. **ScrollView path** -- for the Notes tab and non-ready transcript
-///    states (processing / failed / empty / not-transcribed). A single
+///    states (processing / failed / waiting / empty / not-transcribed). A single
 ///    outer `ScrollView` wraps chrome + tab content as before.
 ///
 /// The audio transport bar is pinned to the bottom of the panel via
@@ -53,6 +54,13 @@ public struct MeetingDetailView: View {
     }
 
     public var body: some View {
+        contentWithAllDialogs
+    }
+
+    /// The detail pane with its loading state and the view model's change
+    /// handlers. The sheets and alerts are added in two properties below, so
+    /// the compiler type-checks shorter modifier chains.
+    private var observedContent: some View {
         GeometryReader { geo in
             if viewModel.isLoading {
                 // B: unified loading state — one centered spinner for the
@@ -102,143 +110,16 @@ public struct MeetingDetailView: View {
             copyResetTask?.cancel()
             copyResetTask = nil
             didCopy = false
+            viewModel.transcriptTabSelectionChanged()
+        }
+        .onChange(of: viewModel.liveDraft) { _, _ in
+            viewModel.syncDraft()
         }
         .onDisappear {
             copyResetTask?.cancel()
             copyResetTask = nil
             Task { await viewModel.flushPendingEdits() }
         }
-        .sheet(isPresented: $viewModel.showEventPicker) {
-            EventPickerSheet(
-                events: viewModel.availableEventPickerItems,
-                hasCalendarAccess: viewModel.hasCalendarAccess,
-                hasExistingAssociation: viewModel.hasCalendarContext,
-                onSelect: { eventKey in
-                    Task {
-                        await viewModel.correctAssociation(
-                            eventKey: eventKey
-                        )
-                    }
-                },
-                onRemove: {
-                    Task {
-                        await viewModel.removeAssociation()
-                    }
-                },
-                onCancel: {
-                    viewModel.showEventPicker = false
-                }
-            )
-        }
-        .alert(
-            "Re-transcribe with keywords from this event?",
-            isPresented: Binding(
-                get: { viewModel.showReTranscribeAfterCorrection },
-                set: { newValue in
-                    if !newValue {
-                        viewModel.dismissReTranscribePrompt()
-                    }
-                }
-            )
-        ) {
-            Button("OK") {
-                Task {
-                    await viewModel.reTranscribeAfterCorrection()
-                }
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {
-                viewModel.dismissReTranscribePrompt()
-            }
-        } message: {
-            Text(
-                "We\u{2019}ll use this event\u{2019}s title, description and attendee list to improve transcription accuracy."
-            )
-        }
-        .confirmationDialog(
-            "Delete this meeting?",
-            isPresented: $viewModel.showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                Task { await viewModel.confirmDelete() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "This permanently deletes the recording and transcript."
-            )
-        }
-        .sheet(item: $viewModel.summaryPromptModel) { model in
-            SummaryPromptSheet(
-                model: model,
-                onSave: { _ in },
-                onRegenerate: { text, alsoSave in
-                    viewModel.regenerate(
-                        withPrompt: text, alsoSave: alsoSave
-                    )
-                },
-                onCancel: {
-                    viewModel.summaryPromptModel = nil
-                }
-            )
-        }
-        .sheet(
-            item: Binding(
-                get: {
-                    viewModel.speakerSheetTranscriptID
-                        .map { SpeakerSheetBinding(id: $0) }
-                },
-                set: { newValue in
-                    viewModel.speakerSheetTranscriptID = newValue?.id
-                }
-            )
-        ) { _ in
-            if let sheetData = viewModel.speakerSheetData {
-                SpeakerMappingSheet(
-                    data: sheetData,
-                    onAssign: { speakerID, personID in
-                        await viewModel.assignSpeaker(
-                            speakerID: speakerID,
-                            personID: personID
-                        )
-                    },
-                    onAddPerson: { speakerID, name in
-                        await viewModel.assignNewPerson(
-                            speakerID: speakerID, name: name
-                        )
-                    },
-                    onUnassign: { speakerID in
-                        await viewModel.unassignSpeaker(
-                            speakerID: speakerID
-                        )
-                    },
-                    onDismiss: {
-                        viewModel.speakerSheetTranscriptID = nil
-                    }
-                )
-            }
-        }
-        #if DEBUG
-        .sheet(item: $viewModel.voiceprintDebug) { model in
-                VoiceprintDebugView(
-                    report: model.report,
-                    onDismiss: { viewModel.voiceprintDebug = nil }
-                )
-            }
-        #endif
-            .alert(
-                sendAlertTitle,
-                isPresented: Binding(
-                    get: { viewModel.sendAlert != nil },
-                    set: { if !$0 { viewModel.sendAlert = nil } }
-                ),
-                presenting: viewModel.sendAlert
-            ) { alert in
-                sendAlertActions(alert)
-            } message: { alert in
-                sendAlertMessage(alert)
-            }
     }
 
     // MARK: - Loaded content
@@ -248,8 +129,8 @@ public struct MeetingDetailView: View {
     /// Two layout paths avoid nested scroll containers:
     ///
     /// 1. **Transcript list path** -- when the transcript tab is active
-    ///    and has segments, the recycling `List` inside
-    ///    `TranscriptListView` *is* the sole scroll container. Chrome
+    ///    and has segments or a draft, the recycling `List` inside
+    ///    `TranscriptBubbleList` *is* the sole scroll container. Chrome
     ///    (header + calendar card + tab bar) is a non-recycled header
     ///    row inside the same `List`, scrolling with the transcript.
     ///
@@ -269,16 +150,19 @@ public struct MeetingDetailView: View {
         }
     }
 
-    /// True when the transcript tab is showing a ready, non-empty transcript
-    /// -- the case where `TranscriptListView` provides its own scroll.
+    /// True when the transcript tab is showing a draft or a ready, non-empty
+    /// transcript -- the cases where `TranscriptBubbleList` provides its own
+    /// scroll. Both use the same list, so a draft-to-final swap keeps it.
     private var useTranscriptListLayout: Bool {
         guard viewModel.selectedTab == .transcript else { return false }
-        guard case .transcript = viewModel.displayState else { return false }
-        guard let transcript = viewModel.displayedTranscript,
-              !transcript.segments.isEmpty,
-              viewModel.activeVersionID != nil
-        else { return false }
-        return true
+        switch viewModel.displayState {
+        case .draft:
+            return true
+        case .transcript:
+            return viewModel.hasDisplayableTranscript && viewModel.activeVersionID != nil
+        case .processing, .failed, .waitingForRecording:
+            return false
+        }
     }
 
     // MARK: - Transcript list layout (single List scroll)
@@ -342,6 +226,153 @@ public struct MeetingDetailView: View {
             + 1 // divider pixel height
             + Self.transportSpacing // gap between content and transport bar
         return max(0, viewportHeight - chromeHeight - transportHeight - verticalOverhead)
+    }
+}
+
+// MARK: - Sheets and alerts
+
+private extension MeetingDetailView {
+    /// The detail pane with the event picker, the re-transcribe prompt and the
+    /// delete confirmation.
+    var contentWithEventAndDeleteDialogs: some View {
+        observedContent
+            .sheet(isPresented: $viewModel.showEventPicker) {
+                EventPickerSheet(
+                    events: viewModel.availableEventPickerItems,
+                    hasCalendarAccess: viewModel.hasCalendarAccess,
+                    hasExistingAssociation: viewModel.hasCalendarContext,
+                    onSelect: { eventKey in
+                        Task {
+                            await viewModel.correctAssociation(
+                                eventKey: eventKey
+                            )
+                        }
+                    },
+                    onRemove: {
+                        Task {
+                            await viewModel.removeAssociation()
+                        }
+                    },
+                    onCancel: {
+                        viewModel.showEventPicker = false
+                    }
+                )
+            }
+            .alert(
+                "Re-transcribe with keywords from this event?",
+                isPresented: Binding(
+                    get: { viewModel.showReTranscribeAfterCorrection },
+                    set: { newValue in
+                        if !newValue {
+                            viewModel.dismissReTranscribePrompt()
+                        }
+                    }
+                )
+            ) {
+                Button("OK") {
+                    Task {
+                        await viewModel.reTranscribeAfterCorrection()
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {
+                    viewModel.dismissReTranscribePrompt()
+                }
+            } message: {
+                Text(
+                    "We\u{2019}ll use this event\u{2019}s title, description and attendee list to improve transcription accuracy."
+                )
+            }
+            .confirmationDialog(
+                "Delete this meeting?",
+                isPresented: $viewModel.showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task { await viewModel.confirmDelete() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "This permanently deletes the recording and transcript."
+                )
+            }
+    }
+
+    /// All of the page's dialogs: the above, plus the summary prompt, speaker and
+    /// debug sheets, and the send alert.
+    var contentWithAllDialogs: some View {
+        contentWithEventAndDeleteDialogs
+            .sheet(item: $viewModel.summaryPromptModel) { model in
+                SummaryPromptSheet(
+                    model: model,
+                    onSave: { _ in },
+                    onRegenerate: { text, alsoSave in
+                        viewModel.regenerate(
+                            withPrompt: text, alsoSave: alsoSave
+                        )
+                    },
+                    onCancel: {
+                        viewModel.summaryPromptModel = nil
+                    }
+                )
+            }
+            .sheet(
+                item: Binding(
+                    get: {
+                        viewModel.speakerSheetTranscriptID
+                            .map { SpeakerSheetBinding(id: $0) }
+                    },
+                    set: { newValue in
+                        viewModel.speakerSheetTranscriptID = newValue?.id
+                    }
+                )
+            ) { _ in
+                if let sheetData = viewModel.speakerSheetData {
+                    SpeakerMappingSheet(
+                        data: sheetData,
+                        onAssign: { speakerID, personID in
+                            await viewModel.assignSpeaker(
+                                speakerID: speakerID,
+                                personID: personID
+                            )
+                        },
+                        onAddPerson: { speakerID, name in
+                            await viewModel.assignNewPerson(
+                                speakerID: speakerID, name: name
+                            )
+                        },
+                        onUnassign: { speakerID in
+                            await viewModel.unassignSpeaker(
+                                speakerID: speakerID
+                            )
+                        },
+                        onDismiss: {
+                            viewModel.speakerSheetTranscriptID = nil
+                        }
+                    )
+                }
+            }
+        #if DEBUG
+            .sheet(item: $viewModel.voiceprintDebug) { model in
+                VoiceprintDebugView(
+                    report: model.report,
+                    onDismiss: { viewModel.voiceprintDebug = nil }
+                )
+            }
+        #endif
+            .alert(
+                sendAlertTitle,
+                isPresented: Binding(
+                    get: { viewModel.sendAlert != nil },
+                    set: { if !$0 { viewModel.sendAlert = nil } }
+                ),
+                presenting: viewModel.sendAlert
+            ) { alert in
+                sendAlertActions(alert)
+            } message: { alert in
+                sendAlertMessage(alert)
+            }
     }
 }
 
@@ -439,7 +470,7 @@ private extension MeetingDetailView {
         case .summary:
             !viewModel.summaryText.isEmpty
         case .transcript:
-            viewModel.hasDisplayableTranscript
+            viewModel.hasCopyableTranscript
         case .notes:
             !viewModel.notes.isEmpty
         }
@@ -1022,8 +1053,19 @@ private extension MeetingDetailView {
         case let .failed(message, retriable):
             failedContent(message: message, retriable: retriable)
                 .frame(height: fill)
+
+        case .waitingForRecording:
+            StatusRow(Self.waitingMessage, style: .caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: fill, alignment: .top)
+
+        case .draft:
+            // Drafts always take the list layout (`useTranscriptListLayout`).
+            EmptyView()
         }
     }
+
+    static let waitingMessage = "Waiting to finish until the current recording stops"
 
     /// Centered transcribing state: large spinner, larger centered text,
     /// optional subtitle on its own centered line. Explicit center-alignment
@@ -1054,54 +1096,82 @@ private extension MeetingDetailView {
         .frame(maxWidth: .infinity)
     }
 
-    /// The `TranscriptListView` for the list-layout path. Chrome
-    /// (header + calendar card + tab bar + divider) is passed as the
-    /// non-recycled header row so everything scrolls in one `List`.
-    @ViewBuilder
+    /// The bubble list for the list-layout path: the draft or the saved
+    /// transcript. Chrome (header + calendar card + tab bar + divider) and
+    /// the draft status are the non-recycled header row, so everything
+    /// scrolls in one `List`.
     var transcriptReadyContent: some View {
-        if let transcript = viewModel.displayedTranscript,
-           !transcript.segments.isEmpty,
-           let transcriptID = viewModel.activeVersionID
-        {
-            TranscriptListView(
-                transcriptID: transcriptID,
-                canSeek: viewModel.canPlay,
-                segments: transcript.segments,
-                speakerNames: viewModel.displayedSpeakerNames,
-                speakerColorKeys: viewModel.displayedSpeakerColorKeys,
-                onSeek: { viewModel.seekAndPlay(to: $0) },
-                onSpeaker: { speakerID in
-                    Task {
-                        await viewModel.openSpeakerSheet(
-                            speakerID: speakerID
-                        )
-                    }
-                },
-                onVoiceprintDebug: { speakerID in
-                    #if DEBUG
-                        Task {
-                            await viewModel.openVoiceprintDebug(
-                                speakerID: speakerID
-                            )
-                        }
-                    #endif
-                },
-                header: transcriptListHeader
-            )
-        }
+        TranscriptBubbleList(
+            items: viewModel.bubbleListItems,
+            canSeek: viewModel.canPlay,
+            follow: .never,
+            revealTime: $viewModel.transcriptRevealTime,
+            anchorTime: $viewModel.draftAnchorTime,
+            onSeek: { viewModel.seekAndPlay(to: $0) },
+            onSpeaker: { speakerID in
+                Task {
+                    await viewModel.openSpeakerSheet(speakerID: speakerID)
+                }
+            },
+            onSpeakerDebug: speakerDebugAction,
+            onFocusChange: { viewModel.setTranscriptListFocused($0) },
+            header: { transcriptListHeader }
+        )
+    }
+
+    /// The DEBUG "Voiceprint Debug…" menu on speaker names.
+    private var speakerDebugAction: ((Int) -> Void)? {
+        #if DEBUG
+            return { speakerID in
+                Task { await viewModel.openVoiceprintDebug(speakerID: speakerID) }
+            }
+        #else
+            return nil
+        #endif
     }
 
     /// The chrome content rendered as a non-recycled header row inside
-    /// the `TranscriptListView`'s `List`. Mirrors the chrome + divider
-    /// from the ScrollView path so the visual appearance is identical.
+    /// the bubble list's `List`, followed by the draft status when a draft
+    /// is shown. Mirrors the chrome + divider from the ScrollView path so
+    /// the visual appearance is identical.
     private var transcriptListHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
             chrome
 
             Divider()
                 .padding(.vertical, Tokens.spacingMD)
+
+            if case let .draft(_, status) = viewModel.displayState {
+                draftStatus(status)
+                    .padding(.bottom, Tokens.spacingXS)
+            }
         }
         .padding(.top, Tokens.homeVerticalPadding)
+    }
+
+    @ViewBuilder
+    private func draftStatus(_ status: DraftStatus) -> some View {
+        switch status {
+        case .finalPassInProgress:
+            StatusRow("Draft \u{00B7} final transcript in progress", subtitle: viewModel.slowLoadNote, style: .caption)
+        case .finalTranscriptReady:
+            StatusRow("Draft \u{00B7} final transcript ready", isProgress: false, style: .caption)
+        case .waitingForRecording:
+            StatusRow(Self.waitingMessage, style: .caption)
+        case let .finalPassFailed(message, retriable):
+            VStack(alignment: .leading, spacing: Tokens.spacingSM) {
+                Banner(
+                    message,
+                    style: .error,
+                    actionLabel: retriable ? "Retry" : nil,
+                    action: retriable ? { Task { await viewModel.retry() } } : nil
+                )
+                Text("DRAFT")
+                    .font(.monoCaption)
+                    .tracking(1.2)
+                    .foregroundStyle(.inkSecondary)
+            }
+        }
     }
 
     /// Transcript states for the ScrollView path: processing / failed /

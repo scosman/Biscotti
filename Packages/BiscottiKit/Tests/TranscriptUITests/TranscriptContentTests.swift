@@ -2,7 +2,7 @@ import DataStore
 import Foundation
 import SwiftUI
 import Testing
-@testable import MeetingDetailUI
+@testable import TranscriptUI
 
 // MARK: - Speaker color
 

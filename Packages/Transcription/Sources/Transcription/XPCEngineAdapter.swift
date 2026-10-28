@@ -17,12 +17,14 @@ import Foundation
 /// forwarding calls to the adapter and clears it after raising
 /// `workerInterrupted`.
 final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
-    private let proxyProvider: @Sendable () -> (any TranscriberServiceProtocol)?
+    /// Returns the current XPC proxy, or nil if unavailable. Its messages call
+    /// the given error handler when the connection fails, so every call below
+    /// ends with its reply or an error, never waits forever.
+    typealias ProxyProvider = @Sendable (_ errorHandler: @escaping @Sendable (any Error) -> Void) -> (any TranscriberServiceProtocol)?
 
-    /// - Parameter proxyProvider: Returns the current XPC proxy, or nil if unavailable.
-    init(
-        proxyProvider: @escaping @Sendable () -> (any TranscriberServiceProtocol)?
-    ) {
+    private let proxyProvider: ProxyProvider
+
+    init(proxyProvider: @escaping ProxyProvider) {
         self.proxyProvider = proxyProvider
     }
 
@@ -36,15 +38,9 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         // pushes status back over the reverse `TranscriberStatusReporting`
         // channel, which the `Transcriber` actor wires to the caller's closure
         // before invoking this method. Here we only await completion.
-        let proxy = try requireProxy()
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try await call { proxy, reply in
             proxy.ensureModelsDownloaded { error in
-                if let error {
-                    continuation.resume(throwing: self.mapError(error))
-                } else {
-                    continuation.resume()
-                }
+                reply.resume(with: error.map { .failure($0) } ?? .success(()))
             }
         }
     }
@@ -54,7 +50,18 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         systemPath: String,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
-        let proxy = try requireProxy()
+        try await processAudio(micPath: micPath, systemPath: systemPath, customVocabulary: customVocabulary, sendingFrom: nil)
+    }
+
+    /// Sends the request on the caller's actor before suspending, so a message
+    /// that actor sends after this call starts, such as `cancelActiveWork`,
+    /// reaches the worker after it.
+    func processAudio(
+        micPath: String,
+        systemPath: String,
+        customVocabulary: [String],
+        sendingFrom isolation: isolated (any Actor)?
+    ) async throws -> TranscriptResult {
         let request = XPCProcessRequest(
             micPath: micPath,
             systemPath: systemPath,
@@ -62,42 +69,16 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
         )
         let requestData = try encodeRequest(request)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            proxy.processAudio(
-                requestData: requestData
-            ) { data, error in
-                if let error {
-                    continuation.resume(throwing: self.mapError(error))
-                    return
-                }
-                guard let data else {
-                    continuation.resume(
-                        throwing: TranscriptionError.transcriptionFailed(
-                            "XPC service returned nil data without an error"
-                        )
-                    )
-                    return
-                }
-                do {
-                    let result = try JSONDecoder().decode(TranscriptResult.self, from: data)
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(
-                        throwing: TranscriptionError.transcriptionFailed(
-                            "Failed to decode TranscriptResult from XPC: \(error.localizedDescription)"
-                        )
-                    )
-                }
+        return try await call(isolation: isolation) { proxy, reply in
+            proxy.processAudio(requestData: requestData) { data, error in
+                reply.resume(with: Self.decodeResult(data: data, error: error))
             }
         }
     }
 
     func unloadModels() async {
-        guard let proxy = proxyProvider() else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            proxy.unloadModels {
-                continuation.resume()
-            }
+        try? await call { proxy, reply in
+            proxy.unloadModels { reply.resume(returning: ()) }
         }
     }
 
@@ -127,11 +108,40 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
 
     // MARK: - Private
 
-    private func requireProxy() throws -> any TranscriberServiceProtocol {
-        guard let proxy = proxyProvider() else {
-            throw TranscriptionError.workerUnavailable
+    /// Sends one message and waits for its reply or for the connection's error,
+    /// whichever comes first. Errors come back mapped to `TranscriptionError`.
+    private func call<Value: Sendable>(
+        isolation: isolated (any Actor)? = #isolation,
+        _ send: (any TranscriberServiceProtocol, ReplyOnce<Value>) -> Void
+    ) async throws -> Value {
+        do {
+            return try await withCheckedThrowingContinuation(isolation: isolation) { continuation in
+                let reply = ReplyOnce(continuation)
+                guard let proxy = proxyProvider({ reply.resume(throwing: $0) }) else {
+                    reply.resume(throwing: TranscriptionError.workerUnavailable)
+                    return
+                }
+                send(proxy, reply)
+            }
+        } catch {
+            throw Self.mapError(error)
         }
-        return proxy
+    }
+
+    private static func decodeResult(data: Data?, error: (any Error)?) -> Result<TranscriptResult, any Error> {
+        if let error {
+            return .failure(error)
+        }
+        guard let data else {
+            return .failure(TranscriptionError.transcriptionFailed("XPC service returned nil data without an error"))
+        }
+        do {
+            return try .success(JSONDecoder().decode(TranscriptResult.self, from: data))
+        } catch {
+            return .failure(TranscriptionError.transcriptionFailed(
+                "Failed to decode TranscriptResult from XPC: \(error.localizedDescription)"
+            ))
+        }
     }
 
     private func encodeRequest(_ request: XPCProcessRequest) throws -> Data {
@@ -146,17 +156,22 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
 
     /// Map XPC-layer errors to `TranscriptionError`.
     ///
-    /// Only specific `NSCocoaErrorDomain` codes produced by NSXPCConnection are
-    /// treated as connection-level failures:
+    /// A `TranscriptionError` the worker threw arrives bridged and keeps its
+    /// case (see `TranscriptionError+XPC.swift`). Only specific
+    /// `NSCocoaErrorDomain` codes produced by NSXPCConnection are treated as
+    /// connection-level failures:
     /// - 4097 (`NSXPCConnectionInterrupted`): the worker was interrupted (crash/jetsam).
     /// - 4099 (`NSXPCConnectionInvalid`): the connection is no longer valid.
     /// Other `NSCocoaErrorDomain` errors (e.g. decoding failures) fall through to
     /// `transcriptionFailed` so they are not misreported as retriable interruptions.
-    private func mapError(_ error: Error) -> TranscriptionError {
+    static func mapError(_ error: Error) -> TranscriptionError {
         if let transcriptionError = error as? TranscriptionError {
             return transcriptionError
         }
         let nsError = error as NSError
+        if let bridged = TranscriptionError(bridged: nsError) {
+            return bridged
+        }
         if nsError.domain == NSCocoaErrorDomain {
             switch nsError.code {
             case 4097: // NSXPCConnectionInterrupted

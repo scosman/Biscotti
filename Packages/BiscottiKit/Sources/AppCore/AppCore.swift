@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import LiveTranscriptionService
 import MCPServer
 import MeetingCatalog
 import MeetingDetection
@@ -62,6 +63,13 @@ public extension Notification.Name {
     /// this to start/stop the MCP server live, without a restart.
     static let mcpServerEnabledDidChange = Notification.Name(
         "net.scosman.biscotti.mcpServerEnabledDidChange"
+    )
+
+    /// Posted after the "live transcript" setting is toggled. AppCore
+    /// observes this, re-reads the setting and turns live transcription on
+    /// or off, also during a recording.
+    static let liveTranscriptEnabledDidChange = Notification.Name(
+        "net.scosman.biscotti.liveTranscriptEnabledDidChange"
     )
 }
 
@@ -157,12 +165,15 @@ public struct AutoStopState: Sendable, Equatable {
 /// auto-association, detection -> notification -> record flow,
 /// calendar-start timers, auto-stop countdown).
 @MainActor @Observable
-// swiftlint:disable:next type_body_length
 public final class AppCore {
     // MARK: - Published state
 
     /// The current navigation destination.
     public private(set) var route: Route = .home
+
+    /// This Mac's memory, which decides whether the live model stays loaded
+    /// (`keepsLiveModelLoaded`). Tests set their own.
+    @ObservationIgnored var physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
 
     /// All meetings, newest first (uncapped — the Meetings list uses lazy rendering).
     public package(set) var summaries: [MeetingSummary] = []
@@ -273,6 +284,10 @@ public final class AppCore {
 
     /// Transcription orchestration.
     public let transcription: TranscriptionService
+
+    /// The live transcript of the recording in progress and the drafts of
+    /// recordings whose final transcript is still running.
+    public let liveTranscription: LiveTranscriptionService
 
     /// Read-only bridge to EventKit for calendar data.
     public let calendar: CalendarService
@@ -385,6 +400,7 @@ public final class AppCore {
         scheduler: any AppScheduler = LiveAppScheduler(),
         updateChecker: UpdateChecker? = nil,
         mcpServer: MCPServerController? = nil,
+        liveTranscription: LiveTranscriptionService? = nil,
         sendEnvironment: SendEnvironment = .live
     ) {
         self.store = store
@@ -399,7 +415,10 @@ public final class AppCore {
         self.scheduler = scheduler
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
+        self.liveTranscription = liveTranscription ?? .inert()
         self.sendEnvironment = sendEnvironment
+        prepareModelsAfterLiveModelDownloads()
+        resetWorkerWhenLiveFindsItStuck()
     }
 
     // MARK: - Lifecycle
@@ -434,6 +453,7 @@ public final class AppCore {
             onboardingComplete = settings.onboardingComplete
             loadMenuBarLeadTime(from: settings)
             loadNotificationSettings(from: settings)
+            await liveTranscription.setEnabled(settings.liveTranscriptResolved())
         } catch {
             onboardingComplete = false
         }
@@ -457,6 +477,7 @@ public final class AppCore {
 
         logger.info("onLaunch: reloadSummaries starting")
         await reloadSummaries()
+        await prepareModelsInBackground()
         logger.info("onLaunch: done")
     }
 
@@ -557,7 +578,8 @@ public final class AppCore {
     }
 
     /// Stops the current recording, reloads the sidebar, routes to the
-    /// meeting detail, and auto-enqueues transcription.
+    /// meeting detail, releases the final-pass queue and queues this
+    /// meeting's transcription.
     @discardableResult
     public func stopRecording() async -> UUID? {
         // Cancel any auto-stop countdown
@@ -565,9 +587,11 @@ public final class AppCore {
             cancelAutoStopCountdown(meetingID: meetingID)
         }
 
-        guard let meetingID = await recording.stop() else {
-            return nil
-        }
+        guard let meetingID = await recording.stop() else { return nil }
+        // Capture has stopped and closed the live tap. The draft is published
+        // now, before the meeting opens; the live engine finishes its last
+        // words in the background.
+        let liveFinish = liveTranscription.stop(meetingID)
 
         // Clear detection tracking and startup state
         activeDetectedBundleID = nil
@@ -580,10 +604,7 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
-            await transcription.transcribe(meetingID: meetingID)
-            await intelligence.runAutoEnhancements(meetingID: meetingID)
-        }
+        pendingTranscriptionTask = finalPassAfterStop(of: meetingID, liveFinish: liveFinish)
 
         // The audio engine and its capture buffers were just torn down;
         // reclaim that ~transient footprint back to the OS. Delayed so the
@@ -647,8 +668,17 @@ public final class AppCore {
         route = .recording
     }
 
+    // MARK: - Permission refresh
+
+    // (refreshAllPermissions lives in an extension below to keep the class
+    // body within the type_body_length lint limit.)
+}
+
+// MARK: - Onboarding
+
+public extension AppCore {
     /// Marks onboarding complete and transitions to Home.
-    public func completeOnboarding() async {
+    func completeOnboarding() async {
         do {
             try await store.updateSettings { settings in
                 settings.onboardingComplete = true
@@ -664,12 +694,8 @@ public final class AppCore {
         // Start background services deferred during onboarding
         await startBackgroundServices()
         await reloadSummaries()
+        await prepareModelsInBackground()
     }
-
-    // MARK: - Permission refresh
-
-    // (refreshAllPermissions lives in an extension below to keep the class
-    // body within the type_body_length lint limit.)
 }
 
 // MARK: - Data refresh
@@ -803,6 +829,32 @@ public extension AppCore {
 // MARK: - Recording startup lifecycle
 
 extension AppCore {
+    /// The work after Stop, in order: the live finish, the release of the
+    /// final-pass queue, this meeting's final pass, and its enhancements.
+    private func finalPassAfterStop(of meetingID: UUID, liveFinish: Task<LiveFinishResult, Never>) -> Task<Void, Never> {
+        if liveTranscription.isFinishing(meetingID) {
+            transcription.recordingIsEnding(meetingID)
+        }
+        return Task { @MainActor [transcription, intelligence, liveTranscription] in
+            // The live session holds the worker until it finishes, at most
+            // for the stop deadline. A finish that ran out of time may have
+            // left the worker stuck in a decode; once the queue closes its
+            // connection too, the worker exits and the pass gets a fresh one.
+            if await liveFinish.value.mayLeaveWorkerStuck {
+                await transcription.releaseWorkerIfIdle()
+            }
+            // Releases the final-pass queue. If another recording has started
+            // meanwhile, the stop is ignored and this pass waits in the queue.
+            transcription.recordingDidStop(meetingID)
+            await transcription.transcribe(meetingID: meetingID)
+            // A failed pass keeps the draft, so the live text stays readable.
+            if transcription.jobs[meetingID] == .completed {
+                liveTranscription.releaseDraft(for: meetingID)
+            }
+            await intelligence.runAutoEnhancements(meetingID: meetingID)
+        }
+    }
+
     /// The async heavy-lift portion of `startRecording`. Separated so
     /// the route/loading state are set synchronously before this runs.
     ///
@@ -821,7 +873,10 @@ extension AppCore {
             calendar.bestMatch(at: Date())
         }
 
-        await recording.start(title: title)
+        // A tap for every recording, so live transcription can also start
+        // mid-recording. Nothing copies into it until capture runs.
+        let liveTap = LiveAudioTap()
+        await recording.start(title: title, liveTap: liveTap)
 
         // Bail if cancelled/retried/stopped while start() was in flight.
         guard generation == startupGeneration else {
@@ -859,13 +914,35 @@ extension AppCore {
         // Reload summaries so the recording VM picks up the calendar
         // context and the sidebar/home titles are fresh.
         await reloadSummaries()
+
+        // A stop during the reload has already released the queue; holding
+        // it now would hold it for good.
+        guard generation == startupGeneration else { return }
+
+        // No final pass runs during a recording: this stops one that is
+        // running (it is queued again) and returns once the transcription
+        // worker is idle. Capture is already running and never waits on it.
+        // The live tap's queues (128 blocks per track) hold the first seconds
+        // until the live pump starts; the pump then keeps up to 15 minutes
+        // per track (`LiveAudioLimits.pumpBacklog`) while the engine starts,
+        // and the engine catches up on it.
+        await transcription.recordingDidStart(meetingID, liveTranscription: liveTranscription.canStartLive, keepingPreparationOf: liveModelForRecording)
+        guard generation == startupGeneration else { return }
+
+        await liveTranscription.start(
+            meetingID: meetingID,
+            tap: liveTap,
+            timelineOffset: recording.state.timelineOffset ?? 0,
+            recordingStartedAt: recording.state.startDate ?? Date()
+        )
     }
 
     /// Stops and discards a recording that was started by a now-stale
     /// startup generation (cancel or retry raced with the in-flight start).
     private func tearDownPartialRecording() async {
-        if recording.state.isRecording {
-            _ = await recording.stop()
+        if recording.state.isRecording, let meetingID = await recording.stop() {
+            _ = liveTranscription.stop(meetingID)
+            transcription.recordingDidStop(meetingID)
         }
     }
 
@@ -982,6 +1059,10 @@ extension AppCore {
             },
             settingsObserverTask(for: .mcpServerEnabledDidChange) { [weak self] in
                 await self?.mcpServer.applyEnabled($0.mcpServerEnabled)
+            },
+            settingsObserverTask(for: .liveTranscriptEnabledDidChange) { [weak self] in
+                await self?.liveTranscription.setEnabled($0.liveTranscriptResolved())
+                await self?.prepareModelsInBackground()
             }
         ]
     }
@@ -1940,6 +2021,8 @@ extension AppCore {
                 "deleteSingleMeetingInternal: DB delete failed for \(meetingID): \(error)"
             )
         }
+        // A live draft kept for a failed final pass goes with its meeting.
+        liveTranscription.releaseDraft(for: meetingID)
 
         return true
     }

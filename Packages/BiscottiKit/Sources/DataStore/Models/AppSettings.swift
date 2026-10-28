@@ -72,6 +72,12 @@ import SwiftData
     /// default; AppCore starts/stops the server to match.
     public var mcpServerEnabled: Bool = false
 
+    /// Whether a live transcript runs while recording. `nil` means the user has
+    /// never touched the toggle; resolve through
+    /// `AppSettingsData.liveTranscriptResolved(physicalMemory:)`, which turns
+    /// it on except on Macs with 8 GiB of memory or less.
+    public var liveTranscriptEnabled: Bool?
+
     /// JSON-encoded backing store for `enabledCalendarIDs`. Uses the same
     /// Data-backed pattern as `customVocabularyData` to avoid SwiftData's
     /// `[String]` materialization issues in SPM modules.
@@ -112,7 +118,8 @@ import SwiftData
         summaryPrompt: String = "",
         customVocabularyEnabled: Bool? = nil,
         calendarVocabularyEnabled: Bool = true,
-        mcpServerEnabled: Bool = false
+        mcpServerEnabled: Bool = false,
+        liveTranscriptEnabled: Bool? = nil
     ) {
         customVocabularyData = (try? JSONEncoder().encode(customVocabulary)) ?? Data()
         self.launchAtLogin = launchAtLogin
@@ -132,5 +139,6 @@ import SwiftData
         self.customVocabularyEnabled = customVocabularyEnabled
         self.calendarVocabularyEnabled = calendarVocabularyEnabled
         self.mcpServerEnabled = mcpServerEnabled
+        self.liveTranscriptEnabled = liveTranscriptEnabled
     }
 }

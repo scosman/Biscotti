@@ -11,6 +11,12 @@ protocol TranscriberXPCConnecting: AnyObject, Sendable {
     /// Returns nil if the connection is unavailable.
     func remoteObjectProxy() -> (any TranscriberServiceProtocol)?
 
+    /// A proxy whose messages call `errorHandler` when the connection fails,
+    /// so a message with a reply always gets either its reply or the error,
+    /// once. Without it, a reply lost to a crash or an invalidation is never
+    /// called and its caller waits forever.
+    func remoteObjectProxy(errorHandler: @escaping @Sendable (any Error) -> Void) -> (any TranscriberServiceProtocol)?
+
     /// Set a handler that fires when the XPC worker is interrupted (crash/jetsam).
     func setInterruptionHandler(_ handler: @escaping @Sendable () -> Void)
 
@@ -21,6 +27,12 @@ protocol TranscriberXPCConnecting: AnyObject, Sendable {
     /// model-download status messages back over the reverse XPC channel.
     func setStatusHandler(_ handler: (@Sendable (String) -> Void)?)
 
+    /// Where the worker's live updates go: the current live session's stream.
+    func setLiveUpdateRoute(_ route: LiveUpdateRoute)
+
+    /// Set the handler told when a final pass starts or ends a model load.
+    func setModelLoadHandler(_ handler: @escaping @Sendable (Bool) -> Void)
+
     /// Activate the connection (call `resume()` on `NSXPCConnection`).
     func activate()
 
@@ -29,8 +41,8 @@ protocol TranscriberXPCConnecting: AnyObject, Sendable {
 }
 
 /// The client-side object exported over XPC so the worker can push download
-/// status messages back. Thread-safe: `reportDownloadStatus` is called by XPC on
-/// an arbitrary queue while `setHandler` is called by the `Transcriber` actor.
+/// status messages and live updates back. Thread-safe: XPC calls it on an
+/// arbitrary queue while the `Transcriber` actor sets its handlers.
 final class TranscriberStatusReceiver: NSObject, TranscriberStatusReporting, @unchecked Sendable {
     private static let log = Logger(
         subsystem: "net.scosman.biscotti",
@@ -39,11 +51,47 @@ final class TranscriberStatusReceiver: NSObject, TranscriberStatusReporting, @un
 
     private let lock = NSLock()
     private var handler: (@Sendable (String) -> Void)?
+    private var liveRoute: LiveUpdateRoute?
+    private var modelLoadHandler: (@Sendable (Bool) -> Void)?
+
+    func setModelLoadHandler(_ handler: @escaping @Sendable (Bool) -> Void) {
+        lock.lock()
+        modelLoadHandler = handler
+        lock.unlock()
+    }
+
+    func reportModelLoading(_ isLoading: Bool) {
+        lock.lock()
+        let handler = modelLoadHandler
+        lock.unlock()
+        handler?(isLoading)
+    }
 
     func setHandler(_ handler: (@Sendable (String) -> Void)?) {
         lock.lock()
         self.handler = handler
         lock.unlock()
+    }
+
+    func setLiveRoute(_ route: LiveUpdateRoute) {
+        lock.lock()
+        liveRoute = route
+        lock.unlock()
+    }
+
+    func liveSessionDidUpdate(_ updateData: Data) {
+        currentLiveRoute()?.deliver(updateData)
+    }
+
+    func liveSessionDidEnd(sessionID: String, generation: Int) {
+        guard let id = UUID(uuidString: sessionID) else { return }
+        currentLiveRoute()?.end(sessionID: id, generation: generation)
+    }
+
+    private func currentLiveRoute() -> LiveUpdateRoute? {
+        lock.lock()
+        defer { lock.unlock() }
+        return liveRoute
     }
 
     func reportDownloadStatus(_ status: String) {
@@ -80,6 +128,10 @@ final class TranscriberXPCConnectionImpl: TranscriberXPCConnecting, @unchecked S
         connection.remoteObjectProxy as? any TranscriberServiceProtocol
     }
 
+    func remoteObjectProxy(errorHandler: @escaping @Sendable (any Error) -> Void) -> (any TranscriberServiceProtocol)? {
+        connection.remoteObjectProxyWithErrorHandler(errorHandler) as? any TranscriberServiceProtocol
+    }
+
     func setInterruptionHandler(_ handler: @escaping @Sendable () -> Void) {
         connection.interruptionHandler = handler
     }
@@ -90,6 +142,14 @@ final class TranscriberXPCConnectionImpl: TranscriberXPCConnecting, @unchecked S
 
     func setStatusHandler(_ handler: (@Sendable (String) -> Void)?) {
         statusReceiver.setHandler(handler)
+    }
+
+    func setLiveUpdateRoute(_ route: LiveUpdateRoute) {
+        statusReceiver.setLiveRoute(route)
+    }
+
+    func setModelLoadHandler(_ handler: @escaping @Sendable (Bool) -> Void) {
+        statusReceiver.setModelLoadHandler(handler)
     }
 
     func activate() {

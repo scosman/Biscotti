@@ -4,6 +4,7 @@ import Calendar
 import DataStore
 import Foundation
 import Intelligence
+import LiveTranscriptionService
 import LocalLLM
 import Permissions
 import TranscriptionService
@@ -163,8 +164,9 @@ public final class OnboardingViewModel {
     /// Disk space check for the model download step.
     public private(set) var hasSufficientDisk: Bool = true
 
-    /// Approximate disk space required for the transcription model (MB).
-    /// Aligned with the ~1.5 GB WhisperKit model bundle.
+    /// Approximate disk space required for the final transcript's models (MB).
+    /// Aligned with the ~1.5 GB WhisperKit model bundle. The live model adds
+    /// `liveModelDiskSpaceMB` when it is downloaded too.
     public static let requiredDiskSpaceMB: Int = 1500
 
     /// Pre-warm task that runs model probes early (on the permissions
@@ -256,7 +258,8 @@ public final class OnboardingViewModel {
         notificationsGranted = granted
     }
 
-    /// Start the transcription model download.
+    /// Start the transcription model download: the final transcript's models,
+    /// then the live transcript's when live transcription is on.
     public func startTranscriptionDownload() async {
         isDownloading = true
         downloadFailed = false
@@ -268,6 +271,7 @@ public final class OnboardingViewModel {
                         self?.downloadStatus = message
                     }
                 }
+            try await downloadLiveModelIfNeeded()
             downloadComplete = true
         } catch {
             downloadFailed = true
@@ -392,7 +396,7 @@ public final class OnboardingViewModel {
     /// transcription presence check, and disk space check.
     private func runModelProbes() async {
         await core.modelManager.refresh()
-        transcriptionDownloaded = await core.transcription.modelsArePresent()
+        transcriptionDownloaded = await core.transcription.modelsArePresent() && liveModelIsReady
         checkDiskSpace()
     }
 
@@ -421,9 +425,42 @@ public final class OnboardingViewModel {
     }
 
     private func checkDiskSpace() {
-        let requiredBytes = Int64(Self.requiredDiskSpaceMB)
+        let requiredBytes = Int64(transcriptionDownloadMB)
             * 1_048_576
         let available = availableDiskBytes()
         hasSufficientDisk = available >= requiredBytes
     }
 }
+
+extension OnboardingViewModel {
+    /// The live transcript's whisper-small model, 464 MB on disk (MB).
+    static let liveModelDiskSpaceMB = 500
+
+    /// What the transcription download step needs on disk (MB): the final
+    /// transcript's models, and the live transcript's when live
+    /// transcription is on and its model is not on disk yet.
+    var transcriptionDownloadMB: Int {
+        let live = core.liveTranscription
+        let needsLiveModel = live.isEnabled && !live.canStartLive
+        return Self.requiredDiskSpaceMB + (needsLiveModel ? Self.liveModelDiskSpaceMB : 0)
+    }
+
+    /// Whether the live transcript's model is on disk, or live transcription is off.
+    var liveModelIsReady: Bool {
+        let live = core.liveTranscription
+        return !live.isEnabled || live.canStartLive
+    }
+
+    /// The live transcript's model, when live transcription is on and the
+    /// model is not on disk yet. A download already running is awaited.
+    func downloadLiveModelIfNeeded() async throws {
+        let live = core.liveTranscription
+        guard live.isEnabled, !live.canStartLive else { return }
+        downloadStatus = "Downloading the live transcript model\u{2026}"
+        await live.downloadModel()
+        guard live.modelState == .ready else { throw LiveModelDownloadError() }
+    }
+}
+
+/// The live transcript's model did not download.
+private struct LiveModelDownloadError: Error {}

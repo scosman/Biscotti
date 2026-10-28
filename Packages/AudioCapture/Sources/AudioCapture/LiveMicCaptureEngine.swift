@@ -56,6 +56,14 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         firstBufferCallback.withLock { $0 = callback }
     }
 
+    /// Like the first-buffer callback, copied into each session at start.
+    private let liveQueue = Mutex<LiveAudioQueue?>(nil)
+
+    /// Sets the live queue for the next capture attempt.
+    func setLiveQueue(_ queue: LiveAudioQueue?) {
+        liveQueue.withLock { $0 = queue }
+    }
+
     /// Configures the file encoding used by each independent recording attempt.
     init(encoder: EncoderSettings = .voice) {
         self.encoder = encoder
@@ -67,6 +75,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     func start(writingTo url: URL) async throws {
         guard !capturingFlag.load(ordering: .acquiring) else { return }
         let callback = firstBufferCallback.withLock { $0 }
+        let queue = liveQueue.withLock { $0 }
         _micWriteError.withLock { $0 = nil }
         capturingFlag.store(true, ordering: .releasing)
 
@@ -84,7 +93,9 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                 engineQueue.async { [self] in
                     isTearingDown = false
                     do {
-                        session = try MicCaptureSession(url: url, encoder: encoder, onFirstBuffer: callback)
+                        session = try MicCaptureSession(
+                            url: url, encoder: encoder, onFirstBuffer: callback, liveQueue: queue
+                        )
                         try buildAndStartEngineOrThrow()
                         installConfigChangeObserver()
                         cont.resume()

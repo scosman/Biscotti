@@ -1,4 +1,5 @@
 import Foundation
+import LiveTranscriptModel
 @testable import Transcription
 
 // MARK: - Stub Engine
@@ -79,6 +80,29 @@ final class MockXPCConnection: TranscriberXPCConnecting, @unchecked Sendable {
         proxy
     }
 
+    /// The error handler of the latest proxy handed out.
+    var lastErrorHandler: (@Sendable (any Error) -> Void)?
+    var liveRoute: LiveUpdateRoute?
+
+    func remoteObjectProxy(errorHandler: @escaping @Sendable (any Error) -> Void) -> (any TranscriberServiceProtocol)? {
+        lastErrorHandler = errorHandler
+        return proxy
+    }
+
+    func setLiveUpdateRoute(_ route: LiveUpdateRoute) {
+        liveRoute = route
+    }
+
+    /// The worker sends a live update over the reverse channel.
+    func workerSends(_ update: LiveTrackUpdate) {
+        liveRoute?.deliver((try? JSONEncoder().encode(update)) ?? Data())
+    }
+
+    /// The worker reports that it ended a live session on its own.
+    func workerEnds(sessionID: UUID, generation: Int) {
+        liveRoute?.end(sessionID: sessionID, generation: generation)
+    }
+
     func setInterruptionHandler(_ handler: @escaping @Sendable () -> Void) {
         interruptionHandler = handler
     }
@@ -89,6 +113,17 @@ final class MockXPCConnection: TranscriberXPCConnecting, @unchecked Sendable {
 
     func setStatusHandler(_ handler: (@Sendable (String) -> Void)?) {
         statusHandler = handler
+    }
+
+    var modelLoadHandler: (@Sendable (Bool) -> Void)?
+
+    func setModelLoadHandler(_ handler: @escaping @Sendable (Bool) -> Void) {
+        modelLoadHandler = handler
+    }
+
+    /// The worker reports a final pass's model load starting or ending.
+    func workerReportsModelLoading(_ isLoading: Bool) {
+        modelLoadHandler?(isLoading)
     }
 
     func activate() {
@@ -198,6 +233,9 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
     /// An error to return from `ensureModelsDownloaded`.
     var ensureModelsError: Error?
 
+    /// False makes `processAudio` never reply, as a crashed worker would not.
+    var repliesToProcessAudio = true
+
     /// Count of `unloadModels` calls.
     private var _unloadCallCount = 0
     var unloadCallCount: Int {
@@ -219,6 +257,8 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
             reply(nil, error)
             return
         }
+
+        guard repliesToProcessAudio else { return }
 
         if let error = processAudioError {
             reply(nil, error)
@@ -256,5 +296,128 @@ final class MockTranscriberService: TranscriberServiceProtocol, @unchecked Senda
 
     func healthCheck(reply: @escaping @Sendable (Bool) -> Void) {
         reply(true)
+    }
+
+    // MARK: Live sessions
+
+    /// The error `startLiveSession` replies with.
+    var startLiveError: Error?
+    /// Holds append replies until `releaseAppendReply()`, like a busy worker.
+    var holdsAppendReplies = false
+    /// The updates `finishLiveSession` replies with.
+    var finishUpdates: [LiveTrackUpdate] = []
+    private var heldAppendReplies: [@Sendable () -> Void] = []
+    private var _appendedSessions: [String] = []
+    private var _finishTimeouts: [Double] = []
+    private var _cancelActiveWorkCount = 0
+    private var _cancelledSessions: [String] = []
+
+    var appendedSessions: [String] {
+        lock.withLock { _appendedSessions }
+    }
+
+    var finishTimeouts: [Double] {
+        lock.withLock { _finishTimeouts }
+    }
+
+    var cancelActiveWorkCount: Int {
+        lock.withLock { _cancelActiveWorkCount }
+    }
+
+    var cancelledSessions: [String] {
+        lock.withLock { _cancelledSessions }
+    }
+
+    /// Holds start replies until `releaseStartReply()`, like a model that loads slowly.
+    var holdsStartReply = false
+    private var heldStartReply: (@Sendable (Error?) -> Void)?
+
+    var isHoldingStartReply: Bool {
+        lock.withLock { heldStartReply != nil }
+    }
+
+    func startLiveSession(configData _: Data, reply: @escaping @Sendable (Error?) -> Void) {
+        let holds = lock.withLock {
+            if holdsStartReply {
+                heldStartReply = reply
+            }
+            return holdsStartReply
+        }
+        if !holds {
+            reply(startLiveError)
+        }
+    }
+
+    func releaseStartReply() {
+        let reply = lock.withLock {
+            defer { heldStartReply = nil }
+            return heldStartReply
+        }
+        reply?(startLiveError)
+    }
+
+    func appendLiveAudio(sessionID: String, generation _: Int, chunkData _: Data, reply: @escaping @Sendable () -> Void) {
+        let holds = lock.withLock {
+            _appendedSessions.append(sessionID)
+            if holdsAppendReplies {
+                heldAppendReplies.append(reply)
+            }
+            return holdsAppendReplies
+        }
+        if !holds {
+            reply()
+        }
+    }
+
+    /// Acknowledges the oldest held chunk.
+    func releaseAppendReply() {
+        let reply = lock.withLock { heldAppendReplies.isEmpty ? nil : heldAppendReplies.removeFirst() }
+        reply?()
+    }
+
+    func cancelActiveWork(reply: @escaping @Sendable () -> Void) {
+        lock.withLock { _cancelActiveWorkCount += 1 }
+        reply()
+    }
+
+    private var _preparationRequests: [ModelPreparationRequest] = []
+
+    /// The requests `prepareModels` received.
+    var preparationRequests: [ModelPreparationRequest] {
+        lock.withLock { _preparationRequests }
+    }
+
+    /// Prepares every requested model but this one.
+    var unpreparedModel: String?
+
+    func prepareModels(requestData: Data, reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        let request = (try? JSONDecoder().decode(ModelPreparationRequest.self, from: requestData)) ?? ModelPreparationRequest(models: [])
+        lock.withLock { _preparationRequests.append(request) }
+        reply(try? JSONEncoder().encode(request.models.filter { $0 != unpreparedModel }), nil)
+    }
+
+    private var _idleWaitCount = 0
+
+    var idleWaitCount: Int {
+        lock.withLock { _idleWaitCount }
+    }
+
+    func waitUntilIdle(reply: @escaping @Sendable () -> Void) {
+        lock.withLock { _idleWaitCount += 1 }
+        reply()
+    }
+
+    func setLiveUpdateInterval(sessionID _: String, seconds _: Double) {}
+
+    func setLivePaused(sessionID _: String, paused _: Bool) {}
+
+    func finishLiveSession(sessionID _: String, timeoutSeconds: Double, reply: @escaping @Sendable (Data?, Error?) -> Void) {
+        lock.withLock { _finishTimeouts.append(timeoutSeconds) }
+        reply(try? JSONEncoder().encode(finishUpdates), nil)
+    }
+
+    func cancelLiveSession(sessionID: String, reply: @escaping @Sendable () -> Void) {
+        lock.withLock { _cancelledSessions.append(sessionID) }
+        reply()
     }
 }

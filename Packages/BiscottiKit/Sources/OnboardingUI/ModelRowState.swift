@@ -183,7 +183,7 @@ public extension OnboardingViewModel {
         if downloadFailed, let status = downloadStatus {
             return .failed(message: status)
         }
-        return .idle(sizeCaption: "~1.5 GB")
+        return .idle(sizeCaption: Self.formatBytes(Int64(transcriptionDownloadMB) * 1_000_000))
     }
 
     /// Computes the view-state for the language model row.

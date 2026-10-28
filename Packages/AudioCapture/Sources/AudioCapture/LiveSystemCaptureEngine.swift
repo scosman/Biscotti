@@ -29,7 +29,13 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     private let writerRunning = Atomic<Int>(0)
     private let writerDone = DispatchSemaphore(value: 0)
     private var tapSampleRate: Double = 24000
-    private let gapFillWriter = SystemGapFillWriter()
+
+    /// Leading silence, gap fill, the write and its live copy. Writer-thread
+    /// only once capture starts; kept across reconnects.
+    private let writeStep = SystemWriteStep()
+
+    /// The queue the next `start(writingTo:)` copies written audio to.
+    private var liveQueue: LiveAudioQueue?
 
     /// Writer-thread-only flags for deferred client format setup.
     private var clientFormatConfigured = false
@@ -50,18 +56,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     /// so its first real frame lines up with the mic. Set via
     /// `setMicAnchor(_:)` before `start()`.
     private var micAnchorSeconds: Double = 0
-
-    /// `CACurrentMediaTime()` captured in `start()`. Wall-clock upper bound
-    /// on leading silence: the gap can't exceed how long the system capture
-    /// has actually been running. Guards a bogus anchor from writing hours
-    /// of silence.
-    private var systemStartWall: CFTimeInterval = 0
-
-    /// Writer-thread-only: whether leading silence has been written yet.
-    private var didWriteLeadingSilence = false
-
-    /// Absolute backstop on prepended silence (seconds).
-    private static let maxLeadingSilenceSeconds: Double = 3600
 
     #if DEBUG
         nonisolated(unsafe) static var verboseDiagnostics = true
@@ -92,6 +86,10 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         micAnchorSeconds = seconds
     }
 
+    func setLiveQueue(_ queue: LiveAudioQueue?) {
+        liveQueue = queue
+    }
+
     /// Non-nil if `ExtAudioFileWrite` failed during recording.
     var writeError: OSStatus? {
         os_unfair_lock_lock(&_lock)
@@ -112,9 +110,11 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         // detection is disabled on the retry.
         permissionChecker.reset()
 
-        systemStartWall = CACurrentMediaTime()
-        didWriteLeadingSilence = false
-        gapFillWriter.reset()
+        writeStep.begin(
+            micAnchorSeconds: micAnchorSeconds,
+            systemStartWall: CACurrentMediaTime(),
+            liveQueue: liveQueue
+        )
 
         do {
             try createTapAndAggregate()
@@ -317,7 +317,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         writerDone.signal()
     }
 
-    // swiftlint:disable:next function_body_length
     private func processEntry(_ entry: AudioRingBuffer.Entry) {
         let frameCount = Int(entry.frameCount)
         let channelCount = Int(max(entry.channelCount, 1))
@@ -355,36 +354,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
             }
         }
 
-        // Before the first real frame, prepend leading silence so the
-        // system track's first frame lines up with the mic's first frame
-        // (the recording's t=0). Runs once, on the writer thread.
-        if !didWriteLeadingSilence {
-            didWriteLeadingSilence = true
-            writeLeadingSilence(
-                channelCount: UInt32(channelCount),
-                firstFrameHostTime: entry.hostTime,
-                file: file
-            )
-        }
-
-        // Fill any gap since the last buffer with silence so the system
-        // track stays aligned with wall-clock time after reconnects.
-        // Measured from IOProc host-clock timestamps (capture side),
-        // not writer-thread timing. Silence is not fed to the permission
-        // checker; a real gap-fill write failure IS recorded so the
-        // session surfaces it.
-        let hostNanos = AudioConvertHostTimeToNanos(entry.hostTime)
-        gapFillWriter.processBuffer(
-            hostTimeNanos: hostNanos,
-            bufferFrameCount: entry.frameCount,
-            channelCount: entry.channelCount,
-            sampleRate: tapSampleRate,
-            file: file
-        )
-        if let gapError = gapFillWriter.writeError {
-            recordWriteError(gapError)
-        }
-
         #if DEBUG
             if Self.verboseDiagnostics {
                 diagHeartbeat.processBuffer(
@@ -396,22 +365,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
             }
         #endif
 
-        let expectedBytes = UInt32(sampleCount) * UInt32(MemoryLayout<Float>.size)
-        guard entry.dataByteSize >= expectedBytes else {
-            logger.error("Buffer byte size mismatch -- skipping write")
-            return
-        }
-
-        let buffer = AudioBuffer(
-            mNumberChannels: entry.channelCount,
-            mDataByteSize: entry.dataByteSize,
-            mData: entry.data
-        )
-        var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
-        let writeStatus = ExtAudioFileWrite(file, UInt32(frameCount), &bufferList)
-        if writeStatus != noErr {
-            logger.error("ExtAudioFileWrite failed: \(writeStatus, privacy: .public)")
-            recordWriteError(writeStatus)
+        writeStep.write(entry, sampleRate: tapSampleRate, to: file)
+        if let stepError = writeStep.writeError {
+            recordWriteError(stepError)
         }
     }
 
@@ -425,54 +381,6 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         os_unfair_lock_lock(&_lock)
         _writeError = nil
         os_unfair_lock_unlock(&_lock)
-    }
-
-    // MARK: - Leading silence (two-track alignment)
-
-    /// Writes `systemFirstFrame − micAnchor` worth of silent frames to the
-    /// front of the file so the system track aligns with the mic track.
-    /// `firstFrameHostTime` is the mach host time of the system tap's first
-    /// captured frame; the gap to `micAnchorSeconds` is the precise start
-    /// offset. Runs once on the writer thread (allocation is fine here).
-    private func writeLeadingSilence(
-        channelCount: UInt32,
-        firstFrameHostTime: UInt64,
-        file: ExtAudioFileRef
-    ) {
-        let hostNanos = AudioConvertHostTimeToNanos(firstFrameHostTime)
-        var framesRemaining = leadingSilenceFrameCount(
-            systemHostTimeNanos: hostNanos,
-            micAnchorSeconds: micAnchorSeconds,
-            systemStartWall: systemStartWall,
-            currentWall: CACurrentMediaTime(),
-            sampleRate: tapSampleRate,
-            maxLeadingSilenceSeconds: Self.maxLeadingSilenceSeconds
-        )
-        guard framesRemaining > 0 else { return }
-
-        logger.info("Aligning system track: prepending \(framesRemaining) frames of leading silence")
-
-        let channels = Int(max(channelCount, 1))
-        let chunkFrames = 8192
-        var silence = [Float](repeating: 0, count: chunkFrames * channels)
-        silence.withUnsafeMutableBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            while framesRemaining > 0 {
-                let count = min(chunkFrames, framesRemaining)
-                let buffer = AudioBuffer(
-                    mNumberChannels: channelCount,
-                    mDataByteSize: UInt32(count * channels * MemoryLayout<Float>.size),
-                    mData: base
-                )
-                var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
-                let status = ExtAudioFileWrite(file, UInt32(count), &bufferList)
-                if status != noErr {
-                    logger.error("Leading-silence write failed: \(status, privacy: .public)")
-                    return
-                }
-                framesRemaining -= count
-            }
-        }
     }
 
     // MARK: - IOProc
@@ -645,8 +553,10 @@ extension LiveSystemCaptureEngine {
     /// Sets client format (interleaved float PCM) and encoder bit rate.
     /// Returns `true` on success.
     ///
-    /// On mid-stream failure (e.g. `-66565` / `kExtAudioFileError_InvalidDataFormat`
-    /// after a device route change), returns `false` and sets `clientFormatFailed`
+    /// On mid-stream failure (e.g. `-66565` / `kExtAudioFileError_InvalidOperationOrder`:
+    /// ExtAudioFile refuses a different client rate or channel count after the
+    /// first write, as on a reconnect that changes the tap format), returns
+    /// `false` and sets `clientFormatFailed`
     /// via the caller. This preserves audio already written to the file --
     /// the system track will contain everything captured before the route change.
     /// Reopening the file is not viable because `ExtAudioFileCreateWithURL` with

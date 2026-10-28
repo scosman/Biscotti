@@ -24,6 +24,10 @@ struct RecordingNotesView: View {
     @Binding var editingNoteID: UUID?
     @Binding var editingNoteText: String
 
+    /// The note field's bottom edge in the recording screen's scroll content,
+    /// so the open drawer can move it into view.
+    @Binding var noteFieldBottom: CGFloat
+
     var body: some View {
         noteComposer
 
@@ -75,6 +79,11 @@ struct RecordingNotesView: View {
         .onChange(of: composerText) { _, newValue in
             pendingComposerText = newValue
         }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .named(RecordingView.contentSpace)).maxY
+        } action: { bottom in
+            noteFieldBottom = bottom
+        }
     }
 
     private func submitComposer() {
@@ -107,6 +116,9 @@ struct RecordingNotesView: View {
     private func noteRow(_ note: MeetingNote) -> some View {
         NoteRowView(
             note: note,
+            onShowInTranscript: viewModel.showsLiveTranscript
+                ? { viewModel.revealNoteInTranscript(note) }
+                : nil,
             isEditing: editingNoteID == note.id,
             editingText: $editingNoteText,
             onBeginEdit: { beginNoteEdit(note) },
@@ -155,6 +167,9 @@ struct RecordingNotesView: View {
 /// hover tracking and the click-away event monitor.
 private struct NoteRowView: View {
     let note: MeetingNote
+    /// Opens the live drawer at the note's moment; nil while live
+    /// transcription is off, when the time is plain text.
+    let onShowInTranscript: (() -> Void)?
     let isEditing: Bool
     @Binding var editingText: String
     let onBeginEdit: () -> Void
@@ -173,13 +188,8 @@ private struct NoteRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Text(
-                RecordingViewModel
-                    .formatNoteTimestamp(note.timestamp)
-            )
-            .font(.biscottiMono(11.5))
-            .foregroundStyle(Color.sage)
-            .frame(width: 46, alignment: .leading)
+            timestamp
+                .frame(width: 46, alignment: .leading)
 
             if isEditing {
                 TextField("", text: $editingText)
@@ -228,6 +238,21 @@ private struct NoteRowView: View {
             }
         }
         .onDisappear { removeClickAwayMonitor() }
+    }
+
+    @ViewBuilder
+    private var timestamp: some View {
+        let text = Text(RecordingViewModel.formatNoteTimestamp(note.timestamp))
+            .font(.biscottiMono(11.5))
+            .foregroundStyle(Color.sage)
+        if let onShowInTranscript {
+            Button(action: onShowInTranscript) { text }
+                .buttonStyle(.plain)
+                .help("Show in transcript")
+                .pointingHandCursor()
+        } else {
+            text
+        }
     }
 
     // MARK: - Click-away helpers

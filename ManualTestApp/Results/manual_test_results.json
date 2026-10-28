@@ -1,74 +1,81 @@
 {
   "ac_crash_safety_check" : {
+    "note" : "Killed with kill -9 about 19 s into a recording, then relaunched. Both partial files parse as complete ADTS (459 frames each, 19.58 s) and decode with afconvert; system markers present up to the kill. Relaunch left the files unchanged (same hashes).",
     "status" : "pass",
     "stepID" : "ac_crash_safety_check",
-    "timestamp" : "2026-10-08T15:02:14Z"
+    "timestamp" : "2026-10-27T00:10:52Z"
   },
   "ac_device_sample_rate" : {
+    "note" : "Partly run: this Mac has no 44.1 kHz output device, so part (2) was not tested. AirPods in and out changed the output device and the mic rate (48 to 24 kHz and back). System gap fills 1.6 s and 0.3 s; audio before each change kept; both files decode, lengths within 0.04 s.",
     "status" : "pass",
     "stepID" : "ac_device_sample_rate",
-    "timestamp" : "2026-10-08T13:44:37Z"
+    "timestamp" : "2026-10-27T00:09:32Z"
   },
   "ac_files_exist" : {
     "note" : "Both .aac files exist with sane sizes",
     "status" : "pass",
     "stepID" : "ac_files_exist",
-    "timestamp" : "2026-10-08T13:37:49Z"
+    "timestamp" : "2026-10-26T23:37:49Z"
   },
   "ac_meet_close_midcapture" : {
+    "note" : "Checked by levels and log. Capture started with Meet running; voice recorded before and after Meet closed; no gap fill or mic reconnect logged; tracks equal length (97.11 s).",
     "status" : "pass",
     "stepID" : "ac_meet_close_midcapture",
-    "timestamp" : "2026-10-08T13:45:34Z"
+    "timestamp" : "2026-10-27T00:09:39Z"
   },
   "ac_meet_open_midcapture" : {
+    "note" : "Checked by levels and log. Voice recorded with no meeting, then after a new Meet started mid-capture; no gap fill or mic reconnect logged. The mega run also started Meet mid-capture.",
     "status" : "pass",
     "stepID" : "ac_meet_open_midcapture",
-    "timestamp" : "2026-10-08T13:45:45Z"
+    "timestamp" : "2026-10-27T00:09:39Z"
   },
   "ac_mega_timing" : {
+    "note" : "Measured, not by ear: the mic's VPIO cancels speaker playback, so claps replaced the spoken phrase. In a Meet, claps on 7 beeps landed -31 to +50 ms from the beeps in the system track (median +2 ms). Mega run tracks 144.30 s vs 144.34 s.",
     "status" : "pass",
     "stepID" : "ac_mega_timing",
-    "timestamp" : "2026-10-08T13:54:46Z"
+    "timestamp" : "2026-10-27T00:09:46Z"
   },
   "ac_mega_voice" : {
+    "note" : "Checked by ear and by pitch. Mega run (PR build, Meet on): built-in parts clear; the AirPods part was garbled (slow motion, pitch spread 40-238 Hz) after a failed output rate change (48 to 24 kHz). Not reproduced in 6 later guided runs, 3 on main and 3 on this branch, with and without Meet: all clear. Silence at each switch is the known VPIO-rebuild gap.",
     "status" : "pass",
     "stepID" : "ac_mega_voice",
-    "timestamp" : "2026-10-08T13:48:32Z"
+    "timestamp" : "2026-10-27T00:54:54Z"
   },
   "ac_playback_mic" : {
     "status" : "pass",
     "stepID" : "ac_playback_mic",
-    "timestamp" : "2026-10-08T13:38:10Z"
+    "timestamp" : "2026-10-26T23:40:47Z"
   },
   "ac_playback_system" : {
     "status" : "pass",
     "stepID" : "ac_playback_system",
-    "timestamp" : "2026-10-08T13:38:11Z"
+    "timestamp" : "2026-10-26T23:40:48Z"
   },
   "ac_request_permissions" : {
     "status" : "pass",
     "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-10-08T13:37:38Z"
+    "timestamp" : "2026-10-26T23:34:57Z"
   },
   "ac_route_change" : {
+    "note" : "Checked by log and levels. AirPods in: mic followed AirPods (24 kHz), 7.9 s mic gap fill. Out: back to built-in, 3.8 s gap fill. No crash; speech recorded after each switch. Gaps are the known VPIO-rebuild gap. The AirPods audio itself was garbled in this run; see ac_mega_voice.",
     "status" : "pass",
     "stepID" : "ac_route_change",
-    "timestamp" : "2026-10-08T13:42:09Z"
+    "timestamp" : "2026-10-27T00:54:45Z"
   },
   "ac_start_recording" : {
     "status" : "pass",
     "stepID" : "ac_start_recording",
-    "timestamp" : "2026-10-08T13:56:19Z"
+    "timestamp" : "2026-10-27T00:51:34Z"
   },
   "ac_stop_recording" : {
     "status" : "pass",
     "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-10-08T13:47:29Z"
+    "timestamp" : "2026-10-27T00:52:55Z"
   },
   "ac_two_dialogs" : {
     "status" : "pass",
     "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-10-08T13:37:39Z"
+    "timestamp" : "2026-10-26T23:35:00Z"
   },
   "au_background_check" : {
     "status" : "pass",
@@ -307,23 +314,25 @@
     "timestamp" : "2026-09-01T00:30:00Z"
   },
   "tx_ai_test_passed" : {
+    "note" : "Second full make test-ai run passed: Transcription 407 (both AI tests), LocalLLM 229, Intelligence AI 3. The first run, right after Clear cache and the re-download, failed Custom-vocab word match with an empty transcript; it passed in all 3 later runs, and alone on main.",
     "status" : "pass",
     "stepID" : "tx_ai_test_passed",
-    "timestamp" : "2026-10-01T18:24:12Z"
+    "timestamp" : "2026-10-27T00:24:18Z"
   },
   "tx_clear_cache" : {
     "status" : "pass",
     "stepID" : "tx_clear_cache",
-    "timestamp" : "2026-10-01T18:24:22Z"
+    "timestamp" : "2026-10-27T00:11:06Z"
   },
   "tx_model_disk" : {
+    "note" : "After Clear cache, saw \"Downloading speech-to-text model\" then \"Downloading speaker ID model\" (about 52 s in). Download took about 75 s; the model files match a pre-test backup of the cache.",
     "status" : "pass",
     "stepID" : "tx_model_disk",
-    "timestamp" : "2026-10-01T18:24:10Z"
+    "timestamp" : "2026-10-27T00:12:49Z"
   },
   "tx_model_download" : {
     "status" : "pass",
     "stepID" : "tx_model_download",
-    "timestamp" : "2026-10-01T18:24:51Z"
+    "timestamp" : "2026-10-27T00:12:22Z"
   }
 }

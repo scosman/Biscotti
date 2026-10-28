@@ -324,7 +324,7 @@ struct TranscriberShutdownTests {
 struct XPCEngineAdapterTests {
     @Test("throws workerUnavailable when proxy is nil")
     func unavailableProxy() async {
-        let adapter = XPCEngineAdapter(proxyProvider: { nil })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in nil })
 
         do {
             _ = try await adapter.processAudio(
@@ -338,7 +338,7 @@ struct XPCEngineAdapterTests {
 
     @Test("ensureModelsDownloaded throws workerUnavailable when proxy is nil")
     func ensureModelsUnavailable() async {
-        let adapter = XPCEngineAdapter(proxyProvider: { nil })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in nil })
 
         do {
             try await adapter.ensureModelsDownloaded(status: { _ in })
@@ -350,7 +350,7 @@ struct XPCEngineAdapterTests {
 
     @Test("status returns .ready (XPC adapter cannot query worker status)")
     func statusReturnsReady() async {
-        let adapter = XPCEngineAdapter(proxyProvider: { nil })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in nil })
 
         let status = await adapter.status()
         #expect(status == .ready)
@@ -365,7 +365,7 @@ struct XPCEngineAdapterRoundTripTests {
         let expectedResult = makeFixtureResult(transcriptionMethodId: "round-trip-method")
         mockService.processAudioResult = expectedResult
 
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         let result = try await adapter.processAudio(
             micPath: "/tmp/mic.wav",
@@ -390,7 +390,7 @@ struct XPCEngineAdapterRoundTripTests {
     @Test("unloadModels round-trips through mock service")
     func unloadModelsRoundTrip() async {
         let mockService = MockTranscriberService()
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         await adapter.unloadModels()
 
@@ -403,7 +403,7 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.processAudioError = NSError(
             domain: NSCocoaErrorDomain, code: 4097, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         do {
             _ = try await adapter.processAudio(
@@ -421,7 +421,7 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.processAudioError = NSError(
             domain: NSCocoaErrorDomain, code: 4099, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         do {
             _ = try await adapter.processAudio(
@@ -441,7 +441,7 @@ struct XPCEngineAdapterRoundTripTests {
             domain: NSCocoaErrorDomain, code: 4864,
             userInfo: [NSLocalizedDescriptionKey: "decoding failure"]
         )
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         do {
             _ = try await adapter.processAudio(
@@ -463,7 +463,7 @@ struct XPCEngineAdapterRoundTripTests {
         mockService.ensureModelsError = NSError(
             domain: NSCocoaErrorDomain, code: 4097, userInfo: nil
         )
-        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+        let adapter = XPCEngineAdapter(proxyProvider: { _ in mockService })
 
         do {
             try await adapter.ensureModelsDownloaded(status: { _ in })

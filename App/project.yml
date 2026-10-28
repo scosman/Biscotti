@@ -93,6 +93,8 @@ targets:
     dependencies:
       - package: Transcription
         product: Transcription
+      - package: Transcription
+        product: TranscriberWorker
 
   BiscottiLLM:
     type: xpc-service

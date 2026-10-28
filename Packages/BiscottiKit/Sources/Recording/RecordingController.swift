@@ -112,9 +112,12 @@ public final class RecordingController {
     /// schedule system-audio denial check. The real system tap surfaces the TCC
     /// prompt on first use — no pre-record probe.
     ///
-    /// - Parameter title: Explicit meeting title. `nil` keeps the default
-    ///   ("Untitled Meeting"), which stays eligible for AI titling.
-    public func start(title: String? = nil) async {
+    /// - Parameters:
+    ///   - title: Explicit meeting title. `nil` keeps the default
+    ///     ("Untitled Meeting"), which stays eligible for AI titling.
+    ///   - liveTap: Receives a copy of what each track writes, for the live
+    ///     transcript. A tap is single-use; a start that fails in the recorder closes it. A start refused earlier (already recording, no microphone permission, no storage) leaves it open.
+    public func start(title: String? = nil, liveTap: LiveAudioTap? = nil) async {
         lastError = nil
         systemAudioWarning = false
         notes = []
@@ -141,17 +144,19 @@ public final class RecordingController {
         // Start the engine
         let paths = CapturePaths(micAAC: setup.micPath, systemAAC: setup.systemPath)
         do {
-            try await newRecorder.start(paths: paths)
+            try await newRecorder.start(paths: paths, liveTap: liveTap)
         } catch {
             cleanupFailedStart(meetingID: setup.meetingID)
             lastError = .engineFailed(error.localizedDescription)
             return
         }
 
+        let timelineOffset = await newRecorder.timelineOffset()
         recorder = newRecorder
         state = RecordingState(
             isRecording: true, elapsed: 0,
-            meetingID: setup.meetingID, startDate: Date()
+            meetingID: setup.meetingID, startDate: Date(),
+            timelineOffset: timelineOffset
         )
         startStateStreamPump(recorder: newRecorder)
         scheduleDenialCheck(recorder: newRecorder)

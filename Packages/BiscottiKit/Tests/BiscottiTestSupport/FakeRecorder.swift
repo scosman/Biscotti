@@ -20,6 +20,10 @@ public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         /// Canned result for `probeSystemAudioWithTone(timeout:)`.
         public var probeResult: Bool
         public var probeSystemAudioWithToneCalled = false
+        /// The live tap the last start received.
+        public var liveTap: LiveAudioTap?
+        /// Returned by `timelineOffset()`.
+        public var timelineOffset: TimeInterval?
 
         public init(
             startError: (any Error)? = nil,
@@ -55,8 +59,9 @@ public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
         return true
     }
 
-    public func start(paths _: CapturePaths) async throws {
+    public func start(paths _: CapturePaths, liveTap: LiveAudioTap?) async throws {
         backing.startCalled = true
+        backing.liveTap = liveTap
         if let error = backing.startError {
             throw error
         }
@@ -64,6 +69,10 @@ public struct FakeRecorder: RecorderControlling, @unchecked Sendable {
 
     public func stop() async {
         backing.stopCalled = true
+    }
+
+    public func timelineOffset() async -> TimeInterval? {
+        backing.timelineOffset
     }
 
     public func stateStream() -> AsyncStream<CaptureState> {

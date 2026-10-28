@@ -119,6 +119,21 @@ struct RecordingStartStopTests {
         }
     }
 
+    @Test("Start passes the live tap to the recorder and copies the timeline offset")
+    @MainActor
+    func startPassesTheLiveTapAndCopiesTimelineOffset() async throws {
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+        fix.fakeRecorder.backing.timelineOffset = 0.42
+        let tap = LiveAudioTap()
+
+        await fix.controller.start(liveTap: tap)
+
+        #expect(fix.fakeRecorder.backing.liveTap === tap)
+        #expect(fix.controller.state.timelineOffset == 0.42)
+        #expect(fix.controller.state.isRecording)
+    }
+
     @Test("Start requests mic permission when not determined")
     @MainActor
     func startRequestsMicPermission() async throws {

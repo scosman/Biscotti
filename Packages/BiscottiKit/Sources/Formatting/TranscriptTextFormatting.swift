@@ -13,7 +13,7 @@ public enum TranscriptTextFormatting {
     /// when the segment's `speakerID` is mapped in `names`, otherwise the
     /// original diarization `speakerLabel`.
     ///
-    /// Shared by the transcript row (`TranscriptListView`) and `render` so
+    /// Shared by the transcript bubbles (`TranscriptItemBuilder`) and `render` so
     /// on-screen and copied text resolve names identically.
     public static func displayName(
         for segment: SegmentData, names: [Int: String]

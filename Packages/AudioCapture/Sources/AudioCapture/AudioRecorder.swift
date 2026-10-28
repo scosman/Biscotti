@@ -19,7 +19,7 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Each stream writes ADTS AAC directly during capture via `ExtAudioFile` —
 /// no post-recording encode step. Route-change events are handled by
 /// reconnecting the affected engine without tearing down the session.
-public actor AudioRecorder {
+public actor AudioRecorder { // swiftlint:disable:this type_body_length
     // MARK: - Dependencies (injected via seams)
 
     private let systemEngine: any CaptureEngine
@@ -33,6 +33,17 @@ public actor AudioRecorder {
 
     private var paths: CapturePaths?
     private var _startTimestamp: Double = 0
+
+    /// The queues this recording copies its written audio to, from the start
+    /// of `start`. Closed at stop or when the start fails.
+    private var liveTap: LiveAudioTap?
+
+    /// Seconds to add to a time counted from `CaptureState.startTimestamp`
+    /// (such as a note's) to place it on the recording timeline, whose t = 0
+    /// is the first mic frame written to the file: `startTimestamp − micAnchor`,
+    /// both on the host clock. Nil until a start completes, and nil when the
+    /// mic reported no host time for its first buffer (anchor 0).
+    public private(set) var timelineOffset: TimeInterval?
 
     /// Single-use lifecycle: `idle → recording → finished`. A recorder
     /// records exactly once — after `stop()` it is `finished` and `start()`
@@ -149,6 +160,11 @@ public actor AudioRecorder {
 
     // MARK: - Start / Stop
 
+    /// Starts both capture streams against caller-provided paths, with no live tap.
+    public func start(paths: CapturePaths) async throws {
+        try await start(paths: paths, liveTap: nil)
+    }
+
     /// Starts both capture streams against caller-provided paths.
     ///
     /// Checks mic permission before starting engines. Throws
@@ -164,14 +180,53 @@ public actor AudioRecorder {
     ///
     /// If the system engine fails after the mic started, the mic engine is
     /// stopped before re-throwing.
-    public func start(paths: CapturePaths) async throws {
-        switch lifecycle {
-        case .recording:
-            return // already recording — idempotent no-op
-        case .finished:
+    ///
+    /// With a `liveTap`, each track's writer also copies what it writes into
+    /// the tap's queue for that track, timed on the recording timeline. The
+    /// copy never changes the files. A tap is single-use: `stop()` closes both
+    /// queues, and so does a failed start. Drain them only after this returns.
+    public func start(paths: CapturePaths, liveTap: LiveAudioTap?) async throws {
+        guard lifecycle != .recording else {
+            // Already recording: an idempotent no-op. A new tap never gets audio,
+            // so it is closed for its consumer to see the end.
+            if let liveTap, liveTap !== self.liveTap {
+                liveTap.mic.close(at: 0)
+                liveTap.system.close(at: 0)
+            }
+            return
+        }
+
+        self.liveTap = liveTap
+        let micAnchor: Double
+        do {
+            micAnchor = try await startEngines(paths: paths)
+        } catch {
+            // Both engines are stopped again, so their writers have finished.
+            attachLiveQueues(of: nil)
+            closeLiveTap()
+            throw error
+        }
+
+        // Both started -- stamp the shared reference time.
+        let timestamp = CACurrentMediaTime()
+        _startTimestamp = timestamp
+        // A zero anchor means the mic buffer had no host time, so the offset is unknown.
+        timelineOffset = micAnchor > 0 ? timestamp - micAnchor : nil
+        self.paths = paths
+        lifecycle = .recording
+
+        logger.info("Capture started, timestamp=\(timestamp)")
+        emitState()
+        startStateTimer()
+        startRouteChangeListener()
+    }
+
+    /// Checks that the recorder is unused and the mic is allowed, then starts
+    /// the mic and the system engine aligned to the mic's anchor, and returns
+    /// the anchor. Stops the mic if the system engine fails.
+    private func startEngines(paths: CapturePaths) async throws -> Double {
+        guard lifecycle == .idle else {
             throw CaptureError.recorderConsumed // single-use: spent
-        case .idle:
-            break
         }
 
         // Mic permission preflight.
@@ -189,6 +244,7 @@ public actor AudioRecorder {
         }
 
         (lastSystemWriteError, lastMicWriteError) = (nil, nil)
+        attachLiveQueues(of: liveTap)
 
         // Start mic first: VPIO reclocks the output device to the input
         // sample rate. The system tap must query the device after this
@@ -214,17 +270,25 @@ public actor AudioRecorder {
             await micEngine.stop()
             throw error
         }
+        return micAnchor
+    }
 
-        // Both started -- stamp the shared reference time.
-        let timestamp = CACurrentMediaTime()
-        _startTimestamp = timestamp
-        self.paths = paths
-        lifecycle = .recording
+    /// Points each engine's next start at its track's queue, or detaches both.
+    private func attachLiveQueues(of tap: LiveAudioTap?) {
+        micEngine.setLiveQueue(tap?.mic)
+        systemEngine.setLiveQueue(tap?.system)
+    }
 
-        logger.info("Capture started, timestamp=\(timestamp)")
-        emitState()
-        startStateTimer()
-        startRouteChangeListener()
+    /// Ends both live queues at one time, the later of the tracks' written
+    /// ends (normally the mic's). A track that stopped writing at least
+    /// `LiveAudioQueue.missingTailThreshold` earlier ends with a capture gap
+    /// up to it. Call only once both writers have stopped.
+    private func closeLiveTap() {
+        guard let liveTap else { return }
+        let end = max(liveTap.mic.writtenEnd, liveTap.system.writtenEnd)
+        liveTap.mic.close(at: end)
+        liveTap.system.close(at: end)
+        self.liveTap = nil
     }
 
     /// Requires a delivered buffer, not just a successful engine.start().
@@ -244,6 +308,9 @@ public actor AudioRecorder {
 
             logger.warning("Mic first-buffer timeout: attempt \(attempt, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public)")
             await micEngine.stop()
+            // The abandoned attempt may have copied audio before its anchor
+            // was lost; the retry's file and timeline start again at 0.
+            liveTap?.mic.reset()
         }
         logger.error("All mic startup attempts exhausted (\(Self.micStartMaxAttempts, privacy: .public)/\(Self.micStartMaxAttempts, privacy: .public))")
         throw CaptureError.micEngineFailed("Microphone did not deliver audio. Check the macOS sound input device and try again.")
@@ -353,6 +420,10 @@ public actor AudioRecorder {
 
         await systemEngine.stop()
         await micEngine.stop()
+
+        // Both writers have stopped, so nothing more reaches the live queues.
+        attachLiveQueues(of: nil)
+        closeLiveTap()
 
         // Surface any write errors that occurred during recording.
         if let writeErr = systemEngine.writeError {

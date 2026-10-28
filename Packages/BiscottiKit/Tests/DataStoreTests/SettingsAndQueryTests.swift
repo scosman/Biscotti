@@ -139,6 +139,34 @@ struct SettingsTests {
         #expect(result.customVocabularyResolved == false)
     }
 
+    @Test("liveTranscriptEnabled starts unset")
+    func liveTranscriptSettingDefaultsToNil() async throws {
+        let store = try makeStore()
+        let result = try await store.settings()
+        #expect(result.liveTranscriptEnabled == nil)
+    }
+
+    @Test("An unset live transcript setting resolves by memory; a choice wins")
+    func liveTranscriptSettingResolvesByMemory() {
+        let gib: UInt64 = 1024 * 1024 * 1024
+        let unset = AppSettingsData()
+        #expect(unset.liveTranscriptResolved(physicalMemory: 8 * gib) == false)
+        #expect(unset.liveTranscriptResolved(physicalMemory: 16 * gib) == true)
+        #expect(AppSettingsData(liveTranscriptEnabled: true).liveTranscriptResolved(physicalMemory: 8 * gib) == true)
+        #expect(AppSettingsData(liveTranscriptEnabled: false).liveTranscriptResolved(physicalMemory: 16 * gib) == false)
+    }
+
+    @Test("The live transcript setting round-trips and survives unrelated writes")
+    func liveTranscriptSettingSurvivesUnrelatedWrite() async throws {
+        let store = try makeStore()
+        try await store.updateSettings { $0.launchAtLogin = true }
+        #expect(try await store.settings().liveTranscriptEnabled == nil)
+
+        try await store.updateSettings { $0.liveTranscriptEnabled = false }
+        try await store.updateSettings { $0.launchAtLogin = false }
+        #expect(try await store.settings().liveTranscriptEnabled == false)
+    }
+
     @Test("calendarVocabularyEnabled defaults to true")
     func calendarVocabularyEnabledDefault() async throws {
         let store = try makeStore()

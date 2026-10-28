@@ -124,6 +124,28 @@ public struct SettingsView: View {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Show live transcript while recording",
+                    isOn: liveTranscriptBinding
+                )
+                if viewModel.isPreparingLiveTranscript {
+                    HStack(spacing: Tokens.spacingXS) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("Preparing live transcript\u{2026}")
+                            .font(Tokens.metadataFont)
+                            .foregroundStyle(Tokens.secondaryText)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            if viewModel.liveTranscriptEnabled, viewModel.liveModelState != .ready {
+                liveModelRow
+            }
+            if viewModel.isLowOnDiskSpace {
+                lowDiskRow
+            }
             Picker(
                 "Show next meeting in menu bar",
                 selection: menuBarLeadTimeBinding
@@ -538,6 +560,15 @@ private extension SettingsView {
                 Task {
                     await viewModel.setStopRecordingAutomatically(newValue)
                 }
+            }
+        )
+    }
+
+    var liveTranscriptBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.liveTranscriptEnabled },
+            set: { newValue in
+                Task { await viewModel.setLiveTranscriptEnabled(newValue) }
             }
         )
     }

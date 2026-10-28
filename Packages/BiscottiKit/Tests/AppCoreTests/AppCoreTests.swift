@@ -224,6 +224,31 @@ struct AppCoreRecordingTests {
         #expect(fix.core.summaries.first?.title == "Untitled Meeting")
     }
 
+    @Test("a final pass requested during a recording waits until the recording stops")
+    @MainActor
+    func finalPassWaitsWhileRecording() async throws {
+        let fix = try makeCoreFixture(testName: "AppCoreTests")
+        defer { fix.cleanup() }
+        let earlier = try await fix.createMeetingWithAudio(title: "Earlier")
+        await fix.core.startRecording()
+        #expect(fix.core.recording.state.isRecording)
+
+        let pass = Task { @MainActor in await fix.core.transcription.transcribe(meetingID: earlier) }
+        for _ in 0 ..< 200 where fix.core.transcription.jobs[earlier] == nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await Task.sleep(for: .milliseconds(20))
+
+        #expect(fix.core.transcription.jobs[earlier] == .queued(.waitingForRecording))
+        #expect(!fix.fakeEngine.backing.processAudioCalled)
+
+        _ = try #require(await fix.core.stopRecording())
+        await pass.value
+        await fix.core.awaitPendingTranscription()
+
+        #expect(fix.core.transcription.jobs[earlier] == .completed)
+    }
+
     @Test("stopRecording auto-enqueues transcription")
     @MainActor
     func stopRecordingAutoTranscribes() async throws {

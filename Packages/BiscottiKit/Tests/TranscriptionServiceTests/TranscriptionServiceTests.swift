@@ -351,54 +351,6 @@ struct TranscriptionErrorTests {
 
 @Suite("TranscriptionService -- concurrency and status")
 struct TranscriptionConcurrencyTests {
-    @Test("Single in-flight guard rejects concurrent job")
-    @MainActor
-    func singleInFlightGuard() async throws {
-        // Use an engine that blocks on processAudio to simulate an in-flight job.
-        let blockingEngine = BlockingFakeTranscriber()
-        let store = try DataStore(storage: .inMemory)
-        let service = TranscriptionService(store: store, engine: blockingEngine, vocabulary: VocabularyService(store: store))
-
-        // Create two meetings with audio
-        let meetingID1 = try await store.createMeeting(title: "Meeting 1")
-        let mic1 = AudioFileRef(role: .mic, path: "/tmp/m1/mic.aac", byteSize: 100, isPresent: true)
-        let sys1 = AudioFileRef(role: .system, path: "/tmp/m1/system.aac", byteSize: 100, isPresent: true)
-        try await store.attachAudio([mic1, sys1], to: meetingID1)
-
-        let meetingID2 = try await store.createMeeting(title: "Meeting 2")
-        let mic2 = AudioFileRef(role: .mic, path: "/tmp/m2/mic.aac", byteSize: 100, isPresent: true)
-        let sys2 = AudioFileRef(role: .system, path: "/tmp/m2/system.aac", byteSize: 100, isPresent: true)
-        try await store.attachAudio([mic2, sys2], to: meetingID2)
-
-        // Start the first job in a detached task
-        let firstJobTask = Task { @MainActor in
-            await service.transcribe(meetingID: meetingID1)
-        }
-
-        // Poll until the first job has started (observable via its status).
-        for _ in 0 ..< 200 {
-            if service.jobs[meetingID1] != nil { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-
-        // Try to start a second job while the first is in-flight
-        await service.transcribe(meetingID: meetingID2)
-
-        // The second job should be rejected
-        if case let .failed(message, retriable) = service.jobs[meetingID2] {
-            #expect(message.contains("already in progress"))
-            #expect(retriable == true)
-        } else {
-            Issue.record("Expected second job to be rejected")
-        }
-
-        // Unblock the first job so it can complete
-        blockingEngine.backing.unblock()
-        await firstJobTask.value
-
-        #expect(service.jobs[meetingID1] == .completed)
-    }
-
     @Test("Status progresses through downloadingModel, transcribing, completed")
     @MainActor
     func statusProgression() async throws {
@@ -449,61 +401,8 @@ struct TranscriptionConcurrencyTests {
 
 // MARK: - Shutdown re-entrancy regression tests
 
-@Suite("TranscriptionService -- shutdown re-entrancy guard")
-struct TranscriptionShutdownReentrancyTests {
-    @Test(
-        """
-        Re-entrant transcribe() during shutdown is blocked by inFlightMeetingID \
-        guard (regression: second XPC worker)
-        """
-    )
-    @MainActor
-    func reentrantTranscribeDuringShutdownBlocked() async throws {
-        // Create a fake engine whose shutdown() yields the MainActor
-        // (simulating the actor hop to Transcriber.shutdown()) and then
-        // tries to call transcribe() on the same service. With the fix
-        // (inFlightMeetingID cleared AFTER shutdown), the re-entrant call
-        // is rejected by the guard, so ensureModelsDownloaded is called
-        // exactly once (the original job) rather than twice.
-        let store = try DataStore(storage: .inMemory)
-        let reentrantEngine = ReentrantShutdownFakeTranscriber()
-        let service = TranscriptionService(store: store, engine: reentrantEngine, vocabulary: VocabularyService(store: store))
-
-        // Wire the service reference into the engine so shutdown() can
-        // attempt a re-entrant transcribe().
-        reentrantEngine.backing.service = service
-
-        let meetingID = try await store.createMeeting(title: "Test Meeting")
-        let mic = AudioFileRef(role: .mic, path: "/tmp/test/mic.aac", byteSize: 1024, isPresent: true)
-        let sys = AudioFileRef(role: .system, path: "/tmp/test/system.aac", byteSize: 2048, isPresent: true)
-        try await store.attachAudio([mic, sys], to: meetingID)
-
-        reentrantEngine.backing.meetingID = meetingID
-
-        await service.transcribe(meetingID: meetingID)
-
-        // ensureModelsDownloaded was called exactly once (the original job).
-        // If the re-entrant transcribe() leaked through, it would be 2 --
-        // meaning a second XPC connection would be spawned.
-        #expect(reentrantEngine.backing.ensureModelsCallCount == 1)
-
-        // shutdown was called exactly once (the original job's teardown).
-        #expect(reentrantEngine.backing.shutdownCallCount == 1)
-
-        // The re-entrant transcribe() was rejected by the in-flight guard,
-        // so the final job status is the "already in progress" failure
-        // (the guard's rejection overwrites the original .completed).
-        // The critical invariant is that no second engine call was made.
-        if case let .failed(message, retriable) = service.jobs[meetingID] {
-            #expect(message.contains("already in progress"))
-            #expect(retriable == true)
-        } else {
-            // .completed is also acceptable if the re-entrant call was
-            // rejected before it could overwrite the status.
-            #expect(service.jobs[meetingID] == .completed)
-        }
-    }
-
+@Suite("TranscriptionService -- repeated jobs")
+struct TranscriptionRepeatedJobTests {
     @Test("Engine is callable again after runJob fully completes (no permanent lockout)")
     @MainActor
     func engineCallableAfterRunJobCompletes() async throws {
@@ -526,104 +425,6 @@ struct TranscriptionShutdownReentrancyTests {
         #expect(fix.fakeEngine.backing.ensureModelsCallCount == 2)
         #expect(fix.fakeEngine.backing.shutdownCallCount == 2)
     }
-}
-
-// MARK: - ReentrantShutdownFakeTranscriber
-
-/// A fake engine that attempts to call `transcribe()` during `shutdown()`,
-/// simulating the MainActor re-entrancy window that caused the second-worker bug.
-private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendable {
-    final class Backing: @unchecked Sendable {
-        var ensureModelsCallCount = 0
-        var shutdownCallCount = 0
-        var service: TranscriptionService?
-        var meetingID: UUID?
-    }
-
-    let backing = Backing()
-
-    func ensureModelsDownloaded(
-        status _: (@Sendable (String) -> Void)?
-    ) async throws {
-        backing.ensureModelsCallCount += 1
-    }
-
-    func processAudio(
-        mic _: URL,
-        system _: URL,
-        customVocabulary _: [String]
-    ) async throws -> TranscriptResult {
-        FakeTranscriber.defaultResult
-    }
-
-    func modelsPresent() async -> Bool {
-        true
-    }
-
-    func shutdown() async {
-        backing.shutdownCallCount += 1
-        // Simulate the MainActor yield during actor hop by yielding, then
-        // attempting a re-entrant transcribe().
-        await Task.yield()
-        if let service = backing.service, let meetingID = backing.meetingID {
-            // This should be rejected by the inFlightMeetingID guard
-            await service.transcribe(meetingID: meetingID)
-        }
-    }
-}
-
-// MARK: - BlockingFakeTranscriber
-
-/// A fake transcriber that blocks on `processAudio` until unblocked.
-/// Used to test the single in-flight guard.
-private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
-    final class Backing: @unchecked Sendable {
-        private let continuation: CheckedContinuation<Void, Never>?
-        private var _unblocked = false
-
-        let blocker: UnsafeContinuation<Void, Never>?
-        var processAudioCalled = false
-
-        init() {
-            blocker = nil
-            continuation = nil
-        }
-
-        func unblock() {
-            _unblocked = true
-        }
-
-        var isUnblocked: Bool {
-            _unblocked
-        }
-    }
-
-    let backing = Backing()
-
-    func ensureModelsDownloaded(
-        status _: (@Sendable (String) -> Void)?
-    ) async throws {
-        // no-op
-    }
-
-    func processAudio(
-        mic _: URL,
-        system _: URL,
-        customVocabulary _: [String]
-    ) async throws -> TranscriptResult {
-        backing.processAudioCalled = true
-        // Poll until unblocked (simulates a long-running operation)
-        while !backing.isUnblocked {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        return FakeTranscriber.defaultResult
-    }
-
-    func modelsPresent() async -> Bool {
-        true
-    }
-
-    func shutdown() async {}
 }
 
 // MARK: - Model readiness tests (Phase 10)
@@ -737,9 +538,9 @@ struct TranscriptionDownloadPhaseGateTests {
             await service.transcribe(meetingID: meetingID)
         }
 
-        // Wait for the job to start.
+        // Wait for the job to leave the queue and start.
         for _ in 0 ..< 200 {
-            if service.jobs[meetingID] != nil { break }
+            if let status = service.jobs[meetingID], status != .queued(.waitingForTurn) { break }
             try await Task.sleep(for: .milliseconds(10))
         }
 
@@ -920,6 +721,16 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     func modelsPresent() async -> Bool {
         true
     }
+
+    func cancelActiveWork() async {}
+
+    func waitUntilWorkerIdle() async {}
+
+    func prepareModels(_: [String], keepLoaded _: String?, reloadingKept _: Bool) async throws -> [String] {
+        []
+    }
+
+    func unloadFinalPassModels() async {}
 
     func shutdown() async {}
 }

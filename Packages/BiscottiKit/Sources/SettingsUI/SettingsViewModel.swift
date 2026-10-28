@@ -5,6 +5,7 @@ import DataStore
 import Foundation
 import ImportExport
 import Intelligence
+import LiveTranscriptionService
 import LocalLLM
 import MCPServer
 import Permissions
@@ -96,6 +97,13 @@ public final class SettingsViewModel {
     /// Whether recording auto-stops when all mic users leave.
     public private(set) var stopRecordingAutomatically: Bool = true
 
+    /// Whether a live transcript runs while recording, resolved: a user who
+    /// never chose sees it on, except on Macs with 8 GiB or less.
+    public private(set) var liveTranscriptEnabled: Bool
+
+    /// This Mac's memory, for the live transcript's default.
+    private let physicalMemory: UInt64
+
     /// Whether the "Notifications Stay Visible" row should be shown.
     /// True only when the macOS alert style is `.banner` (notifications
     /// are enabled but auto-dismiss). Hidden for `.alert` (goal met)
@@ -175,13 +183,18 @@ public final class SettingsViewModel {
     ///     generated export filename and returning the chosen destination,
     ///     or nil when cancelled. Defaults to a live `NSSavePanel`.
     ///     Override in tests.
+    ///   - physicalMemory: This Mac's memory, which sets the live
+    ///     transcript's default. Override in tests.
     public init(
         core: AppCore,
         readLaunchAtLoginStatus: (@MainActor () -> Bool)? = nil,
         presentOpenPanel: (@MainActor () -> URL?)? = nil,
-        presentSavePanel: (@MainActor (String) -> URL?)? = nil
+        presentSavePanel: (@MainActor (String) -> URL?)? = nil,
+        physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
     ) {
         appCore = core
+        self.physicalMemory = physicalMemory
+        liveTranscriptEnabled = AppSettingsData().liveTranscriptResolved(physicalMemory: physicalMemory)
         self.readLaunchAtLoginStatus = readLaunchAtLoginStatus ?? {
             #if canImport(ServiceManagement)
                 ServiceManagement.SMAppService.mainApp.status == .enabled
@@ -234,26 +247,6 @@ public final class SettingsViewModel {
         } catch {
             // Revert on failure
             exitOnWindowClose = !enabled
-        }
-    }
-
-    /// Updates the "show next meeting in menu bar" lead time.
-    /// Persists to the store and posts `.menuBarLeadTimeDidChange`
-    /// so AppCore refreshes its cached lead time for the menu bar icon.
-    public func setMenuBarLeadTime(_ value: MenuBarLeadTime) async {
-        let previous = menuBarLeadTime
-        menuBarLeadTime = value
-        do {
-            try await core.store.updateSettings { settings in
-                settings.menuBarLeadTimeSeconds = value.rawValue
-            }
-            NotificationCenter.default.post(
-                name: .menuBarLeadTimeDidChange,
-                object: nil
-            )
-        } catch {
-            // Revert on failure
-            menuBarLeadTime = previous
         }
     }
 
@@ -424,6 +417,10 @@ public final class SettingsViewModel {
     /// so the stored bool may drift). Permission statuses are refreshed
     /// from their live system sources so the overview reflects reality.
     public func load() async {
+        // Read once per opening, alongside the rest: the settings fill in
+        // without waiting for the volume query. A slow model load reads it again.
+        let transcription = core.transcription
+        async let diskSpaceRead = transcription.refreshDiskSpace()
         // Refresh all permission statuses from the system
         await core.refreshAllPermissions()
 
@@ -438,6 +435,7 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            liveTranscriptEnabled = settings.liveTranscriptResolved(physicalMemory: physicalMemory)
             mcpServerEnabled = settings.mcpServerEnabled
             aiAnalysisEnabled = settings.aiAnalysisEnabled
             customVocabularyEnabled = settings.customVocabularyResolved
@@ -456,6 +454,7 @@ public final class SettingsViewModel {
 
         let infos = await core.calendar.calendars()
         calendarGroups = Self.groupCalendars(infos)
+        _ = await diskSpaceRead
     }
 
     /// Re-fetches the calendar list from EventKit. Called on app-foreground
@@ -609,6 +608,71 @@ public extension SettingsViewModel {
         } catch {
             stopRecordingAutomatically = !enabled
         }
+    }
+
+    /// Updates the "show next meeting in menu bar" lead time.
+    /// Persists to the store and posts `.menuBarLeadTimeDidChange`
+    /// so AppCore refreshes its cached lead time for the menu bar icon.
+    func setMenuBarLeadTime(_ value: MenuBarLeadTime) async {
+        let previous = menuBarLeadTime
+        menuBarLeadTime = value
+        do {
+            try await core.store.updateSettings { settings in
+                settings.menuBarLeadTimeSeconds = value.rawValue
+            }
+            NotificationCenter.default.post(
+                name: .menuBarLeadTimeDidChange,
+                object: nil
+            )
+        } catch {
+            // Revert on failure
+            menuBarLeadTime = previous
+        }
+    }
+
+    /// Toggles the live transcript. Persists the choice and posts
+    /// `.liveTranscriptEnabledDidChange`, so AppCore starts or stops live
+    /// transcription, also during a recording.
+    func setLiveTranscriptEnabled(_ enabled: Bool) async {
+        liveTranscriptEnabled = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.liveTranscriptEnabled = enabled
+            }
+            NotificationCenter.default.post(
+                name: .liveTranscriptEnabledDidChange,
+                object: nil
+            )
+        } catch {
+            liveTranscriptEnabled = !enabled
+        }
+    }
+
+    /// Whether the live transcript's model is on this Mac.
+    var liveModelState: LiveModelState {
+        core.liveTranscription.modelState
+    }
+
+    /// The startup disk is low, so macOS may remove the prepared speech
+    /// models (chosen by the user on 25 October 2026: say so in Settings).
+    var isLowOnDiskSpace: Bool {
+        core.transcription.isLowOnDiskSpace
+    }
+
+    static let lowDiskWarning = "Your Mac is low on disk space, so macOS may remove the prepared speech models and transcription can start slowly. Free up space to avoid this."
+
+    /// Whether Settings says the live transcript is being prepared: the
+    /// toggle is on and the live model loads in the background, so macOS
+    /// compiles it before the next meeting. The final pass's model, prepared
+    /// in a run of its own, shows nothing.
+    var isPreparingLiveTranscript: Bool {
+        liveTranscriptEnabled && core.transcription.modelsBeingPrepared.contains(LiveTranscriptionDefaults.whisperModel)
+    }
+
+    /// Downloads the live transcript's model. During a recording with the
+    /// live transcript on, it starts once the model is on disk.
+    func downloadLiveModel() async {
+        await core.liveTranscription.downloadModel()
     }
 }
 

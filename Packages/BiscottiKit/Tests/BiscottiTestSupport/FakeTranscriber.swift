@@ -23,8 +23,36 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         /// Number of times `shutdown` has been called.
         public var shutdownCallCount = 0
 
+        /// `shutdownCallCount` when the last `processAudio` began.
+        public var shutdownCountAtProcessAudio: Int?
+
         /// Number of times `modelsPresent` has been called.
         public var modelsPresentCallCount = 0
+
+        /// Number of times `cancelActiveWork` has been called.
+        public var cancelActiveWorkCallCount = 0
+
+        /// The model lists `prepareModels` received; each is prepared at once.
+        public var preparationRequests: [[String]] = []
+
+        /// The model each request asked to keep loaded, in the same order.
+        public var keptLoaded: [String?] = []
+
+        /// Number of times `unloadFinalPassModels` has been called.
+        public var unloadFinalPassModelsCallCount = 0
+
+        /// Whether each request asked to load the kept model again, in the same order.
+        public var reloadedKept: [Bool] = []
+
+        /// The handler `observeWorkerInterruptions` received; a test calls it to report a crash.
+        public var interruptionHandler: (@Sendable () -> Void)?
+
+        /// The handler `observeModelLoads` received; a test calls it to report a load.
+        public var modelLoadHandler: (@Sendable (Bool) -> Void)?
+
+        /// While set, `processAudio` waits for `finishPass()`.
+        public var holdsPasses = false
+        var passWaiter: CheckedContinuation<Void, Never>?
 
         /// Error to throw from `ensureModelsDownloaded`, if any.
         public var ensureModelsError: (any Error)?
@@ -90,9 +118,13 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
+        backing.shutdownCountAtProcessAudio = backing.shutdownCallCount
         backing.lastMicURL = mic
         backing.lastSystemURL = system
         backing.lastVocabulary = customVocabulary
+        if backing.holdsPasses {
+            await withCheckedContinuation { backing.passWaiter = $0 }
+        }
         if let error = backing.processAudioError {
             throw error
         }
@@ -103,6 +135,41 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
         backing.modelsPresentCalled = true
         backing.modelsPresentCallCount += 1
         return backing.modelsPresentResult
+    }
+
+    public func cancelActiveWork() async {
+        backing.cancelActiveWorkCallCount += 1
+    }
+
+    public func waitUntilWorkerIdle() async {}
+
+    public func prepareModels(_ models: [String], keepLoaded: String?, reloadingKept: Bool) async throws -> [String] {
+        backing.preparationRequests.append(models)
+        backing.keptLoaded.append(keepLoaded)
+        backing.reloadedKept.append(reloadingKept)
+        return models
+    }
+
+    public func unloadFinalPassModels() async {
+        backing.unloadFinalPassModelsCallCount += 1
+    }
+
+    public func observeModelLoads(_ handler: @escaping @Sendable (Bool) -> Void) async {
+        backing.modelLoadHandler = handler
+    }
+
+    /// Lets a held pass return.
+    public func finishPass() {
+        backing.passWaiter?.resume()
+        backing.passWaiter = nil
+    }
+
+    public var isHoldingPass: Bool {
+        backing.passWaiter != nil
+    }
+
+    public func observeWorkerInterruptions(_ handler: @escaping @Sendable () -> Void) async {
+        backing.interruptionHandler = handler
     }
 
     public func shutdown() async {

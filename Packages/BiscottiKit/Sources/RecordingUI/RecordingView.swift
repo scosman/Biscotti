@@ -1,5 +1,6 @@
 import AppCore
 import DesignSystem
+import LiveTranscriptionService
 import Recording
 import SwiftUI
 
@@ -21,6 +22,24 @@ public struct RecordingView: View {
 
     /// Ripple animation state
     @State private var rippleActive: Bool = false
+
+    /// The notes' scroll position, which the open drawer moves.
+    @State private var notesScroll = ScrollPosition(y: 0)
+    /// The note field's bottom edge in the scroll content, unscrolled.
+    @State private var noteFieldBottom: CGFloat = 0
+    /// The top of the column's first row (the status row, or the auto-stop
+    /// card above it) in the scroll content, unscrolled.
+    @State private var headerTop: CGFloat = 0
+    /// The status row's bottom edge there: a dragged drawer stops below it.
+    @State private var statusRowBottom: CGFloat = 0
+    /// The drawer's height while its top edge is dragged.
+    @State private var drawerDragHeight: CGFloat?
+
+    /// The scroll content's coordinate space, where the note field and the
+    /// column's top are measured.
+    nonisolated static let contentSpace = "recordingContent"
+    /// The space above and below the column's rows.
+    nonisolated static let columnVerticalPadding: CGFloat = 40
 
     public init(viewModel: RecordingViewModel) {
         self.viewModel = viewModel
@@ -113,31 +132,6 @@ public struct RecordingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var recordingContent: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
-                    mainColumn
-
-                    Spacer(minLength: 0)
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: geometry.size.height,
-                    alignment: .center
-                )
-            }
-        }
-        .task(id: viewModel.meetingID) {
-            await viewModel.load()
-        }
-        .onChange(of: viewModel.summariesVersion) {
-            Task { await viewModel.reloadDetail() }
-        }
-    }
-
     // MARK: - Main column
 
     private var mainColumn: some View {
@@ -150,6 +144,11 @@ public struct RecordingView: View {
             }
 
             statusRow
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.contentSpace)).maxY
+                } action: { bottom in
+                    statusRowBottom = bottom
+                }
 
             titleSection
 
@@ -162,16 +161,17 @@ public struct RecordingView: View {
                 viewModel: viewModel,
                 pendingComposerText: $pendingComposerText,
                 editingNoteID: $editingNoteID,
-                editingNoteText: $editingNoteText
+                editingNoteText: $editingNoteText,
+                noteFieldBottom: $noteFieldBottom
             )
 
             if viewModel.showSystemAudioWarning {
                 systemAudioBanner
             }
         }
-        .padding(.vertical, 40)
+        .padding(.vertical, Self.columnVerticalPadding)
         .padding(.horizontal, Tokens.spacingXL)
-        .frame(maxWidth: 600)
+        .frame(maxWidth: LiveTranscriptOverlay.columnMaxWidth)
     }
 
     // MARK: - Status row
@@ -277,6 +277,101 @@ public struct RecordingView: View {
             eventSubmeta
         } else {
             adHocSubmeta
+        }
+    }
+}
+
+// MARK: - Recording content
+
+/// What the notes' scroll follows: the offset the open drawer needs, and
+/// whether it is open.
+private struct NotesScrollKey: Equatable {
+    var offset: CGFloat
+    var isDrawerOpen: Bool
+}
+
+private extension RecordingView {
+    var recordingContent: some View {
+        GeometryReader { geometry in
+            let showsLive = viewModel.showsLiveTranscript
+            let firstRowsHeight = max(0, statusRowBottom - headerTop)
+            let open = LiveTranscriptOverlay.openLayout(
+                viewportHeight: geometry.size.height,
+                headerTop: headerTop,
+                noteFieldBottom: noteFieldBottom,
+                firstRowsHeight: firstRowsHeight,
+                preferredHeight: drawerDragHeight ?? viewModel.liveDrawerHeight
+            )
+            let drawerHeight = open.drawerHeight
+            let isOpen = showsLive && viewModel.isDrawerExpanded
+            let notesScrollKey = NotesScrollKey(offset: isOpen ? open.notesOffset : 0, isDrawerOpen: isOpen)
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+
+                    mainColumn
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.frame(in: .named(Self.contentSpace)).minY + Self.columnVerticalPadding
+                        } action: { top in
+                            headerTop = top
+                        }
+
+                    Spacer(minLength: 0)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: geometry.size.height,
+                    alignment: .center
+                )
+                .coordinateSpace(.named(Self.contentSpace))
+            }
+            .scrollPosition($notesScroll)
+            // The margin lets the notes scroll clear of the drawer. While it
+            // is open, the notes move up so the note field sits just above
+            // it, as far as the column's top, with Stop & Save, stays in view.
+            .contentMargins(
+                .bottom,
+                LiveTranscriptOverlay.notesBottomInset(
+                    showsLive: showsLive,
+                    isExpanded: viewModel.isDrawerExpanded,
+                    drawerHeight: drawerHeight
+                ),
+                for: .scrollContent
+            )
+            .overlay(alignment: .bottom) {
+                if showsLive {
+                    LiveTranscriptOverlay(
+                        viewModel: viewModel,
+                        drawerWidth: LiveTranscriptOverlay.drawerWidth(forAvailableWidth: geometry.size.width),
+                        drawerHeight: drawerHeight,
+                        maximumHeight: LiveTranscriptOverlay.maximumDrawerHeight(
+                            viewportHeight: geometry.size.height,
+                            firstRowsHeight: firstRowsHeight
+                        ),
+                        dragHeight: $drawerDragHeight
+                    )
+                }
+            }
+            // A drag the drawer's hiding cut short leaves no height behind.
+            .onChange(of: viewModel.isDrawerExpanded) { drawerDragHeight = nil }
+            // Keyed on the drawer being open too: opening it re-applies the
+            // offset after the notes were scrolled, even when it is unchanged.
+            .onChange(of: notesScrollKey, initial: true) { _, key in
+                // A drag moves the notes with the pointer, without animation.
+                if drawerDragHeight != nil {
+                    notesScroll.scrollTo(y: key.offset)
+                } else {
+                    withAnimation(LiveTranscriptOverlay.motion(reduceMotion: reduceMotion)) {
+                        notesScroll.scrollTo(y: key.offset)
+                    }
+                }
+            }
+        }
+        .task(id: viewModel.meetingID) {
+            await viewModel.load()
+        }
+        .onChange(of: viewModel.summariesVersion) {
+            Task { await viewModel.reloadDetail() }
         }
     }
 }
@@ -387,5 +482,14 @@ private extension RecordingView {
         RecordingView(viewModel: viewModel)
             .frame(width: 600, height: 700)
             .background(Tokens.contentBackground)
+    }
+
+    #Preview("Recording Screen, live drawer") {
+        let core = try! PreviewAppCore.make(liveTranscription: LiveTranscriptionService.preview()) // swiftlint:disable:this force_try
+        let viewModel = RecordingViewModel(core: core)
+        RecordingView(viewModel: viewModel)
+            .frame(width: 820, height: 640)
+            .background(Tokens.contentBackground)
+            .task { await core.startRecording() }
     }
 #endif

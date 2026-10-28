@@ -4,8 +4,10 @@ import Calendar
 import DataStore
 import DesignSystem
 import Foundation
+import LiveTranscriptModel
 import Permissions
 import Recording
+import TranscriptUI
 
 // MARK: - Remaining chip state
 
@@ -28,10 +30,16 @@ public enum RemainingChip: Equatable, Sendable {
 /// to `RecordingController`, and forwards stop actions to `AppCore`.
 @MainActor @Observable
 public final class RecordingViewModel {
-    private let core: AppCore
+    let core: AppCore
 
     /// Injectable URL opener (default NSWorkspace; tests inject a spy).
     private let urlOpener: (URL) -> Void
+
+    /// Puts text on the pasteboard (tests inject a spy).
+    let copyToPasteboard: (String) -> Void
+
+    /// The live drawer's items and the live state they were built from.
+    @ObservationIgnored var liveItemsCache: LiveItemsCache?
 
     /// The meeting detail loaded from the store.
     public private(set) var detail: MeetingDetailData?
@@ -58,10 +66,15 @@ public final class RecordingViewModel {
         core: AppCore,
         urlOpener: @escaping (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
+        },
+        copyToPasteboard: @escaping (String) -> Void = { text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
         }
     ) {
         self.core = core
         self.urlOpener = urlOpener
+        self.copyToPasteboard = copyToPasteboard
     }
 
     // MARK: - Projected state
@@ -376,9 +389,11 @@ public final class RecordingViewModel {
         }
         await core.stopRecording()
     }
+}
 
-    // MARK: - Formatting
+// MARK: - Formatting
 
+extension RecordingViewModel {
     /// Formats a time interval as "MM:SS" or "H:MM:SS" for large values.
     static func formatElapsed(_ elapsed: TimeInterval) -> String {
         let totalSeconds = Int(elapsed)

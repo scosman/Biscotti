@@ -1,7 +1,7 @@
 import DataStore
 import Foundation
 import Testing
-@testable import MeetingDetailUI
+@testable import TranscriptUI
 
 // MARK: - Color stability
 

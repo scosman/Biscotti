@@ -1,4 +1,5 @@
 import Foundation
+import WhisperKit
 
 /// Internal settings resolved from a ``TranscriptionMethod``.
 ///
@@ -12,6 +13,18 @@ struct ResolvedMethodSettings: Equatable {
     let detectLanguage: Bool
     let diarizationStrategy: DiarizationStrategyInternal
     let sequentialLoading: Bool
+
+    /// The final pass's Whisper options, before any custom-vocabulary prompt.
+    var decodingOptions: DecodingOptions {
+        DecodingOptions(detectLanguage: detectLanguage, wordTimestamps: enableWordTimestamps)
+    }
+}
+
+public extension TranscriptionMethod {
+    /// The Whisper model folder name this method transcribes with on this Mac.
+    var whisperModel: String {
+        MethodResolver.resolve(self).sttModel
+    }
 }
 
 /// Diarization merge strategy — internal to the engine, not public API.

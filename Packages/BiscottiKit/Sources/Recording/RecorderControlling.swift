@@ -11,8 +11,15 @@ public protocol RecorderControlling: Sendable {
     /// running the recording pipeline.
     func requestPermissions(systemProbePath: URL) async -> Bool
 
-    /// Starts two-stream capture writing to the given paths.
-    func start(paths: CapturePaths) async throws
+    /// Starts two-stream capture writing to the given paths. With a `liveTap`,
+    /// each track's writer also copies what it writes into the tap's queue
+    /// for the live transcript; the tap is single-use.
+    func start(paths: CapturePaths, liveTap: LiveAudioTap?) async throws
+
+    /// The recording timeline's offset from the capture start: a note at
+    /// elapsed time `e` sits at `e + offset` on the recording timeline. `nil`
+    /// before start completes or when the mic's first buffer had no host time.
+    func timelineOffset() async -> TimeInterval?
 
     /// Stops capture. Idempotent.
     func stop() async
@@ -33,6 +40,13 @@ public protocol RecorderControlling: Sendable {
     func probeSystemAudioWithTone(timeout: Duration) async -> Bool
 }
 
+public extension RecorderControlling {
+    /// Starts capture with no live tap.
+    func start(paths: CapturePaths) async throws {
+        try await start(paths: paths, liveTap: nil)
+    }
+}
+
 // Re-export AudioCapture types so downstream modules (AppCore, UI) can use
 // `CapturePaths` and `CaptureState` without importing AudioCapture directly.
 // Trade-off: `@_exported` is not ABI-stable and could break if Apple changes
@@ -40,3 +54,4 @@ public protocol RecorderControlling: Sendable {
 // public type aliases (e.g. `public typealias CapturePaths = AudioCapture.CapturePaths`).
 @_exported import struct AudioCapture.CapturePaths
 @_exported import struct AudioCapture.CaptureState
+@_exported import class AudioCapture.LiveAudioTap

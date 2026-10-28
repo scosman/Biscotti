@@ -42,6 +42,12 @@ public protocol CaptureEngine: Sendable {
     /// No-op for engines that don't need alignment (mic, fakes).
     func setMicAnchor(_ seconds: Double)
 
+    /// Sets the queue that receives a copy of each block the next
+    /// `start(writingTo:)` writes to its file, timed on the recording
+    /// timeline. Pass `nil` to detach. The copy never changes the file.
+    /// No-op for engines without a live copy (fakes).
+    func setLiveQueue(_ queue: LiveAudioQueue?)
+
     /// Non-nil if `ExtAudioFileWrite` failed during recording. Read after
     /// `stop()` to surface write errors. Nil for engines without a write
     /// path (mic engine, fakes).
@@ -52,6 +58,8 @@ public extension CaptureEngine {
     func setOnFirstBuffer(_: (@Sendable (Double) -> Void)?) {}
 
     func setMicAnchor(_: Double) {}
+
+    func setLiveQueue(_: LiveAudioQueue?) {}
 
     var writeError: OSStatus? {
         nil

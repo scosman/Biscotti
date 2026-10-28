@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import Synchronization
 
 /// The client the app holds for transcription. Supports two backends:
 /// `.inProcess` (runs the engine in this process) and `.hosted` (talks
@@ -31,7 +32,7 @@ public actor Transcriber {
         case inProcess
     }
 
-    private let backend: Backend
+    let backend: Backend
     private let method: TranscriptionMethod
 
     /// The engine used for the `.inProcess` backend. For `.hosted`, the engine
@@ -43,8 +44,20 @@ public actor Transcriber {
     private var currentStatus: ModelStatus = .needsDownload
 
     // XPC-specific state (only used for .hosted)
-    private var xpcConnection: (any TranscriberXPCConnecting)?
+    private(set) var xpcConnection: (any TranscriberXPCConnecting)?
     private let interruptedFlag: InterruptedFlag?
+
+    /// Where the worker's live updates go (see `Transcriber+Live.swift`).
+    let liveRoute = LiveUpdateRoute()
+
+    /// Told when the worker ends unexpectedly, even with no call in flight.
+    private let interruptionObserver = InterruptionObserver()
+
+    /// Told when a final pass starts or ends a model load.
+    private let modelLoadObserver = ModelLoadObserver()
+
+    /// The live session this client started, if any.
+    var liveSession: LiveClientSession?
 
     /// Factory for creating XPC connections, used for demand-driven reconnection.
     /// Nil for `.inProcess` backend.
@@ -151,11 +164,22 @@ public actor Transcriber {
         let activeEngine = ensureConnected()
         emitStatus(.running)
         do {
-            let result = try await activeEngine.processAudio(
-                micPath: mic.path,
-                systemPath: system.path,
-                customVocabulary: customVocabulary
-            )
+            // A worker request goes out from this actor, so the worker gets the
+            // pass before a `cancelActiveWork` this actor sends after it starts.
+            let result = if let worker = activeEngine as? XPCEngineAdapter {
+                try await worker.processAudio(
+                    micPath: mic.path,
+                    systemPath: system.path,
+                    customVocabulary: customVocabulary,
+                    sendingFrom: self
+                )
+            } else {
+                try await activeEngine.processAudio(
+                    micPath: mic.path,
+                    systemPath: system.path,
+                    customVocabulary: customVocabulary
+                )
+            }
             emitStatus(.ready)
             return result
         } catch {
@@ -215,6 +239,9 @@ public actor Transcriber {
         Self.log.info("client: invalidate() returned — connection torn down")
         xpcConnection = nil
         engine = nil
+        // The worker ends a session whose connection closes.
+        liveRoute.endCurrent()
+        liveSession = nil
         // Clear the interrupted flag so a shutdown-then-reconnect cycle
         // does not surface a spurious workerInterrupted from the old connection.
         interruptedFlag?.value = false
@@ -294,7 +321,8 @@ public actor Transcriber {
     /// Creates a new `NSXPCConnection` (via `connectionFactory`) if the
     /// previous one was torn down by ``shutdown()``. This makes the
     /// connection demand-driven: established before work, released after.
-    private func ensureConnected() -> any TranscriptionEngine {
+    @discardableResult
+    func ensureConnected() -> any TranscriptionEngine {
         if let existing = engine { return existing }
 
         guard let factory = connectionFactory else {
@@ -311,27 +339,48 @@ public actor Transcriber {
         let connection = factory()
         xpcConnection = connection
 
+        let liveRoute = liveRoute
+        let observer = interruptionObserver
         if let flag = interruptedFlag {
             connection.setInterruptionHandler {
                 Self.log.info("client: XPC connection interrupted (worker crash/jetsam)")
                 flag.value = true
+                // The worker's live session died with it.
+                liveRoute.endCurrent()
+                observer.notify()
             }
         }
+        connection.setLiveUpdateRoute(liveRoute)
+        let modelLoads = modelLoadObserver
+        connection.setModelLoadHandler { modelLoads.notify($0) }
         connection.setInvalidationHandler {
             Self.log.info("client: XPC connection invalidation handler fired")
         }
         connection.activate()
 
         let adapter = XPCEngineAdapter(
-            proxyProvider: { [weak connection] in
-                connection?.remoteObjectProxy()
+            proxyProvider: { [weak connection] errorHandler in
+                connection?.remoteObjectProxy(errorHandler: errorHandler)
             }
         )
         engine = adapter
         return adapter
     }
 
-    private func checkInterrupted() throws {
+    /// Calls `handler` whenever the worker ends unexpectedly (a crash or
+    /// jetsam) while this client is connected, even with no call in flight.
+    /// It replaces any earlier handler and runs on the connection's queue.
+    public func observeInterruptions(_ handler: @escaping @Sendable () -> Void) {
+        interruptionObserver.set(handler)
+    }
+
+    /// Calls `handler` when a final pass starts (true) or ends (false) a
+    /// model load in the worker. It replaces any earlier handler.
+    public func observeModelLoads(_ handler: @escaping @Sendable (Bool) -> Void) {
+        modelLoadObserver.set(handler)
+    }
+
+    func checkInterrupted() throws {
         guard let flag = interruptedFlag else { return }
         if flag.value {
             // Clear the flag so the next call can succeed (worker auto-relaunches)
@@ -354,6 +403,33 @@ public actor Transcriber {
     private func mapToTranscriptionError(_ error: Error) -> TranscriptionError {
         if let transcriptionError = error as? TranscriptionError { return transcriptionError }
         return .transcriptionFailed(error.localizedDescription)
+    }
+}
+
+/// Holds the handler `observeInterruptions` set, for the connection's
+/// interruption handler.
+final class InterruptionObserver: Sendable {
+    private let handler = Mutex<(@Sendable () -> Void)?>(nil)
+
+    func set(_ handler: @escaping @Sendable () -> Void) {
+        self.handler.withLock { $0 = handler }
+    }
+
+    func notify() {
+        handler.withLock { $0 }?()
+    }
+}
+
+/// Holds the handler `observeModelLoads` set, for the connection's status receiver.
+final class ModelLoadObserver: Sendable {
+    private let handler = Mutex<(@Sendable (Bool) -> Void)?>(nil)
+
+    func set(_ handler: @escaping @Sendable (Bool) -> Void) {
+        self.handler.withLock { $0 = handler }
+    }
+
+    func notify(_ isLoading: Bool) {
+        handler.withLock { $0 }?(isLoading)
     }
 }
 

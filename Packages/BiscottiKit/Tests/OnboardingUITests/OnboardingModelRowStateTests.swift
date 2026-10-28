@@ -1,6 +1,7 @@
 import BiscottiTestSupport
 import DataStore
 import Intelligence
+import LiveTranscriptionService
 import LocalLLM
 import Testing
 @testable import OnboardingUI
@@ -23,6 +24,25 @@ struct TranscriptionRowStateTests {
 
         let state = viewModel.transcriptionRowState()
         #expect(state == .idle(sizeCaption: "~1.5 GB"))
+    }
+
+    @Test("with live transcription on and its model missing, the step also counts and fetches the live model")
+    func transcriptionStepIncludesTheLiveModel() async throws {
+        let model = FakeLiveModel(present: false)
+        let live = makeFakeLiveService(model: model)
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied, liveTranscription: live)
+        defer { fixture.cleanup() }
+
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance()
+        await viewModel.skip()
+        #expect(viewModel.transcriptionDownloaded == false, "the final models are there, the live one is not")
+        #expect(viewModel.transcriptionRowState() == .idle(sizeCaption: "~2 GB"))
+
+        await viewModel.startTranscriptionDownload()
+        #expect(viewModel.downloadComplete)
+        #expect(model.downloadCount == 1)
+        #expect(live.modelState == .ready)
     }
 
     @Test("ready when transcription already downloaded on entry")

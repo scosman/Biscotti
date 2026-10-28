@@ -15,17 +15,23 @@ public struct RecordingState: Sendable, Equatable {
     /// (e.g. inside a `TimelineView`), keeping all chips in sync on the
     /// same frame rather than relying on the engine's async elapsed pump.
     public var startDate: Date?
+    /// Seconds from the capture start to the recording timeline: a note at
+    /// elapsed `e` sits at `e + timelineOffset` on the timeline the live
+    /// transcript and the audio files use. `nil` when unknown.
+    public var timelineOffset: TimeInterval?
 
     public init(
         isRecording: Bool,
         elapsed: TimeInterval,
         meetingID: UUID?,
-        startDate: Date? = nil
+        startDate: Date? = nil,
+        timelineOffset: TimeInterval? = nil
     ) {
         self.isRecording = isRecording
         self.elapsed = elapsed
         self.meetingID = meetingID
         self.startDate = startDate
+        self.timelineOffset = timelineOffset
     }
 
     /// The resting state before any recording.

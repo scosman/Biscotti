@@ -247,6 +247,12 @@ public enum Tokens {
     /// Meet chip radius.
     public static let meetChipRadius: CGFloat = 6
 
+    /// Transcript bubble radius.
+    public static let bubbleRadius: CGFloat = 14
+
+    /// Live transcript drawer radius: a floating panel, so softer than `cardRadius`.
+    public static let drawerRadius: CGFloat = 16
+
     // MARK: - Avatar
 
     /// Fixed width for the avatar column in home rows.

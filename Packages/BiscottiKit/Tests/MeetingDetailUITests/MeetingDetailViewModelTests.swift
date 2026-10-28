@@ -6,6 +6,7 @@ import Testing
 import Transcription
 @testable import AppCore
 @testable import MeetingDetailUI
+@testable import TranscriptionService
 
 // MARK: - Tests
 
@@ -54,6 +55,24 @@ struct MeetingDetailDisplayStateTests {
         let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
         await viewModel.load()
 
+        #expect(viewModel.displayState == .processing(message: "Transcribing\u{2026}"))
+    }
+
+    @Test("While the final pass's model load is slow because the disk is low, its status says so")
+    @MainActor
+    func displayStateSaysWhenTheDiskSlowsTheLoad() async throws {
+        let fix = try makeCoreFixture(testName: "MeetingDetailUITests")
+        defer { fix.cleanup() }
+
+        let meetingID = try await fix.createMeetingWithAudio()
+        fix.core.transcription.jobs[meetingID] = .transcribing
+        fix.core.transcription.slowModelLoadOnLowDisk = meetingID
+
+        let viewModel = MeetingDetailViewModel(core: fix.core, meetingID: meetingID)
+        await viewModel.load()
+
+        #expect(viewModel.displayState == .processing(message: "Transcribing\u{2026}", subtitle: SlowModelLoad.finalPassStatus))
+        fix.core.transcription.slowModelLoadOnLowDisk = nil
         #expect(viewModel.displayState == .processing(message: "Transcribing\u{2026}"))
     }
 

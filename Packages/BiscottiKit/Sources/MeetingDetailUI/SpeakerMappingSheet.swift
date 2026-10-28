@@ -1,6 +1,7 @@
 import DataStore
 import DesignSystem
 import SwiftUI
+import TranscriptUI
 
 /// A sheet that lets the user map each diarization speaker to a person.
 ///

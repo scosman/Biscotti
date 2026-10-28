@@ -11,6 +11,17 @@ struct MethodResolutionTests {
         #expect(TranscriptionMethod.v1.id == "v1")
     }
 
+    @Test("the current method names its Whisper model, and the final pass's options follow its settings")
+    func currentMethodExposesModelAndFinalPassOptions() {
+        let settings = MethodResolver.resolve(.current)
+        let options = settings.decodingOptions
+
+        #expect(TranscriptionMethod.current.whisperModel == MethodResolver.sttModel)
+        #expect(options.detectLanguage == settings.detectLanguage)
+        #expect(options.wordTimestamps == settings.enableWordTimestamps)
+        #expect(options.promptTokens == nil)
+    }
+
     // MARK: - RAM-aware resolution (now internal to the method resolver)
 
     @Test("v1 resolves to the single STT model + sequential loading at 8 GB")

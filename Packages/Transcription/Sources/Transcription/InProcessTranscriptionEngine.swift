@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import SpeakerKit
+import Synchronization
 import WhisperKit
 
 /// In-process implementation of `TranscriptionEngine`.
@@ -20,6 +21,8 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     private let diskSpaceChecker: DiskSpaceChecking
     private var whisperKit: WhisperKit?
     private var speakerKit: SpeakerKit?
+    /// Told when a model load starts and ends.
+    private var modelLoadObserver: (@Sendable (Bool) -> Void)?
 
     /// Estimated bytes required for model download (STT + diarization).
     /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
@@ -47,15 +50,18 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         diskSpaceChecker = SystemDiskSpaceChecker()
     }
 
-    /// Internal init for testing with an injected disk-space checker.
+    /// Internal init for testing with an injected disk-space checker and,
+    /// optionally, a Whisper model already set up.
     init(
         method: TranscriptionMethod = .current,
-        diskSpaceChecker: DiskSpaceChecking
+        diskSpaceChecker: DiskSpaceChecking,
+        whisperKit: sending WhisperKit? = nil
     ) {
         self.method = method
         resolvedSettings = MethodResolver.resolve(method)
         statusMachine = ModelStatusMachine(initial: .needsDownload)
         self.diskSpaceChecker = diskSpaceChecker
+        self.whisperKit = whisperKit
     }
 
     // MARK: - TranscriptionEngine
@@ -95,6 +101,14 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
         if resolvedSettings.sequentialLoading { await unloadWhisperKit() }
 
+        // A pass cancelled during STT ends here, before diarization starts.
+        do {
+            try Task.checkCancellation()
+        } catch {
+            await statusMachine.transition(to: .ready)
+            throw TranscriptionError.cancelled
+        }
+
         let diarization = try await runDiarization(audioArray: mergeResult.samples)
 
         if resolvedSettings.sequentialLoading { await unloadSpeakerKit() }
@@ -107,6 +121,12 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         await statusMachine.transition(to: .ready)
         Self.log.debug("processAudio: complete")
         return result
+    }
+
+    /// Calls `observer` when a model load starts (true) and ends (false);
+    /// nil stops it.
+    public func observeModelLoads(_ observer: (@Sendable (Bool) -> Void)?) {
+        modelLoadObserver = observer
     }
 
     public func unloadModels() async {
@@ -130,6 +150,95 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
 
     public func status() async -> ModelStatus {
         await statusMachine.current
+    }
+}
+
+// MARK: - Sharing Whisper with the live session
+
+/// A loaded `WhisperKit` handed from the code that loaded it to a live decoder.
+///
+/// `WhisperKit` is not `Sendable`, so it cannot leave the engine's actor on its
+/// own. The two sides never use it at the same time: `EngineHost` runs no final
+/// pass while a live session decodes with the engine's model, and waits for the
+/// last live decode to return before it runs one.
+package struct LoadedWhisperKit: @unchecked Sendable {
+    package let whisperKit: WhisperKit
+}
+
+package extension InProcessTranscriptionEngine {
+    /// The Whisper model folder name the final pass uses.
+    nonisolated var whisperModelName: String {
+        resolvedSettings.sttModel
+    }
+
+    /// The final pass's Whisper model, loaded if it is not, for a live session
+    /// that uses the same model. Never downloads: unless the model is fully
+    /// loaded, it must be in the model cache with a tokenizer that loads from
+    /// there, as for `loadLocalWhisperKit`, also when the final pass's
+    /// download step left it unloaded. The final pass then reuses this load.
+    /// - Throws: `TranscriptionError.needsDownload` when it is not.
+    func loadedWhisperKit(downloadBase: URL = ModelStorage.downloadBase) async throws -> LoadedWhisperKit {
+        try await ensureWhisperKitLoaded(localOnlyFrom: downloadBase)
+        guard let whisperKit else {
+            throw TranscriptionError.modelLoadFailed("WhisperKit is nil after loading")
+        }
+        return LoadedWhisperKit(whisperKit: whisperKit)
+    }
+
+    /// Loads a downloaded Whisper model from the model cache, in the layout the
+    /// final pass's download uses: `models/argmaxinc/whisperkit-coreml/<model>`
+    /// with its tokenizer under `models/openai/`. Never downloads: the
+    /// tokenizer must load from the cache first, because WhisperKit fetches
+    /// one from the Hub when its local files fail to load.
+    /// - Throws: `TranscriptionError.needsDownload` when the model is not on
+    ///   disk or its tokenizer does not load, so the download repairs it.
+    static func loadLocalWhisperKit(model: String, downloadBase: URL = ModelStorage.downloadBase) async throws -> LoadedWhisperKit {
+        let repo = MethodResolver.defaultRepo
+        let folder = try await localModelFolder(model: model, repo: repo, downloadBase: downloadBase)
+        do {
+            let whisperKit = try await WhisperKit(WhisperKitConfig(
+                model: model,
+                downloadBase: downloadBase,
+                modelRepo: repo,
+                modelFolder: folder.path,
+                verbose: false,
+                prewarm: false,
+                load: true,
+                download: false
+            ))
+            return LoadedWhisperKit(whisperKit: whisperKit)
+        } catch {
+            throw TranscriptionError.modelLoadFailed("WhisperKit init failed for \(model): \(error.localizedDescription)")
+        }
+    }
+
+    /// The model's folder in the cache, once the model is there and its
+    /// tokenizer loads from the cache alone.
+    /// - Throws: `TranscriptionError.needsDownload` otherwise.
+    private static func localModelFolder(model: String, repo: String, downloadBase: URL) async throws -> URL {
+        let folder = downloadBase
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repo, isDirectory: true)
+            .appendingPathComponent(model, isDirectory: true)
+        guard directoryContainsMLModel(folder),
+              await WhisperModelFiles.tokenizerLoadsLocally(model: model, downloadBase: downloadBase)
+        else {
+            throw TranscriptionError.needsDownload
+        }
+        return folder
+    }
+}
+
+/// Set once, from any thread.
+private final class CancellationFlag: Sendable {
+    private let value = Atomic(false)
+
+    var isSet: Bool {
+        value.load(ordering: .acquiring)
+    }
+
+    func set() {
+        value.store(true, ordering: .releasing)
     }
 }
 
@@ -166,7 +275,7 @@ extension InProcessTranscriptionEngine {
 
     /// Returns `true` if `directory` (or any immediate subdirectory) contains
     /// at least one `.mlmodelc` bundle.
-    private static func directoryContainsMLModel(_ directory: URL) -> Bool {
+    static func directoryContainsMLModel(_ directory: URL) -> Bool {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: directory.path) else { return false }
         guard let enumerator = fileManager.enumerator(
@@ -196,10 +305,7 @@ private extension InProcessTranscriptionEngine {
         do {
             try await ensureWhisperKitLoaded()
 
-            var decodingOptions = DecodingOptions(
-                detectLanguage: resolvedSettings.detectLanguage,
-                wordTimestamps: resolvedSettings.enableWordTimestamps
-            )
+            var decodingOptions = resolvedSettings.decodingOptions
 
             if let promptText = VocabularyFormatter.formatPrompt(from: customVocabulary) {
                 if let tokenizer = whisperKit?.tokenizer {
@@ -210,10 +316,22 @@ private extension InProcessTranscriptionEngine {
             guard let whisper = whisperKit else {
                 throw TranscriptionError.modelLoadFailed("WhisperKit is nil after loading")
             }
-            return try await whisper.transcribe(
-                audioArray: audioArray,
-                decodeOptions: decodingOptions
-            )
+            // WhisperKit stops between windows when its callback returns false.
+            // The flag is set by the cancellation handler, so it does not
+            // matter which task WhisperKit calls the callback on.
+            let stop = CancellationFlag()
+            return try await withTaskCancellationHandler {
+                try await whisper.transcribe(
+                    audioArray: audioArray,
+                    decodeOptions: decodingOptions,
+                    callback: { _ in stop.isSet ? false : nil }
+                )
+            } onCancel: {
+                stop.set()
+            }
+        } catch is CancellationError {
+            await statusMachine.transition(to: .ready)
+            throw TranscriptionError.cancelled
         } catch let error as TranscriptionError {
             await statusMachine.transition(to: .error(error))
             throw error
@@ -283,14 +401,30 @@ private extension InProcessTranscriptionEngine {
 // MARK: - Model lifecycle helpers
 
 private extension InProcessTranscriptionEngine {
-    func ensureWhisperKitLoaded() async throws {
+    /// - Parameter downloadBase: Loads only from this model cache, never
+    ///   downloading; nil lets WhisperKit download a missing model.
+    func ensureWhisperKitLoaded(localOnlyFrom downloadBase: URL? = nil) async throws {
+        modelLoadObserver?(true)
+        defer { modelLoadObserver?(false) }
+        // Loading a model that is not fully loaded, also one the download step
+        // left unloaded, loads its tokenizer, which WhisperKit fetches from the
+        // Hub when the cache's does not load: check the cache first.
+        var localFolder: URL?
+        if let downloadBase, whisperKit?.modelState != .loaded {
+            localFolder = try await Self.localModelFolder(
+                model: resolvedSettings.sttModel, repo: resolvedSettings.sttModelRepo, downloadBase: downloadBase
+            )
+        }
         if whisperKit == nil {
             Self.log.info("WhisperKit: loading model (first init)")
             await statusMachine.transition(to: .loading)
             do {
-                whisperKit = try await WhisperKit(
-                    makeWhisperConfig(load: true, download: true)
-                )
+                whisperKit = try await WhisperKit(makeWhisperConfig(
+                    load: true,
+                    download: localFolder == nil,
+                    modelFolder: localFolder,
+                    downloadBase: downloadBase ?? ModelStorage.downloadBase
+                ))
             } catch {
                 let wrappedError = TranscriptionError.modelLoadFailed(
                     "WhisperKit init failed: \(error.localizedDescription)"
@@ -307,6 +441,8 @@ private extension InProcessTranscriptionEngine {
     }
 
     func ensureSpeakerKitLoaded() async throws {
+        modelLoadObserver?(true)
+        defer { modelLoadObserver?(false) }
         if speakerKit == nil {
             Self.log.info("SpeakerKit: loading model (first init)")
             do {
@@ -386,11 +522,12 @@ private extension InProcessTranscriptionEngine {
     }
 
     /// Build a WhisperKit configuration anchored at the shared cache location.
-    func makeWhisperConfig(load: Bool, download: Bool) -> WhisperKitConfig {
+    func makeWhisperConfig(load: Bool, download: Bool, modelFolder: URL? = nil, downloadBase: URL = ModelStorage.downloadBase) -> WhisperKitConfig {
         WhisperKitConfig(
             model: resolvedSettings.sttModel,
-            downloadBase: ModelStorage.downloadBase,
+            downloadBase: downloadBase,
             modelRepo: resolvedSettings.sttModelRepo,
+            modelFolder: modelFolder?.path,
             verbose: false,
             load: load,
             download: download

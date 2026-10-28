@@ -24,6 +24,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
     private let processingFormat: AVAudioFormat
     private let onFirstBuffer: (@Sendable (Double) -> Void)?
+    private let liveQueue: LiveAudioQueue?
 
     // -- Tap ownership (tapLock) --
     private let tapLock = OSAllocatedUnfairLock()
@@ -74,6 +75,10 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     /// buffer is written.
     private var expectedNextHostNanos: UInt64 = 0
 
+    /// Audio written to the file so far, including gap fills: the start
+    /// time of the next block copied to `liveQueue`.
+    private var liveTimeline = WrittenTimeline()
+
     /// Pre-allocated silence buffer reused across gap fills, sized at
     /// `gapFillChunkFrames`. Created lazily on the first gap fill (one
     /// allocation); subsequent fills reuse the same buffer.
@@ -90,11 +95,21 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     private static let gapFillChunkFrames: AVAudioFrameCount = 8192
 
     /// Opens a new file, starts the writer thread, and captures this
-    /// attempt's callback immutably. A later recorder retry cannot redirect
-    /// an old tap to its own file or callback.
-    init(url: URL, encoder: EncoderSettings, onFirstBuffer: (@Sendable (Double) -> Void)?) throws {
+    /// attempt's callback and live queue immutably. A later recorder retry
+    /// cannot redirect an old tap to its own file, callback or queue.
+    ///
+    /// - Parameter makeFile: Creates the output file. Tests inject a file
+    ///   that refuses writes.
+    init(
+        url: URL,
+        encoder: EncoderSettings,
+        onFirstBuffer: (@Sendable (Double) -> Void)?,
+        liveQueue: LiveAudioQueue? = nil,
+        makeFile: (URL, EncoderSettings, AVAudioFormat) throws -> ExtAudioFileRef = VPIOFileHelper.createExtAudioFile
+    ) throws {
         processingFormat = encoder.processingFormat
         self.onFirstBuffer = onFirstBuffer
+        self.liveQueue = liveQueue
 
         slotByteSize = Int(Self.slotMaxFrames) * MemoryLayout<Float>.size
         slotData = .allocate(
@@ -106,9 +121,7 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             slotHeaders[idx] = SlotHeader()
         }
 
-        file = try VPIOFileHelper.createExtAudioFile(
-            url: url, encoder: encoder, processingFormat: processingFormat
-        )
+        file = try makeFile(url, encoder, processingFormat)
 
         startWriterThread()
     }
@@ -371,6 +384,9 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             if writeError == nil { writeError = writeStatus }
             return
         }
+        // Only audio the file took goes to the live copy, so the live timeline
+        // stays the file's.
+        copyToLiveQueue(bufferToWrite)
 
         guard !didNotifyFirstBuffer else { return }
         didNotifyFirstBuffer = true
@@ -423,6 +439,14 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
         let gapSeconds = Double(actualHostNanos - expectedNextHostNanos) / 1_000_000_000
         logger.notice("Mic gap fill: \(gapSeconds, privacy: .public)s (\(framesRemaining, privacy: .public) frames)")
 
+        let rate = processingFormat.sampleRate
+        liveQueue?.pushGap(
+            startTime: liveTimeline.seconds,
+            duration: Double(framesRemaining) / rate,
+            kind: .captureGap
+        )
+        liveTimeline.advance(frames: framesRemaining, sampleRate: rate)
+
         let chunk = Self.gapFillChunkFrames
         let buf = silenceBufferForFill()
 
@@ -441,6 +465,20 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
             }
             framesRemaining -= Int(count)
         }
+    }
+
+    /// Copies the mono buffer just written to the file to the live queue, at
+    /// its place on the file's timeline. Writer-thread-only.
+    private func copyToLiveQueue(_ buffer: AVAudioPCMBuffer) {
+        let frames = Int(buffer.frameLength)
+        let rate = processingFormat.sampleRate
+        if let liveQueue, let samples = buffer.floatChannelData?[0] {
+            liveQueue.pushSamples(
+                samples, frameCount: frames, sampleRate: rate, channelCount: 1,
+                startTime: liveTimeline.seconds
+            )
+        }
+        liveTimeline.advance(frames: frames, sampleRate: rate)
     }
 
     /// Returns the pre-allocated silence buffer, creating it on first use.

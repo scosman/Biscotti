@@ -79,6 +79,17 @@ public extension Color {
     /// Tertiary text / chevrons: ink @ 34% / warm off-white @ 36%.
     static let inkTertiary = Color(nsColor: .inkTertiary)
 
+    /// Secondary text that must stay readable: ink @ 62% / warm off-white @ 58%.
+    /// At least 4.5:1 on `paper` and on both transcript bubble fills
+    /// (`neutralChip`, `softSageFill`) in both appearances. Light
+    /// `inkSecondary` (54%) reaches only 3.6:1 on the bubble fills. Used for a
+    /// live bubble's unsettled tail, transcript gap and start markers, and the
+    /// live drawer's status, find-count and placeholder text.
+    static let inkSecondaryLegible = dynamicColor(
+        light: NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 0.62),
+        dark: NSColor(srgbRed: 0.969, green: 0.949, blue: 0.910, alpha: 0.58)
+    )
+
     /// Separator: ink @ 11% / #F7F2E8 @ 12%.
     static let hairline = dynamicColor(
         light: NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 0.11),
@@ -352,6 +363,10 @@ public extension ShapeStyle where Self == Color {
 
     static var inkTertiary: Color {
         .inkTertiary
+    }
+
+    static var inkSecondaryLegible: Color {
+        Color.inkSecondaryLegible
     }
 
     static var signalRed: Color {

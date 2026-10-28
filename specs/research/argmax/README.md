@@ -448,6 +448,8 @@ Yes, partially:
 
 **Recommendation:** Stick with the capture-to-file approach. The "lightweight, never-crashing recorder" goal conflicts directly with keeping a multi-GB ML model resident and running inference during the meeting. The WhisperKit streaming capability is documented here for future reference -- if Biscotti ever wants a "live captions" feature (P2+), it could run WhisperKit streaming in a separate XPC service that is independent of the recorder, but this is not V1.
 
+> **Update (live_transcript project):** live captions are built. The engine experiment, its results and the chosen live settings (`openai_whisper-small`, unprompted, two-track, every 1 s, in the transcriber XPC worker, not the recorder) are in [`specs/research/live_transcription/README.md`](../live_transcription/README.md). Over a 45-minute replay on an M1 Max, large-v3 added at most 0.73 GB of system memory and SpeechAnalyzer with fast results 0.59 GB; whisper-small peaked at 2.68 GB in a short wired-memory spike of unknown source that recurs in its runs, under the 3 GB limit set for a 16 GB Mac. None reached a serious heat level. The capture-to-file final pass stays the only writer of saved transcripts.
+
 ---
 
 ## Recommendation

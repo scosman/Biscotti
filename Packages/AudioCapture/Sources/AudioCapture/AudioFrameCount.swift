@@ -90,3 +90,27 @@ public func gapSilenceFrameCount(
     let capped = min(gap, maxFillSeconds)
     return Int((capped * sampleRate).rounded())
 }
+
+/// How much audio a track's writer has put in its file, as a time on the
+/// recording timeline. Frames are counted as integers per sample rate, so
+/// times stay frame-exact; if the rate changes, counting continues from the
+/// written end.
+struct WrittenTimeline {
+    private var segmentStart: Double = 0
+    private var segmentFrames: Int64 = 0
+    private var segmentRate: Double = 0
+
+    var seconds: Double {
+        segmentRate > 0 ? segmentStart + Double(segmentFrames) / segmentRate : segmentStart
+    }
+
+    mutating func advance(frames: Int, sampleRate: Double) {
+        guard frames > 0, sampleRate > 0 else { return }
+        if sampleRate != segmentRate {
+            segmentStart = seconds
+            segmentFrames = 0
+            segmentRate = sampleRate
+        }
+        segmentFrames += Int64(frames)
+    }
+}

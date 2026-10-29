@@ -31,7 +31,7 @@
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
 - 🧩 **MCP** - chat with your meeting notes in apps like Claude Desktop or LM Studio.
 - ⏹️ **Auto‑stop** — detects when your call ends and stops recording.
-- 📖 **Custom vocabulary** — transcribe uncommon words you use, like names or jargon.
+- 📖 **Custom vocabulary** — transcribe uncommon words you use, like names or jargon (Whisper only).
 - ⚡ **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.
 - 🎤 **Voice isolation** — captures your mic and everyone else as separate, clean channels. No echo.
 - 📝 **Markdown notes** — jot notes in markdown, linked to the moment they happened.
@@ -98,7 +98,7 @@ Locally, on your Mac.
 
 **Which AI does it use?**
 All AI runs locally on your Mac.
- - Transcription powered by Whisper V3 Turbo, run by [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift)
+ - Transcription: Apple Speech (built into macOS 26) or Whisper V3 Turbo via [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift). You choose the engine during setup; Whisper is the only option on macOS 15.
  - Speaker identification by Pyannote, run by [SpeakerKit](https://github.com/argmaxinc/argmax-oss-swift)
  - Language models by Google Gemma 4, run on [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
@@ -112,7 +112,7 @@ Yes. Biscotti can sync any calendars you connect to the Apple Calendar app on yo
 Four steps: 1) an AI model transcribes what you say, 2) a second AI model separates speakers by voice + generates voiceprint vectors, 3) we search for voiceprints closely matching these voiceprints in your past meetings which have speaker labels, and 4) a third model figures out who's who balancing evidence (voiceprints, user said "Hi, I'm Steve", etc). Enhanced by calendar metadata when available.
 
 **Which languages does it support?**
-The [transcription model](https://huggingface.co/openai/whisper-large-v3-turbo) supports 99 languages and [summary model](https://huggingface.co/google/gemma-4-12B-it) supports 35+ languages.
+Apple Speech supports the major languages available in macOS 26. [Whisper](https://huggingface.co/openai/whisper-large-v3-turbo) supports 99 languages. The [summary model](https://huggingface.co/google/gemma-4-12B-it) supports 35+ languages.
 
 ## Built with
 

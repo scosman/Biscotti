@@ -183,6 +183,10 @@ public struct AppSettingsData: Sendable, Equatable {
     public var menuBarLeadTimeSeconds: Int
     /// Whether meeting-detected notifications are presented.
     public var monitorForMeetings: Bool
+    /// Whether mic capture uses VoiceProcessingIO (noise suppression + AGC).
+    /// Off captures a plain input stream, leaving the built-in mic usable
+    /// by other applications.
+    public var useVoiceProcessing: Bool
     /// Whether recording auto-stops when all mic users leave.
     public var stopRecordingAutomatically: Bool
     /// Which calendar events trigger pre-meeting notifications.
@@ -229,6 +233,7 @@ public struct AppSettingsData: Sendable, Equatable {
         globalRecordShortcutEnabled: Bool = true,
         menuBarLeadTimeSeconds: Int = 3600,
         monitorForMeetings: Bool = true,
+        useVoiceProcessing: Bool = true,
         stopRecordingAutomatically: Bool = true,
         calendarNotificationMode: CalendarNotificationMode = .allMeetings,
         onboardingComplete: Bool = false,
@@ -246,6 +251,7 @@ public struct AppSettingsData: Sendable, Equatable {
         self.globalRecordShortcutEnabled = globalRecordShortcutEnabled
         self.menuBarLeadTimeSeconds = menuBarLeadTimeSeconds
         self.monitorForMeetings = monitorForMeetings
+        self.useVoiceProcessing = useVoiceProcessing
         self.stopRecordingAutomatically = stopRecordingAutomatically
         self.calendarNotificationMode = calendarNotificationMode
         self.onboardingComplete = onboardingComplete
@@ -611,6 +617,7 @@ public extension DataStore {
                 globalRecordShortcutEnabled: existing.globalRecordShortcutEnabled,
                 menuBarLeadTimeSeconds: existing.menuBarLeadTimeSeconds,
                 monitorForMeetings: existing.monitorForMeetings,
+                useVoiceProcessing: existing.useVoiceProcessing,
                 stopRecordingAutomatically: existing.stopRecordingAutomatically,
                 calendarNotificationMode: CalendarNotificationMode(raw: existing.calendarNotificationModeRaw),
                 onboardingComplete: existing.onboardingComplete,
@@ -649,6 +656,7 @@ public extension DataStore {
             globalRecordShortcutEnabled: model.globalRecordShortcutEnabled,
             menuBarLeadTimeSeconds: model.menuBarLeadTimeSeconds,
             monitorForMeetings: model.monitorForMeetings,
+            useVoiceProcessing: model.useVoiceProcessing,
             stopRecordingAutomatically: model.stopRecordingAutomatically,
             calendarNotificationMode: CalendarNotificationMode(raw: model.calendarNotificationModeRaw),
             onboardingComplete: model.onboardingComplete,
@@ -668,6 +676,7 @@ public extension DataStore {
         model.globalRecordShortcutEnabled = dto.globalRecordShortcutEnabled
         model.menuBarLeadTimeSeconds = dto.menuBarLeadTimeSeconds
         model.monitorForMeetings = dto.monitorForMeetings
+        model.useVoiceProcessing = dto.useVoiceProcessing
         model.stopRecordingAutomatically = dto.stopRecordingAutomatically
         model.calendarNotificationModeRaw = dto.calendarNotificationMode.rawValue
         model.onboardingComplete = dto.onboardingComplete

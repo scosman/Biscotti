@@ -124,6 +124,15 @@ public struct SettingsView: View {
                     .font(Tokens.metadataFont)
                     .foregroundStyle(Tokens.secondaryText)
             }
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Toggle(
+                    "Microphone noise suppression",
+                    isOn: micVoiceProcessingBinding
+                )
+                Text("When off, Biscotti skips noise suppression so other apps can use the microphone at the same time (e.g. during a Slack or Teams call).")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
             Picker(
                 "Show next meeting in menu bar",
                 selection: menuBarLeadTimeBinding
@@ -537,6 +546,17 @@ private extension SettingsView {
             set: { newValue in
                 Task {
                     await viewModel.setStopRecordingAutomatically(newValue)
+                }
+            }
+        )
+    }
+
+    var micVoiceProcessingBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.useVoiceProcessing },
+            set: { newValue in
+                Task {
+                    await viewModel.setUseVoiceProcessing(newValue)
                 }
             }
         )

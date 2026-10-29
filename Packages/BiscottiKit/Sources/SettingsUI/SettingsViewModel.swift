@@ -96,6 +96,9 @@ public final class SettingsViewModel {
     /// Whether recording auto-stops when all mic users leave.
     public private(set) var stopRecordingAutomatically: Bool = true
 
+    /// Whether mic capture uses VoiceProcessingIO (noise suppression + AGC).
+    public private(set) var useVoiceProcessing: Bool = true
+
     /// Whether the "Notifications Stay Visible" row should be shown.
     /// True only when the macOS alert style is `.banner` (notifications
     /// are enabled but auto-dismiss). Hidden for `.alert` (goal met)
@@ -438,6 +441,7 @@ public final class SettingsViewModel {
             monitorForMeetings = settings.monitorForMeetings
             calendarNotificationMode = settings.calendarNotificationMode
             stopRecordingAutomatically = settings.stopRecordingAutomatically
+            useVoiceProcessing = settings.useVoiceProcessing
             mcpServerEnabled = settings.mcpServerEnabled
             aiAnalysisEnabled = settings.aiAnalysisEnabled
             customVocabularyEnabled = settings.customVocabularyResolved
@@ -608,6 +612,24 @@ public extension SettingsViewModel {
             )
         } catch {
             stopRecordingAutomatically = !enabled
+        }
+    }
+
+    /// Toggles the microphone noise-suppression (VoiceProcessingIO) setting.
+    /// Persists to the store and posts `.micVoiceProcessingDidChange` so
+    /// AppCore refreshes the flag the next recorder reads.
+    func setUseVoiceProcessing(_ enabled: Bool) async {
+        useVoiceProcessing = enabled
+        do {
+            try await core.store.updateSettings { settings in
+                settings.useVoiceProcessing = enabled
+            }
+            NotificationCenter.default.post(
+                name: .micVoiceProcessingDidChange,
+                object: nil
+            )
+        } catch {
+            useVoiceProcessing = !enabled
         }
     }
 }

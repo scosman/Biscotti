@@ -9,10 +9,12 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Owns one recording attempt's file, writes on a dedicated non-real-time
 /// thread, and channels tap callbacks through a lock-free ring buffer.
 ///
-/// The tap callback extracts channel 0 and enqueues the raw mono PCM into
-/// the ring; it never encodes, writes to disk, or holds a lock for longer
-/// than the memcpy. The writer thread dequeues, converts (resamples), fills
-/// gaps, writes ADTS AAC, and fires the first-buffer anchor.
+/// The tap callback reduces the hardware tap to mono (channel 0 for VPIO's
+/// processed stream; channel average for plain multichannel taps) and
+/// enqueues the raw PCM into the ring; it never encodes, writes to disk,
+/// or holds a lock for longer than the memcpy. The writer thread dequeues,
+/// converts (resamples), fills gaps, writes ADTS AAC, and fires the
+/// first-buffer anchor.
 ///
 /// Each installed tap carries an identity checked under `tapLock`.
 /// Invalidating a tap waits for any in-flight enqueue; subsequent callbacks
@@ -24,6 +26,13 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
     private let processingFormat: AVAudioFormat
     private let onFirstBuffer: (@Sendable (Double) -> Void)?
+
+    /// Averages multichannel taps to mono in the tap callback. VPIO delivers
+    /// processed mono, but a plain `inputNode` tap can carry a multichannel
+    /// *discrete* stream, which `AVAudioConverter` maps to silence when
+    /// reducing channels — so channel 0 alone is not guaranteed to hold the
+    /// voice. Averaging keeps whatever signal the array carries.
+    private let downmixChannels: Bool
 
     // -- Tap ownership (tapLock) --
     private let tapLock = OSAllocatedUnfairLock()
@@ -92,10 +101,15 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
     /// Opens a new file, starts the writer thread, and captures this
     /// attempt's callback immutably. A later recorder retry cannot redirect
     /// an old tap to its own file or callback.
-    init(url: URL, encoder: EncoderSettings, onFirstBuffer: (@Sendable (Double) -> Void)?) throws {
+    init(
+        url: URL,
+        encoder: EncoderSettings,
+        downmixChannels: Bool = false,
+        onFirstBuffer: (@Sendable (Double) -> Void)?
+    ) throws {
         processingFormat = encoder.processingFormat
+        self.downmixChannels = downmixChannels
         self.onFirstBuffer = onFirstBuffer
-
         slotByteSize = Int(Self.slotMaxFrames) * MemoryLayout<Float>.size
         slotData = .allocate(
             byteCount: Self.ringCapacity * slotByteSize,
@@ -221,7 +235,21 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
         let slotPtr = slotData.advanced(by: head * slotByteSize)
             .assumingMemoryBound(to: Float.self)
-        slotPtr.update(from: srcChannels[0], count: Int(frameCount))
+        let channelCount = buffer.format.channelCount
+        if downmixChannels, channelCount > 1 {
+            // Average the discrete channels: the built-in mic's multichannel
+            // stream uses a layout AVAudioConverter maps to silence.
+            let scale = 1 / Float(channelCount)
+            for frame in 0 ..< Int(frameCount) {
+                var sum: Float = 0
+                for channel in 0 ..< Int(channelCount) {
+                    sum += srcChannels[channel][frame]
+                }
+                slotPtr[frame] = sum * scale
+            }
+        } else {
+            slotPtr.update(from: srcChannels[0], count: Int(frameCount))
+        }
 
         let hostTimeNanos: UInt64 = when.isHostTimeValid
             ? AudioConvertHostTimeToNanos(when.hostTime) : 0

@@ -8,12 +8,20 @@ import Synchronization
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "LiveMicCapture")
 
 /// Live microphone capture via **VoiceProcessingIO** (`AVAudioEngine`
-/// with `inputNode.setVoiceProcessingEnabled(true)`).
+/// with `inputNode.setVoiceProcessingEnabled(true)`), or via a plain
+/// `inputNode` tap when `useVoiceProcessing` is disabled.
 ///
-/// VPIO is the only route to loud, normalised, noise-suppressed mono.
-/// Thin hardware adapter -- orchestration lives in `AudioRecorder`.
+/// VPIO is the only route to loud, normalised, noise-suppressed mono, but
+/// its Core Audio aggregate device holds the physical mic exclusively:
+/// while VPIO is active, other clients (Slack Huddle, Teams, …) that open
+/// the built-in mic get a silent stream. Plain mode trades VPIO's
+/// noise suppression/AGC for leaving the mic free for other apps.
 final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftlint:disable:this type_body_length
     private let encoder: EncoderSettings
+
+    /// When false, capture uses a plain `inputNode` tap (no VPIO) so the
+    /// built-in mic stays available to other applications.
+    private let useVoiceProcessing: Bool
 
     /// Owned by engineQueue; each start gets a separate file and callback lifetime.
     private var session: MicCaptureSession?
@@ -57,8 +65,12 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     }
 
     /// Configures the file encoding used by each independent recording attempt.
-    init(encoder: EncoderSettings = .voice) {
+    init(
+        encoder: EncoderSettings = .voice,
+        useVoiceProcessing: Bool = true
+    ) {
         self.encoder = encoder
+        self.useVoiceProcessing = useVoiceProcessing
     }
 
     // MARK: - CaptureEngine conformance
@@ -84,7 +96,12 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                 engineQueue.async { [self] in
                     isTearingDown = false
                     do {
-                        session = try MicCaptureSession(url: url, encoder: encoder, onFirstBuffer: callback)
+                        session = try MicCaptureSession(
+                            url: url,
+                            encoder: encoder,
+                            downmixChannels: !useVoiceProcessing,
+                            onFirstBuffer: callback
+                        )
                         try buildAndStartEngineOrThrow()
                         installConfigChangeObserver()
                         cont.resume()
@@ -169,16 +186,23 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
     private func buildAndStartEngineOrThrow() throws {
         guard capturingFlag.load(ordering: .acquiring) else { return }
 
-        ensureOutputRateMatchesInput()
+        // The reclock and the VPIO aggregate device are both only needed for
+        // voice-processed capture. Plain mode skips both: no output-device
+        // rate override, no aggregate device holding the physical mic.
+        if useVoiceProcessing {
+            ensureOutputRateMatchesInput()
+        }
 
         let newEngine = AVAudioEngine()
         engine = newEngine // store early so teardownEngine() works on failure
         let input = newEngine.inputNode
 
-        try input.setVoiceProcessingEnabled(true)
-        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
-            enableAdvancedDucking: false, duckingLevel: .min
-        )
+        if useVoiceProcessing {
+            try input.setVoiceProcessingEnabled(true)
+            input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+                enableAdvancedDucking: false, duckingLevel: .min
+            )
+        }
 
         try installCaptureGraphAndStart(newEngine)
     }
@@ -198,7 +222,8 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         let outputRate = CoreAudioHelpers.nominalSampleRate(for: outputID) ?? 0
         let inputName = CoreAudioHelpers.deviceName(for: inputID) ?? "unknown"
         let outputName = CoreAudioHelpers.deviceName(for: outputID) ?? "unknown"
-        logger.notice("Mic setup: input=\(inputName) id=\(inputID, privacy: .public) rate=\(inputRate, privacy: .public); output=\(outputName) id=\(outputID, privacy: .public) rate=\(outputRate, privacy: .public); tap rate=\(tapFormat.sampleRate, privacy: .public) channels=\(tapFormat.channelCount, privacy: .public)")
+        let voiceProcessing = useVoiceProcessing
+        logger.notice("Mic setup: input=\(inputName) id=\(inputID, privacy: .public) rate=\(inputRate, privacy: .public); output=\(outputName) id=\(outputID, privacy: .public) rate=\(outputRate, privacy: .public); tap rate=\(tapFormat.sampleRate, privacy: .public) channels=\(tapFormat.channelCount, privacy: .public); voiceProcessing=\(voiceProcessing ? "on" : "off")")
         attachSilentOutput(to: engine, inputRate: tapFormat.sampleRate)
 
         guard let session else {
@@ -332,13 +357,16 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         //    AUVoiceProcessor graph cleanly under our control (not in dealloc).
         //    The previous code tried this before stop() — which always threw
         //    because VP toggling requires a stopped engine.
-        do {
-            try eng.inputNode.setVoiceProcessingEnabled(false)
-            logger.notice("Teardown: voice processing disabled")
-        } catch {
-            // Not fatal — we're tearing down anyway, but a failure here means
-            // VPIO is still enabled at dealloc, which risks the original crash.
-            logger.error("Teardown: setVoiceProcessingEnabled(false) failed: \(error.localizedDescription, privacy: .public)")
+        if useVoiceProcessing {
+            do {
+                try eng.inputNode.setVoiceProcessingEnabled(false)
+                logger.notice("Teardown: voice processing disabled")
+            } catch {
+                // Not fatal — we're tearing down anyway, but a failure here
+                // means VPIO is still enabled at dealloc, which risks the
+                // original crash.
+                logger.error("Teardown: setVoiceProcessingEnabled(false) failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         // 4. Detach the silence node and nil out references.

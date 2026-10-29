@@ -19,9 +19,9 @@ struct ScriptShapeTests {
         #expect(script.id == "transcription")
     }
 
-    @Test("Audio Capture script has exactly 17 steps")
+    @Test("Audio Capture script has exactly 22 steps")
     func audioCaptureStepCount() {
-        #expect(TestScript.audioCapture.steps.count == 17)
+        #expect(TestScript.audioCapture.steps.count == 22)
     }
 
     @Test("Transcription script has exactly 4 steps")
@@ -43,6 +43,11 @@ struct ScriptShapeTests {
             "ac_playback_mic",
             "ac_playback_system",
             "ac_route_change",
+            "ac_plain_setup",
+            "ac_start_recording_no_vpio",
+            "ac_stop_recording_no_vpio",
+            "ac_other_app_hears_mic",
+            "ac_plain_playback",
             "ac_device_sample_rate",
             "ac_meet_close_midcapture",
             "ac_meet_open_midcapture",

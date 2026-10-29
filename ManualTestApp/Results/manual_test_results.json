@@ -307,8 +307,9 @@
     "timestamp" : "2026-09-01T00:30:00Z"
   },
   "tx_ai_test_passed" : {
-    "status" : "not-run",
-    "stepID" : "tx_ai_test_passed"
+    "status" : "pass",
+    "stepID" : "tx_ai_test_passed",
+    "timestamp" : "2026-10-29T02:38:48Z"
   },
   "tx_apple_install" : {
     "status" : "pass",
@@ -321,8 +322,9 @@
     "timestamp" : "2026-10-29T02:26:58Z"
   },
   "tx_apple_output_ok" : {
-    "status" : "not-run",
-    "stepID" : "tx_apple_output_ok"
+    "status" : "pass",
+    "stepID" : "tx_apple_output_ok",
+    "timestamp" : "2026-10-29T02:38:48Z"
   },
   "tx_apple_status" : {
     "status" : "pass",

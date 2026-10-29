@@ -53,13 +53,13 @@ public extension TestScript {
             ),
             .humanQuestion(
                 id: "tx_apple_no_prompt",
-                prompt: "Did any permission prompt appear during the Apple Speech "
-                    + "steps above (status, install, transcribe)? Pass = no prompt appeared."
+                prompt: "Did the Apple Speech steps above (status, install, transcribe) "
+                    + "run with no permission prompt?"
             ),
             .humanQuestion(
                 id: "tx_apple_output_ok",
-                prompt: "Is the Apple Speech transcript readable with plausible "
-                    + "speaker turns? (Check the transcribe step output above.)"
+                prompt: "In the Biscotti app, with Apple Speech as the model, transcribe "
+                    + "a recording. Is the transcript readable with plausible speaker turns?"
             )
         ]
     )

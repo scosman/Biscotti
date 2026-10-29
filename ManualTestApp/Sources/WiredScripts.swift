@@ -652,7 +652,7 @@ enum WiredScripts {
                         status("Speakers: \(speakers.count)")
                         for (idx, seg) in result.segments.prefix(5).enumerated() {
                             let preview = String(seg.text.prefix(80))
-                            status("  [\(idx)] speaker \(seg.speakerID): \(preview)")
+                            status("  [\(idx)] speaker \(seg.speakerID.map(String.init) ?? "none"): \(preview)")
                         }
                         if result.segments.count > 5 {
                             status("  ... and \(result.segments.count - 5) more segments")

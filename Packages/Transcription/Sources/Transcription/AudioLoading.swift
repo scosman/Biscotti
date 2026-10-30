@@ -32,11 +32,16 @@ enum AudioLoading {
         let duration: TimeInterval
     }
 
+    /// Load the mic stream and, when present, the system stream, then merge.
+    ///
+    /// A `nil` `systemPath` means a single-track source (e.g. an imported audio
+    /// file stored as the mic track): only the mic stream is loaded and
+    /// ``AudioMerger`` passes it through as-is.
     static func loadAndMerge(
-        micPath: String, systemPath: String
+        micPath: String, systemPath: String?
     ) throws -> MergeResult {
         let micSamples = try loadSamples(fromPath: micPath)
-        let systemSamples = try loadSamples(fromPath: systemPath)
+        let systemSamples = try systemPath.map { try loadSamples(fromPath: $0) } ?? []
         let merged = try AudioMerger.merge(mic: micSamples, system: systemSamples)
         return MergeResult(samples: merged.samples, duration: merged.duration)
     }

@@ -29,6 +29,7 @@
 - 🗣️ **Speaker identification** — accurate transcripts, automatically split by speaker and tagged with speaker name. 
 - 📅 **Calendar‑aware** — sees your upcoming meetings, offers to start recording.
 - 🧩 **MCP** - chat with your meeting notes in apps like Claude Desktop or LM Studio.
+- 📥 **Import audio files** — transcribe an existing recording (m4a, mp3, wav, even video) from File → Import Audio File, the toolbar, or drag‑and‑drop.
 - ⏹️ **Auto‑stop** — detects when your call ends and stops recording.
 - 📖 **Custom vocabulary** — transcribe uncommon words you use, like names or jargon.
 - ⚡ **Fast, small, native** — launches instantly, native design, built by an ex‑Apple engineer.

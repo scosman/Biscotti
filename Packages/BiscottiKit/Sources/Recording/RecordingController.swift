@@ -44,6 +44,10 @@ public final class RecordingController {
     private var stateStreamTask: Task<Void, Never>?
     private var denialCheckTask: Task<Void, Never>?
     private var cleanupTask: Task<Void, Never>?
+    /// The finalization in progress, if any. Finalizing suspends (engine,
+    /// store) before resetting `state`, so a concurrent `stop()` would
+    /// otherwise pass the `isRecording` guard and return the same meeting ID.
+    private var stopTask: Task<Void, Never>?
 
     private static let logger = Logger(
         subsystem: "net.scosman.biscotti",
@@ -162,12 +166,31 @@ public final class RecordingController {
     /// Stops the current recording session.
     ///
     /// Returns the meeting ID of the just-stopped recording, or `nil` if not recording.
+    ///
+    /// A call made while another stop is finalizing waits for it to finish
+    /// (so e.g. the quit handler cannot terminate mid-save) and returns `nil`,
+    /// so only the first caller acts on the meeting ID.
     @discardableResult
     public func stop() async -> UUID? {
-        guard state.isRecording, let currentRecorder = recorder, let meetingID = state.meetingID else {
+        if let stopTask {
+            await stopTask.value
             return nil
         }
+        guard state.isRecording, let currentRecorder = recorder,
+              let meetingID = state.meetingID
+        else {
+            return nil
+        }
+        let task = Task { await finalizeStop(recorder: currentRecorder, meetingID: meetingID) }
+        stopTask = task
+        await task.value
+        stopTask = nil
+        return meetingID
+    }
 
+    /// Stops the engine and persists the session (audio presence, duration,
+    /// notes), then resets state to idle.
+    private func finalizeStop(recorder currentRecorder: any RecorderControlling, meetingID: UUID) async {
         // Stop the engine
         await currentRecorder.stop()
 
@@ -219,8 +242,6 @@ public final class RecordingController {
         recorder = nil
         notes = []
         state = .idle
-
-        return meetingID
     }
 
     // MARK: - Orphan Recovery

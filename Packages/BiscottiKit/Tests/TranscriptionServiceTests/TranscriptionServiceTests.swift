@@ -399,6 +399,44 @@ struct TranscriptionConcurrencyTests {
         #expect(service.jobs[meetingID1] == .completed)
     }
 
+    @Test("Duplicate request for the in-flight meeting does not clobber its status")
+    @MainActor
+    func duplicateRequestForInFlightMeetingIsNoOp() async throws {
+        // Regression: a double stop (e.g. double-clicked Stop) enqueued two
+        // transcriptions for the same meeting. The second hit the in-flight
+        // guard and overwrote the live job's status with "Another
+        // transcription is already in progress." even though the first job
+        // went on to succeed.
+        let blockingEngine = BlockingFakeTranscriber()
+        let store = try DataStore(storage: .inMemory)
+        let service = TranscriptionService(
+            store: store, engine: blockingEngine, vocabulary: VocabularyService(store: store)
+        )
+        let meetingID = try await store.createMeeting(title: "Meeting")
+        let mic = AudioFileRef(role: .mic, path: "/tmp/d/mic.aac", byteSize: 100, isPresent: true)
+        let sys = AudioFileRef(role: .system, path: "/tmp/d/system.aac", byteSize: 100, isPresent: true)
+        try await store.attachAudio([mic, sys], to: meetingID)
+
+        let firstJobTask = Task { @MainActor in
+            await service.transcribe(meetingID: meetingID)
+        }
+        for _ in 0 ..< 200 {
+            if blockingEngine.backing.processAudioCallCount > 0 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(service.jobs[meetingID] == .transcribing)
+
+        // Duplicate request for the same meeting while it is in flight.
+        await service.transcribe(meetingID: meetingID)
+        #expect(service.jobs[meetingID] == .transcribing)
+
+        blockingEngine.backing.unblock()
+        await firstJobTask.value
+
+        #expect(service.jobs[meetingID] == .completed)
+        #expect(blockingEngine.backing.processAudioCallCount == 1)
+    }
+
     @Test("Status progresses through downloadingModel, transcribing, completed")
     @MainActor
     func statusProgression() async throws {
@@ -490,18 +528,10 @@ struct TranscriptionShutdownReentrancyTests {
         // shutdown was called exactly once (the original job's teardown).
         #expect(reentrantEngine.backing.shutdownCallCount == 1)
 
-        // The re-entrant transcribe() was rejected by the in-flight guard,
-        // so the final job status is the "already in progress" failure
-        // (the guard's rejection overwrites the original .completed).
-        // The critical invariant is that no second engine call was made.
-        if case let .failed(message, retriable) = service.jobs[meetingID] {
-            #expect(message.contains("already in progress"))
-            #expect(retriable == true)
-        } else {
-            // .completed is also acceptable if the re-entrant call was
-            // rejected before it could overwrite the status.
-            #expect(service.jobs[meetingID] == .completed)
-        }
+        // The re-entrant transcribe() targets the in-flight meeting, so the
+        // guard drops it without touching that meeting's status: the
+        // original job's .completed survives.
+        #expect(service.jobs[meetingID] == .completed)
     }
 
     @Test("Engine is callable again after runJob fully completes (no permanent lockout)")
@@ -583,6 +613,20 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
 
         let blocker: UnsafeContinuation<Void, Never>?
         var processAudioCalled = false
+        /// Guards `_unblocked` and `_processAudioCallCount`: both are written
+        /// and read from both the MainActor test and the off-actor
+        /// `processAudio` poll loop.
+        private let callCountLock = NSLock()
+        private var _processAudioCallCount = 0
+
+        /// Number of `processAudio` calls so far.
+        var processAudioCallCount: Int {
+            callCountLock.withLock { _processAudioCallCount }
+        }
+
+        func recordProcessAudioCall() {
+            callCountLock.withLock { _processAudioCallCount += 1 }
+        }
 
         init() {
             blocker = nil
@@ -590,11 +634,11 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         }
 
         func unblock() {
-            _unblocked = true
+            callCountLock.withLock { _unblocked = true }
         }
 
         var isUnblocked: Bool {
-            _unblocked
+            callCountLock.withLock { _unblocked }
         }
     }
 
@@ -612,6 +656,7 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
         customVocabulary _: [String]
     ) async throws -> TranscriptResult {
         backing.processAudioCalled = true
+        backing.recordProcessAudioCall()
         // Poll until unblocked (simulates a long-running operation)
         while !backing.isUnblocked {
             try? await Task.sleep(for: .milliseconds(10))

@@ -110,6 +110,23 @@ enum ModelIntegrity {
         components.allSatisfy { missingFiles(in: $0, root: root).isEmpty }
     }
 
+    /// Checks a download that the SDK reported as successful. The SDK can
+    /// return a partial cache without an error, e.g. when the download is
+    /// cancelled (fixed upstream in argmax-oss-swift v1.1.1, #534).
+    ///
+    /// - Throws: ``TranscriptionError/downloadFailed(_:)`` naming the missing
+    ///   files, prefixed with `label`, if any component is incomplete.
+    static func requireComplete(_ components: [ModelComponent], root: URL, label: String) throws {
+        let missing = components.flatMap { component in
+            missingFiles(in: component, root: root).map { "\(component.relativePath)/\($0)" }
+        }
+        guard missing.isEmpty else {
+            throw TranscriptionError.downloadFailed(
+                "\(label): incomplete download, missing \(missing.joined(separator: ", "))"
+            )
+        }
+    }
+
     // MARK: - Repair
 
     /// Deletes the folder of each component that is missing files, so the SDK

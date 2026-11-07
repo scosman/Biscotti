@@ -27,6 +27,12 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     /// first one is still writing.
     private var modelDownload: Task<Void, Error>?
 
+    /// Status callbacks of every caller waiting on ``modelDownload``.
+    private var downloadStatusObservers: [@Sendable (String) -> Void] = []
+
+    /// The last stage message of ``modelDownload``, replayed to callers that join it.
+    private var downloadStage: String?
+
     /// Estimated bytes required for model download (STT + diarization).
     /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
     /// We use a conservative estimate based on the model name.
@@ -71,12 +77,23 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     ) async throws {
         if let running = modelDownload {
             Self.log.debug("ensureModelsDownloaded: joining download in progress")
-            try await running.value
+            downloadStatusObservers.append(status)
+            if let downloadStage { status(downloadStage) }
+            do {
+                try await running.value
+            } catch where running.isCancelled && !Task.isCancelled {
+                // The caller that started the download was cancelled, but this
+                // one still needs the models: start a new download.
+                Self.log.debug("ensureModelsDownloaded: shared download was cancelled; retrying")
+                endDownload(running)
+                try await ensureModelsDownloaded(status: status)
+            }
             return
         }
-        let download = Task { try await self.downloadModels(status: status) }
+        let download = Task { try await self.downloadModels() }
         modelDownload = download
-        defer { modelDownload = nil }
+        downloadStatusObservers = [status]
+        defer { endDownload(download) }
         try await withTaskCancellationHandler {
             try await download.value
         } onCancel: {
@@ -351,7 +368,7 @@ private extension InProcessTranscriptionEngine {
 
 private extension InProcessTranscriptionEngine {
     /// The body of ``ensureModelsDownloaded(status:)``; runs at most once at a time.
-    func downloadModels(status: @escaping @Sendable (String) -> Void) async throws {
+    func downloadModels() async throws {
         Self.log.debug("ensureModelsDownloaded: begin")
         try await checkDiskSpace()
         await statusMachine.transition(to: .downloading(progress: 0.0))
@@ -359,9 +376,25 @@ private extension InProcessTranscriptionEngine {
         // No numeric progress: the SDK's only progress signal is file-count
         // weighted (one ~3 GB file counts the same as a tiny config), which is
         // misleading, so we report a status message per stage instead.
-        try await downloadWhisperKitIfNeeded(status: status)
-        try await downloadSpeakerKitIfNeeded(status: status)
+        try await downloadWhisperKitIfNeeded()
+        try await downloadSpeakerKitIfNeeded()
         Self.log.debug("ensureModelsDownloaded: complete")
+    }
+
+    /// Sends a stage message to every caller waiting on the download.
+    func reportStage(_ message: String) {
+        downloadStage = message
+        for observer in downloadStatusObservers {
+            observer(message)
+        }
+    }
+
+    /// Clears the download state, unless a newer download has replaced `download`.
+    func endDownload(_ download: Task<Void, Error>) {
+        guard modelDownload == download else { return }
+        modelDownload = nil
+        downloadStatusObservers = []
+        downloadStage = nil
     }
 
     /// Waits for a download started by ``ensureModelsDownloaded(status:)`` so
@@ -389,41 +422,41 @@ private extension InProcessTranscriptionEngine {
         }
     }
 
-    func downloadWhisperKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
-        if try await removeIncompleteModels(
-            [ModelIntegrity.whisperKitComponent(modelName: resolvedSettings.sttModel)],
-            root: ModelIntegrity.whisperKitRoot(repo: resolvedSettings.sttModelRepo)
-        ) {
+    func downloadWhisperKitIfNeeded() async throws {
+        let components = [ModelIntegrity.whisperKitComponent(modelName: resolvedSettings.sttModel)]
+        let root = ModelIntegrity.whisperKitRoot(repo: resolvedSettings.sttModelRepo)
+        if try await removeIncompleteModels(components, root: root) {
             await unloadWhisperKit()
         }
         guard whisperKit == nil else { return }
-        status("Downloading speech-to-text model")
+        reportStage("Downloading speech-to-text model")
         do {
             whisperKit = try await WhisperKit(makeWhisperConfig(load: false, download: true))
+            try ModelIntegrity.requireComplete(components, root: root, label: "WhisperKit")
         } catch {
-            let wrappedError = TranscriptionError.downloadFailed(
-                "WhisperKit: \(error.localizedDescription)"
-            )
+            await unloadWhisperKit()
+            let wrappedError = error as? TranscriptionError
+                ?? .downloadFailed("WhisperKit: \(error.localizedDescription)")
             await statusMachine.transition(to: .error(wrappedError))
             throw wrappedError
         }
     }
 
-    func downloadSpeakerKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
-        if try await removeIncompleteModels(
-            ModelIntegrity.speakerKitComponents,
-            root: ModelIntegrity.speakerKitRoot
-        ) {
+    func downloadSpeakerKitIfNeeded() async throws {
+        let components = ModelIntegrity.speakerKitComponents
+        let root = ModelIntegrity.speakerKitRoot
+        if try await removeIncompleteModels(components, root: root) {
             await unloadSpeakerKit()
         }
         guard speakerKit == nil else { return }
-        status("Downloading speaker ID model")
+        reportStage("Downloading speaker ID model")
         do {
             speakerKit = try await SpeakerKit(makeSpeakerConfig(download: true, load: false))
+            try ModelIntegrity.requireComplete(components, root: root, label: "SpeakerKit")
         } catch {
-            let wrappedError = TranscriptionError.downloadFailed(
-                "SpeakerKit: \(error.localizedDescription)"
-            )
+            await unloadSpeakerKit()
+            let wrappedError = error as? TranscriptionError
+                ?? .downloadFailed("SpeakerKit: \(error.localizedDescription)")
             await statusMachine.transition(to: .error(wrappedError))
             throw wrappedError
         }

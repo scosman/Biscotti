@@ -178,6 +178,38 @@ struct ModelIntegrityTests {
         #expect(detail.contains(segmenter.relativePath))
     }
 
+    // MARK: - Post-download check
+
+    @Test("requireComplete accepts a complete tree")
+    func requireCompleteAcceptsCompleteTree() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for component in ModelIntegrity.speakerKitComponents {
+            try writeComplete(component, in: root)
+        }
+
+        try ModelIntegrity.requireComplete(ModelIntegrity.speakerKitComponents, root: root, label: "SpeakerKit")
+    }
+
+    @Test("requireComplete throws downloadFailed naming the missing file")
+    func requireCompleteNamesMissingFile() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeComplete(segmenter, in: root)
+        let missing = "\(segmenter.relativePath)/SpeakerSegmenter.mlmodelc/model.mil"
+        try FileManager.default.removeItem(at: root.appendingPathComponent(missing))
+
+        let error = #expect(throws: TranscriptionError.self) {
+            try ModelIntegrity.requireComplete([segmenter], root: root, label: "SpeakerKit")
+        }
+        guard case let .downloadFailed(detail) = error else {
+            Issue.record("expected downloadFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(detail.hasPrefix("SpeakerKit: "))
+        #expect(detail.contains(missing))
+    }
+
     // MARK: - WhisperKit component
 
     @Test("complete WhisperKit model folder is complete")

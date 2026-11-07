@@ -146,14 +146,19 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
 
     /// Map XPC-layer errors to `TranscriptionError`.
     ///
-    /// Only specific `NSCocoaErrorDomain` codes produced by NSXPCConnection are
-    /// treated as connection-level failures:
-    /// - 4097 (`NSXPCConnectionInterrupted`): the worker was interrupted (crash/jetsam).
-    /// - 4099 (`NSXPCConnectionInvalid`): the connection is no longer valid.
-    /// Other `NSCocoaErrorDomain` errors (e.g. decoding failures) fall through to
-    /// `transcriptionFailed` so they are not misreported as retriable interruptions.
+    /// 1. A `TranscriptionError` (in-process) or one wrapped by the worker via
+    ///    ``TranscriptionNSErrorBridge`` is returned as-is, detail string included.
+    /// 2. Only specific `NSCocoaErrorDomain` codes produced by NSXPCConnection are
+    ///    treated as connection-level failures:
+    ///    - 4097 (`NSXPCConnectionInterrupted`): the worker was interrupted (crash/jetsam).
+    ///    - 4099 (`NSXPCConnectionInvalid`): the connection is no longer valid.
+    /// 3. Anything else (e.g. decoding failures) falls through to
+    ///    `transcriptionFailed` so it is not misreported as a retriable interruption.
     private func mapError(_ error: Error) -> TranscriptionError {
         if let transcriptionError = error as? TranscriptionError {
+            return transcriptionError
+        }
+        if let transcriptionError = TranscriptionNSErrorBridge.transcriptionError(from: error) {
             return transcriptionError
         }
         let nsError = error as NSError

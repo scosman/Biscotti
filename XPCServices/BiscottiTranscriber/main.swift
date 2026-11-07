@@ -49,7 +49,7 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
         do {
             request = try JSONDecoder().decode(XPCProcessRequest.self, from: requestData)
         } catch {
-            reply(nil, error)
+            reply(nil, TranscriptionNSErrorBridge.nsError(from: error))
             return
         }
 
@@ -64,7 +64,7 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
                 let data = try JSONEncoder().encode(result)
                 reply(data, nil)
             } catch {
-                reply(nil, error)
+                reply(nil, TranscriptionNSErrorBridge.nsError(from: error))
             }
         }
     }
@@ -87,7 +87,7 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
                 }
                 reply(nil)
             } catch {
-                reply(error)
+                reply(TranscriptionNSErrorBridge.nsError(from: error))
             }
         }
     }

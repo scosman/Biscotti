@@ -21,6 +21,12 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private var speakerKit: SpeakerKit?
 
+    /// The model download in progress, if any. Concurrent callers join it
+    /// rather than starting their own: the actor is re-entered while a download
+    /// awaits the SDK, and a second repair pass would delete the folders the
+    /// first one is still writing.
+    private var modelDownload: Task<Void, Error>?
+
     /// Estimated bytes required for model download (STT + diarization).
     /// Sized per model variant (on-disk size + headroom) + SpeakerKit ~33 MB.
     /// We use a conservative estimate based on the model name.
@@ -63,16 +69,19 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     public func ensureModelsDownloaded(
         status: @escaping @Sendable (String) -> Void
     ) async throws {
-        Self.log.debug("ensureModelsDownloaded: begin")
-        try await checkDiskSpace()
-        await statusMachine.transition(to: .downloading(progress: 0.0))
-
-        // No numeric progress: the SDK's only progress signal is file-count
-        // weighted (one ~3 GB file counts the same as a tiny config), which is
-        // misleading, so we report a status message per stage instead.
-        try await downloadWhisperKitIfNeeded(status: status)
-        try await downloadSpeakerKitIfNeeded(status: status)
-        Self.log.debug("ensureModelsDownloaded: complete")
+        if let running = modelDownload {
+            Self.log.debug("ensureModelsDownloaded: joining download in progress")
+            try await running.value
+            return
+        }
+        let download = Task { try await self.downloadModels(status: status) }
+        modelDownload = download
+        defer { modelDownload = nil }
+        try await withTaskCancellationHandler {
+            try await download.value
+        } onCancel: {
+            download.cancel()
+        }
     }
 
     public func processAudio(
@@ -141,43 +150,29 @@ extension InProcessTranscriptionEngine {
     ///
     /// The Hub client writes models to:
     ///   `downloadBase/models/<repo>/<model>/`
-    /// We check for at least one `.mlmodelc` directory inside that folder.
+    /// Every expected `.mlmodelc` bundle and config file must be present (see
+    /// ``ModelIntegrity``), so a partial download reports as not present.
     static func whisperKitModelsPresent(
         repo: String,
         model: String
     ) -> Bool {
-        let modelDir = ModelStorage.modelsDirectory
-            .appendingPathComponent(repo, isDirectory: true)
-            .appendingPathComponent(model, isDirectory: true)
-        return directoryContainsMLModel(modelDir)
+        ModelIntegrity.isComplete(
+            [ModelIntegrity.whisperKitComponent(modelName: model)],
+            root: ModelIntegrity.whisperKitRoot(repo: repo)
+        )
     }
 
     /// Check if SpeakerKit (Pyannote) model files are present on disk.
     ///
     /// SpeakerKit downloads to:
     ///   `downloadBase/models/argmaxinc/speakerkit-coreml/`
-    /// We check for at least one `.mlmodelc` directory inside that folder
-    /// (or its subdirectories, since SpeakerKit nests models).
+    /// Every component (segmenter, embedder, PLDA) must have all its expected
+    /// files (see ``ModelIntegrity``), so a partial download reports as not present.
     static func speakerKitModelsPresent() -> Bool {
-        let speakerDir = ModelStorage.modelsDirectory
-            .appendingPathComponent("argmaxinc/speakerkit-coreml", isDirectory: true)
-        return directoryContainsMLModel(speakerDir)
-    }
-
-    /// Returns `true` if `directory` (or any immediate subdirectory) contains
-    /// at least one `.mlmodelc` bundle.
-    private static func directoryContainsMLModel(_ directory: URL) -> Bool {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: directory.path) else { return false }
-        guard let enumerator = fileManager.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return false }
-        for case let url as URL in enumerator where url.pathExtension == "mlmodelc" {
-            return true
-        }
-        return false
+        ModelIntegrity.isComplete(
+            ModelIntegrity.speakerKitComponents,
+            root: ModelIntegrity.speakerKitRoot
+        )
     }
 }
 
@@ -285,6 +280,13 @@ private extension InProcessTranscriptionEngine {
 private extension InProcessTranscriptionEngine {
     func ensureWhisperKitLoaded() async throws {
         if whisperKit == nil {
+            await waitForRunningDownload()
+            try await removeIncompleteModels(
+                [ModelIntegrity.whisperKitComponent(modelName: resolvedSettings.sttModel)],
+                root: ModelIntegrity.whisperKitRoot(repo: resolvedSettings.sttModelRepo)
+            )
+        }
+        if whisperKit == nil {
             Self.log.info("WhisperKit: loading model (first init)")
             await statusMachine.transition(to: .loading)
             do {
@@ -293,7 +295,7 @@ private extension InProcessTranscriptionEngine {
                 )
             } catch {
                 let wrappedError = TranscriptionError.modelLoadFailed(
-                    "WhisperKit init failed: \(error.localizedDescription)"
+                    "WhisperKit: \(error.localizedDescription)"
                 )
                 await statusMachine.transition(to: .error(wrappedError))
                 throw wrappedError
@@ -308,6 +310,13 @@ private extension InProcessTranscriptionEngine {
 
     func ensureSpeakerKitLoaded() async throws {
         if speakerKit == nil {
+            await waitForRunningDownload()
+            try await removeIncompleteModels(
+                ModelIntegrity.speakerKitComponents,
+                root: ModelIntegrity.speakerKitRoot
+            )
+        }
+        if speakerKit == nil {
             Self.log.info("SpeakerKit: loading model (first init)")
             do {
                 speakerKit = try await SpeakerKit(
@@ -315,7 +324,7 @@ private extension InProcessTranscriptionEngine {
                 )
             } catch {
                 let wrappedError = TranscriptionError.modelLoadFailed(
-                    "SpeakerKit init failed: \(error.localizedDescription)"
+                    "SpeakerKit: \(error.localizedDescription)"
                 )
                 await statusMachine.transition(to: .error(wrappedError))
                 throw wrappedError
@@ -341,6 +350,29 @@ private extension InProcessTranscriptionEngine {
 // MARK: - Download helpers
 
 private extension InProcessTranscriptionEngine {
+    /// The body of ``ensureModelsDownloaded(status:)``; runs at most once at a time.
+    func downloadModels(status: @escaping @Sendable (String) -> Void) async throws {
+        Self.log.debug("ensureModelsDownloaded: begin")
+        try await checkDiskSpace()
+        await statusMachine.transition(to: .downloading(progress: 0.0))
+
+        // No numeric progress: the SDK's only progress signal is file-count
+        // weighted (one ~3 GB file counts the same as a tiny config), which is
+        // misleading, so we report a status message per stage instead.
+        try await downloadWhisperKitIfNeeded(status: status)
+        try await downloadSpeakerKitIfNeeded(status: status)
+        Self.log.debug("ensureModelsDownloaded: complete")
+    }
+
+    /// Waits for a download started by ``ensureModelsDownloaded(status:)`` so
+    /// the load path doesn't repair folders that are still being written. Its
+    /// error is ignored here; the load path repairs and downloads on its own.
+    func waitForRunningDownload() async {
+        if let running = modelDownload {
+            _ = try? await running.value
+        }
+    }
+
     func checkDiskSpace() async throws {
         do {
             try diskSpaceChecker.checkAvailableSpace(requiredBytes: estimatedDownloadBytes)
@@ -358,13 +390,19 @@ private extension InProcessTranscriptionEngine {
     }
 
     func downloadWhisperKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
+        if try await removeIncompleteModels(
+            [ModelIntegrity.whisperKitComponent(modelName: resolvedSettings.sttModel)],
+            root: ModelIntegrity.whisperKitRoot(repo: resolvedSettings.sttModelRepo)
+        ) {
+            await unloadWhisperKit()
+        }
         guard whisperKit == nil else { return }
         status("Downloading speech-to-text model")
         do {
             whisperKit = try await WhisperKit(makeWhisperConfig(load: false, download: true))
         } catch {
             let wrappedError = TranscriptionError.downloadFailed(
-                "WhisperKit download failed: \(error.localizedDescription)"
+                "WhisperKit: \(error.localizedDescription)"
             )
             await statusMachine.transition(to: .error(wrappedError))
             throw wrappedError
@@ -372,16 +410,45 @@ private extension InProcessTranscriptionEngine {
     }
 
     func downloadSpeakerKitIfNeeded(status: @escaping @Sendable (String) -> Void) async throws {
+        if try await removeIncompleteModels(
+            ModelIntegrity.speakerKitComponents,
+            root: ModelIntegrity.speakerKitRoot
+        ) {
+            await unloadSpeakerKit()
+        }
         guard speakerKit == nil else { return }
         status("Downloading speaker ID model")
         do {
             speakerKit = try await SpeakerKit(makeSpeakerConfig(download: true, load: false))
         } catch {
             let wrappedError = TranscriptionError.downloadFailed(
-                "SpeakerKit download failed: \(error.localizedDescription)"
+                "SpeakerKit: \(error.localizedDescription)"
             )
             await statusMachine.transition(to: .error(wrappedError))
             throw wrappedError
+        }
+    }
+
+    /// Delete incomplete model folders so the following SDK download fetches
+    /// them again. The SDK's own cache check accepts a partial download as
+    /// valid ([argmax-oss-swift#491](https://github.com/argmaxinc/argmax-oss-swift/issues/491)).
+    ///
+    /// - Returns: `true` if any component was incomplete, so the caller drops
+    ///   the in-memory instance that was created from those files.
+    @discardableResult
+    func removeIncompleteModels(
+        _ components: [ModelComponent],
+        root: URL
+    ) async throws -> Bool {
+        do {
+            let incomplete = try ModelIntegrity.removeIncompleteComponents(components, root: root)
+            if !incomplete.isEmpty {
+                Self.log.notice("Models missing or incomplete (\(incomplete.count) component(s)); downloading")
+            }
+            return !incomplete.isEmpty
+        } catch let error as TranscriptionError {
+            await statusMachine.transition(to: .error(error))
+            throw error
         }
     }
 

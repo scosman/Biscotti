@@ -199,7 +199,7 @@ private struct BackfillRunner {
     // MARK: - Helpers
 
     private func skipReason(for candidate: BackfillCandidateData) async throws -> String? {
-        if candidate.micURL == nil || candidate.systemURL == nil {
+        if candidate.micURL == nil, candidate.systemURL == nil {
             return "\(candidate.title) (\(candidate.meetingID)): missing audio files"
         }
         if candidate.segments.isEmpty {
@@ -217,9 +217,9 @@ private struct BackfillRunner {
         _ item: WorkItem, analyzer: SpeakerAnalyzer
     ) async throws -> OneResult {
         let candidate = item.candidate
-        guard let micPath = candidate.micURL?.path,
-              let systemPath = candidate.systemURL?.path
-        else {
+        let micPath = candidate.micURL?.path
+        let systemPath = candidate.systemURL?.path
+        guard micPath != nil || systemPath != nil else {
             throw BackfillError.missingAudioPath
         }
 

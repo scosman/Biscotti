@@ -181,8 +181,8 @@ struct ReadModelTests {
 
         let paths = try await store.audioPaths(meetingID: id)
         #expect(paths != nil)
-        #expect(paths?.mic.path == "/audio/mic.aac")
-        #expect(paths?.system.path == "/audio/system.aac")
+        #expect(paths?.mic?.path == "/audio/mic.aac")
+        #expect(paths?.system?.path == "/audio/system.aac")
     }
 
     @Test("audioPaths returns nil when no audio refs")
@@ -282,5 +282,67 @@ struct ReadModelTests {
             segments: [seg1, seg2],
             processingDuration: 3.0
         )
+    }
+}
+
+// MARK: - Single-track audioPaths
+
+@Suite("DataStore audioPaths single-track support")
+struct AudioPathsSingleTrackTests {
+    private func makeStore() throws -> DataStore {
+        try DataStore(storage: .inMemory)
+    }
+
+    @Test("audioPaths returns system-only when mic ref is absent")
+    func audioPathsSingleTrack_systemOnly() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Import")
+
+        let sysRef = AudioFileRef(
+            role: .system, path: "/audio/system.aac",
+            byteSize: 200, isPresent: true
+        )
+        try await store.attachAudio([sysRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths != nil)
+        #expect(paths?.mic == nil)
+        #expect(paths?.system?.path == "/audio/system.aac")
+    }
+
+    @Test("audioPaths returns mic-only when system ref is absent")
+    func audioPathsSingleTrack_micOnly() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Import Mic")
+
+        let micRef = AudioFileRef(
+            role: .mic, path: "/audio/mic.aac",
+            byteSize: 100, isPresent: true
+        )
+        try await store.attachAudio([micRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths != nil)
+        #expect(paths?.mic?.path == "/audio/mic.aac")
+        #expect(paths?.system == nil)
+    }
+
+    @Test("audioPaths returns nil when no refs are present on disk")
+    func audioPathsNoPresentRefs_returnsNil() async throws {
+        let store = try makeStore()
+        let id = try await store.createMeeting(title: "Gone")
+
+        let micRef = AudioFileRef(
+            role: .mic, path: "/gone/mic.aac",
+            byteSize: 0, isPresent: false
+        )
+        let sysRef = AudioFileRef(
+            role: .system, path: "/gone/system.aac",
+            byteSize: 0, isPresent: false
+        )
+        try await store.attachAudio([micRef, sysRef], to: id)
+
+        let paths = try await store.audioPaths(meetingID: id)
+        #expect(paths == nil)
     }
 }

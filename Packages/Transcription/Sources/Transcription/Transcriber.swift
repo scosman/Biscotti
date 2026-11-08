@@ -132,18 +132,17 @@ public actor Transcriber {
 
     /// Process audio files and return a diarized transcript.
     ///
-    /// Both `mic` and `system` URLs are required. The engine merges them
-    /// internally. If only one stream was recorded, pass an empty/silent
-    /// file for the other.
+    /// At least one of `mic` and `system` must be non-nil. The engine merges
+    /// any non-nil streams internally.
     ///
     /// - Parameters:
-    ///   - mic: URL to the mic audio file.
-    ///   - system: URL to the system audio file.
+    ///   - mic: URL to the mic audio file, or nil if not recorded.
+    ///   - system: URL to the system audio file, or nil if not recorded.
     ///   - customVocabulary: Custom vocabulary terms for biasing.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func processAudio(
-        mic: URL,
-        system: URL,
+        mic: URL?,
+        system: URL?,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         Self.log.info("client: processAudio called")
@@ -152,8 +151,8 @@ public actor Transcriber {
         emitStatus(.running)
         do {
             let result = try await activeEngine.processAudio(
-                micPath: mic.path,
-                systemPath: system.path,
+                micPath: mic?.path,
+                systemPath: system?.path,
                 customVocabulary: customVocabulary
             )
             emitStatus(.ready)
@@ -168,13 +167,13 @@ public actor Transcriber {
     /// Re-transcribe previously recorded audio with a potentially different vocabulary.
     ///
     /// - Parameters:
-    ///   - mic: URL to the mic audio file.
-    ///   - system: URL to the system audio file.
+    ///   - mic: URL to the mic audio file, or nil if not recorded.
+    ///   - system: URL to the system audio file, or nil if not recorded.
     ///   - customVocabulary: Custom vocabulary terms.
     /// - Returns: A rich diarized `TranscriptResult`.
     public func reTranscribe(
-        mic: URL,
-        system: URL,
+        mic: URL?,
+        system: URL?,
         customVocabulary: [String] = []
     ) async throws -> TranscriptResult {
         try await processAudio(mic: mic, system: system, customVocabulary: customVocabulary)

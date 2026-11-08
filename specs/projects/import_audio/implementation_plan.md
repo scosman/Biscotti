@@ -8,7 +8,7 @@ Each phase is green on `make precommit-checks` on its own. Details live in `arch
 
 ## Phases
 
-- [ ] **Phase 1: Single-track audio and placeholder titles.**
+- [x] **Phase 1: Single-track audio and placeholder titles.**
   - Optional mic/system paths through `Packages/Transcription`: engine, `AudioLoading`, XPC request, `Transcriber`, `SpeakerAnalyzer`, CLI. Plus `XPCServices/BiscottiTranscriber`, `TranscriptionService` + the `Transcribing` seam + the live adapter, `DataStore.audioPaths`, and voiceprint-cli backfill. Mark the recordable `tx_*` manual tests `not-run`.
   - `Meeting.titleIsPlaceholder` and `Meeting.isAIReplaceableTitle`, wired into `applyGeneratedTitle` / `setTitle` / `applyEventTitle`, the two Intelligence gates and `MeetingDetailData`.
   - (architecture §2.1–2.2, §2.4, §3)

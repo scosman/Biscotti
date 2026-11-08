@@ -19,16 +19,16 @@ public protocol TranscriptionEngine: Sendable {
 
     /// Process audio files and return a diarized transcript.
     ///
-    /// Both `micPath` and `systemPath` are required — the engine merges them
-    /// to mono 16 kHz in memory before running STT + diarization. The engine
-    /// uses ``TranscriptionMethod/current`` internally; the result carries
-    /// the method id in ``TranscriptResult/transcriptionMethodId``.
+    /// At least one path is required; a nil path means that stream was not
+    /// recorded. The engine merges any non-nil streams to mono 16 kHz in
+    /// memory before running STT + diarization. The result carries the
+    /// method id in ``TranscriptResult/transcriptionMethodId``.
     ///
     /// - Throws: `TranscriptionError.invalidInput` if audio files are
-    ///   empty/unreadable.
+    ///   empty/unreadable or both paths are nil.
     func processAudio(
-        micPath: String,
-        systemPath: String,
+        micPath: String?,
+        systemPath: String?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult
 

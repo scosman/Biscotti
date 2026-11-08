@@ -226,8 +226,8 @@ private struct LiveTranscriberAdapter: Transcribing {
     }
 
     func processAudio(
-        mic: URL,
-        system: URL,
+        mic: URL?,
+        system: URL?,
         customVocabulary: [String]
     ) async throws -> TranscriptResult {
         try await transcriber.processAudio(

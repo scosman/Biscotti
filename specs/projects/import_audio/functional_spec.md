@@ -84,7 +84,7 @@ The drop target classifies the hovering items (§3) and shows one of these state
 - Each item tracks:
   - **Source file:** its location and display name, the file name with its extension.
   - **Meeting date** (§6.2), filled in asynchronously.
-  - **Status:** `waiting` → `converting` → `done(meetingID)` or `failed(reason)`.
+  - **Status:** `waiting` → `converting` → `done(meetingID)` or `failed(reason)`. A promised file starts as `receiving`, named after the promised file name (or "Incoming file" if the source app gives none) until it's delivered.
 
 ### 4.1 Runs (for screen copy)
 
@@ -101,7 +101,7 @@ Runs only matter for the Import screen's title and status copy (§5.2).
 
 ### 5.1 Navigation
 
-- A new main-area screen, **Import** (a new route). The sidebar stays. The toolbar title is **Import**. Search and the Record button stay in the toolbar.
+- A new main-area screen, **Import** (a new route). The sidebar stays. Search and the Record button stay in the toolbar. The app has no per-screen toolbar titles (the window title is blank), so the mock's "Import" toolbar title is dropped. The screen's serif header is its title.
 - Every import action routes here, even if the user was elsewhere, including the Recording screen. The recording keeps going, and the user can return through the sidebar's recording row.
 - **Sidebar "Imported" row:**
   - **Appears** the first time anything is added to the import session.
@@ -135,13 +135,14 @@ Row anatomy:
 3. **Second line**: the item's **meeting date** (§6.2), or an error message for failed rows.
 4. Trailing status.
 
-The second line shows the date rather than the duration, so the user can find the meeting later. It's formatted like the meetings list (e.g. "Oct 30, 2:14 PM", with the year when it's not the current year), in the monospace meta font. Until the date resolves, the second line is blank (no layout jump: reserve the line height).
+The second line shows the date rather than the duration, so the user can find the meeting later. It's formatted as the meetings list's short date plus the time, e.g. "Oct 30, 2026 · 2:14 PM", in the monospace meta font. Until the date resolves, the second line is blank (no layout jump: reserve the line height).
 
 ### 5.4 Row states
 
 | State | Icon tile | Second line | Trailing |
 |---|---|---|---|
 | Waiting | neutral | meeting date | "Waiting" (mono, tertiary ink) |
+| Receiving (file promise not yet delivered by the source app) | neutral | meeting date once known | "Receiving…" (mono, tertiary ink) |
 | Converting | sage | meeting date | small spinner + "Converting…" |
 | Done | sage | meeting date | **Go to Meeting** button |
 | Failed | red "!" | error message (red) | **Show in Finder** button |
@@ -189,6 +190,8 @@ Each item's meeting date is the first of these that's available:
 2. The file's **modification date**.
 3. The **time of import** (when the item was added to the session).
 
+A date later than the time of import is clamped to the time of import. Otherwise a bad clock would make the meeting show as upcoming.
+
 The meeting's start date is the meeting date, its end date is the start date plus the converted audio's duration, and its recording duration is the converted audio's duration. The meeting sorts and displays by this date, like any other meeting.
 
 ### 6.3 Meeting creation
@@ -218,14 +221,14 @@ Today the transcription service and the AI service each run one job at a time, a
 - **Who uses the queue:**
   - **Stop Recording** enqueues the just-recorded meeting. It no longer runs it directly.
   - **Import** enqueues each meeting as it's created (§6.3).
-  - **Re-transcribe** (meeting detail menu, "Transcribe now", the re-transcribe-after-association prompt) and **Retry** (failed transcription) enqueue that meeting. Re-transcribe keeps its current follow-up of running AI auto-enhancements on the new transcript.
+  - **Re-transcribe** (meeting detail menu, "Transcribe now", the re-transcribe-after-association prompt) and **Retry** (failed transcription) enqueue that meeting. Both run the full pipeline (transcribe, then AI auto-enhancements). For Re-transcribe that matches today. For Retry it's a small fix: today Retry transcribes but never runs the AI step.
 - A meeting already queued or running isn't queued a second time. Asking again is a no-op.
 - Recordings don't jump the queue. A recording stopped behind ten queued imports waits its turn.
 - **Waiting state:** a meeting whose entry is queued but not yet running shows **"Waiting to transcribe…"** in meeting detail, wherever "Transcribing…" shows today (the same processing presentation, different message). Re-transcribe is disabled for it, as it is while transcribing.
 - Failure of one entry (transcription or AI) doesn't stop the queue. The next entry runs.
 - If a queued meeting is deleted before its turn, its entry is dropped.
 - The queue isn't persisted. After a relaunch, meetings that never got their turn show today's "No transcript yet / Transcribe now" state.
-- **Not queued (unchanged):** manual AI actions in meeting detail (Generate/Regenerate summary, re-inferring speaker names). They keep today's behavior. See open item O2.
+- **Not queued (unchanged):** manual AI actions in meeting detail (Generate/Regenerate summary, re-inferring speaker names). They keep today's behavior, including the existing "ignored if the AI service is busy" guard. No special casing.
 
 ### 7.1 Single-track meetings
 
@@ -266,15 +269,12 @@ Two-track recordings behave exactly as before.
 - Keeping, copying or linking to the original file after import.
 - Trimming or editing audio before import. Picking among multiple audio tracks. Stereo-as-two-speakers handling.
 - Automatic calendar association for imports.
-- Queueing manual AI actions (O2).
+- Queueing or otherwise special-casing manual AI actions.
 - A "Show in Biscotti" path from Finder.
 
 ---
 
-## 10. Open items
+## 10. Resolved decisions
 
-- **O1 — Meeting date fallback chain.** The spec uses: embedded creation date → file modification date → import time (§6.2). Confirm the modification-date step is wanted. The alternative is embedded date → import time.
-- **O2 — Manual AI actions during a busy queue.** Today, if the AI service is busy, a manual Generate/Regenerate summary on another meeting is silently ignored. That's rare now, but a long import batch keeps the AI service busy intermittently for a long time. Options:
-  - **(a)** Leave it as is (out of scope).
-  - **(b)** Make manual AI actions wait for the in-flight AI step and then run, without joining the transcription queue.
-  - **Recommendation:** (b). It's a small change inside the AI service, and it removes a stuck-spinner risk.
+- **Meeting date fallback chain** (§6.2): embedded creation date → file modification date → import time. Confirmed.
+- **Manual AI actions during a busy queue:** no special casing. Today's behavior stands.

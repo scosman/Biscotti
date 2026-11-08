@@ -12,7 +12,7 @@ Each phase is green on `make precommit-checks` on its own. Details live in `arch
   - Optional mic/system paths through `Packages/Transcription`: engine, `AudioLoading`, XPC request, `Transcriber`, `SpeakerAnalyzer`, CLI. Plus `XPCServices/BiscottiTranscriber`, `TranscriptionService` + the `Transcribing` seam + the live adapter, `DataStore.audioPaths`, and voiceprint-cli backfill. Mark the recordable `tx_*` manual tests `not-run`.
   - `Meeting.titleIsPlaceholder` and `Meeting.isAIReplaceableTitle`, wired into `applyGeneratedTitle` / `setTitle` / `applyEventTitle`, the two Intelligence gates and `MeetingDetailData`.
   - (architecture §2.1–2.2, §2.4, §3)
-- [ ] **Phase 2: Post-processing queue.**
+- [x] **Phase 2: Post-processing queue.**
   - `PostProcessingQueue`. `stopRecording` and the test seam move onto it. `enqueueTranscription` / `enqueueReTranscription`. Deletion drops waiting entries.
   - MeetingDetailUI: Retry and Re-transcribe enqueue, plus the "Waiting to transcribe…" state, the pipeline stage and `canReTranscribe`.
   - (architecture §4, §6)

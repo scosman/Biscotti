@@ -489,6 +489,11 @@ public struct PipelineStage: Sendable, Equatable, Identifiable {
 // MARK: - Derived state
 
 public extension MeetingDetailViewModel {
+    /// Whether this meeting has a waiting (not yet running) queue entry.
+    var isQueued: Bool {
+        core.postProcessing.isWaiting(meetingID)
+    }
+
     /// The current display state.
     var displayState: MeetingDetailState {
         let jobStatus = core.transcription.jobs[meetingID]
@@ -503,9 +508,20 @@ public extension MeetingDetailViewModel {
             return .processing(message: "Transcribing\u{2026}")
 
         case let .failed(message, retriable):
+            // A freshly queued retry takes priority over the stale failure.
+            if isQueued {
+                return .processing(
+                    message: "Waiting to transcribe\u{2026}"
+                )
+            }
             return .failed(message: message, retriable: retriable)
 
         case .completed, .idle, .none:
+            if isQueued {
+                return .processing(
+                    message: "Waiting to transcribe\u{2026}"
+                )
+            }
             if let detail, detail.preferredTranscript != nil {
                 return .transcript(detail)
             }
@@ -527,6 +543,8 @@ public extension MeetingDetailViewModel {
     /// Whether the Re-transcribe action should be enabled.
     var canReTranscribe: Bool {
         guard let detail, detail.hasAudio else { return false }
+        // Disabled while the queue has this meeting waiting or running.
+        if core.postProcessing.isActive(meetingID) { return false }
         let jobStatus = core.transcription.jobs[meetingID]
         switch jobStatus {
         case .downloadingModel, .transcribing:
@@ -679,6 +697,7 @@ public extension MeetingDetailViewModel {
     var pipelineStages: [PipelineStage]? {
         let jobStatus = core.transcription.jobs[meetingID]
         let enhStatus = core.intelligence.jobs[meetingID]
+        let queued = isQueued
 
         // Pipeline is active when transcription is downloading/transcribing
         // OR an enhancement is in progress (including .preparing).
@@ -712,7 +731,7 @@ public extension MeetingDetailViewModel {
             && aiAnalysisEnabled && modelAvailable
             && !transcriptionActive
 
-        guard transcriptionActive || enhancementActive
+        guard queued || transcriptionActive || enhancementActive
             || handoffToEnhancement || regenStartup
         else {
             return nil
@@ -720,21 +739,29 @@ public extension MeetingDetailViewModel {
 
         var stages: [PipelineStage] = []
 
-        // Stage 1: Transcribing
-        let transcriptionState: StageState = if transcriptionActive {
-            .active
+        // Stage 1: Transcribing (or Waiting to transcribe when queued)
+        if queued {
+            stages.append(PipelineStage(
+                label: "Waiting to transcribe", state: .pending
+            ))
         } else {
-            .done
+            let transcriptionState: StageState = if transcriptionActive {
+                .active
+            } else {
+                .done
+            }
+            stages.append(PipelineStage(
+                label: "Transcribing", state: transcriptionState
+            ))
         }
-        stages.append(PipelineStage(
-            label: "Transcribing", state: transcriptionState
-        ))
 
         // Stage 2: Inferring participant names (gated)
         let showSpeakers = aiAnalysisEnabled && modelAvailable
         if showSpeakers {
             let speakerState: StageState =
-                if enhStatus == .identifyingSpeakers {
+                if queued {
+                    .pending
+                } else if enhStatus == .identifyingSpeakers {
                     .active
                 } else if enhStatus == .preparing {
                     // Enhancement work has started (loading model, reading
@@ -777,7 +804,9 @@ public extension MeetingDetailViewModel {
             && (!editedSummary || summaryRegenRequested)
         if showSummary {
             let summaryState: StageState =
-                if enhStatus == .summarizing {
+                if queued {
+                    .pending
+                } else if enhStatus == .summarizing {
                     .active
                 } else if transcriptionActive
                     || enhStatus == .identifyingSpeakers
@@ -869,9 +898,9 @@ public extension MeetingDetailViewModel {
     }
 
     /// Dismisses the re-transcribe prompt and triggers re-transcription.
-    func reTranscribeAfterCorrection() async {
+    func reTranscribeAfterCorrection() {
         showReTranscribeAfterCorrection = false
-        await reTranscribe()
+        reTranscribe()
     }
 }
 
@@ -987,18 +1016,14 @@ public extension MeetingDetailViewModel {
 // MARK: - Transcription & association actions
 
 public extension MeetingDetailViewModel {
-    /// Triggers a re-transcription of the meeting, then runs
-    /// AI auto-enhancements (speaker-ID + summary) on the new transcript.
-    func reTranscribe() async {
-        await core.transcription.reTranscribe(meetingID: meetingID)
-        await load()
-        await core.intelligence.runAutoEnhancements(meetingID: meetingID)
+    /// Enqueues a re-transcription + AI auto-enhancements for the meeting.
+    func reTranscribe() {
+        core.enqueueReTranscription(meetingID: meetingID)
     }
 
-    /// Retries a failed transcription.
-    func retry() async {
-        await core.transcription.transcribe(meetingID: meetingID)
-        await load()
+    /// Enqueues a retry of a failed transcription + AI auto-enhancements.
+    func retry() {
+        core.enqueueTranscription(meetingID: meetingID)
     }
 
     /// Corrects the association to a new event (or removes it if nil).

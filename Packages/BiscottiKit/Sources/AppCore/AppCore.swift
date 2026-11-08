@@ -292,6 +292,13 @@ public final class AppCore {
     /// Checks for newer releases on GitHub.
     public let updateChecker: UpdateChecker
 
+    /// Serial post-processing queue (transcribe -> AI auto-enhancements).
+    /// Initialized with a placeholder runner, then reassigned in `init`
+    /// with the real runner once `self` is available.
+    public private(set) var postProcessing = PostProcessingQueue(
+        runner: { _ in }
+    )
+
     /// Local MCP server lifecycle (loopback HTTP, read-only meeting tools).
     /// Only starts when the user enables it in Settings.
     public let mcpServer: MCPServerController
@@ -345,9 +352,6 @@ public final class AppCore {
     /// Fires at each clock-minute boundary to refresh `minuteTick`.
     private var minuteTickTask: Task<Void, Never>?
 
-    /// The fire-and-forget transcription task spawned by `stopRecording()`.
-    package var pendingTranscriptionTask: Task<Void, Never>?
-
     /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
 
@@ -400,6 +404,28 @@ public final class AppCore {
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
         self.sendEnvironment = sendEnvironment
+
+        // Build the queue last so it can capture self (all stored
+        // properties are set above). The runner is the exact sequence
+        // stopRecording used to run inline.
+        postProcessing = PostProcessingQueue { [unowned self] entry in
+            await runPostProcessing(entry)
+        }
+    }
+
+    /// Runs the full post-processing pipeline for one queue entry.
+    private func runPostProcessing(
+        _ entry: PostProcessingQueue.Entry
+    ) async {
+        switch entry.kind {
+        case .transcribe:
+            await transcription.transcribe(meetingID: entry.meetingID)
+        case .reTranscribe:
+            await transcription.reTranscribe(meetingID: entry.meetingID)
+        }
+        await intelligence.runAutoEnhancements(
+            meetingID: entry.meetingID
+        )
     }
 
     // MARK: - Lifecycle
@@ -580,10 +606,7 @@ public final class AppCore {
         runState = .idle
         select(meetingID)
 
-        pendingTranscriptionTask = Task { @MainActor [transcription, intelligence] in
-            await transcription.transcribe(meetingID: meetingID)
-            await intelligence.runAutoEnhancements(meetingID: meetingID)
-        }
+        postProcessing.enqueue(meetingID, kind: .transcribe)
 
         // The audio engine and its capture buffers were just torn down;
         // reclaim that ~transient footprint back to the OS. Delayed so the
@@ -1107,14 +1130,27 @@ public extension AppCore {
     }
 }
 
+// MARK: - Queue API (MeetingDetailUI)
+
+public extension AppCore {
+    /// Enqueues a transcription for the given meeting (Retry path).
+    func enqueueTranscription(meetingID: UUID) {
+        postProcessing.enqueue(meetingID, kind: .transcribe)
+    }
+
+    /// Enqueues a re-transcription for the given meeting
+    /// (Re-transcribe / Transcribe now path).
+    func enqueueReTranscription(meetingID: UUID) {
+        postProcessing.enqueue(meetingID, kind: .reTranscribe)
+    }
+}
+
 // MARK: - Test support
 
 package extension AppCore {
-    /// Waits for any pending fire-and-forget transcription task spawned by
-    /// `stopRecording()` to finish.
+    /// Waits for the post-processing queue to drain.
     func awaitPendingTranscription() async {
-        await pendingTranscriptionTask?.value
-        pendingTranscriptionTask = nil
+        await postProcessing.awaitIdle()
     }
 
     /// Injects an `AutoStopState` for tests that need to verify the
@@ -1915,6 +1951,11 @@ extension AppCore {
             )
             return false
         }
+
+        // Drop any waiting queue entry so a queued import/recording
+        // doesn't start transcribing a deleted meeting. A running entry
+        // is left alone; its services will fail gracefully.
+        postProcessing.remove(meetingID)
 
         // 1. Collect on-disk paths from the store BEFORE deleting the row.
         let filePaths: [String]

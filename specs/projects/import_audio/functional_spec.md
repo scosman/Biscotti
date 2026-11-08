@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Functional Spec: Import Audio
@@ -28,11 +28,11 @@ There are two ways to start an import. Both feed the same import session (§4) a
 
 ### 1.2 Drag and drop onto the window
 
-- The **whole main window** is a drop target: sidebar, toolbar, main area, on every screen (Home, Meetings, Recording, Event preview, Settings, Import).
+- The **whole main window content** is a drop target: the sidebar and the main area, on every screen (Home, Meetings, Recording, Event preview, Settings, Import). The toolbar strip isn't required. The implementation uses whatever placement is safest, and if that also catches drags over the toolbar, fine.
 - Only drags carrying **files** activate it. Text, web links and images dragged from a browser don't show the overlay and aren't accepted.
 - Supported file sources:
   - **File URLs** (Finder, Desktop, most apps).
-  - **File promises** (apps like Voice Memos and Photos, which hand over a file only on drop). A promised file is classified by its declared type while hovering and received into a temporary location on drop.
+  - **File promises** (apps like Voice Memos and Photos, which hand over a file only on drop). A promised file is classified by its declared type while hovering and received into a temporary location on drop. When one dragged item promises several files, each file becomes its own import item if that's straightforward to implement. The coding agent decides by effort; the fallback is the first file only, and the choice is recorded in the phase plan.
 - While a qualifying drag hovers over the window, the **drop overlay** (§2) covers the entire window content.
 - The overlay goes away when the drag leaves the window, when files are dropped, or when the drag is cancelled (Esc).
 - **On drop:**

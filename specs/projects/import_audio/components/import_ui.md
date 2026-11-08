@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Component: ImportUI (+ shell and App wiring)
@@ -105,7 +105,7 @@ Set `wantsPeriodicDraggingUpdates = false`.
 Iterate `pasteboard.pasteboardItems ?? []` in order, building `[(kind, supported)]`:
 
 1. **File URL.** If `item.string(forType: .fileURL)` parses as a file URL → `ImportFileClassifier.isSupported(fileURL:)`.
-2. **File promise.** Else, if the item's types intersect `NSFilePromiseReceiver.readableDraggedTypes` → it's a promise item. Promise receivers come from `pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self])` (one per promise item, in order). Take the next one. Supported iff `receiver.fileTypes.first` passes `ImportFileClassifier.isSupported(typeIdentifier:)`.
+2. **File promise.** Else, if the item's types intersect `NSFilePromiseReceiver.readableDraggedTypes` → it's a promise item. Promise receivers come from `pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self])` (one per promise item, in order). Take the next one. **Each entry in `receiver.fileTypes` counts as one file**, and each is supported iff it passes `ImportFileClassifier.isSupported(typeIdentifier:)`. (Under the first-file-only fallback in §2.5, count only `fileTypes.first`.)
 3. **Otherwise** the item isn't a file (text, URL, image data) and is ignored. It counts toward neither number.
 
 The result of `[Bool]` feeds `DropOverlayState.classify`. Factor the walk into a testable function over a small protocol (`PasteboardItemSource`) so the tests can feed synthetic items without a real drag:
@@ -121,15 +121,15 @@ static func supportedFlags(_ items: [DraggedItemDescriptor]) -> [Bool]
 For each **supported** descriptor, in order:
 
 - **`.file(url)`** → `.file(url)`.
-- **`.promise`** → for receiver *k*:
+- **`.promise`** → for receiver *k*, with `n = receiver.fileTypes.count` promised files (at least 1):
   1. Make `dir = FileManager.default.temporaryDirectory/"Biscotti-Import"/UUID()` (`createDirectory`).
-  2. Create `let future = PromisedFile()`: a small `@unchecked Sendable` class holding a `CheckedContinuation`. It resolves on the **first** reader callback; later callbacks are ignored. It supports awaiting before or after resolution.
-  3. Call `receiver.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: Self.promiseQueue) { url, error in future.resolve(url, error) }`.
-  4. The entry is `.promised(displayName: receiver.fileNames.first, deliver: { try await future.value })`. `fileNames` may be empty at this point; `AudioImport` then shows "Incoming file" until delivery.
+  2. Create `n` futures, `PromisedFile()` each: a small `@unchecked Sendable` class holding a `CheckedContinuation` that resolves once. Each supports awaiting before or after resolution.
+  3. Call `receiver.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: Self.promiseQueue) { url, error in … }` once. The reader block resolves the futures **in callback-arrival order**: the 1st callback resolves future 0, the 2nd future 1, and so on. Callbacks beyond `n` are ignored.
+  4. Each supported promised file *i* becomes `.promised(displayName: receiver.fileNames[safe: i], deliver: { try await futures[i].value })`. `fileNames` may be empty at this point; `AudioImport` then shows "Incoming file" until delivery. Unsupported promised files get no entry, but their future still absorbs a callback so the ordering stays aligned. Delete their delivered file.
 
 `promiseQueue` is a dedicated serial `OperationQueue` (`qualityOfService = .userInitiated`).
 
-A receiver that delivers several files contributes only its first. The others are deleted with the temp dir. This is an accepted limitation; Voice Memos and Photos promise one file per item.
+**Multi-file promises: the coding agent's call.** Importing every promised file (above) is the goal. If it turns out not to be straightforward (for example, callback counts are unreliable and a never-resolved future would leave a row stuck on "Receiving…" and block the FIFO), fall back to **first file only**: one future per receiver, extra callbacks ignored and their files deleted with the temp dir. Record which approach shipped in the Phase 5 phase plan. Voice Memos and Photos typically promise one file per dragged item, so the fallback loses little.
 
 ### 2.6 Installation and placement
 
@@ -137,9 +137,9 @@ A receiver that delivers several files contributes only its first. The others ar
 
 1. **P1 (preferred):** the installer *is* the drop view, applied as the top-most layer of the shell root: `.overlay { WindowDropTargetInstaller(...).ignoresSafeArea() }` on the `Group` in `AppShellView.body`. No `.allowsHitTesting(false)`; the NSView's own `hitTest` filter keeps clicks flowing. SwiftUI keeps an `.overlay` representable above its siblings.
 2. **P2:** the installer is a zero-size background view. In `viewDidMoveToWindow` it adds the `WindowDropView` as the last subview of `window.contentView` (pinned to its bounds with autoresizing). It re-raises the view in `layout()` if SwiftUI re-ordered subviews, and removes it in `dismantleNSView`.
-3. **P3 (degraded fallback):** SwiftUI `.onDrop(of: [.fileURL], delegate:)` on the shell root. Hover state becomes `.supported(count: providers.count)` (no type knowledge while hovering, so no mixed or unsupported states). On drop, load the URLs, classify, skip unsupported, and do nothing if none are supported. No promise support. **Only use this if P1 and P2 both fail; record the outcome in the phase plan.**
+3. **P3 (degraded fallback):** SwiftUI `.onDrop(of: [.fileURL], delegate:)` on the shell root. Hover state becomes `.supported(count: providers.count)` (no type knowledge while hovering, so no mixed or unsupported states). On drop, load the URLs, classify, skip unsupported, and do nothing if none are supported. No promise support. **Only use this if P1 and P2 both fail.** Don't pause for approval: ship it, record the outcome in the phase plan, and add a backlog item to `backlog.md`: *"Confirm with the product owner: the drop target shipped with the degraded P3 fallback (no mixed or unsupported hover states, no Voice Memos/Photos file promises). Revisit P1/P2 or accept."*
 
-Don't add subviews to the window's theme frame (AppKit logs an unsupported-subview warning). The toolbar strip lives in the titlebar container above the content view, so drops over the toolbar are **best-effort**: they work if the chosen placement catches them, and otherwise the overlay appears once the cursor reaches the content area.
+Don't add subviews to the window's theme frame (AppKit logs an unsupported-subview warning). **The toolbar strip isn't required.** It lives in the titlebar container above the content view. Use the default, safest placement, and don't add code to extend coverage to the toolbar. If the chosen placement happens to catch drags over the toolbar too, that's fine.
 
 ---
 
@@ -257,7 +257,7 @@ CommandGroup(replacing: .importExport) {
 
 Run on a Mac, in light and dark mode:
 
-1. Drag 1 `.m4a` from Finder over each of: the sidebar, the Home body, the Meetings list, meeting detail (transcript, **notes editor**, summary), Settings, the Recording screen, the Import screen, and the toolbar strip (best-effort). Each shows "Drop to import" with the format line, and the cursor shows "+". Dropping lands on the Import screen.
+1. Drag 1 `.m4a` from Finder over each of: the sidebar, the Home body, the Meetings list, meeting detail (transcript, **notes editor**, summary), Settings, the Recording screen, and the Import screen. Each shows "Drop to import" with the format line, and the cursor shows "+". Dropping lands on the Import screen.
 2. Drag 3 supported files: "Drop to import 3 files".
 3. Drag 3 supported + 2 PDFs: mixed title + "2 files are unsupported…". After the drop, only 3 rows appear.
 4. Drag 1 PDF: neutral "Can't import this file", no "+" badge. The drop does nothing.
@@ -268,7 +268,7 @@ Run on a Mac, in light and dark mode:
 9. During onboarding: no overlay, the drop is refused, and the File menu item does nothing or is disabled.
 10. File > Import Audio File… (and ⌘⇧I): the sheet is filtered to audio/video and allows multi-select. Import lands on the Import screen.
 
-The coding agent copies this checklist into the Phase 5 phase plan and records which placement (P1/P2/P3) passed.
+The toolbar strip isn't on the checklist. The coding agent copies this checklist into the Phase 5 phase plan and records which placement (P1/P2/P3) passed and whether multi-file promises shipped (§2.5). If P3 shipped, the checklist's mixed/unsupported (3–4) and promise (6) steps are expected to show the degraded behavior, and the backlog item from §2.6 covers the follow-up.
 
 ---
 

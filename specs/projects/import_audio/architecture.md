@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # Architecture: Import Audio
@@ -419,7 +419,8 @@ The drop target can't be unit-tested. The phase that builds it (implementation p
 
 | Risk | Mitigation |
 |---|---|
-| **The AppKit drop view can't be both click-through and window-wide** (hit-testing interactions with SwiftUI's `NSHostingView`, the toolbar strip in the titlebar container). | Spike first in Phase 5. Placement candidates are ordered, with acceptance criteria (`components/import_ui.md` §2.4). The worst-case fallback is a SwiftUI `.onDrop` with a coarser hover state. The toolbar strip is best-effort (final question to the product owner). |
+| **The AppKit drop view can't be both click-through and window-wide** (hit-testing interactions with SwiftUI's `NSHostingView`). | Spike first in Phase 5. Placement candidates are ordered, with acceptance criteria (`components/import_ui.md` §2.6, §6). The worst-case fallback (P3) is a SwiftUI `.onDrop` with a coarser hover state. It ships without pausing, plus a `backlog.md` item to confirm with the product owner. Toolbar-strip coverage isn't required. |
+| Multi-file file promises (one dragged item promising several files) | Preferred: one import item per promised file. The coding agent may fall back to first-file-only if that proves fiddly, and records the choice (`components/import_ui.md` §2.5). |
 | AVAssetReader downmix for >2-channel sources | Pass an explicit mono `AVChannelLayoutKey` in the reader output settings. Test a 6-channel WAV in `AudioImportTests`. |
 | Some `public.audio` types AVFoundation can't decode (e.g. Ogg Vorbis) | They pass the hover check and fail at conversion with the generic message (functional spec §3). This is accepted. |
 | File-promise sources vary (Photos exports can be slow) | Rows show "Receiving…". The worker awaits delivery in order. A delivery error makes the row fail. |

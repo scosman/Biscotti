@@ -1,5 +1,5 @@
 ---
-status: draft
+status: complete
 ---
 
 # UI Design: Import Audio
@@ -52,7 +52,7 @@ A small neutral bezel button, the light-chrome sibling of `LightAlertButtonStyle
 
 ## 2. Drop overlay
 
-A SwiftUI view layered over the **entire root window content** (`.overlay` on the shell root, `.ignoresSafeArea()`), so it covers the sidebar, toolbar area and detail. It never takes hits (`.allowsHitTesting(false)`); the AppKit drop view (architecture §6) handles the drag. Window corner clipping comes from the window itself.
+A SwiftUI view layered over the **entire root window content** (`.overlay` on the shell root, `.ignoresSafeArea()`), so it covers the sidebar and detail. The toolbar may stay visible above it; covering the toolbar isn't required. It never takes hits (`.allowsHitTesting(false)`); the AppKit drop view (architecture §6) handles the drag. Window corner clipping comes from the window itself.
 
 ### 2.1 Layers
 

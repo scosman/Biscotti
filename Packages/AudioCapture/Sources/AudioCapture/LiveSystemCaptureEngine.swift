@@ -16,8 +16,10 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// orchestration lives in `AudioRecorder`. Tested by Manual Test App.
 ///
 /// **Thread-safety:** `@unchecked Sendable` — mutable state serialized
-/// by the owning `AudioRecorder` actor. Writer-thread errors flow
-/// through `_lock`-protected `_writeError`, read after the writer joins.
+/// by the owning `AudioRecorder` actor, except that `stop()` can run while
+/// `reconnect()` is suspended, so teardown also takes `teardownLock`.
+/// Writer-thread errors flow through `_lock`-protected `_writeError`,
+/// read after the writer joins.
 final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftlint:disable:this type_body_length
     private var tapObjectID: AudioObjectID = kAudioObjectUnknown
     private var aggregateDeviceID: AudioObjectID = kAudioObjectUnknown
@@ -28,6 +30,12 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     private var writerThread: Thread?
     private let writerRunning = Atomic<Int>(0)
     private let writerDone = DispatchSemaphore(value: 0)
+    /// Serializes `teardownHardware()` and `teardown()`. `reconnect()` runs
+    /// off its caller's actor, so `stop()` can run while `reconnect()` still
+    /// waits for the writer to drain. The writer signals `writerDone` only
+    /// once, so without this lock both calls would wait for it and one would
+    /// never return.
+    private let teardownLock = Mutex(())
     private var tapSampleRate: Double = 24000
     private let gapFillWriter = SystemGapFillWriter()
 
@@ -66,6 +74,11 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     #if DEBUG
         nonisolated(unsafe) static var verboseDiagnostics = true
         private let diagHeartbeat = SystemCaptureDiagnostics.Heartbeat()
+
+        /// Runs on the writer thread after its final drain, just before it
+        /// signals `writerDone`. Tests use it to hold a writer that is
+        /// shutting down. Set before `startWriterThread()`.
+        var writerWillFinish: (@Sendable () -> Void)?
     #endif
 
     private let capturingFlag = Atomic<Bool>(false)
@@ -292,7 +305,8 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 
     // MARK: - Writer Thread
 
-    private func startWriterThread() {
+    /// Internal so tests can run a writer without a tap.
+    func startWriterThread() {
         writerRunning.store(1, ordering: .releasing)
         let thread = Thread { [weak self] in self?.writerLoop() }
         thread.name = "net.scosman.biscotti.system-writer"
@@ -314,6 +328,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         }
         let dropped = ringBuffer.droppedBuffers.load(ordering: .acquiring)
         if dropped > 0 { logger.warning("Ring buffer dropped \(dropped) buffer(s)") }
+        #if DEBUG
+            writerWillFinish?()
+        #endif
         writerDone.signal()
     }
 
@@ -522,7 +539,16 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 
     // MARK: - Teardown
 
-    private func teardownHardware() {
+    /// Stops the IOProc, joins the writer and releases the tap and aggregate.
+    /// The file stays open: `reconnect()` uses this.
+    ///
+    /// Internal so tests can run the teardowns of `reconnect()` and `stop()`.
+    func teardownHardware() {
+        teardownLock.withLock { _ in releaseHardware() }
+    }
+
+    /// Only call with `teardownLock` held, so only one caller joins the writer.
+    private func releaseHardware() {
         if let procID = ioProcID {
             AudioDeviceStop(aggregateDeviceID, procID)
             AudioDeviceDestroyIOProcID(aggregateDeviceID, procID)
@@ -546,12 +572,17 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         }
     }
 
-    private func teardown() {
-        teardownHardware()
+    /// Releases the hardware, then closes the file. The lock makes the file
+    /// close only after the writer has finished with it, even when another
+    /// teardown is joining that writer.
+    func teardown() {
+        teardownLock.withLock { _ in
+            releaseHardware()
 
-        if let file = audioFile {
-            ExtAudioFileDispose(file)
-            audioFile = nil
+            if let file = audioFile {
+                ExtAudioFileDispose(file)
+                audioFile = nil
+            }
         }
     }
 

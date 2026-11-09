@@ -235,12 +235,24 @@ public final class AudioImportController {
 
         // Wait for promise delivery if needed
         if items[idx].status == .receiving {
-            _ = await deliveryTasks[itemID]?.result
+            let deliveryResult = await deliveryTasks[itemID]?.result
             // Re-look up after await
             guard let idx = itemIndex(id: itemID) else { return }
             if case .failed = items[idx].status {
                 await finish(itemID: itemID)
                 return
+            }
+            // Apply the URL ourselves in case the startDelivery handler has
+            // not yet run (MainActor scheduling order is not guaranteed).
+            if items[idx].sourceURL == nil,
+               let deliveryResult,
+               case let .success(url) = deliveryResult
+            {
+                items[idx].sourceURL = url
+                items[idx].displayName = url.lastPathComponent
+                if dateTasks[itemID] == nil {
+                    startDateRead(itemID: itemID, url: url)
+                }
             }
         }
 
@@ -254,7 +266,7 @@ public final class AudioImportController {
         items[idx].meetingDate = clampDate(dateResult, addedAt: addedAt)
 
         guard let sourceURL = items[idx].sourceURL else {
-            fail(itemID: itemID, failure: .sourceMissing)
+            await fail(itemID: itemID, failure: .sourceMissing)
             return
         }
 
@@ -269,10 +281,10 @@ public final class AudioImportController {
                 source: sourceURL, destination: staging
             )
         } catch let failure as ImportFailure {
-            fail(itemID: itemID, failure: failure)
+            await fail(itemID: itemID, failure: failure)
             return
         } catch {
-            fail(itemID: itemID, failure: .unreadable)
+            await fail(itemID: itemID, failure: .unreadable)
             return
         }
 
@@ -294,7 +306,7 @@ public final class AudioImportController {
             try FileManager.default.moveItem(at: staging, to: finalPath)
         } catch {
             try? FileManager.default.removeItem(at: meetingDir)
-            fail(itemID: itemID, failure: .saveFailed)
+            await fail(itemID: itemID, failure: .saveFailed)
             return
         }
 
@@ -310,7 +322,7 @@ public final class AudioImportController {
             )
         } catch {
             try? FileManager.default.removeItem(at: meetingDir)
-            fail(itemID: itemID, failure: .saveFailed)
+            await fail(itemID: itemID, failure: .saveFailed)
             return
         }
 
@@ -327,7 +339,7 @@ public final class AudioImportController {
         await finish(itemID: itemID)
     }
 
-    private func fail(itemID: UUID, failure: ImportFailure) {
+    private func fail(itemID: UUID, failure: ImportFailure) async {
         // Remove staging file
         let staging = recordingsRoot
             .appendingPathComponent(".import-staging")
@@ -349,9 +361,7 @@ public final class AudioImportController {
             "Import failed for \(name, privacy: .private): \(failure)"
         )
 
-        Task { @MainActor [weak self] in
-            await self?.finish(itemID: itemID)
-        }
+        await finish(itemID: itemID)
     }
 
     private func finish(itemID: UUID) async {

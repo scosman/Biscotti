@@ -16,7 +16,7 @@ Each phase is green on `make precommit-checks` on its own. Details live in `arch
   - `PostProcessingQueue`. `stopRecording` and the test seam move onto it. `enqueueTranscription` / `enqueueReTranscription`. Deletion drops waiting entries.
   - MeetingDetailUI: Retry and Re-transcribe enqueue, plus the "Waiting to transcribe…" state, the pipeline stage and `canReTranscribe`.
   - (architecture §4, §6)
-- [ ] **Phase 3: `AudioImport` module and AppCore wiring.**
+- [x] **Phase 3: `AudioImport` module and AppCore wiring.**
   - Classifier, AVFoundation converter (real-file tests), metadata reader, `AudioImportController`, `ImportHeaderCopy`, `DataStore.createImportedMeeting`, the `FakeAudioConverter` test support.
   - AppCore: `Route.importing`, `importFiles`, `showImport`, the import-panel request flag, completion → queue + `ImportAutoNavigation`, staging cleanup on launch.
   - (architecture §2.3, §5; components/audio_import.md)

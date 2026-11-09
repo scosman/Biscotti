@@ -100,22 +100,19 @@ struct AppCoreImportTests {
         fix.core.importFiles([.file(file)])
         await fix.core.audioImport.awaitIdle()
 
-        // Give the async onItemFinished callback time to enqueue.
-        await Task.yield()
-        await Task.yield()
-
         let item = fix.core.audioImport.items[0]
         guard case let .done(meetingID) = item.status else {
             Issue.record("expected .done")
             return
         }
 
-        // The post-processing queue should have this meeting active or done.
-        let isActive = fix.core.postProcessing.isActive(meetingID)
-        let isWaiting = fix.core.postProcessing.isWaiting(meetingID)
-        // It should be queued or already running.
-        #expect(isActive || isWaiting || true)
-        // At minimum, verify the meeting was created in the store.
+        // Wait for post-processing to complete (FakeTranscriber is instant).
+        await fix.core.postProcessing.awaitIdle()
+
+        // Verify transcription was invoked for the imported meeting.
+        #expect(fix.fakeEngine.backing.processAudioCalled)
+
+        // Verify the meeting was created in the store.
         let exists = try await fix.store.read { store in
             try store.meeting(id: meetingID) != nil
         }

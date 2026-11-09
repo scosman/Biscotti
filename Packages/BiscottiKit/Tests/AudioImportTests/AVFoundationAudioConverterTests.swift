@@ -148,6 +148,78 @@ struct AVFoundationAudioConverterTests {
         #expect(result.byteSize > 0)
     }
 
+    @Test("zero-frame WAV throws and removes destination")
+    func zeroFrameWav() async throws {
+        // Write a WAV with valid header but zero audio frames.
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zeroframe-\(UUID()).wav")
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 44100, channels: 1, interleaved: false
+        ) else {
+            Issue.record("could not create AVAudioFormat")
+            return
+        }
+        let file = try AVAudioFile(
+            forWriting: source, settings: format.settings
+        )
+        // Write zero frames: just close the file header with no samples.
+        _ = file // keep reference alive then drop
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("out-\(UUID()).aac")
+
+        do {
+            _ = try await converter.convert(
+                source: source, destination: dest
+            )
+            Issue.record("expected an ImportFailure")
+        } catch let error as ImportFailure {
+            // noAudio or unreadable are both acceptable -- AVFoundation may
+            // reject the empty track at different stages.
+            #expect(error == .noAudio || error == .unreadable)
+        }
+
+        // Destination must not exist (cleaned up by the converter).
+        #expect(!FileManager.default.fileExists(atPath: dest.path))
+    }
+
+    @Test("AAC source re-encodes successfully")
+    func aacSourceReencodes() async throws {
+        // Create a WAV source, convert it to ADTS AAC through our converter,
+        // then feed the AAC output back in as a source. This tests that the
+        // converter handles compressed input.
+        let wavSource = try Self.writeWAV(
+            name: "aac-seed", sampleRate: 44100, channels: 1,
+            durationSeconds: 0.5
+        )
+        defer { try? FileManager.default.removeItem(at: wavSource) }
+
+        let aacIntermediate = FileManager.default.temporaryDirectory
+            .appendingPathComponent("intermediate-\(UUID()).aac")
+        defer { try? FileManager.default.removeItem(at: aacIntermediate) }
+
+        // First pass: WAV -> AAC.
+        _ = try await converter.convert(
+            source: wavSource, destination: aacIntermediate
+        )
+        #expect(FileManager.default.fileExists(atPath: aacIntermediate.path))
+
+        // Second pass: re-encode AAC -> AAC.
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("reencoded-\(UUID()).aac")
+        defer { try? FileManager.default.removeItem(at: dest) }
+
+        let result = try await converter.convert(
+            source: aacIntermediate, destination: dest
+        )
+
+        #expect(result.duration > 0.3)
+        #expect(result.byteSize > 0)
+        #expect(FileManager.default.fileExists(atPath: dest.path))
+    }
+
     // MARK: - Error cases
 
     @Test("missing source throws sourceMissing")

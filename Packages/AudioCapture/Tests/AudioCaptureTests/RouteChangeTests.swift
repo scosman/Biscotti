@@ -199,6 +199,27 @@ struct RouteChangeTests {
         ctx.deviceChangeProvider.finish()
     }
 
+    /// A reconnect that is still rebuilding the tap when the user stops must
+    /// finish first: otherwise it can create hardware after `stop()` closed
+    /// the file, and nothing would tear that hardware down.
+    @Test("stop() waits for a reconnect in progress before stopping the engines")
+    func stopWaitsForReconnectInProgress() async throws {
+        let ctx = try TestRecorderFactory.make()
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        try await ctx.recorder.start(paths: ctx.paths)
+        try await ctx.deviceChangeProvider.waitUntilReady()
+        ctx.systemEngine.setReconnectDuration(.milliseconds(400))
+
+        ctx.deviceChangeProvider.send(.outputChanged)
+        try await Task.sleep(for: .milliseconds(100))
+        await ctx.recorder.stop()
+
+        #expect(ctx.systemEngine.reconnectCount == 1)
+        #expect(ctx.systemEngine.stopCount == 1)
+        #expect(ctx.systemEngine.stopsDuringReconnect == 0, "stop() reached the engine while its reconnect was still running")
+    }
+
     // MARK: - Mic reconnect retry
 
     @Test("Transient mic reconnect failure retries and succeeds")

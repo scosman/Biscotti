@@ -64,7 +64,7 @@ public final class AudioImportController {
     private var finishedItems = Set<UUID>()
 
     /// Maximum time to wait for a promised file before marking it failed.
-    static let deliveryTimeout: Duration = .seconds(120)
+    let deliveryTimeout: Duration
 
     // MARK: - Init
 
@@ -73,13 +73,15 @@ public final class AudioImportController {
         recordingsRoot: URL,
         converter: any AudioConverting = AVFoundationAudioConverter(),
         metadata: any ImportMetadataReading = AVFoundationMetadataReader(),
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        deliveryTimeout: Duration = .seconds(15)
     ) {
         self.store = store
         self.recordingsRoot = recordingsRoot
         self.converter = converter
         self.metadata = metadata
         self.now = now
+        self.deliveryTimeout = deliveryTimeout
     }
 
     // MARK: - Public API
@@ -166,21 +168,34 @@ public final class AudioImportController {
         itemID: UUID,
         deliver: @escaping @Sendable () async throws -> URL
     ) {
-        let timeout = Self.deliveryTimeout
+        let timeout = deliveryTimeout
         let task = Task<URL, any Error> {
-            // Race the delivery against a timeout.
-            try await withThrowingTaskGroup(of: URL.self) { group in
-                group.addTask { try await deliver() }
-                group.addTask {
-                    try await Task.sleep(for: timeout)
-                    throw ImportFailure.unreadable
+            // Race delivery against a timeout. We use a continuation
+            // guarded by an actor so the first completer wins and the
+            // caller resumes immediately. This avoids
+            // withThrowingTaskGroup, which waits for ALL children —
+            // if deliver() ignores cancellation the group would block
+            // after the timeout fires.
+            try await withCheckedThrowingContinuation { continuation in
+                let race = DeliveryRace(continuation: continuation)
+
+                let timeoutChild = Task {
+                    try? await Task.sleep(for: timeout)
+                    await race.complete(
+                        with: .failure(ImportFailure.deliveryTimedOut)
+                    )
                 }
-                // The group always has two tasks so next() cannot be nil.
-                guard let url = try await group.next() else {
-                    throw ImportFailure.unreadable
+
+                Task {
+                    do {
+                        let url = try await deliver()
+                        timeoutChild.cancel()
+                        await race.complete(with: .success(url))
+                    } catch {
+                        timeoutChild.cancel()
+                        await race.complete(with: .failure(error))
+                    }
                 }
-                group.cancelAll()
-                return url
             }
         }
         deliveryTasks[itemID] = task
@@ -200,7 +215,8 @@ public final class AudioImportController {
                 guard let self, let idx = itemIndex(id: itemID) else { return }
                 // Late callback: ignore if the item already left .receiving.
                 guard items[idx].status == .receiving else { return }
-                items[idx].status = .failed(.unreadable)
+                let failure = (error as? ImportFailure) ?? .unreadable
+                items[idx].status = .failed(failure)
                 logger.error(
                     "Promise delivery failed for \(itemID): \(error)"
                 )
@@ -266,8 +282,9 @@ public final class AudioImportController {
             }
             // The error handler may not have run yet (MainActor scheduling
             // order is not guaranteed). Check the result directly.
-            if let deliveryResult, case .failure = deliveryResult {
-                await fail(itemID: itemID, failure: .unreadable)
+            if let deliveryResult, case let .failure(error) = deliveryResult {
+                let failure = (error as? ImportFailure) ?? .unreadable
+                await fail(itemID: itemID, failure: failure)
                 return
             }
             // Apply the URL ourselves in case the startDelivery handler has
@@ -407,5 +424,27 @@ public final class AudioImportController {
 
     private func itemIndex(id: UUID) -> Int? {
         items.firstIndex(where: { $0.id == id })
+    }
+}
+
+// MARK: - DeliveryRace
+
+/// Guards a single `CheckedContinuation` so exactly one of two racing
+/// tasks (delivery vs. timeout) resumes it. The second caller's
+/// `complete` is a safe no-op.
+private actor DeliveryRace {
+    private var continuation: CheckedContinuation<URL, any Error>?
+
+    init(continuation: CheckedContinuation<URL, any Error>) {
+        self.continuation = continuation
+    }
+
+    func complete(with result: Result<URL, any Error>) {
+        guard let cont = continuation else { return }
+        continuation = nil
+        switch result {
+        case let .success(url): cont.resume(returning: url)
+        case let .failure(error): cont.resume(throwing: error)
+        }
     }
 }

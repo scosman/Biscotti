@@ -20,7 +20,8 @@ struct AudioImportControllerTests {
         @MainActor
         static func make(
             testName: String = "AICTest",
-            metadataDate: Date?? = .none
+            metadataDate: Date?? = .none,
+            deliveryTimeout: Duration = .seconds(120)
         ) throws -> Harness {
             let store = try DataStore(storage: .inMemory)
             let root = FileManager.default.temporaryDirectory
@@ -34,7 +35,8 @@ struct AudioImportControllerTests {
                 store: store,
                 recordingsRoot: root,
                 converter: converter,
-                metadata: metadata
+                metadata: metadata,
+                deliveryTimeout: deliveryTimeout
             )
             return Harness(
                 controller: controller, store: store,
@@ -236,6 +238,87 @@ struct AudioImportControllerTests {
             return
         }
         #expect(harness.converter.convertedSources.count == 1)
+    }
+
+    @Test("delivery timeout marks item failed, queue continues")
+    func deliveryTimeoutContinuesQueue() async throws {
+        let harness = try Harness.make(
+            testName: "DeliveryTimeout",
+            deliveryTimeout: .milliseconds(100)
+        )
+        defer { harness.cleanup() }
+
+        let goodFile = try harness.tempFile(name: "good.wav")
+
+        harness.controller.add([
+            .promised(displayName: "stuck", deliver: {
+                // Never completes — models an uncooperative provider
+                // that ignores cancellation (e.g. NSFilePromiseReceiver
+                // whose callback is never invoked).
+                for await _ in AsyncStream<Never> { _ in } {}
+                throw ImportFailure.unreadable
+            }),
+            .file(goodFile)
+        ])
+        await harness.controller.awaitIdle()
+
+        // The stuck promise must have timed out.
+        guard case let .failed(reason) = harness.controller.items[0].status
+        else {
+            Issue.record("expected .failed for timed-out promise")
+            return
+        }
+        #expect(reason == .deliveryTimedOut)
+
+        // The second item must have succeeded — the queue did not stall.
+        guard case .done = harness.controller.items[1].status else {
+            Issue.record("expected .done for second item after timeout")
+            return
+        }
+    }
+
+    @Test("late delivery after timeout is safe")
+    func lateDeliveryAfterTimeoutIsSafe() async throws {
+        let harness = try Harness.make(
+            testName: "LateDelivery",
+            deliveryTimeout: .milliseconds(50)
+        )
+        defer { harness.cleanup() }
+
+        // Deliver after the timeout fires.
+        let lateFile = try harness.tempFile(name: "late.wav")
+        let (stream, continuation) = AsyncStream<URL>.makeStream()
+
+        harness.controller.add([
+            .promised(displayName: "slow", deliver: {
+                for await url in stream {
+                    return url
+                }
+                throw ImportFailure.unreadable
+            })
+        ])
+
+        // Let the timeout expire.
+        await harness.controller.awaitIdle()
+
+        // The item timed out.
+        guard case .failed = harness.controller.items[0].status else {
+            Issue.record("expected .failed after timeout")
+            return
+        }
+
+        // Late delivery arrives — must not crash or change the status.
+        continuation.yield(lateFile)
+        continuation.finish()
+
+        // Yield to let any stray callbacks run.
+        await Task.yield()
+
+        // Status must remain .failed (not reverted to .waiting/.done).
+        guard case .failed = harness.controller.items[0].status else {
+            Issue.record("status must stay .failed after late delivery")
+            return
+        }
     }
 
     // MARK: - Date handling

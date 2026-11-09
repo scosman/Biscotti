@@ -140,6 +140,42 @@ struct PostProcessingQueueTests {
         #expect(!queue.isActive(id))
     }
 
+    @Test("summary refresh after title generation")
+    @MainActor
+    func summaryRefreshAfterTitleGeneration() async throws {
+        // Set up a fixture with a downloaded model so Intelligence
+        // runs the full analysis (including title generation).
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PPSummaryTitle"
+        )
+        defer { fix.cleanup() }
+
+        // Configure the fake LLM to return a recognizable title.
+        fix.fakeLLMRunner.generateResult = "Weekly Standup Recap"
+
+        let meetingID = try await fix.createImportedMeetingWithAudio(
+            title: "Imported from test.m4a"
+        )
+
+        // Verify the initial placeholder title is in summaries.
+        await fix.core.reloadSummaries()
+        let beforeTitle = fix.core.summaries.first { $0.id == meetingID }?.title
+        #expect(beforeTitle == "Imported from test.m4a")
+
+        // Enqueue post-processing and wait for the queue to drain.
+        fix.core.postProcessing.enqueue(
+            meetingID, kind: PostProcessingQueue.Kind.transcribe
+        )
+        await fix.core.awaitPendingTranscription()
+
+        // After the queue drains, the cached summary must reflect the
+        // AI-generated title (proves reloadSummaries ran after title
+        // generation).
+        let afterTitle = fix.core.summaries.first { $0.id == meetingID }?.title
+        #expect(afterTitle == "Weekly Standup Recap")
+    }
+
     @Test("service failure for one meeting does not stop the queue")
     @MainActor
     func serviceFailureDoesNotStopQueue() async throws {

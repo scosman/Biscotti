@@ -60,18 +60,25 @@ public enum PasteboardClassifier {
         var result: [DraggedItemDescriptor] = []
 
         for item in items {
+            let itemTypes = Set(item.types)
+            let hasPromise = !itemTypes.isDisjoint(with: promiseTypes)
+
             // 1. File URL?
             if let urlString = item.string(forType: .fileURL),
                let url = URL(string: urlString),
                url.isFileURL
             {
+                // Consume the paired receiver so later promise-only items
+                // don't pick up this item's receiver.
+                if hasPromise, nextReceiverIndex < receivers.count {
+                    nextReceiverIndex += 1
+                }
                 result.append(DraggedItemDescriptor(kind: .file(url)))
                 continue
             }
 
             // 2. File promise?
-            let itemTypes = Set(item.types)
-            if !itemTypes.isDisjoint(with: promiseTypes),
+            if hasPromise,
                nextReceiverIndex < receivers.count
             {
                 let receiver = receivers[nextReceiverIndex]

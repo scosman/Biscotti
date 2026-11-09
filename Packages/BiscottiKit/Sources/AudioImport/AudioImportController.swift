@@ -61,6 +61,10 @@ public final class AudioImportController {
     private var deliveryTasks: [UUID: Task<URL, any Error>] = [:]
     private var dateTasks: [UUID: Task<Date?, Never>] = [:]
     private var batchSizes: [UUID: Int] = [:]
+    private var finishedItems = Set<UUID>()
+
+    /// Maximum time to wait for a promised file before marking it failed.
+    static let deliveryTimeout: Duration = .seconds(120)
 
     // MARK: - Init
 
@@ -162,8 +166,22 @@ public final class AudioImportController {
         itemID: UUID,
         deliver: @escaping @Sendable () async throws -> URL
     ) {
+        let timeout = Self.deliveryTimeout
         let task = Task<URL, any Error> {
-            try await deliver()
+            // Race the delivery against a timeout.
+            try await withThrowingTaskGroup(of: URL.self) { group in
+                group.addTask { try await deliver() }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw ImportFailure.unreadable
+                }
+                // The group always has two tasks so next() cannot be nil.
+                guard let url = try await group.next() else {
+                    throw ImportFailure.unreadable
+                }
+                group.cancelAll()
+                return url
+            }
         }
         deliveryTasks[itemID] = task
 
@@ -171,18 +189,22 @@ public final class AudioImportController {
             do {
                 let url = try await task.value
                 guard let self, let idx = itemIndex(id: itemID) else { return }
+                // Late callback: ignore if the item already left .receiving
+                // (e.g. timed out while worker was waiting).
+                guard items[idx].status == .receiving else { return }
                 items[idx].sourceURL = url
                 items[idx].displayName = url.lastPathComponent
-                if items[idx].status == .receiving {
-                    items[idx].status = .waiting
-                }
+                items[idx].status = .waiting
                 startDateRead(itemID: itemID, url: url)
             } catch {
                 guard let self, let idx = itemIndex(id: itemID) else { return }
+                // Late callback: ignore if the item already left .receiving.
+                guard items[idx].status == .receiving else { return }
                 items[idx].status = .failed(.unreadable)
                 logger.error(
                     "Promise delivery failed for \(itemID): \(error)"
                 )
+                await finish(itemID: itemID)
             }
         }
     }
@@ -242,8 +264,14 @@ public final class AudioImportController {
                 await finish(itemID: itemID)
                 return
             }
+            // The error handler may not have run yet (MainActor scheduling
+            // order is not guaranteed). Check the result directly.
+            if let deliveryResult, case .failure = deliveryResult {
+                await fail(itemID: itemID, failure: .unreadable)
+                return
+            }
             // Apply the URL ourselves in case the startDelivery handler has
-            // not yet run (MainActor scheduling order is not guaranteed).
+            // not yet run.
             if items[idx].sourceURL == nil,
                let deliveryResult,
                case let .success(url) = deliveryResult
@@ -365,6 +393,8 @@ public final class AudioImportController {
     }
 
     private func finish(itemID: UUID) async {
+        guard !finishedItems.contains(itemID) else { return }
+        finishedItems.insert(itemID)
         guard let idx = itemIndex(id: itemID) else { return }
         let item = items[idx]
         let batchSize = batchSizes[item.batchID] ?? 1

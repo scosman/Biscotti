@@ -458,6 +458,9 @@ public final class AppCore {
         await intelligence.runAutoEnhancements(
             meetingID: entry.meetingID
         )
+        // Refresh cached summaries so the sidebar reflects any title or
+        // metadata changes made by transcription and AI enhancements.
+        await reloadSummaries()
     }
 
     // MARK: - Lifecycle

@@ -14,10 +14,14 @@ struct AudioImportControllerTests {
         let controller: AudioImportController
         let store: DataStore
         let converter: FakeAudioConverter
+        let metadata: FakeMetadataReader
         let root: URL
 
         @MainActor
-        static func make(testName: String = "AICTest") throws -> Harness {
+        static func make(
+            testName: String = "AICTest",
+            metadataDate: Date?? = .none
+        ) throws -> Harness {
             let store = try DataStore(storage: .inMemory)
             let root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("\(testName)-\(UUID())")
@@ -25,14 +29,16 @@ struct AudioImportControllerTests {
                 at: root, withIntermediateDirectories: true
             )
             let converter = FakeAudioConverter()
+            let metadata = FakeMetadataReader(date: metadataDate ?? nil)
             let controller = AudioImportController(
                 store: store,
                 recordingsRoot: root,
-                converter: converter
+                converter: converter,
+                metadata: metadata
             )
             return Harness(
                 controller: controller, store: store,
-                converter: converter, root: root
+                converter: converter, metadata: metadata, root: root
             )
         }
 
@@ -125,8 +131,19 @@ struct AudioImportControllerTests {
         let harness = try Harness.make(testName: "PromiseOK")
         defer { harness.cleanup() }
 
-        let file = try harness.tempFile(name: "real-audio.wav")
+        // Place the promised file in a dedicated receiving directory
+        // (outside recordingsRoot) so cleanup doesn't mask the result.
+        let receivingDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("promise-recv-\(UUID())")
+        try FileManager.default.createDirectory(
+            at: receivingDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: receivingDir) }
+
+        let file = receivingDir.appendingPathComponent("real-audio.wav")
+        try Data(repeating: 0x42, count: 64).write(to: file)
         let localFile = file // capture for Sendable closure
+
         harness.controller.add([
             .promised(
                 displayName: "placeholder",
@@ -137,11 +154,20 @@ struct AudioImportControllerTests {
 
         let item = harness.controller.items[0]
         #expect(item.displayName == "real-audio.wav")
-        guard case .done = item.status else {
+        guard case let .done(meetingID) = item.status else {
             Issue.record("expected .done, got \(item.status)")
             return
         }
         #expect(harness.converter.convertedSources.count == 1)
+
+        // Verify the final audio file exists in the meeting directory.
+        let systemAAC = harness.root
+            .appendingPathComponent(meetingID.uuidString)
+            .appendingPathComponent("system.aac")
+        #expect(
+            FileManager.default.fileExists(atPath: systemAAC.path),
+            "system.aac must exist after import"
+        )
     }
 
     @Test("promised delivery failure marks unreadable, queue continues")
@@ -216,27 +242,28 @@ struct AudioImportControllerTests {
 
     @Test("future date clamped to addedAt")
     func futureDateClamped() async throws {
-        let harness = try Harness.make(testName: "FutureDate")
+        let futureDate = Date().addingTimeInterval(86400) // 1 day ahead
+        let harness = try Harness.make(
+            testName: "FutureDate",
+            metadataDate: .some(futureDate)
+        )
         defer { harness.cleanup() }
 
-        // The metadata reader returns nil for temp files (no embedded date).
-        // The clampDate logic caps at addedAt. We verify by checking that
-        // meetingDate <= addedAt.
         let file = try harness.tempFile(name: "future.wav")
         harness.controller.add([.file(file)])
         await harness.controller.awaitIdle()
 
         let item = harness.controller.items[0]
-        #expect(item.meetingDate != nil)
-        // meetingDate must not exceed addedAt.
-        if let date = item.meetingDate {
-            #expect(date <= item.addedAt)
-        }
+        // The future date must be clamped to addedAt.
+        #expect(item.meetingDate == item.addedAt)
     }
 
     @Test("nil date falls back to addedAt")
     func nilDateFallback() async throws {
-        let harness = try Harness.make(testName: "NilDate")
+        let harness = try Harness.make(
+            testName: "NilDate",
+            metadataDate: .some(nil)
+        )
         defer { harness.cleanup() }
 
         let file = try harness.tempFile(name: "nodate.wav")
@@ -244,9 +271,8 @@ struct AudioImportControllerTests {
         await harness.controller.awaitIdle()
 
         let item = harness.controller.items[0]
-        // meetingDate should be the addedAt (no metadata date available from
-        // a temp file with no embedded metadata).
-        #expect(item.meetingDate != nil)
+        // nil metadata date must fall back to exactly addedAt.
+        #expect(item.meetingDate == item.addedAt)
     }
 
     // MARK: - Run tracking
@@ -395,5 +421,16 @@ struct AudioImportControllerTests {
 
         #expect(!FileManager.default.fileExists(atPath: staging.path))
         try? FileManager.default.removeItem(at: root)
+    }
+}
+
+// MARK: - FakeMetadataReader
+
+/// Returns a scripted date for all files.
+private struct FakeMetadataReader: ImportMetadataReading {
+    let date: Date?
+
+    func meetingDate(for _: URL) async -> Date? {
+        date
     }
 }

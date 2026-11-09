@@ -1,5 +1,7 @@
+import BiscottiTestSupport
 import Foundation
 import Testing
+import TranscriptionService
 @testable import AppCore
 
 @Suite("PostProcessingQueue")
@@ -138,27 +140,38 @@ struct PostProcessingQueueTests {
         #expect(!queue.isActive(id))
     }
 
-    @Test("runner failure does not stop the queue")
+    @Test("service failure for one meeting does not stop the queue")
     @MainActor
-    func runnerFailureDoesNotStop() async {
-        struct RunnerError: Error {}
-        var ran: [UUID] = []
-        let first = UUID(), second = UUID()
+    func serviceFailureDoesNotStopQueue() async throws {
+        // Use the real AppCore pipeline with a FakeTranscriber that fails
+        // on processAudio. The first meeting triggers the failure; the
+        // second meeting should still be processed by the queue.
+        let fix = try makeCoreFixture(testName: "PPQueueFailure")
+        defer { fix.cleanup() }
 
-        let queue = PostProcessingQueue { entry in
-            ran.append(entry.meetingID)
-            if entry.meetingID == first {
-                // The runner contract is: it never throws. But if it
-                // internally fails, the loop must continue. Simulate a
-                // no-op failure (the runner logs and continues).
-            }
+        fix.fakeEngine.backing.processAudioError = NSError(
+            domain: "test", code: 1
+        )
+
+        let id1 = try await fix.createMeetingWithAudio(title: "Failing")
+        let id2 = try await fix.createMeetingWithAudio(title: "Succeeding")
+
+        fix.core.postProcessing.enqueue(id1, kind: .transcribe)
+        fix.core.postProcessing.enqueue(id2, kind: .transcribe)
+
+        await fix.core.awaitPendingTranscription()
+
+        // Both meetings must have been attempted (queue did not stall).
+        // Both show .failed because the engine error persists, but the
+        // second meeting proves the queue continued past the first.
+        guard case .failed = fix.core.transcription.jobs[id1] else {
+            Issue.record("expected .failed for first meeting")
+            return
         }
-
-        queue.enqueue(first, kind: .transcribe)
-        queue.enqueue(second, kind: .transcribe)
-        await queue.awaitIdle()
-
-        #expect(ran == [first, second])
+        guard case .failed = fix.core.transcription.jobs[id2] else {
+            Issue.record("expected .failed for second meeting (queue stalled)")
+            return
+        }
     }
 }
 

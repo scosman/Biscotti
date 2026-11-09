@@ -68,6 +68,9 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
     public let editedSummary: Bool
     /// Whether the user has manually edited the title.
     public let editedTitle: Bool
+    /// Whether the title is a machine-generated placeholder that AI
+    /// titling may replace (e.g. "Imported from X.m4a").
+    public let titleIsPlaceholder: Bool
     /// Tags applied to this meeting, sorted alphabetically.
     public let tags: [TagData]
     /// Records of notes sent to third-party apps (Obsidian, Bear, Apple Notes).
@@ -88,6 +91,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         summary: String = "",
         editedSummary: Bool = false,
         editedTitle: Bool = false,
+        titleIsPlaceholder: Bool = false,
         tags: [TagData] = [],
         sentExports: [SentExport] = []
     ) {
@@ -105,6 +109,7 @@ public struct MeetingDetailData: Sendable, Identifiable, Equatable {
         self.summary = summary
         self.editedSummary = editedSummary
         self.editedTitle = editedTitle
+        self.titleIsPlaceholder = titleIsPlaceholder
         self.tags = tags
         self.sentExports = sentExports
     }
@@ -516,21 +521,27 @@ public extension DataStore {
             summary: meeting.summary,
             editedSummary: meeting.editedSummary,
             editedTitle: meeting.editedTitle,
+            titleIsPlaceholder: meeting.titleIsPlaceholder,
             tags: mappedTags,
             sentExports: meeting.sentExports
         )
     }
 
-    /// Returns the mic and system audio file paths for a meeting, or nil if not available.
-    func audioPaths(meetingID: UUID) throws -> (mic: URL, system: URL)? {
+    /// Returns the present audio file URLs for a meeting, or nil when the
+    /// meeting is missing or has NO present audio ref. A single-track meeting
+    /// (imports) returns one non-nil URL.
+    func audioPaths(meetingID: UUID) throws -> (mic: URL?, system: URL?)? {
         guard let meeting = try meeting(id: meetingID) else { return nil }
 
         let micRef = meeting.audioFiles.first(where: { $0.role == .mic && $0.isPresent })
         let systemRef = meeting.audioFiles.first(where: { $0.role == .system && $0.isPresent })
 
-        guard let micRef, let systemRef else { return nil }
+        guard micRef != nil || systemRef != nil else { return nil }
 
-        return (mic: URL(fileURLWithPath: micRef.path), system: URL(fileURLWithPath: systemRef.path))
+        return (
+            mic: micRef.map { URL(fileURLWithPath: $0.path) },
+            system: systemRef.map { URL(fileURLWithPath: $0.path) }
+        )
     }
 
     /// Returns the uncapped people data for a meeting, or nil if the meeting
@@ -765,12 +776,13 @@ public extension DataStore {
         }
         meeting.title = title
         meeting.editedTitle = true
+        meeting.titleIsPlaceholder = false
         try save()
     }
 
     /// Applies an event title from calendar association. Only updates the
     /// title when `editedTitle` is `false` -- i.e. the user has NOT manually
-    /// renamed the meeting.
+    /// renamed the meeting. Clears `titleIsPlaceholder`.
     func applyEventTitle(
         _ eventTitle: String, for meetingID: UUID
     ) throws {
@@ -779,6 +791,7 @@ public extension DataStore {
         }
         guard !meeting.editedTitle else { return }
         meeting.title = eventTitle
+        meeting.titleIsPlaceholder = false
         try save()
     }
 

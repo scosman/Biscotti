@@ -57,7 +57,7 @@ final class TranscriberService: NSObject, TranscriberServiceProtocol, @unchecked
         Task {
             do {
                 let result = try await engine.processAudio(
-                    micPath: request.micPath,
+                    micPath: request.micPath, // nil when the stream was not recorded
                     systemPath: request.systemPath,
                     customVocabulary: request.customVocabulary
                 )

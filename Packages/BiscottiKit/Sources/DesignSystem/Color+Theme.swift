@@ -248,6 +248,20 @@ public extension Color {
         dark: NSColor(srgbRed: 0.102, green: 0.090, blue: 0.059, alpha: 1)
     )
 
+    // MARK: - Import / drop overlay tokens
+
+    /// Drop overlay veil: paper @ 76% / paper-dark @ 74%.
+    static let dropVeil = dynamicColor(
+        light: NSColor(srgbRed: 0.984, green: 0.980, blue: 0.961, alpha: 0.76),
+        dark: NSColor(srgbRed: 0.063, green: 0.055, blue: 0.035, alpha: 0.74)
+    )
+
+    /// Bezel button border: ink @ 16% / off-white @ 16%.
+    static let controlStroke = dynamicColor(
+        light: NSColor(srgbRed: 0.102, green: 0.094, blue: 0.075, alpha: 0.16),
+        dark: NSColor(srgbRed: 0.969, green: 0.949, blue: 0.910, alpha: 0.16)
+    )
+
     // MARK: - List pane
 
     /// List pane background — a distinct **third** warm ivory, between `paper`

@@ -27,16 +27,24 @@ enum AudioLoading {
     }
 
     /// Load and merge mic + system audio into a single sample buffer.
+    ///
+    /// At least one path is required; a nil path means that stream was not
+    /// recorded (e.g. an imported file has no mic track).
     struct MergeResult {
         let samples: [Float]
         let duration: TimeInterval
     }
 
     static func loadAndMerge(
-        micPath: String, systemPath: String
+        micPath: String?, systemPath: String?
     ) throws -> MergeResult {
-        let micSamples = try loadSamples(fromPath: micPath)
-        let systemSamples = try loadSamples(fromPath: systemPath)
+        guard micPath != nil || systemPath != nil else {
+            throw TranscriptionError.invalidInput(
+                "At least one audio stream is required"
+            )
+        }
+        let micSamples = try micPath.map { try loadSamples(fromPath: $0) } ?? []
+        let systemSamples = try systemPath.map { try loadSamples(fromPath: $0) } ?? []
         let merged = try AudioMerger.merge(mic: micSamples, system: systemSamples)
         return MergeResult(samples: merged.samples, duration: merged.duration)
     }

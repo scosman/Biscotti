@@ -202,7 +202,7 @@ public final class Intelligence {
 
     /// Executes the LLM analysis session. Shared by both auto-run and
     /// manual paths.
-    private func runAnalysisSession(
+    private func runAnalysisSession( // swiftlint:disable:this function_body_length
         meetingID: UUID,
         detail: MeetingDetailData,
         transcript: TranscriptData,
@@ -214,7 +214,11 @@ public final class Intelligence {
         let human = await (try? store.humanSetSpeakerMappings(for: transcript.id)) ?? [:]
         let unmappedSpeakers = Set(transcript.segments.compactMap(\.speakerID)).subtracting(human.keys)
         let doSpeakers = !unmappedSpeakers.isEmpty
-        let doTitle = detail.title == Meeting.defaultTitle && !detail.editedTitle
+        let doTitle = Meeting.isAIReplaceableTitle(
+            title: detail.title,
+            editedTitle: detail.editedTitle,
+            titleIsPlaceholder: detail.titleIsPlaceholder
+        )
 
         // Nothing to do: all tasks skipped
         guard doSpeakers || doSummary || doTitle else { return }

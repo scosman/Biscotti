@@ -1,9 +1,9 @@
-import DataStore
 import Foundation
 import LocalLLM
 import Testing
 import Transcription
 import VoiceprintMatching
+@testable import DataStore
 @testable import Intelligence
 
 // MARK: - Fakes
@@ -2345,6 +2345,102 @@ struct IntelligenceVoiceprintIntegrationTests {
 
         // Run completed successfully
         #expect(fixture.intel.jobs[meetingID] == .completed)
+    }
+}
+
+// MARK: - Placeholder title gating tests
+
+@Suite("Placeholder title intelligence gating")
+struct PlaceholderTitleGatingTests {
+    @Test("auto-run generates AI title for placeholder-titled meeting")
+    @MainActor func autoRun_placeholderTitle_getsAITitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: "Imported from clip.m4a"
+        )
+
+        // Mark as placeholder via isolated actor access
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        let session = FakeSession()
+        // generate call 1: speakers, generate call 2: title
+        session.generateResponses = ["0 | Alice |", "Sprint Planning"]
+        session.streamingTokens = [["Summary"]]
+
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+        #expect(detail?.titleIsPlaceholder == false)
+    }
+
+    @Test("auto-run after AI title does not re-title")
+    @MainActor func autoRun_afterAITitle_doesNotRetitle() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: "Imported from clip.m4a"
+        )
+
+        // Mark as placeholder via isolated actor access
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        // First run: AI generates a title
+        let session1 = FakeSession()
+        session1.generateResponses = ["0 | Alice |", "Sprint Planning"]
+        session1.streamingTokens = [["Summary"]]
+        let fixture1 = makeIntelligence(store: store, session: session1)
+        await fixture1.intel.runAutoEnhancements(meetingID: meetingID)
+
+        let afterFirst = try await store.meetingDetail(id: meetingID)
+        #expect(afterFirst?.title == "Sprint Planning")
+
+        // Second run: title is no longer placeholder or default, so no title turn
+        let session2 = FakeSession()
+        session2.generateResponses = ["0 | Alice |"]
+        session2.streamingTokens = [["Updated summary"]]
+        let fixture2 = makeIntelligence(store: store, session: session2)
+        await fixture2.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // Title unchanged -- only 1 generate call (speakers), no title turn
+        #expect(session2.generateCalls.count == 1)
+        let afterSecond = try await store.meetingDetail(id: meetingID)
+        #expect(afterSecond?.title == "Sprint Planning")
+    }
+
+    @Test("auto-run does not touch user-edited title")
+    @MainActor func autoRun_editedTitle_untouched() async throws {
+        let store = try makeStore()
+        let (meetingID, _) = try await makeMeetingWithTranscript(
+            store: store, title: "Imported from clip.m4a"
+        )
+
+        // Mark as placeholder, then user renames (clears placeholder, sets edited)
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+        try await store.setTitle("My Name For This", for: meetingID)
+
+        let session = FakeSession()
+        session.generateResponses = ["0 | Alice |"]
+        session.streamingTokens = [["Summary"]]
+        let fixture = makeIntelligence(store: store, session: session)
+        await fixture.intel.runAutoEnhancements(meetingID: meetingID)
+
+        // No title turn (only 1 generate call for speakers)
+        #expect(session.generateCalls.count == 1)
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "My Name For This")
     }
 }
 

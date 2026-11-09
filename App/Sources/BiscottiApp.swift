@@ -94,6 +94,19 @@ struct BiscottiApp: App {
                 .keyboardShortcut("f", modifiers: .command)
             }
 
+            // File > Import Audio File...
+            CommandGroup(replacing: .importExport) {
+                Button("Import Audio File\u{2026}") {
+                    appDelegate.showMainWindow()
+                    appDelegate.core?.requestImportPanel()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(
+                    appDelegate.launchState.shellViewModel?.showOnboarding
+                        ?? true
+                )
+            }
+
             // Replace the standard Quit (Cmd+Q) with a custom handler.
             // When "Exit app on window close" is OFF (default), Cmd+Q
             // hides the window but keeps the menu-bar app alive. When

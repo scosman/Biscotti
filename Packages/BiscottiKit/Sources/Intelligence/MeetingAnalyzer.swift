@@ -316,8 +316,11 @@ enum MeetingAnalyzer {
             )
         }
 
-        let doTitle = detail.title == Meeting.defaultTitle
-            && !detail.editedTitle
+        let doTitle = Meeting.isAIReplaceableTitle(
+            title: detail.title,
+            editedTitle: detail.editedTitle,
+            titleIsPlaceholder: detail.titleIsPlaceholder
+        )
         if doTitle {
             try await store.applyGeneratedTitle(
                 emptyTranscriptTitle, for: meetingID

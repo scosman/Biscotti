@@ -171,9 +171,10 @@ public final class TranscriptionService {
         jobs[meetingID] = .completed
     }
 
-    /// Resolves mic + system audio file paths from the store.
+    /// Resolves audio file paths from the store. A single-track meeting
+    /// (e.g. an import) returns one non-nil URL.
     /// Sets a `.failed` job status and returns `nil` if paths are unavailable.
-    private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL, system: URL)? {
+    private func resolveAudioPaths(meetingID: UUID) async -> (mic: URL?, system: URL?)? {
         do {
             guard let resolved = try await store.audioPaths(meetingID: meetingID) else {
                 let meetingExists = try await store.meetingExists(id: meetingID)
@@ -233,7 +234,7 @@ public final class TranscriptionService {
     /// Runs STT + diarization. Returns `nil` (with `.failed` set) on error.
     private func runEngine(
         meetingID: UUID,
-        paths: (mic: URL, system: URL),
+        paths: (mic: URL?, system: URL?),
         vocabulary: [String]
     ) async -> TranscriptResult? {
         jobs[meetingID] = .transcribing

@@ -12,15 +12,15 @@ struct TranscribeCLI: AsyncParsableCommand {
         automatically on first run (~3 GB for STT, ~33 MB for diarization).
         First-run CoreML compilation may take 15-90 seconds.
 
-        Both --mic and --system paths are required.
+        Provide --mic, --system, or both.
         """
     )
 
     @Option(name: .long, help: "Path to the mic audio file.")
-    var mic: String
+    var mic: String?
 
     @Option(name: .long, help: "Path to the system audio file.")
-    var system: String
+    var system: String?
 
     @Option(name: .long, help: "Comma-separated custom vocabulary terms.")
     var vocab: String?
@@ -32,6 +32,12 @@ struct TranscribeCLI: AsyncParsableCommand {
         let writer = StandardOutputWriter()
 
         let vocabTerms = parseVocab(vocab)
+
+        // At least one audio path is required.
+        guard mic != nil || system != nil else {
+            writer.writeStderr("Error: provide --mic, --system, or both.")
+            throw ExitCode.validationFailure
+        }
 
         // Pre-flight: verify all provided audio paths exist before doing any work.
         try validateAudioPaths(writer: writer)
@@ -48,8 +54,8 @@ struct TranscribeCLI: AsyncParsableCommand {
         }
 
         writer.writeStderr("Processing audio...")
-        let micURL = URL(fileURLWithPath: (mic as NSString).expandingTildeInPath)
-        let systemURL = URL(fileURLWithPath: (system as NSString).expandingTildeInPath)
+        let micURL = mic.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        let systemURL = system.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
         let result = try await transcriber.processAudio(
             mic: micURL,
             system: systemURL,
@@ -69,10 +75,9 @@ struct TranscribeCLI: AsyncParsableCommand {
 
     /// Fail fast if any provided audio path does not exist on disk.
     func validateAudioPaths(writer: some OutputWriter) throws {
-        let paths: [(label: String, path: String)] = [
-            ("--mic", mic),
-            ("--system", system)
-        ]
+        var paths: [(label: String, path: String)] = []
+        if let mic { paths.append(("--mic", mic)) }
+        if let system { paths.append(("--system", system)) }
 
         for (label, raw) in paths {
             let expanded = (raw as NSString).expandingTildeInPath
@@ -86,8 +91,8 @@ struct TranscribeCLI: AsyncParsableCommand {
     private func printInputSummary(
         vocabTerms: [String], writer: some OutputWriter
     ) {
-        writer.writeStderr("Mic:        \(mic)")
-        writer.writeStderr("System:     \(system)")
+        writer.writeStderr("Mic:        \(mic ?? "(none)")")
+        writer.writeStderr("System:     \(system ?? "(none)")")
         writer.writeStderr("Method:     \(TranscriptionMethod.current.id)")
         if !vocabTerms.isEmpty {
             writer.writeStderr("Vocabulary: \(vocabTerms.joined(separator: ", "))")

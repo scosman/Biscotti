@@ -20,4 +20,7 @@ public enum Route: Sendable, Equatable {
 
     /// First-run onboarding (full-window takeover).
     case onboarding
+
+    /// The Import screen (session-long import list).
+    case importing
 }

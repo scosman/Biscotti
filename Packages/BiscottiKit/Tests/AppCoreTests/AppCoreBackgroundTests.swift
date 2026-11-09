@@ -1281,8 +1281,10 @@ struct AppCoreRecordingRunStateTests {
         defer { fix.cleanup() }
 
         await fix.core.startRecording()
-        _ = await fix.core.stopRecording()
-        #expect(fix.core.pendingTranscriptionTask != nil)
+        let meetingID = await fix.core.stopRecording()
+        // The meeting should be queued or already running in the queue
+        #expect(meetingID != nil)
+        await fix.core.awaitPendingTranscription()
     }
 
     @Test("startRecording routes to recording screen")

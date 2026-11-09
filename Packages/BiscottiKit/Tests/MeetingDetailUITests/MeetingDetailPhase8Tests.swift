@@ -833,10 +833,12 @@ struct MeetingDetailCorrectionReTranscribeTests {
 
         // The prompt won't show after correction (suppressed), but
         // reTranscribeAfterCorrection() still functions if called
-        await viewModel.reTranscribeAfterCorrection()
+        viewModel.reTranscribeAfterCorrection()
         #expect(viewModel.showReTranscribeAfterCorrection == false)
 
-        // FakeTranscriber completes synchronously
+        // Wait for the post-processing queue to drain
+        await fix.core.awaitPendingTranscription()
+
         let job = fix.core.transcription.jobs[meetingID]
         #expect(job == .completed)
     }

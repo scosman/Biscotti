@@ -142,9 +142,7 @@ public struct MeetingDetailView: View {
             )
         ) {
             Button("OK") {
-                Task {
-                    await viewModel.reTranscribeAfterCorrection()
-                }
+                viewModel.reTranscribeAfterCorrection()
             }
             .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {
@@ -570,7 +568,7 @@ private extension MeetingDetailView {
 
             if viewModel.canReTranscribe {
                 Button {
-                    Task { await viewModel.reTranscribe() }
+                    viewModel.reTranscribe()
                 } label: {
                     Label(
                         "Re-transcribe",
@@ -1142,7 +1140,7 @@ private extension MeetingDetailView {
                 .foregroundStyle(.inkSecondary)
             if viewModel.canReTranscribe {
                 Button("Transcribe now") {
-                    Task { await viewModel.reTranscribe() }
+                    viewModel.reTranscribe()
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
@@ -1160,7 +1158,7 @@ private extension MeetingDetailView {
                 style: .error,
                 actionLabel: retriable ? "Retry" : nil,
                 action: retriable
-                    ? { Task { await viewModel.retry() } }
+                    ? { viewModel.retry() }
                     : nil
             )
             .frame(maxWidth: 500)

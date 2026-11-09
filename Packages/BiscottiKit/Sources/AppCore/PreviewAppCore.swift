@@ -127,8 +127,8 @@
         }
 
         func processAudio(
-            mic _: URL,
-            system _: URL,
+            mic _: URL?,
+            system _: URL?,
             customVocabulary _: [String]
         ) async throws -> TranscriptResult {
             TranscriptResult(

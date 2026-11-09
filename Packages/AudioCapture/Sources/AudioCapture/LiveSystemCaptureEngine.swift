@@ -31,6 +31,14 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
     private var tapSampleRate: Double = 24000
     private let gapFillWriter = SystemGapFillWriter()
 
+    /// Buffer-flow timestamps for the recorder's stall watchdog. The IOProc
+    /// stamps every buffer; the writer thread stamps non-zero ones.
+    private let healthTracker = StreamHealthTracker()
+
+    var streamHealth: StreamHealth {
+        healthTracker.snapshot
+    }
+
     /// Writer-thread-only flags for deferred client format setup.
     private var clientFormatConfigured = false
     private var clientFormatFailed = false
@@ -115,6 +123,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         systemStartWall = CACurrentMediaTime()
         didWriteLeadingSilence = false
         gapFillWriter.reset()
+        healthTracker.reset()
 
         do {
             try createTapAndAggregate()
@@ -323,14 +332,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         let channelCount = Int(max(entry.channelCount, 1))
         let sampleCount = frameCount * channelCount
 
-        // Feed samples to permission checker during initial ~2 s window.
-        if permissionChecker.isWithinCheckWindow {
-            entry.data.withMemoryRebound(to: Float.self, capacity: sampleCount) { samples in
-                let bufferPointer = UnsafeBufferPointer(start: samples, count: sampleCount)
-                let duration = Double(frameCount) / tapSampleRate
-                permissionChecker.ingestSamples(bufferPointer, duration: duration)
-            }
-        }
+        inspectSamples(entry, frameCount: frameCount, sampleCount: sampleCount)
 
         guard let file = audioFile else { return }
         guard !clientFormatFailed else { return }
@@ -415,6 +417,22 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
         }
     }
 
+    /// Feeds the permission checker (first ~2 s only) and the stall
+    /// watchdog. A zero-filled buffer looks like a live tap to the IOProc,
+    /// so audibility is judged here, off the real-time thread.
+    private func inspectSamples(_ entry: AudioRingBuffer.Entry, frameCount: Int, sampleCount: Int) {
+        entry.data.withMemoryRebound(to: Float.self, capacity: sampleCount) { samples in
+            let bufferPointer = UnsafeBufferPointer(start: samples, count: sampleCount)
+            if permissionChecker.isWithinCheckWindow {
+                let duration = Double(frameCount) / tapSampleRate
+                permissionChecker.ingestSamples(bufferPointer, duration: duration)
+            }
+            if StreamHealthTracker.containsNonZero(bufferPointer) {
+                healthTracker.recordNonZero(hostNanos: AudioConvertHostTimeToNanos(entry.hostTime))
+            }
+        }
+    }
+
     private nonisolated func recordWriteError(_ status: OSStatus) {
         os_unfair_lock_lock(&_lock)
         if _writeError == nil { _writeError = status }
@@ -479,6 +497,7 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
 
     private func startIOProc() throws {
         let ring = ringBuffer
+        let health = healthTracker
 
         var procID: AudioDeviceIOProcID?
         let status = AudioDeviceCreateIOProcIDWithBlock(
@@ -499,6 +518,9 @@ final class LiveSystemCaptureEngine: CaptureEngine, @unchecked Sendable { // swi
                 channelCount: firstBuffer.mNumberChannels
             )
             guard frameCount > 0 else { return }
+
+            // Liveness stamp for the stall watchdog (atomic store, RT-safe).
+            health.recordBuffer(hostTime: inInputTime.pointee.mHostTime)
 
             // Pass the frame's host time so the writer can align the system
             // track against the mic's first-frame anchor.

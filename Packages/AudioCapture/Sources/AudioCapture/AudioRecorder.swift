@@ -19,7 +19,7 @@ private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", cate
 /// Each stream writes ADTS AAC directly during capture via `ExtAudioFile` —
 /// no post-recording encode step. Route-change events are handled by
 /// reconnecting the affected engine without tearing down the session.
-public actor AudioRecorder {
+public actor AudioRecorder { // swiftlint:disable:this type_body_length
     // MARK: - Dependencies (injected via seams)
 
     private let systemEngine: any CaptureEngine
@@ -28,6 +28,7 @@ public actor AudioRecorder {
     private let permissionChecker: any SystemPermissionChecker
     private let micPermissionChecker: any MicPermissionChecker
     private let encoder: EncoderSettings
+    private let watchdogConfiguration: SystemStreamWatchdog.Configuration
 
     // MARK: - Session state
 
@@ -54,7 +55,26 @@ public actor AudioRecorder {
 
     private var stateTimer: Task<Void, Never>?
     private var routeChangeTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
     private var stateContinuations: [UUID: AsyncStream<CaptureState>.Continuation] = [:]
+
+    // MARK: - System stream watchdog state
+
+    /// Host time of the last system engine start/reconnect. The watchdog
+    /// ignores anything before it so a fresh tap gets a full window.
+    private var watchdogArmedAtNanos: UInt64 = 0
+
+    /// Host time of the last stall-triggered reconnect, for the cooldown.
+    private var lastStallReconnectNanos: UInt64 = 0
+
+    /// A system reconnect is in flight. Route-change events and watchdog
+    /// stalls can both ask for one, and the engine's `reconnect()` is not
+    /// reentrant, so they are serialized here (see `requestSystemReconnect`).
+    private var systemReconnectInFlight = false
+
+    /// A route-change reconnect arrived while one was in flight; run once
+    /// more when it finishes so the newest device state is picked up.
+    private var systemReconnectPending = false
 
     /// Timeout for waiting on the mic engine's first buffer before
     /// proceeding to start the system engine (seconds). Prevents a
@@ -99,7 +119,8 @@ public actor AudioRecorder {
         deviceChangeProvider: some DeviceChangeProvider,
         permissionChecker: some SystemPermissionChecker,
         micPermissionChecker: some MicPermissionChecker,
-        encoder: EncoderSettings = .voice
+        encoder: EncoderSettings = .voice,
+        watchdog: SystemStreamWatchdog.Configuration = .default
     ) {
         self.systemEngine = systemEngine
         self.micEngine = micEngine
@@ -107,6 +128,7 @@ public actor AudioRecorder {
         self.permissionChecker = permissionChecker
         self.micPermissionChecker = micPermissionChecker
         self.encoder = encoder
+        watchdogConfiguration = watchdog
     }
 
     // MARK: - Permissions
@@ -225,6 +247,8 @@ public actor AudioRecorder {
         emitState()
         startStateTimer()
         startRouteChangeListener()
+        armWatchdog()
+        startWatchdog()
     }
 
     /// Requires a delivered buffer, not just a successful engine.start().
@@ -348,6 +372,8 @@ public actor AudioRecorder {
         lifecycle = .finished
         routeChangeTask?.cancel()
         routeChangeTask = nil
+        watchdogTask?.cancel()
+        watchdogTask = nil
         stateTimer?.cancel()
         stateTimer = nil
 
@@ -573,6 +599,9 @@ extension AudioRecorder {
     /// changes — it keeps using the device it was started with. Without an
     /// explicit reconnect, switching to AirPods leaves the built-in mic active,
     /// and removing the current device (AirPods out) loses audio entirely.
+    /// On SYSTEM STALL: same system reconnect as an output change, but only
+    /// once per `watchdog.reconnectCooldown` and never while a reconnect is
+    /// already in flight, so a tap that cannot recover is not rebuilt in a loop.
     /// `isRecording` stays `true` throughout -- no audio loss.
     private func handleDeviceChange(_ event: DeviceChangeEvent) async {
         guard isRecording else { return }
@@ -580,12 +609,47 @@ extension AudioRecorder {
         switch event {
         case .outputChanged:
             logger.info("Output device changed -- reconnecting system capture (file-preserving)")
-            await reconnectSystemEngineWithRetry()
+            await requestSystemReconnect(coalesce: true)
 
         case .inputChanged:
             logger.info("Input device changed -- reconnecting mic capture (file-preserving)")
             await reconnectMicEngineWithRetry()
+
+        case .systemStreamStalled:
+            let now = hostClockNanos()
+            guard !stallCooldownActive(now: now) else {
+                logger.notice("System stream stall reported during cooldown -- ignoring")
+                return
+            }
+            guard !systemReconnectInFlight else {
+                logger.notice("System stream stall reported during reconnect -- ignoring")
+                return
+            }
+            lastStallReconnectNanos = now
+            logger.notice("System stream stalled -- reconnecting system capture (file-preserving)")
+            await requestSystemReconnect(coalesce: false)
         }
+    }
+
+    /// Serializes system reconnects from the route-change stream and the
+    /// watchdog. With `coalesce`, a request that arrives mid-reconnect runs
+    /// once more afterwards (a route change must not be dropped); without
+    /// it (watchdog), the in-flight reconnect is enough and the request is
+    /// dropped. Re-arms the watchdog when done so the rebuilt tap gets a
+    /// full stall window, even if every attempt failed -- the watchdog then
+    /// retries the system track once per cooldown instead of giving up.
+    private func requestSystemReconnect(coalesce: Bool) async {
+        if systemReconnectInFlight {
+            if coalesce { systemReconnectPending = true }
+            return
+        }
+        systemReconnectInFlight = true
+        defer { systemReconnectInFlight = false }
+        repeat {
+            systemReconnectPending = false
+            await reconnectSystemEngineWithRetry()
+            armWatchdog()
+        } while systemReconnectPending && isRecording
     }
 
     /// Reconnects the system engine with retry on transient failures.
@@ -659,6 +723,60 @@ extension AudioRecorder {
         logger.error(
             "Mic engine reconnect failed after \(Self.micReconnectMaxRetries + 1, privacy: .public) attempts — mic track lost, system continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
         )
+    }
+}
+
+// MARK: - System stream watchdog
+
+extension AudioRecorder {
+    /// Resets the stall window: nothing before now counts against the
+    /// system stream. Called after start and after every reconnect.
+    private func armWatchdog() {
+        watchdogArmedAtNanos = hostClockNanos()
+    }
+
+    private func stallCooldownActive(now: UInt64) -> Bool {
+        guard lastStallReconnectNanos > 0 else { return false }
+        return now - lastStallReconnectNanos < watchdogConfiguration.reconnectCooldown.nanoseconds
+    }
+
+    /// Polls both engines' `streamHealth` and raises `.systemStreamStalled`
+    /// through the normal device-change path when the system stream has
+    /// gone silent while the mic is live. Ticks inside the cooldown or
+    /// during a reconnect are skipped silently so the log is not flooded.
+    private func startWatchdog() {
+        let interval = watchdogConfiguration.pollInterval
+        watchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled else { break }
+                await self?.watchdogTick()
+            }
+        }
+    }
+
+    private func watchdogTick() async {
+        guard isRecording, !systemReconnectInFlight else { return }
+        let now = hostClockNanos()
+        guard !stallCooldownActive(now: now) else { return }
+
+        let system = systemEngine.streamHealth
+        let mic = micEngine.streamHealth
+        guard let stall = SystemStreamWatchdog.evaluate(
+            system: system,
+            mic: mic,
+            armedAtNanos: watchdogArmedAtNanos,
+            nowNanos: now,
+            stallWindowNanos: watchdogConfiguration.stallWindow.nanoseconds
+        ) else { return }
+
+        let sinceBuffer = Double(now &- max(system.lastBufferHostNanos, watchdogArmedAtNanos)) / 1_000_000_000
+        let sinceNonZero = Double(now &- max(system.lastNonZeroHostNanos, watchdogArmedAtNanos)) / 1_000_000_000
+        let sinceMic = Double(now &- mic.lastNonZeroHostNanos) / 1_000_000_000
+        logger.notice(
+            "System stream watchdog: \(String(describing: stall), privacy: .public) -- lastBuffer=\(sinceBuffer, privacy: .public)s ago, lastNonZero=\(sinceNonZero, privacy: .public)s ago, micNonZero=\(sinceMic, privacy: .public)s ago"
+        )
+        await handleDeviceChange(.systemStreamStalled)
     }
 }
 

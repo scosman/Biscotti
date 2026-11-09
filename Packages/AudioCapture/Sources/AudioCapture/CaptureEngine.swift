@@ -46,6 +46,12 @@ public protocol CaptureEngine: Sendable {
     /// `stop()` to surface write errors. Nil for engines without a write
     /// path (mic engine, fakes).
     var writeError: OSStatus? { get }
+
+    /// Recent buffer-flow timestamps for this stream. `AudioRecorder` polls
+    /// both engines to detect a system tap that has stopped delivering
+    /// audio (see `SystemStreamWatchdog`). Engines that cannot report
+    /// return `.unknown`, which disables the watchdog for that stream.
+    var streamHealth: StreamHealth { get }
 }
 
 public extension CaptureEngine {
@@ -55,6 +61,10 @@ public extension CaptureEngine {
 
     var writeError: OSStatus? {
         nil
+    }
+
+    var streamHealth: StreamHealth {
+        .unknown
     }
 }
 
@@ -66,6 +76,13 @@ public enum DeviceChangeEvent: Sendable, Equatable {
     /// The default input device changed (e.g. built-in mic -> AirPods mic).
     /// AVAudioEngine must be restarted.
     case inputChanged
+    /// The system-audio stream stopped delivering audio while the mic was
+    /// still live (e.g. AirPods flipped A2DP -> HFP as a call started; the
+    /// default device is unchanged so no `outputChanged` fires, but the
+    /// tap goes silent). Raised by `AudioRecorder`'s own watchdog; providers
+    /// need not emit it. System tap + aggregate device must be rebuilt,
+    /// subject to a cooldown.
+    case systemStreamStalled
 }
 
 /// Seam for device-change observation.

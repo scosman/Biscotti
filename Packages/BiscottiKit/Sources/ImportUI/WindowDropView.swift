@@ -21,15 +21,6 @@ public final class WindowDropView: NSView {
     var isEnabled: @MainActor () -> Bool = { true }
     var onDrop: @MainActor ([ImportEntry]) -> Void = { _ in }
 
-    /// The serial queue where promise receivers deliver files.
-    private static let promiseQueue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "net.scosman.biscotti.import-promises"
-        queue.maxConcurrentOperationCount = 1
-        queue.qualityOfService = .userInitiated
-        return queue
-    }()
-
     static let draggedTypes: [NSPasteboard.PasteboardType] = {
         var types: [NSPasteboard.PasteboardType] = [.fileURL]
         types += NSFilePromiseReceiver.readableDraggedTypes
@@ -210,10 +201,16 @@ public final class WindowDropView: NSView {
                     at: tempDir, withIntermediateDirectories: true
                 )
 
+                // Use the main queue: this closure inherits @MainActor
+                // isolation from the enclosing NSView method (Swift 6
+                // non-@Sendable closure rule). A background OperationQueue
+                // triggers _dispatch_assert_queue_fail at runtime. The
+                // callback is lightweight (one resolve call); heavy
+                // conversion work runs in async tasks.
                 receiver.receivePromisedFiles(
                     atDestination: tempDir,
                     options: [:],
-                    operationQueue: Self.promiseQueue
+                    operationQueue: .main
                 ) { url, error in
                     callbackCount += 1
                     if callbackCount == 1 {

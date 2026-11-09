@@ -86,6 +86,8 @@ Steps 1--5 and 7--10: **PASS**.
 
 Step 6 (drag from Voice Memos / Photos): **CRASH** -- deferred to a follow-up task. The app crashes when receiving a file promise from Voice Memos.
 
+**Step 6 fix (2026-11-08):** Root cause: Swift 6 actor-isolation inference. The non-`@Sendable` `receivePromisedFiles` reader closure, created inside a `@MainActor` `NSView` method, is inferred `@MainActor`. The runtime isolation check fires `_dispatch_assert_queue_fail` when the background `OperationQueue` invokes it. Fix: switched `operationQueue` to `.main`. Verified on hardware -- Voice Memos and Photos drags now work.
+
 ### Observed log noise
 
 - **Theme-frame warning (functional, cosmetic only):** The unified log shows `NSWindow warning: adding an unknown subview: <ImportUI.WindowDropView: …>` once per window when the drop view is installed on the theme frame. The warning does not affect behaviour; it is logged by AppKit's `-[NSThemeFrame addSubview:]` for any non-standard subview.

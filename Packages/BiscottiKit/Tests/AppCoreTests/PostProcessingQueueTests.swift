@@ -1,5 +1,7 @@
+import BiscottiTestSupport
 import Foundation
 import Testing
+import TranscriptionService
 @testable import AppCore
 
 @Suite("PostProcessingQueue")
@@ -138,27 +140,74 @@ struct PostProcessingQueueTests {
         #expect(!queue.isActive(id))
     }
 
-    @Test("runner failure does not stop the queue")
+    @Test("summary refresh after title generation")
     @MainActor
-    func runnerFailureDoesNotStop() async {
-        struct RunnerError: Error {}
-        var ran: [UUID] = []
-        let first = UUID(), second = UUID()
+    func summaryRefreshAfterTitleGeneration() async throws {
+        // Set up a fixture with a downloaded model so Intelligence
+        // runs the full analysis (including title generation).
+        let fix = try makeCoreFixture(
+            modelDownloaded: true,
+            testName: "PPSummaryTitle"
+        )
+        defer { fix.cleanup() }
 
-        let queue = PostProcessingQueue { entry in
-            ran.append(entry.meetingID)
-            if entry.meetingID == first {
-                // The runner contract is: it never throws. But if it
-                // internally fails, the loop must continue. Simulate a
-                // no-op failure (the runner logs and continues).
-            }
+        // Configure the fake LLM to return a recognizable title.
+        fix.fakeLLMRunner.generateResult = "Weekly Standup Recap"
+
+        let meetingID = try await fix.createImportedMeetingWithAudio(
+            title: "Imported from test.m4a"
+        )
+
+        // Verify the initial placeholder title is in summaries.
+        await fix.core.reloadSummaries()
+        let beforeTitle = fix.core.summaries.first { $0.id == meetingID }?.title
+        #expect(beforeTitle == "Imported from test.m4a")
+
+        // Enqueue post-processing and wait for the queue to drain.
+        fix.core.postProcessing.enqueue(
+            meetingID, kind: PostProcessingQueue.Kind.transcribe
+        )
+        await fix.core.awaitPendingTranscription()
+
+        // After the queue drains, the cached summary must reflect the
+        // AI-generated title (proves reloadSummaries ran after title
+        // generation).
+        let afterTitle = fix.core.summaries.first { $0.id == meetingID }?.title
+        #expect(afterTitle == "Weekly Standup Recap")
+    }
+
+    @Test("service failure for one meeting does not stop the queue")
+    @MainActor
+    func serviceFailureDoesNotStopQueue() async throws {
+        // Use the real AppCore pipeline with a FakeTranscriber that fails
+        // on processAudio. The first meeting triggers the failure; the
+        // second meeting should still be processed by the queue.
+        let fix = try makeCoreFixture(testName: "PPQueueFailure")
+        defer { fix.cleanup() }
+
+        fix.fakeEngine.backing.processAudioError = NSError(
+            domain: "test", code: 1
+        )
+
+        let id1 = try await fix.createMeetingWithAudio(title: "Failing")
+        let id2 = try await fix.createMeetingWithAudio(title: "Succeeding")
+
+        fix.core.postProcessing.enqueue(id1, kind: .transcribe)
+        fix.core.postProcessing.enqueue(id2, kind: .transcribe)
+
+        await fix.core.awaitPendingTranscription()
+
+        // Both meetings must have been attempted (queue did not stall).
+        // Both show .failed because the engine error persists, but the
+        // second meeting proves the queue continued past the first.
+        guard case .failed = fix.core.transcription.jobs[id1] else {
+            Issue.record("expected .failed for first meeting")
+            return
         }
-
-        queue.enqueue(first, kind: .transcribe)
-        queue.enqueue(second, kind: .transcribe)
-        await queue.awaitIdle()
-
-        #expect(ran == [first, second])
+        guard case .failed = fix.core.transcription.jobs[id2] else {
+            Issue.record("expected .failed for second meeting (queue stalled)")
+            return
+        }
     }
 }
 

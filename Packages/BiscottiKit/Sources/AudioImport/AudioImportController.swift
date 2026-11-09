@@ -61,6 +61,10 @@ public final class AudioImportController {
     private var deliveryTasks: [UUID: Task<URL, any Error>] = [:]
     private var dateTasks: [UUID: Task<Date?, Never>] = [:]
     private var batchSizes: [UUID: Int] = [:]
+    private var finishedItems = Set<UUID>()
+
+    /// Maximum time to wait for a promised file before marking it failed.
+    let deliveryTimeout: Duration
 
     // MARK: - Init
 
@@ -69,13 +73,15 @@ public final class AudioImportController {
         recordingsRoot: URL,
         converter: any AudioConverting = AVFoundationAudioConverter(),
         metadata: any ImportMetadataReading = AVFoundationMetadataReader(),
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        deliveryTimeout: Duration = .seconds(15)
     ) {
         self.store = store
         self.recordingsRoot = recordingsRoot
         self.converter = converter
         self.metadata = metadata
         self.now = now
+        self.deliveryTimeout = deliveryTimeout
     }
 
     // MARK: - Public API
@@ -162,8 +168,38 @@ public final class AudioImportController {
         itemID: UUID,
         deliver: @escaping @Sendable () async throws -> URL
     ) {
+        let timeout = deliveryTimeout
         let task = Task<URL, any Error> {
-            try await deliver()
+            // Race delivery against a timeout. We use a continuation
+            // guarded by an actor so the first completer wins and the
+            // caller resumes immediately. This avoids
+            // withThrowingTaskGroup, which waits for ALL children —
+            // if deliver() ignores cancellation the group would block
+            // after the timeout fires.
+            try await withCheckedThrowingContinuation { continuation in
+                let race = DeliveryRace(continuation: continuation)
+
+                let timeoutChild = Task {
+                    try? await Task.sleep(for: timeout)
+                    // Sleep cancelled = delivery won; don't race it
+                    // to the actor with a spurious timeout error.
+                    guard !Task.isCancelled else { return }
+                    await race.complete(
+                        with: .failure(ImportFailure.deliveryTimedOut)
+                    )
+                }
+
+                Task {
+                    do {
+                        let url = try await deliver()
+                        timeoutChild.cancel()
+                        await race.complete(with: .success(url))
+                    } catch {
+                        timeoutChild.cancel()
+                        await race.complete(with: .failure(error))
+                    }
+                }
+            }
         }
         deliveryTasks[itemID] = task
 
@@ -171,18 +207,23 @@ public final class AudioImportController {
             do {
                 let url = try await task.value
                 guard let self, let idx = itemIndex(id: itemID) else { return }
+                // Late callback: ignore if the item already left .receiving
+                // (e.g. timed out while worker was waiting).
+                guard items[idx].status == .receiving else { return }
                 items[idx].sourceURL = url
                 items[idx].displayName = url.lastPathComponent
-                if items[idx].status == .receiving {
-                    items[idx].status = .waiting
-                }
+                items[idx].status = .waiting
                 startDateRead(itemID: itemID, url: url)
             } catch {
                 guard let self, let idx = itemIndex(id: itemID) else { return }
-                items[idx].status = .failed(.unreadable)
+                // Late callback: ignore if the item already left .receiving.
+                guard items[idx].status == .receiving else { return }
+                let failure = (error as? ImportFailure) ?? .unreadable
+                items[idx].status = .failed(failure)
                 logger.error(
                     "Promise delivery failed for \(itemID): \(error)"
                 )
+                await finish(itemID: itemID)
             }
         }
     }
@@ -242,8 +283,15 @@ public final class AudioImportController {
                 await finish(itemID: itemID)
                 return
             }
+            // The error handler may not have run yet (MainActor scheduling
+            // order is not guaranteed). Check the result directly.
+            if let deliveryResult, case let .failure(error) = deliveryResult {
+                let failure = (error as? ImportFailure) ?? .unreadable
+                await fail(itemID: itemID, failure: failure)
+                return
+            }
             // Apply the URL ourselves in case the startDelivery handler has
-            // not yet run (MainActor scheduling order is not guaranteed).
+            // not yet run.
             if items[idx].sourceURL == nil,
                let deliveryResult,
                case let .success(url) = deliveryResult
@@ -326,6 +374,17 @@ public final class AudioImportController {
             return
         }
 
+        // Auto-tag imported meetings (best-effort — don't fail the import)
+        do {
+            _ = try await store.createTagAndApply(
+                name: "imported", to: meetingID
+            )
+        } catch {
+            logger.warning(
+                "Failed to apply 'imported' tag to \(meetingID): \(error)"
+            )
+        }
+
         guard let idx = itemIndex(id: itemID) else { return }
         items[idx].status = .done(meetingID: meetingID)
 
@@ -365,6 +424,8 @@ public final class AudioImportController {
     }
 
     private func finish(itemID: UUID) async {
+        guard !finishedItems.contains(itemID) else { return }
+        finishedItems.insert(itemID)
         guard let idx = itemIndex(id: itemID) else { return }
         let item = items[idx]
         let batchSize = batchSizes[item.batchID] ?? 1
@@ -377,5 +438,37 @@ public final class AudioImportController {
 
     private func itemIndex(id: UUID) -> Int? {
         items.firstIndex(where: { $0.id == id })
+    }
+}
+
+// MARK: - DeliveryRace
+
+/// Guards a single `CheckedContinuation` so exactly one of two racing
+/// tasks (delivery vs. timeout) resumes it. The second caller's
+/// `complete` is a safe no-op.
+private actor DeliveryRace {
+    private var continuation: CheckedContinuation<URL, any Error>?
+
+    init(continuation: CheckedContinuation<URL, any Error>) {
+        self.continuation = continuation
+    }
+
+    func complete(with result: Result<URL, any Error>) {
+        guard let cont = continuation else {
+            // Late delivery after timeout — remove the received file's
+            // directory so sensitive audio doesn't linger on disk.
+            if case let .success(url) = result {
+                logger.info("Cleaning up late-delivered promised file")
+                try? FileManager.default.removeItem(
+                    at: url.deletingLastPathComponent()
+                )
+            }
+            return
+        }
+        continuation = nil
+        switch result {
+        case let .success(url): cont.resume(returning: url)
+        case let .failure(error): cont.resume(throwing: error)
+        }
     }
 }

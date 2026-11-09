@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 import Testing
@@ -84,6 +85,34 @@ struct AVFoundationAudioConverterTests {
         return url
     }
 
+    // MARK: - Format verification
+
+    /// Verifies an output file is ADTS AAC mono 24 kHz: checks the sync word
+    /// in the first two bytes and reads back the decoded format via AVAudioFile.
+    private static func assertADTSFormat(at url: URL) throws {
+        // ADTS sync word: first 12 bits are 1s -> bytes 0xFF 0xF_
+        let header = try Data(contentsOf: url, options: .mappedIfSafe).prefix(2)
+        #expect(header.count >= 2, "Output too small for ADTS header")
+        if header.count >= 2 {
+            #expect(header[0] == 0xFF, "ADTS sync byte 0 mismatch")
+            #expect(header[1] & 0xF0 == 0xF0, "ADTS sync byte 1 mismatch")
+        }
+
+        // Verify on-disk format: mono, 24 kHz, AAC.
+        let file = try AVAudioFile(forReading: url)
+        let fmt = file.fileFormat
+        #expect(fmt.channelCount == 1, "Expected mono output")
+        #expect(
+            abs(fmt.sampleRate - 24000) < 1,
+            "Expected 24 kHz sample rate, got \(fmt.sampleRate)"
+        )
+        let formatID = fmt.streamDescription.pointee.mFormatID
+        #expect(
+            formatID == kAudioFormatMPEG4AAC,
+            "Expected AAC format ID"
+        )
+    }
+
     // MARK: - Conversion tests
 
     @Test("stereo 44.1 kHz WAV -> mono 24 kHz ADTS")
@@ -106,6 +135,7 @@ struct AVFoundationAudioConverterTests {
         #expect(result.duration < 0.6)
         #expect(result.byteSize > 0)
         #expect(FileManager.default.fileExists(atPath: dest.path))
+        try Self.assertADTSFormat(at: dest)
     }
 
     @Test("mono 48 kHz WAV -> resampled to 24 kHz")
@@ -126,6 +156,7 @@ struct AVFoundationAudioConverterTests {
 
         #expect(result.duration > 0.4)
         #expect(result.byteSize > 0)
+        try Self.assertADTSFormat(at: dest)
     }
 
     @Test("6-channel downmix to mono")
@@ -146,6 +177,7 @@ struct AVFoundationAudioConverterTests {
 
         #expect(result.duration > 0.3)
         #expect(result.byteSize > 0)
+        try Self.assertADTSFormat(at: dest)
     }
 
     @Test("zero-frame WAV throws and removes destination")
@@ -218,6 +250,7 @@ struct AVFoundationAudioConverterTests {
         #expect(result.duration > 0.3)
         #expect(result.byteSize > 0)
         #expect(FileManager.default.fileExists(atPath: dest.path))
+        try Self.assertADTSFormat(at: dest)
     }
 
     // MARK: - Error cases
@@ -254,11 +287,9 @@ struct AVFoundationAudioConverterTests {
             _ = try await converter.convert(
                 source: source, destination: dest
             )
-            Issue.record("expected unreadable or noAudio")
+            Issue.record("expected unreadable")
         } catch let error as ImportFailure {
-            // Either unreadable or noAudio is acceptable -- the file has no
-            // valid audio tracks.
-            #expect(error == .unreadable || error == .noAudio)
+            #expect(error == .unreadable)
         }
     }
 }

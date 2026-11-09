@@ -33,6 +33,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
             hasProtected = try await asset.load(.hasProtectedContent)
             tracks = try await asset.loadTracks(withMediaType: .audio)
         } catch {
+            logger.error("Asset property load failed: \(error)")
             throw ImportFailure.unreadable
         }
 
@@ -47,6 +48,12 @@ public struct AVFoundationAudioConverter: AudioConverting {
         } else if let first = tracks.first {
             track = first
         } else {
+            // No audio tracks. Distinguish "valid container with non-audio
+            // tracks" (.noAudio) from "unrecognisable file" (.unreadable).
+            let allTracks = await (try? asset.load(.tracks)) ?? []
+            if allTracks.isEmpty {
+                throw ImportFailure.unreadable
+            }
             throw ImportFailure.noAudio
         }
 
@@ -83,6 +90,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
         do {
             reader = try AVAssetReader(asset: asset)
         } catch {
+            logger.error("AVAssetReader init failed: \(error)")
             throw ImportFailure.unreadable
         }
 
@@ -106,19 +114,28 @@ public struct AVFoundationAudioConverter: AudioConverting {
         )
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else {
+            logger.error("AVAssetReader cannot add track output")
             throw ImportFailure.unreadable
         }
         reader.add(output)
         guard reader.startReading() else {
+            logger.error(
+                "AVAssetReader failed to start: status=\(reader.status.rawValue) error=\(String(describing: reader.error))"
+            )
             throw ImportFailure.unreadable
         }
 
         // --- Writer (ExtAudioFile) ---
 
         let destDir = destination.deletingLastPathComponent()
-        try FileManager.default.createDirectory(
-            at: destDir, withIntermediateDirectories: true
-        )
+        do {
+            try FileManager.default.createDirectory(
+                at: destDir, withIntermediateDirectories: true
+            )
+        } catch {
+            logger.error("Staging directory creation failed: \(error)")
+            throw ImportFailure.saveFailed
+        }
 
         var asbd = encoder.outputASBD()
         let createStatus = ExtAudioFileCreateWithURL(
@@ -130,6 +147,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
             &extFile
         )
         guard createStatus == noErr, let openedFile = extFile else {
+            logger.error("ExtAudioFileCreateWithURL failed: status=\(createStatus)")
             throw ImportFailure.saveFailed
         }
 
@@ -150,6 +168,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
             &clientASBD
         )
         guard clientStatus == noErr else {
+            logger.error("ExtAudioFileSetProperty client format failed: status=\(clientStatus)")
             throw ImportFailure.saveFailed
         }
 
@@ -186,6 +205,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
                     blockBufferOut: &block
                 )
             guard listStatus == noErr else {
+                logger.error("CMSampleBufferGetAudioBufferList failed: status=\(listStatus)")
                 throw ImportFailure.unreadable
             }
 
@@ -193,6 +213,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
                 openedFile, UInt32(frames), &abl
             )
             guard writeStatus == noErr else {
+                logger.error("ExtAudioFileWrite failed: status=\(writeStatus)")
                 throw ImportFailure.saveFailed
             }
             totalFrames += Int64(frames)
@@ -201,6 +222,9 @@ public struct AVFoundationAudioConverter: AudioConverting {
         // --- Finish ---
 
         if reader.status == .failed {
+            logger.error(
+                "AVAssetReader finished with error: \(String(describing: reader.error))"
+            )
             throw ImportFailure.unreadable
         }
 
@@ -208,6 +232,7 @@ public struct AVFoundationAudioConverter: AudioConverting {
         let disposeStatus = ExtAudioFileDispose(openedFile)
         extFile = nil
         guard disposeStatus == noErr else {
+            logger.error("ExtAudioFileDispose failed: status=\(disposeStatus)")
             throw ImportFailure.saveFailed
         }
 
@@ -215,9 +240,15 @@ public struct AVFoundationAudioConverter: AudioConverting {
             throw ImportFailure.noAudio
         }
 
-        let attrs = try FileManager.default.attributesOfItem(
-            atPath: destination.path
-        )
+        let attrs: [FileAttributeKey: Any]
+        do {
+            attrs = try FileManager.default.attributesOfItem(
+                atPath: destination.path
+            )
+        } catch {
+            logger.error("Output file attributes lookup failed: \(error)")
+            throw ImportFailure.saveFailed
+        }
         let byteSize = (attrs[.size] as? Int64) ?? 0
 
         succeeded = true

@@ -26,6 +26,7 @@ public enum ImportFailure: Error, Sendable, Equatable {
     case sourceMissing
     case saveFailed
     case unreadable
+    case deliveryTimedOut
 
     /// User-facing copy (functional spec section 5.4).
     public var message: String {
@@ -34,6 +35,7 @@ public enum ImportFailure: Error, Sendable, Equatable {
         case .sourceMissing: "This file was moved or deleted."
         case .saveFailed: "Couldn't save the converted audio."
         case .unreadable: "Couldn't convert this file. It may be damaged."
+        case .deliveryTimedOut: "The file was not received in time."
         }
     }
 }

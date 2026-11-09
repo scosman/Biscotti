@@ -383,10 +383,14 @@ public final class FakeActivitySource: ActivitySource,
 // MARK: - Fake LLM fakes for CoreFixture
 
 /// A simple fake LLM runner for AppCore integration tests.
-/// Records session usage; does not return meaningful LLM output.
+/// Records session usage; does not return meaningful LLM output
+/// unless `generateResult` is set.
 public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
     /// Number of times `withSession` was called.
     public var sessionCount = 0
+
+    /// String returned by `FakeCoreLLMSession.generate()`. Default empty.
+    public var generateResult: String = ""
 
     public init() {}
 
@@ -396,12 +400,20 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1
-        return try await body(FakeCoreLLMSession())
+        return try await body(
+            FakeCoreLLMSession(generateResult: generateResult)
+        )
     }
 }
 
-/// A minimal fake LLM session that returns empty responses.
-public struct FakeCoreLLMSession: LLMSession {
+/// A minimal fake LLM session that returns configurable responses.
+public struct FakeCoreLLMSession: LLMSession, @unchecked Sendable {
+    private let result: String
+
+    public init(generateResult: String = "") {
+        result = generateResult
+    }
+
     public func countTokens(
         messages _: [LocalLLM.LLMMessage]
     ) async throws -> Int {
@@ -414,7 +426,7 @@ public struct FakeCoreLLMSession: LLMSession {
         messages _: [LocalLLM.LLMMessage],
         options _: LocalLLM.GenerationOptions
     ) async throws -> String {
-        ""
+        result
     }
 
     public func generateStreaming(

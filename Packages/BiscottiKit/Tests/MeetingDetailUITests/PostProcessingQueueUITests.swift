@@ -107,7 +107,7 @@ struct PostProcessingQueueUITests {
 
         let stages = try #require(viewModel.pipelineStages)
         #expect(stages.first?.label == "Waiting to transcribe")
-        #expect(stages.first?.state == .pending)
+        #expect(stages.first?.state == .active)
 
         // All subsequent stages should be pending
         for stage in stages.dropFirst() {
@@ -193,13 +193,9 @@ struct PostProcessingQueueUITests {
 
         await fix.core.awaitPendingTranscription()
 
-        // Both should have been processed (they fail because fake audio
-        // paths don't exist, but the point is neither was rejected with
-        // "already in progress").
-        let job1 = fix.core.transcription.jobs[id1]
-        let job2 = fix.core.transcription.jobs[id2]
-        #expect(job1 != nil)
-        #expect(job2 != nil)
+        // Both must reach .completed (FakeTranscriber succeeds).
+        #expect(fix.core.transcription.jobs[id1] == .completed)
+        #expect(fix.core.transcription.jobs[id2] == .completed)
     }
 
     // MARK: - stopRecording enqueues transcribe

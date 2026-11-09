@@ -115,9 +115,9 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
 
     /// Whether the currently installed tap has received nonempty hardware audio.
     /// This signals hardware liveness (a buffer arrived from the tap), not that a
-    /// buffer was successfully converted and written. MicEngine uses it to choose
-    /// between a lightweight same-engine restart (pre-delivery) and a full rebuild
-    /// (post-delivery) on configuration changes. `onFirstBuffer` is the separate
+    /// buffer was successfully converted and written. MicEngine uses it to tell a
+    /// startup settle from a device change on configuration changes, and to check
+    /// that a restarted engine delivers audio. `onFirstBuffer` is the separate
     /// signal that confirms startup to AudioRecorder.
     /// Replacing the tap resets this without resetting the session's first anchor.
     var hasDeliveredBuffer: Bool {
@@ -197,8 +197,8 @@ final class MicCaptureSession: @unchecked Sendable { // swiftlint:disable:this t
         guard activeTap === tap else { return }
 
         // Intentionally set before enqueue: this signals hardware liveness
-        // (selects the full-rebuild path in MicEngine), not successful file
-        // output. onFirstBuffer confirms startup.
+        // (read by MicEngine's configuration-change recovery), not successful
+        // file output. onFirstBuffer confirms startup.
         deliveredBuffer.store(true, ordering: .releasing)
 
         guard let srcChannels = buffer.floatChannelData,

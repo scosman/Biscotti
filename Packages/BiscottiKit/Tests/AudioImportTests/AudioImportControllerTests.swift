@@ -487,6 +487,91 @@ struct AudioImportControllerTests {
         #expect(!harness.controller.isConverting)
     }
 
+    // MARK: - Timeout race
+
+    @Test("cancelled timeout sleep does not override successful delivery")
+    func cancelledTimeoutDoesNotOverrideDelivery() async throws {
+        // Stress the delivery-vs-timeout race. With instant delivery and
+        // a 100ms timeout the sleep is always cancelled; without the
+        // isCancelled guard the cancelled task can submit
+        // deliveryTimedOut before the success reaches the actor.
+        for iteration in 0 ..< 50 {
+            let harness = try Harness.make(
+                testName: "TimeoutRace-\(iteration)",
+                deliveryTimeout: .milliseconds(100)
+            )
+            defer { harness.cleanup() }
+
+            let file = try harness.tempFile(name: "race.wav")
+            let localFile = file
+
+            harness.controller.add([
+                .promised(displayName: "race", deliver: { localFile })
+            ])
+            await harness.controller.awaitIdle()
+
+            let item = harness.controller.items[0]
+            guard case .done = item.status else {
+                Issue.record(
+                    "iteration \(iteration): expected .done, got \(item.status)"
+                )
+                return
+            }
+        }
+    }
+
+    @Test("late delivery cleans up received file directory")
+    func lateDeliveryCleanup() async throws {
+        let harness = try Harness.make(
+            testName: "LateCleanup",
+            deliveryTimeout: .milliseconds(50)
+        )
+        defer { harness.cleanup() }
+
+        // Unique receiving directory (mirrors the Biscotti-Import/<UUID>
+        // pattern the real UI creates for each promise).
+        let receivingDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("late-recv-\(UUID())")
+        try FileManager.default.createDirectory(
+            at: receivingDir, withIntermediateDirectories: true
+        )
+
+        let lateFile = receivingDir.appendingPathComponent("late.wav")
+        try Data(repeating: 0x42, count: 64).write(to: lateFile)
+        let (stream, continuation) = AsyncStream<URL>.makeStream()
+
+        harness.controller.add([
+            .promised(displayName: "slow", deliver: {
+                for await url in stream {
+                    return url
+                }
+                throw ImportFailure.unreadable
+            })
+        ])
+
+        // Let the timeout expire and the worker finish.
+        await harness.controller.awaitIdle()
+
+        guard case .failed(.deliveryTimedOut) =
+            harness.controller.items[0].status
+        else {
+            Issue.record("expected .failed(.deliveryTimedOut)")
+            return
+        }
+
+        // Late delivery arrives after timeout.
+        continuation.yield(lateFile)
+        continuation.finish()
+
+        // Give the delivery task and DeliveryRace cleanup time to run.
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(
+            !FileManager.default.fileExists(atPath: receivingDir.path),
+            "Late-delivered file's directory must be cleaned up"
+        )
+    }
+
     // MARK: - Staging cleanup
 
     @Test("cleanStaging removes .import-staging directory")

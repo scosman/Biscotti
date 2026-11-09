@@ -181,6 +181,9 @@ public final class AudioImportController {
 
                 let timeoutChild = Task {
                     try? await Task.sleep(for: timeout)
+                    // Sleep cancelled = delivery won; don't race it
+                    // to the actor with a spurious timeout error.
+                    guard !Task.isCancelled else { return }
                     await race.complete(
                         with: .failure(ImportFailure.deliveryTimedOut)
                     )
@@ -440,7 +443,17 @@ private actor DeliveryRace {
     }
 
     func complete(with result: Result<URL, any Error>) {
-        guard let cont = continuation else { return }
+        guard let cont = continuation else {
+            // Late delivery after timeout — remove the received file's
+            // directory so sensitive audio doesn't linger on disk.
+            if case let .success(url) = result {
+                logger.info("Cleaning up late-delivered promised file")
+                try? FileManager.default.removeItem(
+                    at: url.deletingLastPathComponent()
+                )
+            }
+            return
+        }
         continuation = nil
         switch result {
         case let .success(url): cont.resume(returning: url)

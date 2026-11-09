@@ -1,5 +1,6 @@
 import AppKit
 import AppLinks
+import AudioImport
 import Calendar
 import DataStore
 import Foundation
@@ -162,7 +163,7 @@ public final class AppCore {
     // MARK: - Published state
 
     /// The current navigation destination.
-    public private(set) var route: Route = .home
+    public internal(set) var route: Route = .home
 
     /// All meetings, newest first (uncapped — the Meetings list uses lazy rendering).
     public package(set) var summaries: [MeetingSummary] = []
@@ -306,6 +307,13 @@ public final class AppCore {
     /// Injectable environment for the send-to-app feature (Obsidian, Bear, Notes).
     public let sendEnvironment: SendEnvironment
 
+    /// The session-long import controller (classifier, converter, worker).
+    public let audioImport: AudioImportController
+
+    /// File > Import Audio File... request. The App sets it; AppShellView
+    /// consumes it by presenting `.fileImporter`.
+    public internal(set) var importPanelRequested = false
+
     // MARK: - Private
 
     private let scheduler: any AppScheduler
@@ -389,7 +397,8 @@ public final class AppCore {
         scheduler: any AppScheduler = LiveAppScheduler(),
         updateChecker: UpdateChecker? = nil,
         mcpServer: MCPServerController? = nil,
-        sendEnvironment: SendEnvironment = .live
+        sendEnvironment: SendEnvironment = .live,
+        audioImport: AudioImportController? = nil
     ) {
         self.store = store
         self.permissions = permissions
@@ -404,12 +413,35 @@ public final class AppCore {
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
         self.sendEnvironment = sendEnvironment
+        // The default builds one over the same store with a temp recordings
+        // root. Tests inject their own via the audioImport parameter.
+        self.audioImport = audioImport ?? AudioImportController(
+            store: store,
+            recordingsRoot: FileManager.default.temporaryDirectory
+                .appendingPathComponent("biscotti-import-\(UUID().uuidString)")
+        )
 
         // Build the queue last so it can capture self (all stored
         // properties are set above). The runner is the exact sequence
         // stopRecording used to run inline.
         postProcessing = PostProcessingQueue { [unowned self] entry in
             await runPostProcessing(entry)
+        }
+
+        // Wire the import completion callback.
+        self.audioImport.onItemFinished = { [weak self] finished in
+            guard let self else { return }
+            guard case let .done(meetingID) = finished.item.status
+            else { return }
+            await reloadSummaries()
+            postProcessing.enqueue(meetingID, kind: .transcribe)
+            if ImportAutoNavigation.shouldNavigate(
+                batchSize: finished.batchSize,
+                controllerHasPendingWork: self.audioImport.hasPendingWork,
+                route: route
+            ) {
+                select(meetingID)
+            }
         }
     }
 
@@ -446,6 +478,11 @@ public final class AppCore {
         logger.info("onLaunch: recoverOrphans starting")
         await recording.recoverOrphans()
         logger.info("onLaunch: recoverOrphans done")
+
+        // Remove any partial import-staging files left by a crash.
+        AudioImportController.cleanStaging(
+            recordingsRoot: audioImport.recordingsRoot
+        )
 
         // Resolve model selection (migration write-back for existing users)
         logger.info("onLaunch: modelManager.refresh starting")

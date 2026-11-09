@@ -35,6 +35,7 @@ let package = Package(
         .library(name: "Vocabulary", targets: ["Vocabulary"]),
         .library(name: "MCPServer", targets: ["MCPServer"]),
         .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"]),
+        .library(name: "AudioImport", targets: ["AudioImport"]),
         .executable(name: "voiceprint-cli", targets: ["voiceprint-cli"])
     ],
     dependencies: [
@@ -171,9 +172,29 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "AudioImport",
+            dependencies: [
+                "DataStore",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AudioImportTests",
+            dependencies: [
+                "AppCore",
+                "AudioImport",
+                "BiscottiTestSupport",
+                "DataStore",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "AppCore",
             dependencies: [
                 "AppLinks",
+                "AudioImport",
                 "DataStore",
                 "ImportExport",
                 "Intelligence",
@@ -200,6 +221,7 @@ let package = Package(
             name: "BiscottiTestSupport",
             dependencies: [
                 "AppCore",
+                "AudioImport",
                 "Calendar",
                 "DataStore",
                 "Intelligence",
@@ -223,6 +245,7 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "AppLinks",
+                "AudioImport",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",

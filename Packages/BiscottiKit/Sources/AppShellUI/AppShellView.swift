@@ -333,6 +333,12 @@ private struct DetailContentView: View {
         case .onboarding:
             // Handled by the full-window takeover above; should not reach here.
             EmptyView()
+
+        case .importing:
+            // TODO: Phase 4 wires in the ImportUI module's ImportView here.
+            Text("Import")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Tokens.contentBackground)
         }
     }
 }

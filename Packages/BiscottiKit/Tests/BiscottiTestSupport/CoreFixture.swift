@@ -1,5 +1,6 @@
 import AppCore
 import AudioCapture
+import AudioImport
 import Calendar
 import DataStore
 import Foundation
@@ -38,6 +39,7 @@ public struct CoreFixture {
     public let modelManager: ModelManager
     public let fakeLLMRunner: FakeCoreLLMRunner
     public let fakeModelProvider: FakeCoreModelProvider
+    public let fakeAudioConverter: FakeAudioConverter
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -72,6 +74,23 @@ public struct CoreFixture {
                 recordingDuration, for: meetingID
             )
         }
+        return meetingID
+    }
+
+    /// Creates an imported meeting (system-only audio, placeholder title).
+    public func createImportedMeetingWithAudio(
+        title: String = "Imported from test.m4a",
+        duration: TimeInterval = 120
+    ) async throws -> UUID {
+        let meetingID = UUID()
+        try await store.createImportedMeeting(
+            id: meetingID,
+            title: title,
+            start: Date(),
+            duration: duration,
+            audioPath: "/tmp/test/system.aac",
+            audioByteSize: 2048
+        )
         return meetingID
     }
 }
@@ -609,6 +628,13 @@ public func makeCoreFixture(
         }
     )
 
+    let fakeAudioConverter = FakeAudioConverter()
+    let audioImportCtrl = AudioImportController(
+        store: store,
+        recordingsRoot: storageRoot,
+        converter: fakeAudioConverter
+    )
+
     let core = AppCore(
         store: store,
         permissions: permissions,
@@ -621,7 +647,8 @@ public func makeCoreFixture(
         modelManager: modelManager,
         scheduler: scheduler,
         mcpServer: MCPServerController(store: store, port: mcpServerPort),
-        sendEnvironment: sendEnvironment ?? .live
+        sendEnvironment: sendEnvironment ?? .live,
+        audioImport: audioImportCtrl
     )
 
     return CoreFixture(
@@ -641,6 +668,7 @@ public func makeCoreFixture(
         intelligence: intelligence,
         modelManager: modelManager,
         fakeLLMRunner: fakeLLMRunner,
-        fakeModelProvider: fakeModelProvider
+        fakeModelProvider: fakeModelProvider,
+        fakeAudioConverter: fakeAudioConverter
     )
 }

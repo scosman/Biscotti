@@ -144,6 +144,21 @@ public enum TimeFormatting {
             + whenEndTimeFormatter.string(from: end)
     }
 
+    /// Formats a date as "Oct 30, 2026 \u{00B7} 2:14 PM" -- short date plus
+    /// short time separated by a middle dot. Used by import row second lines.
+    public static func dateAndTime(
+        _ date: Date
+    ) -> String {
+        "\(shortDate(date)) \u{00B7} \(shortTimeFormatter.string(from: date))"
+    }
+
+    private static let shortTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

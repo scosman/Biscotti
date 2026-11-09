@@ -36,6 +36,7 @@ let package = Package(
         .library(name: "MCPServer", targets: ["MCPServer"]),
         .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"]),
         .library(name: "AudioImport", targets: ["AudioImport"]),
+        .library(name: "ImportUI", targets: ["ImportUI"]),
         .executable(name: "voiceprint-cli", targets: ["voiceprint-cli"])
     ],
     dependencies: [
@@ -187,6 +188,36 @@ let package = Package(
                 "BiscottiTestSupport",
                 "DataStore",
                 .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ImportUI",
+            dependencies: [
+                "AppCore",
+                "AudioImport",
+                "DataStore",
+                "DesignSystem",
+                "Formatting"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ImportUITests",
+            dependencies: [
+                "ImportUI",
+                "AppCore",
+                "AudioImport",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Formatting",
+                "Calendar",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
             ],
             swiftSettings: warningsAsErrors
         ),
@@ -400,11 +431,13 @@ let package = Package(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
+                "AudioImport",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
                 "Formatting",
                 "HomeUI",
+                "ImportUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
                 "OnboardingUI",
@@ -419,10 +452,12 @@ let package = Package(
                 "AppShellUI",
                 "AppCore",
                 "AppLinks",
+                "AudioImport",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
                 "HomeUI",
+                "ImportUI",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",

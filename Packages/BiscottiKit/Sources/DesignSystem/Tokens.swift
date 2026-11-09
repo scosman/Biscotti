@@ -95,6 +95,12 @@ public enum Tokens {
     /// Avatar stacked-ring border (matches surface behind overlapping avatars).
     public static let avatarRing = Color.avatarRing
 
+    /// Drop overlay veil (paper @ 76%).
+    public static let dropVeil = Color.dropVeil
+
+    /// Bezel button ring (ink @ 16%).
+    public static let controlStroke = Color.controlStroke
+
     /// Sage accent -- formerly "liveGreen". Meet chip icon, "Next in" dot, conference video icon.
     public static let liveGreen = Color.sage
 

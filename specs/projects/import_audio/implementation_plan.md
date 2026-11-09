@@ -20,7 +20,7 @@ Each phase is green on `make precommit-checks` on its own. Details live in `arch
   - Classifier, AVFoundation converter (real-file tests), metadata reader, `AudioImportController`, `ImportHeaderCopy`, `DataStore.createImportedMeeting`, the `FakeAudioConverter` test support.
   - AppCore: `Route.importing`, `importFiles`, `showImport`, the import-panel request flag, completion → queue + `ImportAutoNavigation`, staging cleanup on launch.
   - (architecture §2.3, §5; components/audio_import.md)
-- [ ] **Phase 4: Import screen, sidebar row and File menu.**
+- [x] **Phase 4: Import screen, sidebar row and File menu.**
   - The `ImportUI` module (`ImportViewModel`, `ImportView`).
   - DesignSystem `BezelButtonStyle` plus the `dropVeil`/`controlStroke` tokens, and `TimeFormatting.dateAndTime`.
   - AppShell: route case, "Imported" sidebar row, `.fileImporter`. App: File > Import Audio File… (⌘⇧I is P3).

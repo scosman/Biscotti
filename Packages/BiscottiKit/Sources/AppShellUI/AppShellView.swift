@@ -1,13 +1,16 @@
 import AppCore
+import AudioImport
 import Calendar
 import DesignSystem
 import HomeUI
+import ImportUI
 import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
 import RecordingUI
 import SettingsUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The main app window: a `NavigationSplitView` with a sidebar (Home +
 /// Past Meetings + Upcoming + Settings) and a detail pane routed by
@@ -18,6 +21,9 @@ public struct AppShellView: View {
     /// Bound to the search field in the toolbar. Two-way synced with
     /// AppCore's `meetingsQuery` via `.onChange` to avoid feedback loops.
     @State private var searchText = ""
+
+    /// Drives the File > Import Audio File... open panel.
+    @State private var showImportPanel = false
 
     /// Drives focus of the native `.searchable` field via `.searchFocused`
     /// (available on macOS 15+). Set when `focusSearch()` bumps
@@ -76,6 +82,36 @@ public struct AppShellView: View {
             }
         }
         .task { await viewModel.onLaunch() }
+        .fileImporter(
+            isPresented: $showImportPanel,
+            allowedContentTypes: ImportFileClassifier.allowedContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            if case let .success(urls) = result {
+                // Future-proof: acquire security-scoped access even
+                // though the non-sandboxed app can read directly.
+                let accessing = urls.filter {
+                    $0.startAccessingSecurityScopedResource()
+                }
+                viewModel.importFiles(urls.map(ImportEntry.file))
+                for url in accessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+        }
+        .fileDialogConfirmationLabel("Import")
+        .onChange(of: viewModel.importPanelRequested) { _, requested in
+            if requested {
+                showImportPanel = true
+                viewModel.consumeImportPanelRequest()
+            }
+        }
+        .onAppear {
+            if viewModel.importPanelRequested {
+                showImportPanel = true
+                viewModel.consumeImportPanelRequest()
+            }
+        }
     }
 
     // MARK: - Main window
@@ -143,6 +179,13 @@ public struct AppShellView: View {
 
             Divider()
                 .padding(.vertical, Tokens.spacingSM)
+
+            // Imported row (visible once the import session starts)
+            if viewModel.hasImportSession {
+                importedRow
+                    .padding(.horizontal, Tokens.spacingSM)
+                    .padding(.bottom, 2)
+            }
 
             // Settings (pinned bottom)
             settingsRow
@@ -265,6 +308,37 @@ public struct AppShellView: View {
 
 /// Extracted to keep `AppShellView` under the type-body-length limit.
 private extension AppShellView {
+    var importedRow: some View {
+        Button {
+            viewModel.showImport()
+        } label: {
+            HStack(spacing: Tokens.spacingSM) {
+                Image(systemName: "square.and.arrow.down")
+                    .foregroundStyle(
+                        viewModel.route == .importing
+                            ? Color.sage
+                            : Tokens.secondaryText
+                    )
+                Text("Imported")
+                    .font(.body)
+                Spacer()
+                if viewModel.isImportConverting {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+            }
+            .padding(.vertical, Tokens.spacingXS)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            viewModel.route == .importing
+                ? Tokens.accentWashStrong
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+    }
+
     @ToolbarContentBuilder
     var homeToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -335,9 +409,7 @@ private struct DetailContentView: View {
             EmptyView()
 
         case .importing:
-            // TODO: Phase 4 wires in the ImportUI module's ImportView here.
-            Text("Import")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ImportView(viewModel: viewModel.importViewModel)
                 .background(Tokens.contentBackground)
         }
     }

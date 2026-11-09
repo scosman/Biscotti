@@ -374,6 +374,17 @@ public final class AudioImportController {
             return
         }
 
+        // Auto-tag imported meetings (best-effort — don't fail the import)
+        do {
+            _ = try await store.createTagAndApply(
+                name: "imported", to: meetingID
+            )
+        } catch {
+            logger.warning(
+                "Failed to apply 'imported' tag to \(meetingID): \(error)"
+            )
+        }
+
         guard let idx = itemIndex(id: itemID) else { return }
         items[idx].status = .done(meetingID: meetingID)
 

@@ -742,7 +742,7 @@ public extension MeetingDetailViewModel {
         // Stage 1: Transcribing (or Waiting to transcribe when queued)
         if queued {
             stages.append(PipelineStage(
-                label: "Waiting to transcribe", state: .pending
+                label: "Waiting to transcribe", state: .active
             ))
         } else {
             let transcriptionState: StageState = if transcriptionActive {

@@ -102,6 +102,58 @@ struct AudioImportControllerTests {
         #expect(isPlaceholder == true)
     }
 
+    @Test("done applies 'imported' tag to the meeting")
+    func doneAppliesImportedTag() async throws {
+        let harness = try Harness.make(testName: "ImportedTag")
+        defer { harness.cleanup() }
+
+        let file = try harness.tempFile(name: "tagged.wav")
+        harness.controller.add([.file(file)])
+        await harness.controller.awaitIdle()
+
+        let item = harness.controller.items[0]
+        guard case let .done(meetingID) = item.status else {
+            Issue.record("expected .done, got \(item.status)")
+            return
+        }
+
+        // The meeting must have exactly one tag named "imported"
+        let tagNames = try await harness.store.read { store in
+            try store.meeting(id: meetingID)?.tags.map(\.name)
+        }
+        #expect(tagNames == ["imported"])
+    }
+
+    @Test("multiple imports reuse the same 'imported' tag")
+    func multipleImportsReuseSameTag() async throws {
+        let harness = try Harness.make(testName: "ReuseTag")
+        defer { harness.cleanup() }
+
+        let file1 = try harness.tempFile(name: "first.wav")
+        let file2 = try harness.tempFile(name: "second.wav")
+        harness.controller.add([.file(file1), .file(file2)])
+        await harness.controller.awaitIdle()
+
+        // Both must have the tag
+        for item in harness.controller.items {
+            guard case let .done(meetingID) = item.status else {
+                Issue.record("expected .done, got \(item.status)")
+                return
+            }
+            let tagNames = try await harness.store.read { store in
+                try store.meeting(id: meetingID)?.tags.map(\.name)
+            }
+            #expect(tagNames == ["imported"])
+        }
+
+        // Only one tag in the catalogue (reused, not duplicated)
+        let allTags = try await harness.store.read { store in
+            try store.allTags()
+        }
+        #expect(allTags.count == 1)
+        #expect(allTags[0].name == "imported")
+    }
+
     @Test("failed conversion leaves no meeting")
     func failedNoMeeting() async throws {
         let harness = try Harness.make(testName: "FailedNoMeeting")

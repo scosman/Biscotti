@@ -107,7 +107,7 @@ struct PostProcessingQueueUITests {
 
         let stages = try #require(viewModel.pipelineStages)
         #expect(stages.first?.label == "Waiting to transcribe")
-        #expect(stages.first?.state == .pending)
+        #expect(stages.first?.state == .active)
 
         // All subsequent stages should be pending
         for stage in stages.dropFirst() {

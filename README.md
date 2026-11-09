@@ -1,9 +1,7 @@
 <div align="center">
 <img width="84" height="84" alt="biscotti icon" src="https://github.com/user-attachments/assets/0739cc89-7ddf-4bc7-8c26-4b8cef881c5b" />
 
-### Biscotti
-
-**Private Meeting Transcripts for MacOS.**
+### Biscotti: Private Meeting Transcripts for MacOS
 
 <a href="https://github.com/scosman/Biscotti/releases/latest/download/Biscotti.dmg">
   <img width="165" height="38" alt="Download for macOS" src="https://github.com/user-attachments/assets/a0ff77ed-d9cd-49df-9ba5-b866098d8d67" />

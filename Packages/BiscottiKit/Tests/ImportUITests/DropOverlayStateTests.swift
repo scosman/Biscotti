@@ -191,8 +191,8 @@ struct DropOverlayCopyTests {
             .skipNotice
         #expect(notice?.count == 1)
         #expect(
-            notice?.text
-                == "1 file is an unsupported file type and will be skipped."
+            notice?.suffix
+                == " file is an unsupported file type and will be skipped."
         )
     }
 
@@ -202,8 +202,8 @@ struct DropOverlayCopyTests {
             .skipNotice
         #expect(notice?.count == 2)
         #expect(
-            notice?.text
-                == "2 files are unsupported file types and will be skipped."
+            notice?.suffix
+                == " files are unsupported file types and will be skipped."
         )
     }
 

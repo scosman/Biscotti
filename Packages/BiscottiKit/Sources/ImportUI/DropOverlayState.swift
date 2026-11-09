@@ -75,13 +75,14 @@ public enum DropOverlayState: Equatable, Sendable {
     }
 
     /// The skip notice for mixed drags, nil otherwise.
-    /// Returns the unsupported count and the full text.
-    public var skipNotice: (count: Int, text: String)? {
+    /// Returns the unsupported count and a suffix the view appends after
+    /// the bold count (single source of truth for the copy).
+    public var skipNotice: (count: Int, suffix: String)? {
         guard case let .mixed(_, unsupported) = self else { return nil }
-        let noun = unsupported == 1
-            ? "file is an unsupported file type and will be skipped."
-            : "files are unsupported file types and will be skipped."
-        return (unsupported, "\(unsupported) \(noun)")
+        let suffix = unsupported == 1
+            ? " file is an unsupported file type and will be skipped."
+            : " files are unsupported file types and will be skipped."
+        return (unsupported, suffix)
     }
 
     /// Whether the overlay is in the neutral (unsupported) visual state.

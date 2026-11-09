@@ -112,6 +112,17 @@ public struct AppShellView: View {
                 viewModel.consumeImportPanelRequest()
             }
         }
+        // Window drop target + visual overlay. The installer is a
+        // zero-size lifecycle hook: it adds WindowDropView to the
+        // window's theme frame (covering toolbar + content) and
+        // lets it manage the OverlayPanel child window.
+        .background {
+            WindowDropTargetInstaller(
+                model: viewModel.dropTarget,
+                isEnabled: { !viewModel.showOnboarding },
+                onDrop: { viewModel.importFiles($0) }
+            )
+        }
     }
 
     // MARK: - Main window

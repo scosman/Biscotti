@@ -25,7 +25,7 @@ Each phase is green on `make precommit-checks` on its own. Details live in `arch
   - DesignSystem `BezelButtonStyle` plus the `dropVeil`/`controlStroke` tokens, and `TimeFormatting.dateAndTime`.
   - AppShell: route case, "Imported" sidebar row, `.fileImporter`. App: File > Import Audio File… (⌘⇧I is P3).
   - (ui_design §1, §3, §4, §6; components/import_ui.md §4–5)
-- [ ] **Phase 5: Window drop target and overlay.**
+- [x] **Phase 5: Window drop target and overlay.**
   - Spike the placement first (P1 → P2 → P3), then build `WindowDropView` (pasteboard classification, file promises — all promised files if straightforward, else first-only), `DropOverlayState`, `DropOverlayView` and the root wiring.
   - If only P3 works, ship it without pausing and add the confirm item to `backlog.md` (components/import_ui.md §2.6).
   - Ends with the human manual checklist (components/import_ui.md §6) before commit.

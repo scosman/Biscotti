@@ -5,8 +5,8 @@ import os
 
 private let logger = Logger(subsystem: "net.scosman.biscotti.audiocapture", category: "LiveMicCapture")
 
-/// Encapsulates `ExtAudioFile` creation for the VPIO mic engine.
-enum VPIOFileHelper {
+/// Encapsulates `ExtAudioFile` creation for the microphone writer.
+enum MicFileHelper {
     static func createExtAudioFile(
         url: URL,
         encoder: EncoderSettings,

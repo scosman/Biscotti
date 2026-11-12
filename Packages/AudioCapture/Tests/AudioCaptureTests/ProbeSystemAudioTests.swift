@@ -25,6 +25,27 @@ struct ProbeSystemAudioTests {
         #expect(ctx.systemEngine.stopCount == 1)
     }
 
+    @Test("probe retries a transient system engine start failure")
+    func probeRetriesTransientEngineStartFailure() async throws {
+        let ctx = try TestRecorderFactory.make(observedNonZero: false)
+        defer { TestRecorderFactory.cleanup(ctx) }
+
+        ctx.systemEngine.setTransientStartError(
+            CaptureError.tapCreationFailed(-999),
+            failureCount: 1
+        )
+        let checker = ctx.permissionChecker
+        ctx.systemEngine.onStart = { checker.setObservedNonZero(true) }
+
+        let result = await ctx.recorder.probeSystemAudioWithTone(
+            timeout: .seconds(1)
+        )
+
+        #expect(result == true)
+        #expect(ctx.systemEngine.startCount == 2)
+        #expect(ctx.systemEngine.stopCount == 1)
+    }
+
     @Test("probe returns false on timeout when no audio observed")
     func probeReturnsFalseOnTimeout() async throws {
         let ctx = try TestRecorderFactory.make(observedNonZero: false)

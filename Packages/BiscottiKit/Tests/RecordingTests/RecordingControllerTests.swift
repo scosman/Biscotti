@@ -266,6 +266,40 @@ struct RecordingStartStopTests {
         #expect(result == nil)
     }
 
+    @Test("Concurrent stops finalize once, return the ID once, and all wait for finalization")
+    @MainActor
+    func concurrentStopsReturnMeetingIDOnce() async throws {
+        // Regression: stop() awaited the engine and store before resetting
+        // state, so a second stop (double-clicked Stop, hotkey + button)
+        // passed the isRecording guard and returned the same meeting ID.
+        // AppCore then enqueued two transcriptions for one meeting.
+        let fix = try makeFixture()
+        defer { fix.cleanup() }
+
+        await fix.controller.start()
+        let meetingID = fix.controller.state.meetingID
+
+        // Each caller records whether finalization had finished by the time
+        // its own stop() returned. The quit handler relies on this: it awaits
+        // stopRecording() before letting the app terminate, so a stop() that
+        // returns early would let the app quit mid-save (lost notes/duration).
+        let controller = fix.controller
+        let first = Task { @MainActor in
+            let id = await controller.stop()
+            return (id, controller.state == .idle)
+        }
+        let second = Task { @MainActor in
+            let id = await controller.stop()
+            return (id, controller.state == .idle)
+        }
+        let results = await [first.value, second.value]
+
+        let expectedID = try #require(meetingID)
+        #expect(results.compactMap(\.0) == [expectedID])
+        let allWaited = results.allSatisfy(\.1)
+        #expect(allWaited, "every stop() must return only after finalization")
+    }
+
     @Test("Stop clears state to idle")
     @MainActor
     func stopClearsState() async throws {

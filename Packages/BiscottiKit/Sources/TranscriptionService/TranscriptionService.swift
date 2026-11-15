@@ -107,10 +107,15 @@ public final class TranscriptionService {
     private func runJob(meetingID: UUID) async {
         // Single in-flight guard
         guard inFlightMeetingID == nil else {
-            jobs[meetingID] = .failed(
-                message: "Another transcription is already in progress.",
-                retriable: true
-            )
+            // A duplicate request for the meeting already being transcribed
+            // is dropped silently: writing `.failed` here would clobber the
+            // live job's status even though that job goes on to succeed.
+            if inFlightMeetingID != meetingID {
+                jobs[meetingID] = .failed(
+                    message: "Another transcription is already in progress.",
+                    retriable: true
+                )
+            }
             return
         }
 

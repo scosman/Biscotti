@@ -50,7 +50,7 @@ public enum LLMModelCatalog {
 
     // MARK: - Catalog entries
 
-    /// All available models in display order (12B first, then E2B).
+    /// All available models in display order, largest first (12B, E4B, E2B).
     /// Display order is also used for fallback selection tie-breaks.
     public static let all: [LLMModel] = [
         LLMModel(
@@ -61,6 +61,15 @@ public enum LLMModelCatalog {
             )!,
             fileName: "gemma-4-12b-it-UD-Q4_K_XL.gguf",
             approxDownloadBytes: 7 * oneGB
+        ),
+        LLMModel(
+            id: "gemma-4-e4b",
+            displayName: "Gemma 4 E4B",
+            downloadURL: URL(
+                string: "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
+            )!,
+            fileName: "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+            approxDownloadBytes: 5 * oneGB
         ),
         LLMModel(
             id: "gemma-4-e2b",

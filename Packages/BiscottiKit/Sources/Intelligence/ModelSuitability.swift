@@ -36,9 +36,9 @@ public enum ModelSuitability {
         }
 
         // Default: the smallest runnable model -- last in catalog order
-        // (catalog is sorted largest-first: 12B, E2B). This ensures E2B is
-        // recommended for machines below the 24 GB threshold even if 12B is
-        // technically runnable (the "middle band" at 15-23 GB).
+        // (catalog is sorted largest-first: 12B, E4B, E2B). This ensures E2B
+        // is recommended for machines below the 24 GB threshold even if 12B
+        // or E4B is technically runnable (the "middle band" at 12-23 GB).
         return catalog.last { canRun($0, ram: ram) }?.id
     }
 

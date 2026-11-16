@@ -12,8 +12,13 @@ public enum ModelPolicy {
     /// runnable and the UI greys it out.
     public static let ramFloor12B: UInt64 = 15 * oneGB
 
+    /// Minimum RAM to run the E4B model. Below this (e.g. 8 GB Macs), the
+    /// model is not runnable and the UI greys it out.
+    public static let ramFloorE4B: UInt64 = 12 * oneGB
+
     /// RAM threshold for recommending the 12B model over E2B. At or above
-    /// this, 12B is recommended; below, E2B is recommended.
+    /// this, 12B is recommended; below, E2B is recommended. E4B is offered
+    /// as an opt-in middle option and is never recommended.
     public static let recommendationRAMThreshold: UInt64 = 24 * oneGB
 
     // MARK: - Per-model policy
@@ -24,6 +29,8 @@ public enum ModelPolicy {
         switch id {
         case "gemma-4-12b":
             "Intelligent, but slower and larger. Requires 7 GB of disk and uses 8 GB RAM."
+        case "gemma-4-e4b":
+            "A balance of speed and intelligence. Requires 5 GB of disk and uses 6 GB of RAM."
         case "gemma-4-e2b":
             "Small and fast, but not as intelligent. Requires 3 GB of disk and uses 4 GB of RAM."
         default:
@@ -37,6 +44,8 @@ public enum ModelPolicy {
         switch id {
         case "gemma-4-12b":
             ramFloor12B
+        case "gemma-4-e4b":
+            ramFloorE4B
         default:
             0
         }
@@ -47,6 +56,8 @@ public enum ModelPolicy {
         switch id {
         case "gemma-4-12b":
             "8 GB"
+        case "gemma-4-e4b":
+            "6 GB"
         case "gemma-4-e2b":
             "4 GB"
         default:

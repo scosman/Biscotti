@@ -93,7 +93,7 @@ struct ChatTemplateTests {
         )
         let expected =
             "<|turn>system\n"
-                + "<|think|><turn|>\n"
+                + "<|think|>\n<turn|>\n"
                 + "<|turn>user\n"
                 + "Hi<turn|>\n"
                 + "<|turn>model\n"
@@ -158,7 +158,7 @@ struct ChatTemplateTests {
             addGenerationPrompt: true
         )
         // Should produce a system turn with just the thinking directive
-        #expect(result.contains("<|turn>system\n<|think|><turn|>"))
+        #expect(result.contains("<|turn>system\n<|think|>\n<turn|>"))
     }
 
     // MARK: - Multi-turn rendering

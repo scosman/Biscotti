@@ -42,8 +42,9 @@ public extension TestScript {
             // 3. AI test suite
             .humanQuestion(
                 id: "llm_ai_tests_passed",
-                prompt: "Run `make test-ai` (downloads the model if needed; runs the "
-                    + "in-process LLM integration tests). Did all AI tests pass?"
+                prompt: "With every catalog model downloaded, run `make test-ai` (runs the "
+                    + "in-process LLM integration and analysis tests against each model). "
+                    + "Did all AI tests pass, including allCatalogModelsOnDisk?"
             ),
             // 4. Basic XPC inference
             .action(

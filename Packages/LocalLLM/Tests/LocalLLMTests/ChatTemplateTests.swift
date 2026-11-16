@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import LocalLLM
 
@@ -92,7 +93,7 @@ struct ChatTemplateTests {
         )
         let expected =
             "<|turn>system\n"
-                + "<|think|><turn|>\n"
+                + "<|think|>\n<turn|>\n"
                 + "<|turn>user\n"
                 + "Hi<turn|>\n"
                 + "<|turn>model\n"
@@ -157,7 +158,7 @@ struct ChatTemplateTests {
             addGenerationPrompt: true
         )
         // Should produce a system turn with just the thinking directive
-        #expect(result.contains("<|turn>system\n<|think|><turn|>"))
+        #expect(result.contains("<|turn>system\n<|think|>\n<turn|>"))
     }
 
     // MARK: - Multi-turn rendering
@@ -250,5 +251,77 @@ struct ChatTemplateTests {
         )
         #expect(result.contains("padded answer<turn|>"))
         #expect(!result.contains("  padded answer"))
+    }
+}
+
+// MARK: - GemmaChatTemplate thinking-off variants (E2B/E4B take no empty-thought prefill)
+
+@Suite("GemmaChatTemplate thinking-off variants")
+struct ChatTemplateVariantTests {
+    let noPrefillTemplate = GemmaChatTemplate(emptyThoughtPrefill: false)
+
+    @Test("Thinking off, no prefill: generation prompt ends at the model turn")
+    func thinkingOffNoPrefillSystemAndUser() {
+        let result = noPrefillTemplate.render(
+            messages: [.system("You are a helpful assistant."), .user("Hello!")],
+            addGenerationPrompt: true
+        )
+        let expected =
+            "<|turn>system\n"
+                + "You are a helpful assistant.<turn|>\n"
+                + "<|turn>user\n"
+                + "Hello!<turn|>\n"
+                + "<|turn>model\n"
+        #expect(result == expected)
+    }
+
+    @Test("Thinking off, no prefill: multi-turn never emits a channel token")
+    func thinkingOffNoPrefillMultiTurn() {
+        let result = noPrefillTemplate.render(
+            messages: [
+                .system("You are an analyst."),
+                .user("Identify the speakers."),
+                .assistant("Speaker 0 is Alice."),
+                .user("Now summarize the meeting.")
+            ],
+            addGenerationPrompt: true
+        )
+        #expect(result.hasSuffix("Now summarize the meeting.<turn|>\n<|turn>model\n"))
+        #expect(!result.contains("<|channel>"))
+        #expect(!result.contains("<channel|>"))
+    }
+
+    @Test("Thinking on: the prefill flag does not change the prompt")
+    func thinkingOnIgnoresPrefillFlag() {
+        let messages: [LLMMessage] = [.system("Be concise."), .user("Hi")]
+        let withFlag = GemmaChatTemplate(thinkingEnabled: true, emptyThoughtPrefill: true)
+        let withoutFlag = GemmaChatTemplate(thinkingEnabled: true, emptyThoughtPrefill: false)
+        #expect(
+            withFlag.render(messages: messages, addGenerationPrompt: true)
+                == withoutFlag.render(messages: messages, addGenerationPrompt: true)
+        )
+    }
+
+    // MARK: - Variant resolution from the model file
+
+    @Test("Model path: 12B gets the empty-thought prefill, E4B and E2B do not")
+    func variantFromCatalogModelPath() throws {
+        let cache = URL(fileURLWithPath: "/tmp/llms")
+        let expectations = ["gemma-4-12b": true, "gemma-4-e4b": false, "gemma-4-e2b": false]
+        for (modelID, expected) in expectations {
+            let model = try #require(LLMModelCatalog.model(id: modelID))
+            let path = cache.appendingPathComponent(model.fileName)
+            #expect(GemmaChatTemplate.prefillsEmptyThought(forModelAt: path) == expected, "\(modelID)")
+            #expect(
+                GemmaChatTemplate(thinkingEnabled: false, modelPath: path).emptyThoughtPrefill == expected,
+                "\(modelID)"
+            )
+        }
+    }
+
+    @Test("Model path: a file outside the catalog gets the canonical empty-thought prefill")
+    func variantFromUnknownModelPath() {
+        let path = URL(fileURLWithPath: "/tmp/some-other-gemma.gguf")
+        #expect(GemmaChatTemplate.prefillsEmptyThought(forModelAt: path))
     }
 }

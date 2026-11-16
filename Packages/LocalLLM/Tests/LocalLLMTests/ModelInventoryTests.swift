@@ -23,7 +23,8 @@ struct ModelInventoryTests {
             displayName: "Test Model",
             downloadURL: URL(string: "https://example.com/test.gguf")!,
             fileName: "test.gguf",
-            approxDownloadBytes: 100
+            approxDownloadBytes: 100,
+            prefillsEmptyThoughtWhenThinkingOff: true
         )
     }
 
@@ -33,7 +34,8 @@ struct ModelInventoryTests {
             displayName: "Other Model",
             downloadURL: URL(string: "https://example.com/other.gguf")!,
             fileName: "other.gguf",
-            approxDownloadBytes: 200
+            approxDownloadBytes: 200,
+            prefillsEmptyThoughtWhenThinkingOff: true
         )
     }
 

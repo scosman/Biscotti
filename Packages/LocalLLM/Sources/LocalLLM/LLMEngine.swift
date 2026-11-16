@@ -75,6 +75,9 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     private nonisolated(unsafe) var context: OpaquePointer?
     private nonisolated(unsafe) var vocab: OpaquePointer?
     private var config: EngineConfig
+    /// The loaded model's thinking-off prompt variant, resolved from its file name.
+    /// See ``LLMModel/prefillsEmptyThoughtWhenThinkingOff``.
+    private let emptyThoughtPrefill: Bool
     private var loadDuration: TimeInterval?
     private var isFirstGenerate = true
     /// The exact tokens currently resident in the KV cache (seq 0).
@@ -95,6 +98,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
     public init(modelPath: URL, config: EngineConfig = .default) async throws {
         _ = backendInitOnce
         self.config = config
+        emptyThoughtPrefill = GemmaChatTemplate.prefillsEmptyThought(forModelAt: modelPath)
 
         let loadStart = ContinuousClock.now
 
@@ -129,6 +133,7 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         _ = backendInitOnce
         // Placeholder config; real config set by createContext.
         config = EngineConfig(contextSize: 0, nGpuLayers: nGpuLayers)
+        emptyThoughtPrefill = GemmaChatTemplate.prefillsEmptyThought(forModelAt: modelPath)
 
         let loadStart = ContinuousClock.now
 
@@ -240,19 +245,25 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             throw LocalLLMError.generationFailed("Engine not loaded or already unloaded")
         }
 
-        let promptString: String
-        if applyChatTemplate {
-            let template = GemmaChatTemplate(thinkingEnabled: thinking == .auto)
-            promptString = template.render(
+        let promptString: String = if applyChatTemplate {
+            chatTemplate(thinking: thinking).render(
                 messages: messages, addGenerationPrompt: true
             )
         } else {
             // Raw mode: concatenate all message content
-            promptString = messages.map(\.content).joined()
+            messages.map(\.content).joined()
         }
 
         let tokens = try tokenize(text: promptString, vocab: vocab)
         return tokens.count
+    }
+
+    /// The chat template for the loaded model at the given thinking mode.
+    private func chatTemplate(thinking: ThinkingMode) -> GemmaChatTemplate {
+        GemmaChatTemplate(
+            thinkingEnabled: thinking == .auto,
+            emptyThoughtPrefill: emptyThoughtPrefill
+        )
     }
 
     /// Run a generation (non-streaming).
@@ -374,14 +385,12 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         let memory = llama_get_memory(ctx)
 
         // 1. Build prompt string
-        let promptString: String
-        if options.applyChatTemplate {
-            let template = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
-            promptString = template.render(
+        let promptString: String = if options.applyChatTemplate {
+            chatTemplate(thinking: options.thinking).render(
                 messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = messages.map(\.content).joined()
+            messages.map(\.content).joined()
         }
 
         // 2. Tokenize

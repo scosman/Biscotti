@@ -698,4 +698,47 @@ struct StreamingChannelSplitterTests {
         #expect(content == "Cogito ergo sum")
         #expect(reasoning == "I think therefore I am")
     }
+
+    // MARK: Bare close tag (reasoning written as plain text)
+
+    @Test("Off mode: withheld text before a bare <channel|> is dropped with the marker")
+    func offModeBareCloseInOneToken() {
+        let (content, reasoning) = splitTokens(
+            ["plain reasoning<channel|>1 | Steve | steve@kiln.tech"], suppress: true
+        )
+        #expect(content == "1 | Steve | steve@kiln.tech")
+        #expect(reasoning.isEmpty)
+    }
+
+    @Test("Off mode: bare <channel|> split across tokens never reaches content")
+    func offModeBareCloseSplitAcrossTokens() {
+        let (content, _) = splitTokens(
+            ["The user wants", " me to map them.", "<chan", "nel|>", "Answer"], suppress: true
+        )
+        // Text released before the marker cannot be recalled, but the marker and the
+        // text still withheld when it completes are dropped.
+        #expect(!content.contains("<channel|>"))
+        #expect(!content.contains("map them"))
+        #expect(content.hasSuffix("Answer"))
+    }
+
+    @Test("Off mode: bare close matches OutputParser when the marker arrives early")
+    func offModeBareCloseParity() {
+        let raw = "short<channel|>The answer."
+        let (content, _) = splitTokens(Array(raw).map(String.init), suppress: true)
+        #expect(content == OutputParser.parse(rawText: raw, stripThinking: true).text)
+    }
+
+    @Test("Off mode: only the first bare <channel|> is consumed")
+    func offModeSecondBareClosePassesThrough() {
+        let (content, _) = splitTokens(["a<channel|>b<channel|>c"], suppress: true)
+        #expect(content == "b<channel|>c")
+    }
+
+    @Test("Auto mode: a bare <channel|> passes through as content")
+    func autoModeBareClosePassesThrough() {
+        let (content, reasoning) = splitTokens(["a<channel|>b"], suppress: false)
+        #expect(content == "a<channel|>b")
+        #expect(reasoning.isEmpty)
+    }
 }

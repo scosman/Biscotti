@@ -60,6 +60,21 @@ struct LLMModelCatalogTests {
         #expect(ids == ["gemma-4-12b", "gemma-4-e4b", "gemma-4-e2b"])
     }
 
+    @Test("Only 12B takes the empty-thought prefill when thinking is off")
+    func emptyThoughtPrefillFlags() {
+        let flags = LLMModelCatalog.all.map { "\($0.id)=\($0.prefillsEmptyThoughtWhenThinkingOff)" }
+        #expect(flags == ["gemma-4-12b=true", "gemma-4-e4b=false", "gemma-4-e2b=false"])
+    }
+
+    @Test("model(forFileAt:) matches catalog entries by file name")
+    func lookupByFile() {
+        for model in LLMModelCatalog.all {
+            let url = URL(fileURLWithPath: "/any/dir").appendingPathComponent(model.fileName)
+            #expect(LLMModelCatalog.model(forFileAt: url) == model)
+        }
+        #expect(LLMModelCatalog.model(forFileAt: URL(fileURLWithPath: "/any/dir/unknown.gguf")) == nil)
+    }
+
     @Test("model(id:) returns correct entry for known IDs")
     func lookupKnown() {
         let model12b = LLMModelCatalog.model(id: "gemma-4-12b")

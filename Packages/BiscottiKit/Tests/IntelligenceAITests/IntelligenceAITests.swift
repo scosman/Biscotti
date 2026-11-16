@@ -69,12 +69,14 @@ struct IntelligenceAITests {
         #expect(MeetingAnalyzer.cleanTitle(title.text) != nil, "[\(model.name)] title: expected a usable title")
     }
 
-    /// Known limit (functional spec §7.4): with thinking off, the model takes
-    /// the transcript's name ("Samantha") and leaves the email blank instead of
-    /// copying `sam@kiln.tech` from the other entry. Thinking on fixes it but is
-    /// ~14x slower, and prompt-only changes did not help. So a blank email is
-    /// accepted; a different email, or the name on the other speaker, is not.
-    @Test("same-human-two-entries: Sam/Samantha, email listed or blank", arguments: AITestModel.all)
+    /// Known limit (the same one seen with Sam/Samantha in functional spec §7.4):
+    /// with thinking off, the model may take the transcript's name ("Jennifer") and
+    /// leave the email blank instead of copying `jen@kiln.tech` from the other
+    /// entry. Thinking on fixes it but is ~14x slower, and prompt-only changes did
+    /// not help. So a blank email is accepted; a different email, or the name on
+    /// the other speaker, is not. Jen/Jennifer is a same-gender pair, so gender
+    /// cues can't keep the two entries apart.
+    @Test("same-human-two-entries: Jen/Jennifer, email listed or blank", arguments: AITestModel.all)
     func sameHumanTwoEntries(model: AITestModel) async throws {
         guard let conn = try await AITestConnection.connection(for: model) else { return }
 
@@ -83,14 +85,14 @@ struct IntelligenceAITests {
         Voiceprint history: 5 earlier meetings, 3 with names that the user confirmed.
 
         Speaker 0: voice is close to more than one known person: \
-        Sam <sam@kiln.tech> (3 meetings, 2 confirmed by the user) and \
-        Samantha (no email) (2 meetings, 1 confirmed by the user).
+        Jen <jen@kiln.tech> (3 meetings, 2 confirmed by the user) and \
+        Jennifer (no email) (2 meetings, 1 confirmed by the user).
         Speaker 1: no voiceprint available for this speaker.
         </voiceprint_matches>
         """
 
         let transcript = """
-        Speaker 1: Hi Samantha, shall we start?
+        Speaker 1: Hi Jennifer, shall we start?
         Speaker 0: Sure, let me pull up the notes from last week.
         Speaker 1: Great, I had a few questions about the API changes.
         Speaker 0: Go ahead, I reviewed the PR this morning.
@@ -109,20 +111,20 @@ struct IntelligenceAITests {
         let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
         Self.expectMostRunsCorrect(results, model: model) { parsed in
             var problems: [String] = []
-            // Speaker 0 is Sam/Samantha, with the listed email or none.
+            // Speaker 0 is Jen/Jennifer, with the listed email or none.
             if let speaker0 = parsed[0] {
-                if !speaker0.name.lowercased().contains("sam") {
-                    problems.append("Speaker 0 is \"\(speaker0.name)\", not Sam/Samantha")
+                if !speaker0.name.lowercased().contains("jen") {
+                    problems.append("Speaker 0 is \"\(speaker0.name)\", not Jen/Jennifer")
                 }
-                if let email = speaker0.email, email != "sam@kiln.tech" {
-                    problems.append("Speaker 0 email is \(email), not sam@kiln.tech or blank")
+                if let email = speaker0.email, email != "jen@kiln.tech" {
+                    problems.append("Speaker 0 email is \(email), not jen@kiln.tech or blank")
                 }
             } else {
-                problems.append("Speaker 0 was not identified (expected Sam/Samantha)")
+                problems.append("Speaker 0 was not identified (expected Jen/Jennifer)")
             }
-            // Speaker 1 (the one who says "Hi Samantha") must not get the name.
-            if let speaker1 = parsed[1], speaker1.name.lowercased().contains("sam") {
-                problems.append("Speaker 1 got \"\(speaker1.name)\", but Speaker 1 says \"Hi Samantha\"")
+            // Speaker 1 (the one who says "Hi Jennifer") must not get the name.
+            if let speaker1 = parsed[1], speaker1.name.lowercased().contains("jen") {
+                problems.append("Speaker 1 got \"\(speaker1.name)\", but Speaker 1 says \"Hi Jennifer\"")
             }
             return problems
         }

@@ -27,12 +27,15 @@ public protocol ChatTemplating: Sendable {
 ///
 /// When thinking mode is `.auto`, the system turn begins with `<|think|>\n` to enable
 /// the model's reasoning channel. If no system message is provided, a system turn
-/// containing just `<|think|>` is still emitted (the thinking directive must be present
+/// containing just `<|think|>\n` is still emitted (the thinking directive must be present
 /// for the model to produce reasoning).
 ///
-/// When thinking is `.off` and `addGenerationPrompt` is true, the model turn is prefilled
-/// with an empty thought block (`<|channel>thought\n<channel|>`) to deterministically
-/// suppress reasoning -- matching the embedded template's behavior.
+/// When thinking is `.off` and `addGenerationPrompt` is true, the generation prompt
+/// depends on the model variant (``emptyThoughtPrefill``), matching Google's template:
+/// - 12B and up: the model turn is prefilled with an empty thought block
+///   (`<|channel>thought\n<channel|>`) to deterministically suppress reasoning.
+/// - E2B/E4B: the prompt ends at `<|turn>model\n`. These models were not trained on
+///   the empty-thought prefill; with it, they leak their reasoning into the answer.
 ///
 /// System and user content is trimmed (whitespace/newlines), matching the Jinja `| trim`
 /// filter in the embedded template.
@@ -53,12 +56,33 @@ public struct GemmaChatTemplate: ChatTemplating {
     /// Empty thought block prefill for thinking-off mode. Placed after the model turn
     /// prefix to deterministically suppress reasoning (the model sees an already-closed
     /// thought channel and proceeds directly to content).
-    static let emptyThoughtPrefill = "<|channel>thought\n<channel|>"
+    static let emptyThoughtPrefillText = "<|channel>thought\n<channel|>"
 
     public let thinkingEnabled: Bool
 
-    public init(thinkingEnabled: Bool = false) {
+    /// Whether a thinking-off generation prompt ends with an empty thought block.
+    /// See ``LLMModel/prefillsEmptyThoughtWhenThinkingOff``.
+    public let emptyThoughtPrefill: Bool
+
+    public init(thinkingEnabled: Bool = false, emptyThoughtPrefill: Bool = true) {
         self.thinkingEnabled = thinkingEnabled
+        self.emptyThoughtPrefill = emptyThoughtPrefill
+    }
+
+    /// The template for the GGUF at `modelPath`: the catalog model's variant when the
+    /// file is a catalog model, otherwise the 12B-style empty-thought prefill.
+    public init(thinkingEnabled: Bool, modelPath: URL) {
+        self.init(
+            thinkingEnabled: thinkingEnabled,
+            emptyThoughtPrefill: Self.prefillsEmptyThought(forModelAt: modelPath)
+        )
+    }
+
+    /// Whether the GGUF at `modelPath` takes the empty-thought prefill when thinking
+    /// is off. Files that are not catalog models get `true`, the canonical Gemma 4
+    /// template's behavior for every variant except E2B/E4B.
+    public static func prefillsEmptyThought(forModelAt modelPath: URL) -> Bool {
+        LLMModelCatalog.model(forFileAt: modelPath)?.prefillsEmptyThoughtWhenThinkingOff ?? true
     }
 
     public func render(
@@ -72,7 +96,7 @@ public struct GemmaChatTemplate: ChatTemplating {
         let hasSystem = messages.contains { $0.role == .system }
         if thinkingEnabled, !hasSystem {
             result += "\(Self.turnOpen)system\n"
-            result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
+            result += "\(Self.thinkingDirective)\n\(Self.turnClose)\n"
         }
 
         for message in messages {
@@ -85,7 +109,7 @@ public struct GemmaChatTemplate: ChatTemplating {
                 if trimmed.isEmpty {
                     if thinkingEnabled {
                         result += "\(Self.turnOpen)system\n"
-                        result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
+                        result += "\(Self.thinkingDirective)\n\(Self.turnClose)\n"
                     }
                 } else {
                     let systemContent = thinkingEnabled
@@ -107,8 +131,8 @@ public struct GemmaChatTemplate: ChatTemplating {
         // Model generation prefix
         if addGenerationPrompt {
             result += "\(Self.turnOpen)model\n"
-            if !thinkingEnabled {
-                result += "\(Self.emptyThoughtPrefill)"
+            if !thinkingEnabled, emptyThoughtPrefill {
+                result += Self.emptyThoughtPrefillText
             }
         }
 

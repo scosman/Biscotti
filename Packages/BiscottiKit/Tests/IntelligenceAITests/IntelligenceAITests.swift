@@ -1,80 +1,34 @@
 import DataStore
-import Dispatch
 import Foundation
 import LocalLLM
-import Synchronization
 import Testing
 @testable import Intelligence
 
 private let isAITestEnabled =
     ProcessInfo.processInfo.environment["BISCOTTI_RUN_AI_TESTS"] == "1"
 
-/// LLM-backed speaker-identification tests exercising voiceprint evidence.
+/// LLM-backed analysis tests: speaker identification with voiceprint evidence,
+/// plus a check that summaries and titles carry no leaked reasoning.
 ///
-/// These require the real Gemma 4 12B model on disk and
-/// `BISCOTTI_RUN_AI_TESTS=1` in the environment. A bare `swift test` skips
-/// them entirely. Run via `make test-ai`.
+/// Every test runs against every model in `LLMModelCatalog.all` (parameterized
+/// over `AITestModel.all`, labelled by model) and needs
+/// `BISCOTTI_RUN_AI_TESTS=1` in the environment. A bare `swift test` skips them
+/// entirely. Run via `make test-ai`. A catalog model that isn't downloaded is
+/// skipped with a "download it first" known issue; `LLM_MODEL_PATH` narrows the
+/// run to one GGUF.
 ///
-/// Each case builds the real first user message with
+/// Each speaker case builds the real first user message with
 /// `IntelligencePrompts.analysisFirstUser` and a handwritten
 /// `<voiceprint_matches>` block, runs with `MeetingAnalyzer.speakerOptions`,
 /// and parses with `SpeakerMappingParser`. Output varies, so each case runs
 /// 3 times and passes when >= 2 runs are correct.
 @Suite("Intelligence AI Tests (BISCOTTI_RUN_AI_TESTS=1)", .enabled(if: isAITestEnabled), .serialized)
 struct IntelligenceAITests {
-    // MARK: - Shared model connection
-
-    static let modelPath: URL = {
-        if let envPath = ProcessInfo.processInfo.environment["LLM_MODEL_PATH"] {
-            return URL(fileURLWithPath: envPath)
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home
-            .appendingPathComponent("Library/Application Support/Biscotti/llms")
-            .appendingPathComponent("gemma-4-12b-it-UD-Q4_K_XL.gguf")
-    }()
-
-    /// Shared in-process connection loaded once for the entire suite.
-    static let sharedConnection = Mutex<LLMConnection?>(nil)
-
-    /// Registers an `atexit` handler exactly once, right after the model is
-    /// loaded. LIFO ordering ensures this runs before ggml's Metal-device
-    /// static destructor. Without this, the normal `exit()` path runs
-    /// ggml's destructor while residency sets are alive -> SIGABRT.
-    private static let registerAtexitOnce: Void = {
-        atexit {
-            let sem = DispatchSemaphore(value: 0)
-            Task {
-                if let conn = IntelligenceAITests.sharedConnection.withLock({ $0 }) {
-                    await conn.close()
-                    IntelligenceAITests.sharedConnection.withLock { $0 = nil }
-                }
-                LocalLLMRuntime.shutdown()
-                sem.signal()
-            }
-            _ = sem.wait(timeout: .now() + 30.0)
-        }
-    }()
-
-    /// Load or return the shared connection.
-    static func connection() async throws -> LLMConnection {
-        if let existing = sharedConnection.withLock({ $0 }) {
-            return existing
-        }
-        let config = EngineConfig(contextSize: 4096, seed: 42)
-        let conn = try await LLMService.openConnection(
-            model: modelPath, backend: .inProcess, config: config
-        )
-        sharedConnection.withLock { $0 = conn }
-        _ = registerAtexitOnce
-        return conn
-    }
-
     // MARK: - Helpers
 
     /// Run a speaker-identification prompt 3 times, return parsed results.
     private static func runSpeakerID(
-        conn: LLMConnection, userContent: String
+        conn: LLMConnection, model: AITestModel, userContent: String
     ) async throws -> [[Int: SpeakerMappingParser.SpeakerMapping]] {
         let messages: [LLMMessage] = [
             .system(IntelligencePrompts.analysisSystem),
@@ -86,22 +40,112 @@ struct IntelligenceAITests {
                 messages: messages, options: MeetingAnalyzer.speakerOptions
             )
             // Raw output in the test log, for prompt tuning when a case fails.
-            print("[IntelligenceAITests] run \(run) raw output:\n\(result.text)\n---")
+            print("[IntelligenceAITests] [\(model.name)] run \(run) raw output:\n\(result.rawText)\n---")
             results.append(SpeakerMappingParser.parse(result.text))
         }
         return results
     }
 
+    /// Phrases a leaked chain of thought opens with (seen on E2B/E4B).
+    private static let reasoningOpeners = [
+        "the user wants", "the user is asking", "the user has", "i need to", "let me ", "okay, ", "first, i"
+    ]
+
+    /// Expects `result` to be a direct answer: no thought-channel tokens in the raw
+    /// output, no reasoning-style opening, and the turn ended before the token budget.
+    private static func expectNoLeakedReasoning(
+        _ result: GenerationResult, task: String, model: AITestModel
+    ) {
+        let raw = result.rawText
+        #expect(
+            !raw.contains("<channel|>") && !raw.contains("<|channel>"),
+            "[\(model.name)] \(task): thinking off must not use a thought channel; raw output:\n\(raw)"
+        )
+        let opening = result.text.lowercased()
+        let readsLikeReasoning = reasoningOpeners.contains { opening.hasPrefix($0) }
+        #expect(
+            !readsLikeReasoning,
+            "[\(model.name)] \(task): output reads like reasoning:\n\(result.text)"
+        )
+        #expect(
+            result.finishReason != .maxTokens,
+            "[\(model.name)] \(task): hit the token budget, likely spent on reasoning; raw output:\n\(raw)"
+        )
+    }
+
+    /// Streams the summary turn as `MeetingAnalyzer` does and checks both the
+    /// streamed tokens and the final result for leaked reasoning.
+    private static func streamSummary(
+        conn: LLMConnection, model: AITestModel, messages: [LLMMessage]
+    ) async throws -> GenerationResult {
+        var streamedSummary = ""
+        var summaryResult: GenerationResult?
+        let stream = await conn.generateStreaming(
+            messages: messages, options: MeetingAnalyzer.summaryOptions
+        )
+        for try await event in stream {
+            switch event {
+            case let .token(text):
+                streamedSummary += text
+            case let .done(result):
+                summaryResult = result
+            case .reasoningToken:
+                break
+            }
+        }
+        let summary = try #require(summaryResult, "Stream must end with a .done event")
+        print("[IntelligenceAITests] [\(model.name)] summary raw output:\n\(summary.rawText)\n---")
+        expectNoLeakedReasoning(summary, task: "summary", model: model)
+        #expect(
+            !streamedSummary.contains("<channel|>"),
+            "[\(model.name)] summary: streamed tokens must not carry channel tokens"
+        )
+        return summary
+    }
+
     // MARK: - Test cases
+
+    /// Summary then title, as `MeetingAnalyzer` runs them (summary streamed, title
+    /// as a follow-up turn, both thinking off). Neither may contain reasoning.
+    @Test("summary-and-title: no leaked reasoning", arguments: AITestModel.all)
+    func summaryAndTitleHaveNoLeakedReasoning(model: AITestModel) async throws {
+        guard let conn = try await AITestConnection.connection(for: model) else { return }
+
+        let transcript = """
+        Alice: Morning. The goal today is to ship the billing fix before Friday.
+        Bob: I'll take the migration script, but I need the final schema by Wednesday.
+        Alice: I'll send the schema tomorrow. Let's backfill existing invoices too.
+        Carol: I'll run the payment regression suite on Thursday once staging is green.
+        Bob: Staging is broken by a flaky webhook test. Dave is fixing it today.
+        Alice: Great. Let's put the migration behind a feature toggle and sync Friday.
+        """
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Billing Sync", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil
+        )
+        var messages: [LLMMessage] = [
+            .system(IntelligencePrompts.analysisSystem),
+            .user(IntelligencePrompts.summaryOnlyFirstUser(detail: detail, transcriptNamed: transcript))
+        ]
+
+        let summary = try await Self.streamSummary(conn: conn, model: model, messages: messages)
+
+        messages.append(.assistant(summary.text))
+        messages.append(.user(IntelligencePrompts.titleFollowUpUser))
+        let title = try await conn.generate(messages: messages, options: MeetingAnalyzer.titleOptions)
+        print("[IntelligenceAITests] [\(model.name)] title raw output:\n\(title.rawText)\n---")
+        Self.expectNoLeakedReasoning(title, task: "title", model: model)
+        #expect(MeetingAnalyzer.cleanTitle(title.text) != nil, "[\(model.name)] title: expected a usable title")
+    }
 
     /// Known limit (functional spec §7.4): with thinking off, the model takes
     /// the transcript's name ("Samantha") and leaves the email blank instead of
     /// copying `sam@kiln.tech` from the other entry. Thinking on fixes it but is
     /// ~14x slower, and prompt-only changes did not help. So a blank email is
     /// accepted; a different email, or the name on the other speaker, is not.
-    @Test("same-human-two-entries: Sam/Samantha, email listed or blank")
-    func sameHumanTwoEntries() async throws {
-        let conn = try await Self.connection()
+    @Test("same-human-two-entries: Sam/Samantha, email listed or blank", arguments: AITestModel.all)
+    func sameHumanTwoEntries(model: AITestModel) async throws {
+        guard let conn = try await AITestConnection.connection(for: model) else { return }
 
         let voiceprintBlock = """
         <voiceprint_matches>
@@ -131,7 +175,7 @@ struct IntelligenceAITests {
             transcriptSpeakerLabeled: transcript
         )
 
-        let results = try await Self.runSpeakerID(conn: conn, userContent: userContent)
+        let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
         var successes = 0
         for parsed in results {
             // Speaker 0 is Sam/Samantha, with the listed email or none.
@@ -146,13 +190,13 @@ struct IntelligenceAITests {
         }
         #expect(
             successes >= 2,
-            "Expected >= 2/3 runs to identify Speaker 0 as Sam/Samantha (email sam@kiln.tech or blank)"
+            "[\(model.name)] Expected >= 2/3 runs to identify Speaker 0 as Sam/Samantha (email sam@kiln.tech or blank)"
         )
     }
 
-    @Test("different-humans-similar-voices: transcript disambiguates to Amit")
-    func differentHumansSimilarVoices() async throws {
-        let conn = try await Self.connection()
+    @Test("different-humans-similar-voices: transcript disambiguates to Amit", arguments: AITestModel.all)
+    func differentHumansSimilarVoices(model: AITestModel) async throws {
+        guard let conn = try await AITestConnection.connection(for: model) else { return }
 
         let voiceprintBlock = """
         <voiceprint_matches>
@@ -182,7 +226,7 @@ struct IntelligenceAITests {
             transcriptSpeakerLabeled: transcript
         )
 
-        let results = try await Self.runSpeakerID(conn: conn, userContent: userContent)
+        let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
         var successes = 0
         for parsed in results {
             // Speaker 0 should be Amit (transcript says "thanks, Amit")
@@ -194,13 +238,13 @@ struct IntelligenceAITests {
         }
         #expect(
             successes >= 2,
-            "Expected >= 2/3 runs to identify Speaker 0 as Amit"
+            "[\(model.name)] Expected >= 2/3 runs to identify Speaker 0 as Amit"
         )
     }
 
-    @Test("high-confidence-match: Steve identified by voiceprint alone")
-    func highConfidenceMatch() async throws {
-        let conn = try await Self.connection()
+    @Test("high-confidence-match: Steve identified by voiceprint alone", arguments: AITestModel.all)
+    func highConfidenceMatch(model: AITestModel) async throws {
+        guard let conn = try await AITestConnection.connection(for: model) else { return }
 
         let voiceprintBlock = """
         <voiceprint_matches>
@@ -229,7 +273,7 @@ struct IntelligenceAITests {
             transcriptSpeakerLabeled: transcript
         )
 
-        let results = try await Self.runSpeakerID(conn: conn, userContent: userContent)
+        let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
         var successes = 0
         for parsed in results {
             // Speaker 1 should be Steve with the email
@@ -242,7 +286,7 @@ struct IntelligenceAITests {
         }
         #expect(
             successes >= 2,
-            "Expected >= 2/3 runs to identify Speaker 1 as Steve with steve@kiln.tech"
+            "[\(model.name)] Expected >= 2/3 runs to identify Speaker 1 as Steve with steve@kiln.tech"
         )
     }
 }

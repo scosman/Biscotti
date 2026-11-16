@@ -92,7 +92,7 @@ test: ## GATING: run package tests
 	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
 	done
 
-test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
+test-ai: ## NON-GATING: heavy AI/model tests; LLM suites cover every catalog model (downloads GBs; not in CI)
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
 	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/BiscottiKit --filter IntelligenceAITests

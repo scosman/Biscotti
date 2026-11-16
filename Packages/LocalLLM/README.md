@@ -29,7 +29,9 @@ make build            # all packages including LocalLLM
 # Unit tests (no model needed, fast)
 make test
 
-# AI integration tests (requires ~8 GB Gemma 4 model on disk)
+# AI integration tests: run against every model in LLMModelCatalog.all that is
+# on disk (a missing model is skipped with a "download it first" message).
+# LLM_MODEL_PATH=<gguf> narrows the run to one model.
 make test-ai
 ```
 

@@ -177,7 +177,9 @@ struct RunCommand: AsyncParsableCommand {
             effectiveOptions.applyChatTemplate = false
         } else {
             effectiveOptions.applyChatTemplate = false
-            let gemmaTemplate = GemmaChatTemplate(thinkingEnabled: options.thinking == .auto)
+            let gemmaTemplate = GemmaChatTemplate(
+                thinkingEnabled: options.thinking == .auto, modelPath: modelURL
+            )
             var msgs: [LLMMessage] = []
             if let systemText {
                 msgs.append(.system(systemText))

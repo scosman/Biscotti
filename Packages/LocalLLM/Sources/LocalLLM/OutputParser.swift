@@ -9,6 +9,8 @@ public enum OutputParser: Sendable {
     // Table-driven so updating for a different model is a one-line change.
     static let thinkingOpenTag = "<|channel>thought\n"
     static let thinkingCloseTag = "<channel|>"
+    /// The bare channel-open token that starts `thinkingOpenTag` (any channel name).
+    static let thinkingOpenChannelToken = "<|channel>"
 
     /// Turn/stop tokens to strip from the end of output.
     /// Gemma 4 uses <turn|> as its turn-close; <end_of_turn> and <eos> kept as
@@ -48,6 +50,8 @@ public enum OutputParser: Sendable {
             if let thought = thinkingResult.reasoning {
                 reasoning = stripThinking ? nil : thought
             }
+        } else if stripThinking {
+            text = dropThroughBareThinkingClose(text)
         }
 
         // Strip turn tokens from the end
@@ -102,6 +106,21 @@ public enum OutputParser: Sendable {
         let cleaned = String(text[..<openRange.lowerBound])
         let reasoning = thought.isEmpty ? nil : thought
         return ThinkingResult(text: cleaned, reasoning: reasoning, found: true)
+    }
+
+    /// Drop everything up to and including the first bare `<channel|>` (a close tag
+    /// with no open tag before it). Returns `text` unchanged when there is none.
+    ///
+    /// Gemma 4 can write its reasoning as plain text and close it with a lone
+    /// `<channel|>` (llama.cpp's Gemma 4 parser handles the same case), so with
+    /// thinking stripped, the text before that tag is reasoning, not answer.
+    public static func dropThroughBareThinkingClose(_ text: String) -> String {
+        guard let closeRange = text.range(of: thinkingCloseTag, options: .literal),
+              text.range(of: thinkingOpenChannelToken, options: .literal, range: text.startIndex ..< closeRange.lowerBound) == nil
+        else {
+            return text
+        }
+        return String(text[closeRange.upperBound...])
     }
 
     /// Remove trailing turn/stop tokens from text.

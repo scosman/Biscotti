@@ -75,7 +75,8 @@ struct IntelligenceAITests {
     /// entry. Thinking on fixes it but is ~14x slower, and prompt-only changes did
     /// not help. So a blank email is accepted; a different email, or the name on
     /// the other speaker, is not. Jen/Jennifer is a same-gender pair, so gender
-    /// cues can't keep the two entries apart.
+    /// cues can't keep the two entries apart. The invitees are Jennifer and Raj,
+    /// so Speaker 1 may be Raj (by elimination) or left blank, but never Jen/Jennifer.
     @Test("same-human-two-entries: Jen/Jennifer, email listed or blank", arguments: AITestModel.all)
     func sameHumanTwoEntries(model: AITestModel) async throws {
         guard let conn = try await AITestConnection.connection(for: model) else { return }
@@ -100,7 +101,11 @@ struct IntelligenceAITests {
 
         let detail = MeetingDetailData(
             id: UUID(), title: "Team Sync", date: Date(),
-            duration: nil, hasAudio: false, preferredTranscript: nil
+            duration: nil, hasAudio: false, preferredTranscript: nil,
+            calendar: CalendarContextData(attendees: [
+                PersonData(id: UUID(), name: "Jennifer", email: "jen@kiln.tech"),
+                PersonData(id: UUID(), name: "Raj", email: "raj@kiln.tech")
+            ])
         )
         let userContent = IntelligencePrompts.analysisFirstUser(
             detail: detail, human: [:],
@@ -122,9 +127,12 @@ struct IntelligenceAITests {
             } else {
                 problems.append("Speaker 0 was not identified (expected Jen/Jennifer)")
             }
-            // Speaker 1 (the one who says "Hi Jennifer") must not get the name.
-            if let speaker1 = parsed[1], speaker1.name.lowercased().contains("jen") {
-                problems.append("Speaker 1 got \"\(speaker1.name)\", but Speaker 1 says \"Hi Jennifer\"")
+            // Speaker 1 says "Hi Jennifer", so is not Jen/Jennifer. Raj (the other
+            // invitee, by elimination) or blank is fine.
+            if let speaker1 = parsed[1], !speaker1.name.lowercased().contains("raj") {
+                problems.append(speaker1.name.lowercased().contains("jen")
+                    ? "Speaker 1 got \"\(speaker1.name)\", but Speaker 1 says \"Hi Jennifer\""
+                    : "Speaker 1 is \"\(speaker1.name)\"; expected Raj or blank")
             }
             return problems
         }

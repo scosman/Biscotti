@@ -472,6 +472,40 @@ struct XPCEngineAdapterRoundTripTests {
             #expect(error as? TranscriptionError == .workerInterrupted)
         }
     }
+
+    @Test("processAudio maps a bridged worker error back to the exact TranscriptionError")
+    func processAudioMapsBridgedError() async {
+        let mockService = MockTranscriberService()
+        mockService.processAudioError = TranscriptionNSErrorBridge.nsError(
+            from: TranscriptionError.diarizationFailed("CoreML load failed")
+        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+
+        do {
+            _ = try await adapter.processAudio(
+                micPath: "/tmp/mic.wav", systemPath: "/tmp/system.wav", customVocabulary: []
+            )
+            Issue.record("Expected diarizationFailed")
+        } catch {
+            #expect(error as? TranscriptionError == .diarizationFailed("CoreML load failed"))
+        }
+    }
+
+    @Test("ensureModelsDownloaded maps a bridged worker error back to the exact TranscriptionError")
+    func ensureModelsMapsBridgedError() async {
+        let mockService = MockTranscriberService()
+        mockService.ensureModelsError = TranscriptionNSErrorBridge.nsError(
+            from: TranscriptionError.downloadFailed("Could not remove incomplete model files")
+        )
+        let adapter = XPCEngineAdapter(proxyProvider: { mockService })
+
+        do {
+            try await adapter.ensureModelsDownloaded(status: { _ in })
+            Issue.record("Expected downloadFailed")
+        } catch {
+            #expect(error as? TranscriptionError == .downloadFailed("Could not remove incomplete model files"))
+        }
+    }
 }
 
 @Suite("InterruptedFlag")

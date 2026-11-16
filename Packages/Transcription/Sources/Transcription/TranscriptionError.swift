@@ -2,7 +2,10 @@ import Foundation
 
 /// Errors from the Transcription processing pipeline.
 /// Supersedes the experiment's `ArgMaxError` with a richer taxonomy.
-public enum TranscriptionError: Error, Sendable, Equatable {
+///
+/// `Codable` so the XPC worker can send the full error (including its detail
+/// string) to the client; see ``TranscriptionNSErrorBridge``.
+public enum TranscriptionError: Error, LocalizedError, Codable, Sendable, Equatable {
     /// Models are not downloaded yet; call `ensureModelsDownloaded` first.
     case needsDownload
 
@@ -30,4 +33,27 @@ public enum TranscriptionError: Error, Sendable, Equatable {
 
     /// SpeakerKit diarization returned an error.
     case diarizationFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .needsDownload:
+            "Transcription models are not downloaded"
+        case let .insufficientDisk(requiredBytes, availableBytes):
+            "Insufficient disk space: need \(requiredBytes) bytes, have \(availableBytes) bytes"
+        case let .downloadFailed(detail):
+            "Model download failed: \(detail)"
+        case let .modelLoadFailed(detail):
+            "Model load failed: \(detail)"
+        case .workerUnavailable:
+            "Transcription worker is not available"
+        case .workerInterrupted:
+            "Transcription worker was interrupted (crashed or exited unexpectedly)"
+        case let .invalidInput(detail):
+            "Invalid input: \(detail)"
+        case let .transcriptionFailed(detail):
+            "Transcription failed: \(detail)"
+        case let .diarizationFailed(detail):
+            "Speaker diarization failed: \(detail)"
+        }
+    }
 }

@@ -21,13 +21,14 @@ public actor SpeakerAnalyzer {
     public func ensureModelsDownloaded() async throws {
         if speakerKit == nil {
             Self.log.info("SpeakerAnalyzer: downloading SpeakerKit models")
+            try Self.removeIncompleteModels()
             do {
                 speakerKit = try await SpeakerKit(
                     SpeakerKitConfigFactory.make(download: true, load: false)
                 )
             } catch {
                 throw TranscriptionError.downloadFailed(
-                    "SpeakerKit download failed: \(error.localizedDescription)"
+                    "SpeakerKit: \(error.localizedDescription)"
                 )
             }
             Self.log.info("SpeakerAnalyzer: models ready")
@@ -42,6 +43,7 @@ public actor SpeakerAnalyzer {
         )
 
         if speakerKit == nil {
+            try Self.removeIncompleteModels()
             speakerKit = try await SpeakerKit(
                 SpeakerKitConfigFactory.make(download: true, load: false)
             )
@@ -71,6 +73,20 @@ public actor SpeakerAnalyzer {
     public func unload() async {
         await speakerKit?.unloadModels()
         speakerKit = nil
+    }
+
+    /// Delete incomplete SpeakerKit model folders so the SDK re-downloads them
+    /// (its own cache check accepts a partial download; see ``ModelIntegrity``).
+    ///
+    /// - Throws: ``TranscriptionError/downloadFailed(_:)`` if a folder cannot be deleted.
+    private static func removeIncompleteModels() throws {
+        let incomplete = try ModelIntegrity.removeIncompleteComponents(
+            ModelIntegrity.speakerKitComponents,
+            root: ModelIntegrity.speakerKitRoot
+        )
+        if !incomplete.isEmpty {
+            log.notice("SpeakerAnalyzer: models missing or incomplete (\(incomplete.count) component(s)); downloading")
+        }
     }
 }
 

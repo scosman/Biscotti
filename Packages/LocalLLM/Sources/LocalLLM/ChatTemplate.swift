@@ -27,7 +27,7 @@ public protocol ChatTemplating: Sendable {
 ///
 /// When thinking mode is `.auto`, the system turn begins with `<|think|>\n` to enable
 /// the model's reasoning channel. If no system message is provided, a system turn
-/// containing just `<|think|>\n` is still emitted (the thinking directive must be present
+/// containing just `<|think|>` is still emitted (the thinking directive must be present
 /// for the model to produce reasoning).
 ///
 /// When thinking is `.off` and `addGenerationPrompt` is true, the generation prompt
@@ -96,7 +96,7 @@ public struct GemmaChatTemplate: ChatTemplating {
         let hasSystem = messages.contains { $0.role == .system }
         if thinkingEnabled, !hasSystem {
             result += "\(Self.turnOpen)system\n"
-            result += "\(Self.thinkingDirective)\n\(Self.turnClose)\n"
+            result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
         }
 
         for message in messages {
@@ -109,7 +109,7 @@ public struct GemmaChatTemplate: ChatTemplating {
                 if trimmed.isEmpty {
                     if thinkingEnabled {
                         result += "\(Self.turnOpen)system\n"
-                        result += "\(Self.thinkingDirective)\n\(Self.turnClose)\n"
+                        result += "\(Self.thinkingDirective)\(Self.turnClose)\n"
                     }
                 } else {
                     let systemContent = thinkingEnabled

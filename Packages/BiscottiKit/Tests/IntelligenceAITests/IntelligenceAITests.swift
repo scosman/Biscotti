@@ -140,8 +140,8 @@ struct IntelligenceAITests {
 
     /// Transcript-only evidence: a self-introduction and a thank-you to the
     /// previous speaker. No voiceprint evidence. Three invitees, so Speaker 1 (no
-    /// name cue) may be the remaining invitee, Priya, or left blank.
-    @Test("self-intro-and-thanks: Steve introduces himself and thanks Daniel", arguments: AITestModel.all)
+    /// name cue) may be the remaining invitee, Olivia, or left blank.
+    @Test("self-intro-and-thanks: Steve introduces himself and thanks Marcus", arguments: AITestModel.all)
     func selfIntroAndThanks(model: AITestModel) async throws {
         guard let conn = try await AITestConnection.connection(for: model) else { return }
 
@@ -150,13 +150,13 @@ struct IntelligenceAITests {
         Speaker 1: Quick note first: the design review moved to Friday.
         Speaker 0: Noted. So, the release?
         Speaker 2: The release branch is cut and QA signed off yesterday. We ship on Thursday.
-        Speaker 0: Thanks for that, Daniel.
+        Speaker 0: Thanks for that, Marcus.
         """
 
         let invitees = CalendarContextData(attendees: [
             PersonData(id: UUID(), name: "Steve", email: "steve@kiln.tech"),
-            PersonData(id: UUID(), name: "Daniel", email: "daniel@kiln.tech"),
-            PersonData(id: UUID(), name: "Priya", email: "priya@kiln.tech")
+            PersonData(id: UUID(), name: "Marcus", email: "marcus@kiln.tech"),
+            PersonData(id: UUID(), name: "Olivia", email: "olivia@kiln.tech")
         ])
         let detail = MeetingDetailData(
             id: UUID(), title: "Release Check-in", date: Date(),
@@ -178,19 +178,19 @@ struct IntelligenceAITests {
             } else {
                 problems.append("Speaker 0 was not identified (expected Steve)")
             }
-            // Speaker 0 thanks Daniel right after Speaker 2 answers.
+            // Speaker 0 thanks Marcus right after Speaker 2 answers.
             if let speaker2 = parsed[2] {
-                if !speaker2.name.lowercased().contains("daniel") {
-                    problems.append("Speaker 2 is \"\(speaker2.name)\", but Speaker 0 then says \"Thanks for that, Daniel\"")
+                if !speaker2.name.lowercased().contains("marcus") {
+                    problems.append("Speaker 2 is \"\(speaker2.name)\", but Speaker 0 then says \"Thanks for that, Marcus\"")
                 }
             } else {
-                problems.append("Speaker 2 was not identified (expected Daniel)")
+                problems.append("Speaker 2 was not identified (expected Marcus)")
             }
-            // Speaker 1 is the remaining invitee (Priya) or blank, never Steve or Daniel.
+            // Speaker 1 is the remaining invitee (Olivia) or blank, never Steve or Marcus.
             if let speaker1 = parsed[1], !speaker1.name.trimmingCharacters(in: .whitespaces).isEmpty,
-               !speaker1.name.lowercased().contains("priya")
+               !speaker1.name.lowercased().contains("olivia")
             {
-                problems.append("Speaker 1 is \"\(speaker1.name)\"; expected Priya or blank")
+                problems.append("Speaker 1 is \"\(speaker1.name)\"; expected Olivia or blank")
             }
             return problems
         }

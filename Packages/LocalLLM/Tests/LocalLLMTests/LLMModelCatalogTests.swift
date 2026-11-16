@@ -4,9 +4,9 @@ import Testing
 
 @Suite("LLMModelCatalog")
 struct LLMModelCatalogTests {
-    @Test("Catalog contains exactly two models")
+    @Test("Catalog contains exactly three models")
     func catalogCount() {
-        #expect(LLMModelCatalog.all.count == 2)
+        #expect(LLMModelCatalog.all.count == 3)
     }
 
     @Test("Catalog IDs are distinct and non-empty")
@@ -54,10 +54,10 @@ struct LLMModelCatalogTests {
         }
     }
 
-    @Test("Display order is 12B then E2B")
+    @Test("Display order is largest first: 12B, E4B, E2B")
     func catalogOrder() {
         let ids = LLMModelCatalog.all.map(\.id)
-        #expect(ids == ["gemma-4-12b", "gemma-4-e2b"])
+        #expect(ids == ["gemma-4-12b", "gemma-4-e4b", "gemma-4-e2b"])
     }
 
     @Test("model(id:) returns correct entry for known IDs")
@@ -66,9 +66,24 @@ struct LLMModelCatalogTests {
         #expect(model12b?.displayName == "Gemma 4 12B")
         #expect(model12b?.id == "gemma-4-12b")
 
+        let modelE4b = LLMModelCatalog.model(id: "gemma-4-e4b")
+        #expect(modelE4b?.displayName == "Gemma 4 E4B")
+        #expect(modelE4b?.id == "gemma-4-e4b")
+
         let modelE2b = LLMModelCatalog.model(id: "gemma-4-e2b")
         #expect(modelE2b?.displayName == "Gemma 4 E2B")
         #expect(modelE2b?.id == "gemma-4-e2b")
+    }
+
+    @Test("E4B entry points at the unsloth QAT Q4_K_XL GGUF")
+    func e4bDownloadCoordinates() throws {
+        let modelE4b = try #require(LLMModelCatalog.model(id: "gemma-4-e4b"))
+        #expect(
+            modelE4b.downloadURL.absoluteString
+                == "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
+        )
+        #expect(modelE4b.fileName == "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf")
+        #expect(modelE4b.approxDownloadBytes == 5_000_000_000)
     }
 
     @Test("model(id:) returns nil for unknown ID")

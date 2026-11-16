@@ -139,6 +139,7 @@ private struct MMFakeHardwareProbe: HardwareProbing {
 // MARK: - Helpers
 
 private let model12B = "gemma-4-12b"
+private let modelE4B = "gemma-4-e4b"
 private let modelE2B = "gemma-4-e2b"
 
 /// Groups the ModelManager and its fakes for test convenience.
@@ -592,6 +593,11 @@ struct ModelManagerModelChoicesTests {
         #expect(row12B?.blockedReason == nil)
         #expect(row12B?.downloadState == .downloaded)
 
+        let rowE4B = choices.first { $0.id == modelE4B }
+        #expect(rowE4B?.runnable == true)
+        #expect(rowE4B?.isRecommended == false)
+        #expect(rowE4B?.blockedReason == nil)
+
         let rowE2B = choices.first { $0.id == modelE2B }
         #expect(rowE2B != nil)
         #expect(rowE2B?.runnable == true)
@@ -601,7 +607,7 @@ struct ModelManagerModelChoicesTests {
         #expect(rowE2B?.blockedReason == nil)
     }
 
-    @Test("8 GB RAM: 12B not runnable, E2B recommended")
+    @Test("8 GB RAM: 12B and E4B not runnable, E2B recommended")
     @MainActor func lowRAM() async throws {
         let fix = try makeManager(
             downloadedIDs: [modelE2B], ram: 8_000_000_000
@@ -616,10 +622,28 @@ struct ModelManagerModelChoicesTests {
         #expect(row12B?.blockedReason == .cannotRun)
         #expect(row12B?.isRecommended == false)
 
+        let rowE4B = choices.first { $0.id == modelE4B }
+        #expect(rowE4B?.runnable == false)
+        #expect(rowE4B?.blockedReason == .cannotRun)
+        #expect(rowE4B?.isRecommended == false)
+
         let rowE2B = choices.first { $0.id == modelE2B }
         #expect(rowE2B?.runnable == true)
         #expect(rowE2B?.isRecommended == true)
         #expect(rowE2B?.blockedReason == nil)
+    }
+
+    @Test("16 GB RAM: all runnable, E2B (not E4B) recommended")
+    @MainActor func middleBandRAM() async throws {
+        let fix = try makeManager(ram: 16_000_000_000)
+
+        await fix.mgr.refresh()
+
+        let choices = fix.mgr.modelChoices()
+        #expect(choices.allSatisfy(\.runnable))
+
+        let recommended = choices.filter(\.isRecommended).map(\.id)
+        #expect(recommended == [modelE2B])
     }
 
     @Test("insufficient disk: not-downloaded model blocked")

@@ -129,21 +129,24 @@ struct IntelligenceAITests {
     }
 
     /// Transcript-only evidence: a self-introduction and a thank-you to the
-    /// previous speaker. No voiceprint evidence.
+    /// previous speaker. No voiceprint evidence. Three invitees, so Speaker 1 (no
+    /// name cue) may be the remaining invitee, Priya, or left blank.
     @Test("self-intro-and-thanks: Steve introduces himself and thanks Daniel", arguments: AITestModel.all)
     func selfIntroAndThanks(model: AITestModel) async throws {
         guard let conn = try await AITestConnection.connection(for: model) else { return }
 
         let transcript = """
-        Speaker 0: Hi, I'm Steve. Thanks for joining. Can someone give me the status of the release?
-        Speaker 1: Sure, give me a second to pull it up.
+        Speaker 0: Hi, I'm Steve. Let's start with the release status.
+        Speaker 1: Quick note first: the design review moved to Friday.
+        Speaker 0: Noted. So, the release?
         Speaker 2: The release branch is cut and QA signed off yesterday. We ship on Thursday.
-        Speaker 0: Thanks for that, Daniel. Let's plan the announcement next.
+        Speaker 0: Thanks for that, Daniel.
         """
 
         let invitees = CalendarContextData(attendees: [
             PersonData(id: UUID(), name: "Steve", email: "steve@kiln.tech"),
-            PersonData(id: UUID(), name: "Daniel", email: "daniel@kiln.tech")
+            PersonData(id: UUID(), name: "Daniel", email: "daniel@kiln.tech"),
+            PersonData(id: UUID(), name: "Priya", email: "priya@kiln.tech")
         ])
         let detail = MeetingDetailData(
             id: UUID(), title: "Release Check-in", date: Date(),
@@ -173,13 +176,11 @@ struct IntelligenceAITests {
             } else {
                 problems.append("Speaker 2 was not identified (expected Daniel)")
             }
-            // Only Speaker 2 is Daniel; Speaker 1 may be omitted.
-            let otherDaniels = parsed
-                .filter { $0.key != 2 && $0.value.name.lowercased().contains("daniel") }
-                .map { "Speaker \($0.key)" }
-                .sorted()
-            if !otherDaniels.isEmpty {
-                problems.append("\(otherDaniels.joined(separator: ", ")) also named Daniel; only Speaker 2 should be")
+            // Speaker 1 is the remaining invitee (Priya) or blank, never Steve or Daniel.
+            if let speaker1 = parsed[1], !speaker1.name.trimmingCharacters(in: .whitespaces).isEmpty,
+               !speaker1.name.lowercased().contains("priya")
+            {
+                problems.append("Speaker 1 is \"\(speaker1.name)\"; expected Priya or blank")
             }
             return problems
         }

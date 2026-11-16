@@ -683,6 +683,21 @@ struct IntelligencePromptsTests {
         #expect(result.contains("<speakerIndex> | <Full Name>"))
     }
 
+    @Test("speakerTaskInstructions opens with the evidence examples, one bullet per line")
+    func speakerTaskInstructionsEvidenceExamples() {
+        let expectedOpening = """
+        Match diarization speakers (Speaker 0, Speaker 1, ...) to real people using evidence from the transcript and the invitee list. For example:
+         - "Hi Daniel" in 2 person conversation implies other person is Daniel
+         - "Hi I'm Daniel" implies speaker is Daniel
+         - "Thanks for that Daniel" implies prior speaker is Daniel
+         - Other contextual clues
+        Prefer matching to an invitee so we capture their email. If a speaker cannot be confidently identified, omit them.
+
+        If a <voiceprint_matches> section is provided
+        """
+        #expect(IntelligencePrompts.speakerTaskInstructions.hasPrefix(expectedOpening))
+    }
+
     @Test("summaryOnlyFirstUser includes named transcript and summary task")
     func summaryOnlyFirstUserContent() {
         let detail = MeetingDetailData(

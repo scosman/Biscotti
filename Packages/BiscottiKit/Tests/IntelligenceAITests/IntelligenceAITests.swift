@@ -19,91 +19,13 @@ private let isAITestEnabled =
 /// one GGUF.
 ///
 /// Each speaker case builds the real first user message with
-/// `IntelligencePrompts.analysisFirstUser` and a handwritten
-/// `<voiceprint_matches>` block, runs with `MeetingAnalyzer.speakerOptions`,
+/// `IntelligencePrompts.analysisFirstUser` (most with a handwritten
+/// `<voiceprint_matches>` block), runs with `MeetingAnalyzer.speakerOptions`,
 /// and parses with `SpeakerMappingParser`. Output varies, so each case runs
-/// 3 times and passes when >= 2 runs are correct.
+/// 3 times and passes when >= 2 runs are correct; cases checked through
+/// `expectMostRunsCorrect` list the conditions each failed run broke.
 @Suite("Intelligence AI Tests (BISCOTTI_RUN_AI_TESTS=1)", .enabled(if: isAITestEnabled), .serialized)
 struct IntelligenceAITests {
-    // MARK: - Helpers
-
-    /// Run a speaker-identification prompt 3 times, return parsed results.
-    private static func runSpeakerID(
-        conn: LLMConnection, model: AITestModel, userContent: String
-    ) async throws -> [[Int: SpeakerMappingParser.SpeakerMapping]] {
-        let messages: [LLMMessage] = [
-            .system(IntelligencePrompts.analysisSystem),
-            .user(userContent)
-        ]
-        var results: [[Int: SpeakerMappingParser.SpeakerMapping]] = []
-        for run in 1 ... 3 {
-            let result = try await conn.generate(
-                messages: messages, options: MeetingAnalyzer.speakerOptions
-            )
-            // Raw output in the test log, for prompt tuning when a case fails.
-            print("[IntelligenceAITests] [\(model.name)] run \(run) raw output:\n\(result.rawText)\n---")
-            results.append(SpeakerMappingParser.parse(result.text))
-        }
-        return results
-    }
-
-    /// Phrases a leaked chain of thought opens with (seen on E2B/E4B).
-    private static let reasoningOpeners = [
-        "the user wants", "the user is asking", "the user has", "i need to", "let me ", "okay, ", "first, i"
-    ]
-
-    /// Expects `result` to be a direct answer: no thought-channel tokens in the raw
-    /// output, no reasoning-style opening, and the turn ended before the token budget.
-    private static func expectNoLeakedReasoning(
-        _ result: GenerationResult, task: String, model: AITestModel
-    ) {
-        let raw = result.rawText
-        #expect(
-            !raw.contains("<channel|>") && !raw.contains("<|channel>"),
-            "[\(model.name)] \(task): thinking off must not use a thought channel; raw output:\n\(raw)"
-        )
-        let opening = result.text.lowercased()
-        let readsLikeReasoning = reasoningOpeners.contains { opening.hasPrefix($0) }
-        #expect(
-            !readsLikeReasoning,
-            "[\(model.name)] \(task): output reads like reasoning:\n\(result.text)"
-        )
-        #expect(
-            result.finishReason != .maxTokens,
-            "[\(model.name)] \(task): hit the token budget, likely spent on reasoning; raw output:\n\(raw)"
-        )
-    }
-
-    /// Streams the summary turn as `MeetingAnalyzer` does and checks both the
-    /// streamed tokens and the final result for leaked reasoning.
-    private static func streamSummary(
-        conn: LLMConnection, model: AITestModel, messages: [LLMMessage]
-    ) async throws -> GenerationResult {
-        var streamedSummary = ""
-        var summaryResult: GenerationResult?
-        let stream = await conn.generateStreaming(
-            messages: messages, options: MeetingAnalyzer.summaryOptions
-        )
-        for try await event in stream {
-            switch event {
-            case let .token(text):
-                streamedSummary += text
-            case let .done(result):
-                summaryResult = result
-            case .reasoningToken:
-                break
-            }
-        }
-        let summary = try #require(summaryResult, "Stream must end with a .done event")
-        print("[IntelligenceAITests] [\(model.name)] summary raw output:\n\(summary.rawText)\n---")
-        expectNoLeakedReasoning(summary, task: "summary", model: model)
-        #expect(
-            !streamedSummary.contains("<channel|>"),
-            "[\(model.name)] summary: streamed tokens must not carry channel tokens"
-        )
-        return summary
-    }
-
     // MARK: - Test cases
 
     @Test(
@@ -185,22 +107,82 @@ struct IntelligenceAITests {
         )
 
         let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
-        var successes = 0
-        for parsed in results {
+        Self.expectMostRunsCorrect(results, model: model) { parsed in
+            var problems: [String] = []
             // Speaker 0 is Sam/Samantha, with the listed email or none.
-            // Speaker 1 (the one who says "Hi Samantha") must not get the name.
-            if let mapping = parsed[0],
-               mapping.name.lowercased().contains("sam"),
-               mapping.email == nil || mapping.email == "sam@kiln.tech",
-               parsed[1]?.name.lowercased().contains("sam") != true
-            {
-                successes += 1
+            if let speaker0 = parsed[0] {
+                if !speaker0.name.lowercased().contains("sam") {
+                    problems.append("Speaker 0 is \"\(speaker0.name)\", not Sam/Samantha")
+                }
+                if let email = speaker0.email, email != "sam@kiln.tech" {
+                    problems.append("Speaker 0 email is \(email), not sam@kiln.tech or blank")
+                }
+            } else {
+                problems.append("Speaker 0 was not identified (expected Sam/Samantha)")
             }
+            // Speaker 1 (the one who says "Hi Samantha") must not get the name.
+            if let speaker1 = parsed[1], speaker1.name.lowercased().contains("sam") {
+                problems.append("Speaker 1 got \"\(speaker1.name)\", but Speaker 1 says \"Hi Samantha\"")
+            }
+            return problems
         }
-        #expect(
-            successes >= 2,
-            "[\(model.name)] Expected >= 2/3 runs to identify Speaker 0 as Sam/Samantha (email sam@kiln.tech or blank)"
+    }
+
+    /// Transcript-only evidence: a self-introduction and a thank-you to the
+    /// previous speaker. No voiceprint evidence.
+    @Test("self-intro-and-thanks: Steve introduces himself and thanks Daniel", arguments: AITestModel.all)
+    func selfIntroAndThanks(model: AITestModel) async throws {
+        guard let conn = try await AITestConnection.connection(for: model) else { return }
+
+        let transcript = """
+        Speaker 0: Hi, I'm Steve. Thanks for joining. Can someone give me the status of the release?
+        Speaker 1: Sure, give me a second to pull it up.
+        Speaker 2: The release branch is cut and QA signed off yesterday. We ship on Thursday.
+        Speaker 0: Thanks for that, Daniel. Let's plan the announcement next.
+        """
+
+        let invitees = CalendarContextData(attendees: [
+            PersonData(id: UUID(), name: "Steve", email: "steve@kiln.tech"),
+            PersonData(id: UUID(), name: "Daniel", email: "daniel@kiln.tech")
+        ])
+        let detail = MeetingDetailData(
+            id: UUID(), title: "Release Check-in", date: Date(),
+            duration: nil, hasAudio: false, preferredTranscript: nil,
+            calendar: invitees
         )
+        let userContent = IntelligencePrompts.analysisFirstUser(
+            detail: detail, human: [:], transcriptSpeakerLabeled: transcript
+        )
+
+        let results = try await Self.runSpeakerID(conn: conn, model: model, userContent: userContent)
+        Self.expectMostRunsCorrect(results, model: model) { parsed in
+            var problems: [String] = []
+            // Speaker 0 says "Hi, I'm Steve".
+            if let speaker0 = parsed[0] {
+                if !speaker0.name.lowercased().contains("steve") {
+                    problems.append("Speaker 0 is \"\(speaker0.name)\", but says \"Hi, I'm Steve\"")
+                }
+            } else {
+                problems.append("Speaker 0 was not identified (expected Steve)")
+            }
+            // Speaker 0 thanks Daniel right after Speaker 2 answers.
+            if let speaker2 = parsed[2] {
+                if !speaker2.name.lowercased().contains("daniel") {
+                    problems.append("Speaker 2 is \"\(speaker2.name)\", but Speaker 0 then says \"Thanks for that, Daniel\"")
+                }
+            } else {
+                problems.append("Speaker 2 was not identified (expected Daniel)")
+            }
+            // Only Speaker 2 is Daniel; Speaker 1 may be omitted.
+            let otherDaniels = parsed
+                .filter { $0.key != 2 && $0.value.name.lowercased().contains("daniel") }
+                .map { "Speaker \($0.key)" }
+                .sorted()
+            if !otherDaniels.isEmpty {
+                problems.append("\(otherDaniels.joined(separator: ", ")) also named Daniel; only Speaker 2 should be")
+            }
+            return problems
+        }
     }
 
     @Test("different-humans-similar-voices: transcript disambiguates to Amit", arguments: AITestModel.all)

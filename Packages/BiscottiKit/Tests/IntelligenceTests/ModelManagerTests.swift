@@ -640,7 +640,8 @@ struct ModelManagerModelChoicesTests {
         await fix.mgr.refresh()
 
         let choices = fix.mgr.modelChoices()
-        #expect(choices.allSatisfy(\.runnable))
+        let allRunnable = choices.allSatisfy(\.runnable)
+        #expect(allRunnable)
 
         let recommended = choices.filter(\.isRecommended).map(\.id)
         #expect(recommended == [modelE2B])

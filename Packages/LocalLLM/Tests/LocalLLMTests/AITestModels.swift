@@ -17,7 +17,7 @@ import Testing
 /// A catalog model that isn't on disk skips its test cases (with a printed
 /// SKIPPED line) and fails each suite's presence test once, via
 /// ``expectAllCatalogModelsOnDisk()``, so a partial run can't pass silently.
-struct AITestModel: Sendable, CustomTestStringConvertible {
+struct AITestModel: CustomTestStringConvertible {
     let name: String
     let path: URL
     /// Where the model comes from; nil for an `LLM_MODEL_PATH` override.
@@ -86,7 +86,7 @@ struct AITestModel: Sendable, CustomTestStringConvertible {
 /// The one model connection an AI suite holds open. Models are GBs, so only one is
 /// loaded at a time: asking for a different model closes the current one first.
 enum AITestConnection {
-    private struct Loaded: Sendable {
+    private struct Loaded {
         let modelName: String
         let connection: LLMConnection
     }

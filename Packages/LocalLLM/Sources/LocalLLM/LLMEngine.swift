@@ -245,14 +245,13 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
             throw LocalLLMError.generationFailed("Engine not loaded or already unloaded")
         }
 
-        let promptString: String
-        if applyChatTemplate {
-            promptString = chatTemplate(thinking: thinking).render(
+        let promptString: String = if applyChatTemplate {
+            chatTemplate(thinking: thinking).render(
                 messages: messages, addGenerationPrompt: true
             )
         } else {
             // Raw mode: concatenate all message content
-            promptString = messages.map(\.content).joined()
+            messages.map(\.content).joined()
         }
 
         let tokens = try tokenize(text: promptString, vocab: vocab)
@@ -386,13 +385,12 @@ public actor LLMEngine { // swiftlint:disable:this type_body_length
         let memory = llama_get_memory(ctx)
 
         // 1. Build prompt string
-        let promptString: String
-        if options.applyChatTemplate {
-            promptString = chatTemplate(thinking: options.thinking).render(
+        let promptString: String = if options.applyChatTemplate {
+            chatTemplate(thinking: options.thinking).render(
                 messages: messages, addGenerationPrompt: true
             )
         } else {
-            promptString = messages.map(\.content).joined()
+            messages.map(\.content).joined()
         }
 
         // 2. Tokenize

@@ -44,7 +44,7 @@ public extension TestScript {
                 id: "llm_ai_tests_passed",
                 prompt: "With every catalog model downloaded, run `make test-ai` (runs the "
                     + "in-process LLM integration and analysis tests against each model). "
-                    + "Did all AI tests pass, with no model reported as SKIPPED?"
+                    + "Did all AI tests pass, including allCatalogModelsOnDisk?"
             ),
             // 4. Basic XPC inference
             .action(

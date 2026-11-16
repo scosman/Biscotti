@@ -7,14 +7,23 @@ import Testing
 /// These run against every model in `LLMModelCatalog.all` (each test is
 /// parameterized over `AITestModel.all`, labelled by model) and need
 /// `BISCOTTI_RUN_AI_TESTS=1` in the environment. A bare `swift test` skips them
-/// entirely (fast, no model needed). A catalog model that isn't downloaded is
-/// skipped with a "download it first" known issue; `LLM_MODEL_PATH` narrows the
-/// run to one GGUF.
+/// entirely (fast, no model needed). A catalog model that isn't downloaded
+/// skips its cases and fails `allCatalogModelsOnDisk` (one failure, naming each
+/// missing model and how to download it); `LLM_MODEL_PATH` narrows the run to
+/// one GGUF.
 ///
 /// Consecutive cases for the same model reuse its in-process connection
 /// (`AITestConnection`); only one multi-GB model is loaded at a time.
 @Suite("Integration (BISCOTTI_RUN_AI_TESTS=1)", .enabled(if: isAITestEnabled), .serialized)
 struct IntegrationTests {
+    @Test(
+        "All catalog models are on disk (download any missing model first)",
+        .enabled(if: AITestModel.overridePath == nil, "LLM_MODEL_PATH narrows the run to one model")
+    )
+    func allCatalogModelsOnDisk() {
+        AITestModel.expectAllCatalogModelsOnDisk()
+    }
+
     @Test("Stack works: load, generate, sane result", arguments: AITestModel.all)
     func stackWorks(model: AITestModel) async throws {
         guard let conn = try await AITestConnection.connection(for: model) else { return }

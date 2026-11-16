@@ -13,6 +13,10 @@ import Testing
 /// By default that is every model in `LLMModelCatalog.all`, at the path the app
 /// loads it from, so adding a catalog model adds its coverage. `LLM_MODEL_PATH`
 /// narrows a run to that one GGUF.
+///
+/// A catalog model that isn't on disk skips its test cases (with a printed
+/// SKIPPED line) and fails each suite's presence test once, via
+/// ``expectAllCatalogModelsOnDisk()``, so a partial run can't pass silently.
 struct AITestModel: Sendable, CustomTestStringConvertible {
     let name: String
     let path: URL
@@ -23,9 +27,12 @@ struct AITestModel: Sendable, CustomTestStringConvertible {
         name
     }
 
+    /// The `LLM_MODEL_PATH` override, if set.
+    static let overridePath = ProcessInfo.processInfo.environment["LLM_MODEL_PATH"]
+
     static let all: [AITestModel] = {
-        if let override = ProcessInfo.processInfo.environment["LLM_MODEL_PATH"] {
-            let path = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+        if let overridePath = AITestModel.overridePath {
+            let path = URL(fileURLWithPath: (overridePath as NSString).expandingTildeInPath)
             return [AITestModel(name: "LLM_MODEL_PATH (\(path.lastPathComponent))", path: path, downloadURL: nil)]
         }
         let inventory = ModelInventory(cacheDirectory: LocalLLMPaths.defaultModelCacheDir)
@@ -38,23 +45,41 @@ struct AITestModel: Sendable, CustomTestStringConvertible {
         ModelDownloader.fileExistsAndNonEmpty(at: path)
     }
 
-    /// Records why this model's test case did not run. A catalog model that isn't
-    /// downloaded is a known issue (the run still passes, with the message shown); an
-    /// `LLM_MODEL_PATH` that doesn't exist is a failure.
-    func recordMissing() {
-        guard let downloadURL else {
+    /// Where the model should be and how to get it.
+    private var missingDescription: String {
+        var description = "\(name): not on disk at \(path.path)."
+        if let downloadURL {
+            description += " Download it first: in Biscotti (Settings → AI Enhancements), or "
+                + "`swift run --package-path Packages/LocalLLM localllm download --url \(downloadURL.absoluteString)`."
+        }
+        return description
+    }
+
+    /// Reports why this model's test case is not running. A missing catalog model
+    /// only prints a SKIPPED line here: ``expectAllCatalogModelsOnDisk()`` records
+    /// the one failure for it. A missing `LLM_MODEL_PATH` file fails here.
+    func reportMissing() {
+        guard downloadURL != nil else {
             Issue.record("LLM_MODEL_PATH points at \(path.path), which is not on disk.")
             return
         }
-        let message = """
-        SKIPPED \(name): not on disk at \(path.path). Download it first: in Biscotti \
-        (Settings → AI Enhancements), or `swift run --package-path Packages/LocalLLM \
-        localllm download --url \(downloadURL.absoluteString)`.
-        """
-        print("[AI tests] \(message)")
-        withKnownIssue("\(name) is not downloaded") {
-            Issue.record("\(message)")
-        }
+        print("[AI tests] SKIPPED \(missingDescription)")
+    }
+
+    /// Records one failure naming every catalog model that isn't on disk, with its
+    /// path and download instructions. The presence tests that call this are
+    /// disabled under `LLM_MODEL_PATH`, a deliberate single-model run; the guard
+    /// below keeps it a no-op there too.
+    static func expectAllCatalogModelsOnDisk() {
+        guard overridePath == nil else { return }
+        let missing = all.filter { !$0.isOnDisk }
+        guard !missing.isEmpty else { return }
+        let details = missing.map { "- \($0.missingDescription)" }.joined(separator: "\n")
+        Issue.record("""
+        \(missing.count) catalog model(s) not on disk, so their AI tests were skipped. \
+        test-ai must cover every model in LLMModelCatalog.all:
+        \(details)
+        """)
     }
 }
 
@@ -91,7 +116,7 @@ enum AITestConnection {
     }()
 
     /// The open in-process connection for `model`, loading it on first use.
-    /// Returns nil (after recording why) when the model is not on disk.
+    /// Returns nil (after reporting why) when the model is not on disk.
     static func connection(
         for model: AITestModel,
         config: EngineConfig = EngineConfig(contextSize: 4096, seed: 42)
@@ -100,7 +125,7 @@ enum AITestConnection {
             return loaded.connection
         }
         guard model.isOnDisk else {
-            model.recordMissing()
+            model.reportMissing()
             return nil
         }
         if let previous = takeCurrent() {

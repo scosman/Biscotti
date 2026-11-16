@@ -13,9 +13,10 @@ private let isAITestEnabled =
 /// Every test runs against every model in `LLMModelCatalog.all` (parameterized
 /// over `AITestModel.all`, labelled by model) and needs
 /// `BISCOTTI_RUN_AI_TESTS=1` in the environment. A bare `swift test` skips them
-/// entirely. Run via `make test-ai`. A catalog model that isn't downloaded is
-/// skipped with a "download it first" known issue; `LLM_MODEL_PATH` narrows the
-/// run to one GGUF.
+/// entirely. Run via `make test-ai`. A catalog model that isn't downloaded
+/// skips its cases and fails `allCatalogModelsOnDisk` (one failure, naming each
+/// missing model and how to download it); `LLM_MODEL_PATH` narrows the run to
+/// one GGUF.
 ///
 /// Each speaker case builds the real first user message with
 /// `IntelligencePrompts.analysisFirstUser` and a handwritten
@@ -104,6 +105,14 @@ struct IntelligenceAITests {
     }
 
     // MARK: - Test cases
+
+    @Test(
+        "All catalog models are on disk (download any missing model first)",
+        .enabled(if: AITestModel.overridePath == nil, "LLM_MODEL_PATH narrows the run to one model")
+    )
+    func allCatalogModelsOnDisk() {
+        AITestModel.expectAllCatalogModelsOnDisk()
+    }
 
     /// Summary then title, as `MeetingAnalyzer` runs them (summary streamed, title
     /// as a follow-up turn, both thinking off). Neither may contain reasoning.

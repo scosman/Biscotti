@@ -273,7 +273,8 @@ struct MeetingDetailReTranscribeEngineTests {
         await viewModel.load()
 
         // The no-arg reTranscribe (Transcribe now) uses the target engine
-        await viewModel.reTranscribe()
+        viewModel.reTranscribe()
+        await fix.core.awaitPendingTranscription()
 
         // Should use target's config (whisper)
         #expect(fix.fakeEngine.backing.lastConfig?.engine == .whisper)

@@ -103,25 +103,27 @@ struct CLIArgumentParsingTests {
         #expect(cli.json == false)
     }
 
-    @Test("Parsing fails when --system is missing")
-    func requiresSystemPath() {
-        #expect(throws: (any Error).self) {
-            _ = try TranscribeCLI.parse(["--mic", "/mic.wav"])
-        }
+    @Test("Parses mic-only (system omitted)")
+    func micOnlyParsesSuccessfully() throws {
+        let cli = try TranscribeCLI.parse(["--mic", "/mic.wav"])
+        #expect(cli.mic == "/mic.wav")
+        #expect(cli.system == nil)
     }
 
-    @Test("Parsing fails when --mic is missing")
-    func requiresMicPath() {
-        #expect(throws: (any Error).self) {
-            _ = try TranscribeCLI.parse(["--system", "/system.wav"])
-        }
+    @Test("Parses system-only (mic omitted)")
+    func systemOnlyParsesSuccessfully() throws {
+        let cli = try TranscribeCLI.parse(["--system", "/system.wav"])
+        #expect(cli.mic == nil)
+        #expect(cli.system == "/system.wav")
     }
 
-    @Test("Parsing fails with no audio paths")
-    func validationRequiresAudioPaths() {
-        #expect(throws: (any Error).self) {
-            _ = try TranscribeCLI.parse([])
-        }
+    @Test("Parses with no audio paths (runtime guard rejects)")
+    func noPathsParsesSuccessfully() throws {
+        // Both paths are optional at parse time; the "at least one required"
+        // guard lives in run(), not in ArgumentParser validation.
+        let cli = try TranscribeCLI.parse([])
+        #expect(cli.mic == nil)
+        #expect(cli.system == nil)
     }
 }
 

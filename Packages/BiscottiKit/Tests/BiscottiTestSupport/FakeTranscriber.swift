@@ -105,8 +105,8 @@ public struct FakeTranscriber: Transcribing, @unchecked Sendable {
     }
 
     public func processAudio(
-        mic: URL,
-        system: URL,
+        mic: URL?,
+        system: URL?,
         customVocabulary: [String],
         config: TranscriptionConfig
     ) async throws -> TranscriptResult {

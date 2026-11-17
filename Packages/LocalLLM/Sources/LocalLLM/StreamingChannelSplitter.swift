@@ -12,6 +12,12 @@
 ///
 /// Reuses `OutputParser.thinkingOpenTag` / `.thinkingCloseTag` as the single
 /// source of truth for marker strings.
+///
+/// With reasoning suppressed, a bare close tag that arrives before any other marker
+/// is treated as the end of plain-text reasoning (see
+/// `OutputParser.dropThroughBareThinkingClose`): the marker and any text still
+/// withheld before it are dropped. Text already released cannot be recalled, so the
+/// final `GenerationResult.text` is the authoritative cleaned output.
 public struct StreamingChannelSplitter: Sendable {
     /// Which channel the splitter is currently in.
     private enum State {
@@ -29,6 +35,8 @@ public struct StreamingChannelSplitter: Sendable {
     public let suppressReasoning: Bool
 
     private var state: State = .content
+    /// Whether any marker (open, close, or bare close) has been consumed yet.
+    private var sawMarker = false
     /// Buffer of unclassified text that might contain a partial marker.
     private var buffer: String = ""
 
@@ -76,18 +84,24 @@ public struct StreamingChannelSplitter: Sendable {
         var pieces: [Piece] = []
 
         while !buffer.isEmpty {
-            let marker = currentMarker()
+            let markers = currentMarkers()
 
-            // Check for a complete marker match.
-            if let range = buffer.range(of: marker, options: .literal) {
+            // Check for a complete marker match (earliest in the buffer wins).
+            if let match = earliestMatch(of: markers) {
+                let prefix = String(buffer[..<match.range.lowerBound])
+                // Consume the marker (strip it from output).
+                buffer = String(buffer[match.range.upperBound...])
+                sawMarker = true
+
+                if state == .content, match.marker == Self.closeTag {
+                    // Bare close: the withheld prefix is reasoning; drop it.
+                    continue
+                }
+
                 // Everything before the marker belongs to the current channel.
-                let prefix = String(buffer[..<range.lowerBound])
                 if !prefix.isEmpty {
                     pieces.append(contentsOf: emitBuffer(prefix))
                 }
-
-                // Consume the marker (strip it from output).
-                buffer = String(buffer[range.upperBound...])
 
                 // Transition state.
                 switch state {
@@ -101,8 +115,8 @@ public struct StreamingChannelSplitter: Sendable {
                 continue
             }
 
-            // Check if the marker could be partially present at the tail.
-            if hasPotentialPartialMarker(marker) {
+            // Check if a marker could be partially present at the tail.
+            if markers.contains(where: { hasPotentialPartialMarker($0) }) {
                 // Release everything up to the potential partial match, withhold the tail.
                 let safeCount = buffer.count - Self.maxMarkerLength
                 if safeCount > 0 {
@@ -133,14 +147,25 @@ public struct StreamingChannelSplitter: Sendable {
         return pieces
     }
 
-    /// The marker we're looking for in the current state.
-    private func currentMarker() -> String {
+    /// The markers we're looking for in the current state.
+    private func currentMarkers() -> [String] {
         switch state {
         case .content:
-            Self.openTag
+            suppressReasoning && !sawMarker ? [Self.openTag, Self.closeTag] : [Self.openTag]
         case .reasoning:
-            Self.closeTag
+            [Self.closeTag]
         }
+    }
+
+    /// The marker whose complete match starts earliest in the buffer, if any.
+    private func earliestMatch(
+        of markers: [String]
+    ) -> (marker: String, range: Range<String.Index>)? {
+        markers
+            .compactMap { marker in
+                buffer.range(of: marker, options: .literal).map { (marker: marker, range: $0) }
+            }
+            .min { $0.range.lowerBound < $1.range.lowerBound }
     }
 
     /// Check if the tail of the buffer could be a partial match for the marker.

@@ -100,10 +100,14 @@ test: ## GATING: run package tests
 	  rc=$${PIPESTATUS[0]}; [ $$rc -eq 0 ] || exit $$rc; \
 	done
 
-test-ai: ## NON-GATING: heavy AI/model tests (downloads GBs; not in CI)
-	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription
-	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM
-	BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/BiscottiKit --filter IntelligenceAITests
+test-ai: ## NON-GATING: heavy AI/model tests; LLM suites cover every catalog model (downloads GBs; not in CI)
+	@# Run every suite even if an earlier one fails (e.g. a missing model failing
+	@# allCatalogModelsOnDisk), then fail if any did.
+	@status=0; \
+	echo "==> test-ai: Packages/Transcription"; BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/Transcription || status=1; \
+	echo "==> test-ai: Packages/LocalLLM"; BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/LocalLLM || status=1; \
+	echo "==> test-ai: Packages/BiscottiKit (IntelligenceAITests)"; BISCOTTI_RUN_AI_TESTS=1 swift test --package-path Packages/BiscottiKit --filter IntelligenceAITests || status=1; \
+	exit $$status
 
 bench: ## NON-GATING: FTS5 search benchmarks (SLOW ~12 min; prints report)
 	BISCOTTI_RUN_BENCH=1 swift test --no-parallel --package-path Packages/BiscottiKit --filter "SearchBenchmark"

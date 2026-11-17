@@ -77,11 +77,12 @@ public enum IntelligencePrompts {
     /// Instructions for the speaker-identification task appended to the first
     /// user turn when the speaker turn will run.
     public static let speakerTaskInstructions = """
-    Match diarization speakers (Speaker 0, Speaker 1, ...) to real people using \
-    evidence from the transcript (direct address like "Hi Daniel", \
-    self-introductions, hand-offs) and the invitee list. Prefer matching to an \
-    invitee so we capture their email. If a speaker cannot be confidently \
-    identified, omit them.
+    Match diarization speakers (Speaker 0, Speaker 1, ...) to real people using evidence from the transcript and the invitee list. For example:
+     - "Hi Jeff" in 2 person conversation implies other person is Jeff
+     - "Hi I'm Jeff" implies speaker is Jeff
+     - "Thanks for that Jeff" implies prior speaker is Jeff
+     - Other contextual clues
+    Prefer matching to an invitee so we capture their email. If a speaker cannot be confidently identified, omit them.
 
     If a <voiceprint_matches> section is provided, it compares each speaker's voice \
     with speakers from earlier meetings. Voice evidence and transcript evidence are \

@@ -113,7 +113,8 @@ struct MeetingDetailReTranscribeEngineTests {
         )
         await viewModel.load()
 
-        await viewModel.reTranscribe(with: .apple)
+        viewModel.reTranscribe(with: .apple)
+        await fix.core.awaitPendingTranscription()
 
         #expect(fix.fakeEngine.backing.lastConfig?.engine == .apple)
         #expect(fix.fakeEngine.backing.lastConfig?.locale == "en_US")
@@ -139,7 +140,8 @@ struct MeetingDetailReTranscribeEngineTests {
         )
         await viewModel.load()
 
-        await viewModel.reTranscribe(with: .whisper)
+        viewModel.reTranscribe(with: .whisper)
+        await fix.core.awaitPendingTranscription()
 
         #expect(fix.fakeEngine.backing.lastConfig?.engine == .whisper)
     }

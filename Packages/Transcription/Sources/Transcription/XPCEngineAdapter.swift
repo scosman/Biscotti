@@ -52,8 +52,8 @@ final class XPCEngineAdapter: TranscriptionEngine, @unchecked Sendable {
     }
 
     func processAudio(
-        micPath: String,
-        systemPath: String,
+        micPath: String?,
+        systemPath: String?,
         customVocabulary: [String],
         config: TranscriptionConfig
     ) async throws -> TranscriptResult {

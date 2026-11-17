@@ -1,11 +1,13 @@
 import AppCore
 import AppKit
+import AudioImport
 import Calendar
 import DataStore
 import DesignSystem
 import Formatting
 import Foundation
 import HomeUI
+import ImportUI
 import MeetingDetailUI
 import MeetingListUI
 import OnboardingUI
@@ -40,6 +42,12 @@ public final class AppShellViewModel {
     /// The onboarding view model (created once, never replaced).
     public let onboardingViewModel: OnboardingViewModel
 
+    /// The import view model (created once, never replaced).
+    public let importViewModel: ImportViewModel
+
+    /// Shared state for the drop overlay and the window drop target.
+    public let dropTarget = DropTargetModel()
+
     /// Cached meeting-detail view model, keyed by meeting ID.
     private var cachedDetailMeetingID: UUID?
     private var cachedDetailViewModel: MeetingDetailViewModel?
@@ -72,6 +80,7 @@ public final class AppShellViewModel {
         )
         settingsViewModel = SettingsViewModel(core: core)
         onboardingViewModel = OnboardingViewModel(core: core)
+        importViewModel = ImportViewModel(core: core)
     }
 
     /// Returns a stable `MeetingDetailViewModel` for the given meeting ID.
@@ -243,6 +252,38 @@ public final class AppShellViewModel {
     /// Routes to Settings.
     public func showSettings() {
         core.showSettings()
+    }
+
+    // MARK: - Import
+
+    /// Whether the import session is non-empty (drives sidebar row visibility).
+    public var hasImportSession: Bool {
+        core.audioImport.hasSession
+    }
+
+    /// Whether any import item is currently converting (drives sidebar spinner).
+    public var isImportConverting: Bool {
+        core.audioImport.isConverting
+    }
+
+    /// Routes to the Import screen.
+    public func showImport() {
+        core.showImport()
+    }
+
+    /// Adds entries to the import session and shows the Import screen.
+    public func importFiles(_ entries: [ImportEntry]) {
+        core.importFiles(entries)
+    }
+
+    /// Whether a File > Import request is pending (consumed by fileImporter).
+    public var importPanelRequested: Bool {
+        core.importPanelRequested
+    }
+
+    /// Clears the import panel request after the panel is presented.
+    public func consumeImportPanelRequest() {
+        core.consumeImportPanelRequest()
     }
 
     /// Requests focus on the search field (Cmd+F).

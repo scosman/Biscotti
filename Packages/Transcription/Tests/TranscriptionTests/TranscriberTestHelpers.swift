@@ -37,8 +37,8 @@ actor StubTranscriptionEngine: TranscriptionEngine {
     }
 
     func processAudio(
-        micPath _: String,
-        systemPath _: String,
+        micPath _: String?,
+        systemPath _: String?,
         customVocabulary _: [String],
         config: TranscriptionConfig
     ) async throws -> TranscriptResult {

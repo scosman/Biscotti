@@ -1,4 +1,5 @@
 import AudioCapture
+import AudioImport
 import Calendar
 import DataStore
 import Foundation
@@ -26,7 +27,7 @@ public extension AppCore {
     ///   - transcriberServiceName: The Mach service name for the XPC
     ///     transcription worker (e.g. `"net.scosman.biscotti.BiscottiTranscriber"`).
     /// - Returns: A ready-to-use `AppCore`. Call `onLaunch()` after presenting the UI.
-    static func live(
+    static func live( // swiftlint:disable:this function_body_length
         storageRoot: URL,
         transcriberServiceName: String
     ) throws -> AppCore {
@@ -73,6 +74,12 @@ public extension AppCore {
             store: store
         )
 
+        logger.info("AppCore.live: AudioImportController init")
+        let audioImportCtrl = AudioImportController(
+            store: store,
+            recordingsRoot: recordingsRoot
+        )
+
         logger.info("AppCore.live: constructing AppCore")
         let core = AppCore(
             store: store,
@@ -84,7 +91,8 @@ public extension AppCore {
             notifications: notifications,
             intelligence: intelligence,
             modelManager: modelManager,
-            speechEngines: speechEngines
+            speechEngines: speechEngines,
+            audioImport: audioImportCtrl
         )
         logger.info("AppCore.live: done")
         return core
@@ -259,8 +267,8 @@ private struct LiveTranscriberAdapter: Transcribing {
     }
 
     func processAudio(
-        mic: URL,
-        system: URL,
+        mic: URL?,
+        system: URL?,
         customVocabulary: [String],
         config: TranscriptionConfig
     ) async throws -> TranscriptResult {

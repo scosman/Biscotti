@@ -127,4 +127,49 @@ struct OutputParserTests {
         let result = OutputParser.stripTrailingTurnTokens(text)
         #expect(result == "Hello")
     }
+
+    // MARK: - Bare close tag (reasoning written as plain text)
+
+    @Test("Thinking stripped: bare <channel|> drops everything before and including it")
+    func bareCloseDropsLeakedReasoning() {
+        let raw = "The user wants me to map the speakers.\nSpeaker 1 is Steve.<channel|>1 | Steve | steve@kiln.tech<turn|>"
+        let result = OutputParser.parse(rawText: raw, stripThinking: true)
+        #expect(result.text == "1 | Steve | steve@kiln.tech")
+        #expect(result.reasoning == nil)
+    }
+
+    @Test("Thinking kept: bare <channel|> is left alone")
+    func bareCloseIgnoredWhenThinkingKept() {
+        let result = OutputParser.parse(rawText: "reasoning<channel|>answer", stripThinking: false)
+        #expect(result.text == "reasoning<channel|>answer")
+    }
+
+    @Test("Thinking stripped: only the first bare <channel|> is cut")
+    func bareCloseCutsAtFirstOnly() {
+        let result = OutputParser.parse(rawText: "reasoning<channel|>answer<channel|>tail")
+        #expect(result.text == "answer<channel|>tail")
+    }
+
+    @Test("Thinking stripped: a full thinking block is not treated as a bare close")
+    func fullBlockIsNotBareClose() {
+        let result = OutputParser.parse(rawText: "Intro <|channel>thought\nhmm<channel|>answer")
+        #expect(result.text == "Intro answer")
+    }
+
+    @Test("Thinking stripped: output with no channel tags is unchanged")
+    func noTagsUnchanged() {
+        let result = OutputParser.parse(rawText: "Weekly sync on the billing fix")
+        #expect(result.text == "Weekly sync on the billing fix")
+    }
+
+    @Test("dropThroughBareThinkingClose keeps a close tag preceded by another channel's open")
+    func closeAfterOtherChannelOpenIsNotBare() {
+        let text = "<|channel>analysis\nx<channel|>y"
+        #expect(OutputParser.dropThroughBareThinkingClose(text) == text)
+    }
+
+    @Test("dropThroughBareThinkingClose: bare close at the very end leaves nothing")
+    func bareCloseAtEnd() {
+        #expect(OutputParser.dropThroughBareThinkingClose("all reasoning<channel|>").isEmpty)
+    }
 }

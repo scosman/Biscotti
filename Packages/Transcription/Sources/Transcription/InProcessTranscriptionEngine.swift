@@ -79,8 +79,8 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     }
 
     public func processAudio(
-        micPath: String,
-        systemPath: String,
+        micPath: String?,
+        systemPath: String?,
         customVocabulary: [String],
         config: TranscriptionConfig
     ) async throws -> TranscriptResult {
@@ -244,7 +244,7 @@ extension InProcessTranscriptionEngine {
 
 private extension InProcessTranscriptionEngine {
     func loadAndMergeAudio(
-        micPath: String, systemPath: String
+        micPath: String?, systemPath: String?
     ) throws -> AudioLoading.MergeResult {
         try AudioLoading.loadAndMerge(micPath: micPath, systemPath: systemPath)
     }

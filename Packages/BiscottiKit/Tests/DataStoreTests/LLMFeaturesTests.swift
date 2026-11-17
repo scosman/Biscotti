@@ -1,7 +1,7 @@
-import DataStore
 import Foundation
 import Testing
 import Transcription
+@testable import DataStore
 
 // MARK: - Shared helpers
 
@@ -629,5 +629,134 @@ struct AppSettingsSummaryPromptTests {
 
         let dto = try await store.settings()
         #expect(dto.summaryPrompt == "Custom instructions")
+    }
+}
+
+// MARK: - Title placeholder tests
+
+@Suite("DataStore -- titleIsPlaceholder policy")
+struct TitlePlaceholderTests {
+    @Test("titleIsPlaceholder defaults to false")
+    func titleIsPlaceholder_defaultsFalse() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Standup")
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.titleIsPlaceholder == false)
+    }
+
+    @Test("isAIReplaceableTitle truth table")
+    func isAIReplaceableTitle_truthTable() {
+        // Default title, not edited, not placeholder -> true
+        #expect(Meeting.isAIReplaceableTitle(
+            title: Meeting.defaultTitle, editedTitle: false,
+            titleIsPlaceholder: false
+        ) == true)
+
+        // Placeholder title, not edited -> true
+        #expect(Meeting.isAIReplaceableTitle(
+            title: "Imported from clip.m4a", editedTitle: false,
+            titleIsPlaceholder: true
+        ) == true)
+
+        // Edited title (even if default text) -> false
+        #expect(Meeting.isAIReplaceableTitle(
+            title: Meeting.defaultTitle, editedTitle: true,
+            titleIsPlaceholder: false
+        ) == false)
+
+        // Custom non-placeholder title, not edited -> false
+        #expect(Meeting.isAIReplaceableTitle(
+            title: "My Custom Meeting", editedTitle: false,
+            titleIsPlaceholder: false
+        ) == false)
+
+        // Edited placeholder -> false (editedTitle overrides placeholder)
+        #expect(Meeting.isAIReplaceableTitle(
+            title: "Imported from clip.m4a", editedTitle: true,
+            titleIsPlaceholder: true
+        ) == false)
+    }
+
+    @Test("applyGeneratedTitle replaces placeholder and clears flag")
+    func applyGeneratedTitle_replacesPlaceholder_andClearsFlag() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Imported from clip.m4a")
+
+        // Set titleIsPlaceholder via isolated actor access
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        try await store.applyGeneratedTitle("Sprint Planning", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Planning")
+        #expect(detail?.titleIsPlaceholder == false)
+        #expect(detail?.editedTitle == false)
+    }
+
+    @Test("applyGeneratedTitle keeps custom non-placeholder title")
+    func applyGeneratedTitle_keepsCustomNonPlaceholderTitle() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "My Custom Meeting")
+
+        try await store.applyGeneratedTitle("Sprint Planning", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "My Custom Meeting")
+    }
+
+    @Test("setTitle clears titleIsPlaceholder")
+    func setTitle_clearsPlaceholder() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Imported from clip.m4a")
+
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        try await store.setTitle("User Renamed", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.titleIsPlaceholder == false)
+        #expect(detail?.editedTitle == true)
+        #expect(detail?.title == "User Renamed")
+    }
+
+    @Test("applyEventTitle replaces placeholder and clears flag")
+    func applyEventTitle_replacesPlaceholder_andClearsFlag() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Imported from clip.m4a")
+
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        try await store.applyEventTitle("Sprint Retrospective", for: meetingID)
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.title == "Sprint Retrospective")
+        #expect(detail?.titleIsPlaceholder == false)
+    }
+
+    @Test("meetingDetail exposes titleIsPlaceholder")
+    func meetingDetail_exposesTitleIsPlaceholder() async throws {
+        let store = try makeStore()
+        let meetingID = try await store.createMeeting(title: "Imported from clip.m4a")
+
+        try await store.read { iso in
+            let meeting = try #require(try iso.meeting(id: meetingID))
+            meeting.titleIsPlaceholder = true
+            try iso.save()
+        }
+
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.titleIsPlaceholder == true)
     }
 }

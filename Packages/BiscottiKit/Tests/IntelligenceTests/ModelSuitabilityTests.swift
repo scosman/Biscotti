@@ -7,11 +7,13 @@ import Testing
 private let oneGB: UInt64 = 1_000_000_000
 private let catalog = LLMModelCatalog.all
 
-// Catalog entries by index -- 12B is first, E2B is second (display order).
-// Using index access avoids force-unwrapping the optional `model(id:)` lookup
-// at file scope where `try #require` is unavailable.
+// Catalog entries by index -- display order is 12B, E4B, E2B (pinned by
+// `LLMModelCatalogTests.catalogOrder`). Using index access avoids
+// force-unwrapping the optional `model(id:)` lookup at file scope where
+// `try #require` is unavailable.
 private let model12B = LLMModelCatalog.all[0]
-private let modelE2B = LLMModelCatalog.all[1]
+private let modelE4B = LLMModelCatalog.all[1]
+private let modelE2B = LLMModelCatalog.all[2]
 
 // MARK: - canRun tests
 
@@ -31,6 +33,21 @@ struct CanRunTests {
     )
     func canRun12B(ram: UInt64, expected: Bool) {
         #expect(ModelSuitability.canRun(model12B, ram: ram) == expected)
+    }
+
+    @Test(
+        "E4B: RAM boundary (12 GB floor)",
+        arguments: [
+            (ram: 8 * oneGB, expected: false),
+            (ram: 12 * oneGB - 1, expected: false),
+            (ram: 12 * oneGB, expected: true),
+            (ram: 16 * oneGB, expected: true),
+            (ram: 24 * oneGB, expected: true),
+            (ram: 64 * oneGB, expected: true)
+        ]
+    )
+    func canRunE4B(ram: UInt64, expected: Bool) {
+        #expect(ModelSuitability.canRun(modelE4B, ram: ram) == expected)
     }
 
     @Test(
@@ -54,6 +71,7 @@ struct RecommendedModelIDTests {
         "below 24 GB recommends E2B",
         arguments: [
             8 * oneGB,
+            12 * oneGB,
             15 * oneGB,
             16 * oneGB,
             24 * oneGB - 1
@@ -80,6 +98,17 @@ struct RecommendedModelIDTests {
             catalog: catalog, ram: 64 * oneGB
         )
         #expect(recommended == "gemma-4-12b")
+    }
+
+    @Test(
+        "never recommends E4B, even where it is runnable",
+        arguments: [8, 12, 15, 16, 23, 24, 32, 64].map { UInt64($0) * oneGB }
+    )
+    func neverRecommendsE4B(ram: UInt64) {
+        let recommended = ModelSuitability.recommendedModelID(
+            catalog: catalog, ram: ram
+        )
+        #expect(recommended != modelE4B.id)
     }
 
     @Test("empty catalog returns nil")
@@ -113,6 +142,7 @@ struct HasEnoughDiskTests {
     @Test("nil freeBytes returns true (never block on unknown)")
     func nilFreeBytesReturnsTrue() {
         #expect(ModelSuitability.hasEnoughDisk(model12B, freeBytes: nil) == true)
+        #expect(ModelSuitability.hasEnoughDisk(modelE4B, freeBytes: nil) == true)
         #expect(ModelSuitability.hasEnoughDisk(modelE2B, freeBytes: nil) == true)
     }
 
@@ -127,6 +157,19 @@ struct HasEnoughDiskTests {
     )
     func disk12B(free: Int64, expected: Bool) {
         #expect(ModelSuitability.hasEnoughDisk(model12B, freeBytes: free) == expected)
+    }
+
+    @Test(
+        "E4B disk boundaries (5 GB required)",
+        arguments: [
+            (free: Int64(0), expected: false),
+            (free: Int64(5_000_000_000 - 1), expected: false),
+            (free: Int64(5_000_000_000), expected: true),
+            (free: Int64(10_000_000_000), expected: true)
+        ]
+    )
+    func diskE4B(free: Int64, expected: Bool) {
+        #expect(ModelSuitability.hasEnoughDisk(modelE4B, freeBytes: free) == expected)
     }
 
     @Test(
@@ -150,7 +193,16 @@ struct ModelPolicyTests {
     @Test("description is non-empty for known model IDs")
     func descriptionKnownIDs() {
         #expect(!ModelPolicy.description(id: "gemma-4-12b").isEmpty)
+        #expect(!ModelPolicy.description(id: "gemma-4-e4b").isEmpty)
         #expect(!ModelPolicy.description(id: "gemma-4-e2b").isEmpty)
+    }
+
+    @Test("E4B description copy")
+    func descriptionE4B() {
+        #expect(
+            ModelPolicy.description(id: "gemma-4-e4b")
+                == "A balance of speed and intelligence. Requires 5 GB of disk and uses 6 GB of RAM."
+        )
     }
 
     @Test("description is empty for unknown model ID")
@@ -158,9 +210,10 @@ struct ModelPolicyTests {
         #expect(ModelPolicy.description(id: "unknown-model").isEmpty)
     }
 
-    @Test("minRAMBytesToRun: 12B has floor, E2B is 0")
+    @Test("minRAMBytesToRun: 12B and E4B have floors, E2B is 0")
     func minRAMBytesToRun() {
         #expect(ModelPolicy.minRAMBytesToRun(id: "gemma-4-12b") == 15_000_000_000)
+        #expect(ModelPolicy.minRAMBytesToRun(id: "gemma-4-e4b") == 12_000_000_000)
         #expect(ModelPolicy.minRAMBytesToRun(id: "gemma-4-e2b") == 0)
         #expect(ModelPolicy.minRAMBytesToRun(id: "unknown") == 0)
     }
@@ -168,12 +221,14 @@ struct ModelPolicyTests {
     @Test("approxRAMUsageDescription for known IDs")
     func approxRAMUsage() {
         #expect(ModelPolicy.approxRAMUsageDescription(id: "gemma-4-12b") == "8 GB")
+        #expect(ModelPolicy.approxRAMUsageDescription(id: "gemma-4-e4b") == "6 GB")
         #expect(ModelPolicy.approxRAMUsageDescription(id: "gemma-4-e2b") == "4 GB")
     }
 
     @Test("threshold constants have expected values")
     func thresholdConstants() {
         #expect(ModelPolicy.ramFloor12B == 15_000_000_000)
+        #expect(ModelPolicy.ramFloorE4B == 12_000_000_000)
         #expect(ModelPolicy.recommendationRAMThreshold == 24_000_000_000)
     }
 }

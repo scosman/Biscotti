@@ -550,8 +550,8 @@ private struct ReentrantShutdownFakeTranscriber: Transcribing, @unchecked Sendab
     }
 
     func processAudio(
-        mic _: URL,
-        system _: URL,
+        mic _: URL?,
+        system _: URL?,
         customVocabulary _: [String],
         config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
@@ -612,8 +612,8 @@ private struct BlockingFakeTranscriber: Transcribing, @unchecked Sendable {
     }
 
     func processAudio(
-        mic _: URL,
-        system _: URL,
+        mic _: URL?,
+        system _: URL?,
         customVocabulary _: [String],
         config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
@@ -919,8 +919,8 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     }
 
     func processAudio(
-        mic _: URL,
-        system _: URL,
+        mic _: URL?,
+        system _: URL?,
         customVocabulary _: [String],
         config _: TranscriptionConfig
     ) async throws -> TranscriptResult {
@@ -934,4 +934,44 @@ private struct BlockingOnDownloadFakeTranscriber: Transcribing, @unchecked Senda
     func deleteModels(_: Set<ModelComponent>) async throws {}
 
     func shutdown() async {}
+}
+
+// MARK: - Single-track meeting tests
+
+@Suite("TranscriptionService -- single-track meetings")
+struct TranscriptionSingleTrackTests {
+    @Test("Transcribe single-track meeting passes nil mic URL to engine")
+    @MainActor
+    func transcribe_singleTrackMeeting_passesNilMic() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let fakeEngine = FakeTranscriber()
+        let service = TranscriptionService(
+            store: store,
+            engine: fakeEngine,
+            vocabulary: VocabularyService(store: store)
+        )
+
+        let meetingID = try await store.createMeeting(title: "Import Test")
+
+        // Attach only a system audio ref (no mic)
+        let sysRef = AudioFileRef(
+            role: .system,
+            path: "/tmp/test/system.aac",
+            byteSize: 2048,
+            isPresent: true
+        )
+        try await store.attachAudio([sysRef], to: meetingID)
+
+        await service.transcribe(meetingID: meetingID)
+
+        // Engine received nil mic and non-nil system
+        #expect(fakeEngine.backing.processAudioCalled == true)
+        #expect(fakeEngine.backing.lastMicURL == nil)
+        #expect(fakeEngine.backing.lastSystemURL?.path == "/tmp/test/system.aac")
+
+        // Transcript was persisted
+        #expect(service.jobs[meetingID] == .completed)
+        let detail = try await store.meetingDetail(id: meetingID)
+        #expect(detail?.preferredTranscript != nil)
+    }
 }

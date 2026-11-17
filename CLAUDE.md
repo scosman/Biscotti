@@ -98,7 +98,7 @@ All builds, tests, and checks go through the `Makefile`. Humans, CI, the pre-com
 | `make generate` | Generate `App/Biscotti.xcodeproj` from `App/project.yml` (XcodeGen) | — |
 | `make build` | `swift build` all SPM packages | — |
 | `make test` | `swift test` across packages | Yes |
-| `make test-ai` | Heavy AI/model tests (downloads GBs, runs inference). Developer-run only; agent can't run it — a human runs it via `!`. Not in `test`/`ci`/`precommit-checks`. | Non-gating |
+| `make test-ai` | Heavy AI/model tests (downloads GBs, runs inference). The LLM suites (LocalLLM `IntegrationTests`, BiscottiKit `IntelligenceAITests`) run against **every model in `LLMModelCatalog.all`**, labelled by model; a model not on disk has its cases skipped and **fails** each suite's `allCatalogModelsOnDisk` test (one failure naming every missing model with download instructions), and `LLM_MODEL_PATH=<gguf>` narrows the run to one model (the presence test is then skipped). The target runs every suite even when one fails, then fails if any did. Developer-run only; agent can't run it — a human runs it via `!`. Not in `test`/`ci`/`precommit-checks`. | Non-gating |
 | `make lint` | `swiftformat --lint` + `swiftlint --strict` (non-mutating) | Yes |
 | `make format` | Auto-format (SwiftFormat then SwiftLint `--fix`) | — |
 | `make precommit-checks` | The pre-commit checks: `format` + `lint` + `test` (hook & `hooks-mcp` both call this) | Yes |

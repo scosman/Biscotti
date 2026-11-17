@@ -7,8 +7,8 @@ import Foundation
 /// the `@objc` protocol's parameter count within lint limits while remaining
 /// fully `Codable`.
 public struct XPCProcessRequest: Codable {
-    public let micPath: String
-    public let systemPath: String
+    public let micPath: String?
+    public let systemPath: String?
     public let customVocabulary: [String]
 
     /// Per-call config (engine + locale). Absent in requests from older clients;
@@ -16,8 +16,8 @@ public struct XPCProcessRequest: Codable {
     public let config: TranscriptionConfig?
 
     public init(
-        micPath: String,
-        systemPath: String,
+        micPath: String?,
+        systemPath: String?,
         customVocabulary: [String],
         config: TranscriptionConfig? = nil
     ) {

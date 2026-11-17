@@ -40,11 +40,31 @@ import SwiftData
     /// Additive field -- defaults nil, no migration needed.
     public var externalID: String?
 
+    /// `true` while the title is a machine-generated placeholder (e.g.
+    /// "Imported from X.m4a") that AI titling may replace, exactly like
+    /// `Meeting.defaultTitle`. Cleared whenever a real title lands (AI,
+    /// user, calendar event). Additive field -- defaults false, no
+    /// migration needed.
+    public var titleIsPlaceholder: Bool = false
+
     /// Epoch milliseconds identifying the import run that created this
     /// meeting. `nil` for every recorded meeting. Written once, never read
     /// yet -- it exists so a future "undo this import" can find the batch.
     /// Additive field -- defaults nil, no migration needed.
     public var importBatch: Int?
+
+    /// JSON-encoded backing store for `sentExports`. Additive -- defaults
+    /// empty, no migration needed. Same Data-backed pattern as
+    /// `TranscriptRecord.vocabularyUsedData`. Internal (not private) so
+    /// tests can inject corrupt bytes to verify the `?? []` fallback.
+    var sentExportsData = Data()
+
+    /// Records of notes sent to third-party apps (Obsidian, Bear, Apple Notes).
+    /// At most one record per destination; a resend replaces it.
+    @Transient public var sentExports: [SentExport] {
+        get { (try? JSONDecoder().decode([SentExport].self, from: sentExportsData)) ?? [] }
+        set { sentExportsData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
 
     @Relationship(deleteRule: .cascade)
     public var audioFiles: [AudioFileRef] = []
@@ -78,5 +98,16 @@ import SwiftData
         self.endDate = endDate
         self.createdAt = createdAt
         self.notes = notes
+    }
+}
+
+// MARK: - Title policy
+
+public extension Meeting {
+    /// Whether AI titling may replace this title.
+    static func isAIReplaceableTitle(
+        title: String, editedTitle: Bool, titleIsPlaceholder: Bool
+    ) -> Bool {
+        !editedTitle && (title == defaultTitle || titleIsPlaceholder)
     }
 }

@@ -234,3 +234,28 @@ struct FormatPlaybackTimeTests {
         #expect(TimeFormatting.formatPlaybackTime(-10) == "0:00")
     }
 }
+
+@Suite("TimeFormatting -- dateAndTime")
+struct DateAndTimeTests {
+    @Test("dateAndTime contains short date and short time separated by middle dot")
+    func containsDateAndTime() {
+        let date = Date(timeIntervalSince1970: 1_730_300_040)
+        let result = TimeFormatting.dateAndTime(date)
+        // The result must contain the short date and the middle dot separator.
+        let shortDate = TimeFormatting.shortDate(date)
+        #expect(result.contains(shortDate))
+        #expect(result.contains("\u{00B7}"))
+    }
+
+    @Test("dateAndTime matches expected format structure")
+    func formatStructure() {
+        let date = Date(timeIntervalSince1970: 1_730_300_040)
+        let result = TimeFormatting.dateAndTime(date)
+        // Should match "shortDate · shortTime" pattern.
+        let parts = result.components(separatedBy: " \u{00B7} ")
+        #expect(parts.count == 2)
+        #expect(parts[0] == TimeFormatting.shortDate(date))
+        // The second part is the locale-aware short time; verify non-empty.
+        #expect(!parts[1].isEmpty)
+    }
+}

@@ -110,7 +110,7 @@ struct ManageModelsViewModelTests {
         let fixture = try makeCoreFixture(modelDownloaded: false)
         defer { fixture.cleanup() }
 
-        // Download both models
+        // Download every catalog model
         let ids = LLMModelCatalog.all.map(\.id)
         for id in ids {
             await fixture.modelManager.downloadModel(id: id)
@@ -120,7 +120,7 @@ struct ManageModelsViewModelTests {
         let firstID = try #require(ids.first)
         #expect(fixture.modelManager.activeModelID == firstID)
 
-        // Choose the second model
+        // Choose the last catalog model (switch away from the auto-selected first)
         let secondID = try #require(ids.last)
         let viewModel = ManageModelsViewModel(core: fixture.core)
         viewModel.choose(id: secondID)

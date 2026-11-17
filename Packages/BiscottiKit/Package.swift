@@ -35,6 +35,8 @@ let package = Package(
         .library(name: "Vocabulary", targets: ["Vocabulary"]),
         .library(name: "MCPServer", targets: ["MCPServer"]),
         .library(name: "VoiceprintMatching", targets: ["VoiceprintMatching"]),
+        .library(name: "AudioImport", targets: ["AudioImport"]),
+        .library(name: "ImportUI", targets: ["ImportUI"]),
         .executable(name: "voiceprint-cli", targets: ["voiceprint-cli"])
     ],
     dependencies: [
@@ -87,6 +89,7 @@ let package = Package(
         .target(
             name: "ImportExport",
             dependencies: [
+                "AppLinks",
                 "DataStore",
                 "Formatting"
             ],
@@ -94,7 +97,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ImportExportTests",
-            dependencies: ["ImportExport", "DataStore", "Formatting"],
+            dependencies: ["ImportExport", "AppLinks", "DataStore", "Formatting"],
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -170,9 +173,59 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "AudioImport",
+            dependencies: [
+                "DataStore",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AudioImportTests",
+            dependencies: [
+                "AppCore",
+                "AudioImport",
+                "BiscottiTestSupport",
+                "DataStore",
+                .product(name: "AudioCapture", package: "AudioCapture")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "ImportUI",
+            dependencies: [
+                "AppCore",
+                "AudioImport",
+                "DataStore",
+                "DesignSystem",
+                "Formatting"
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "ImportUITests",
+            dependencies: [
+                "ImportUI",
+                "AppCore",
+                "AudioImport",
+                "BiscottiTestSupport",
+                "DataStore",
+                "Formatting",
+                "Calendar",
+                "MeetingCatalog",
+                "Permissions",
+                "Recording",
+                "TranscriptionService",
+                .product(name: "AudioCapture", package: "AudioCapture"),
+                .product(name: "Transcription", package: "Transcription")
+            ],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "AppCore",
             dependencies: [
                 "AppLinks",
+                "AudioImport",
                 "DataStore",
                 "ImportExport",
                 "Intelligence",
@@ -199,6 +252,7 @@ let package = Package(
             name: "BiscottiTestSupport",
             dependencies: [
                 "AppCore",
+                "AudioImport",
                 "Calendar",
                 "DataStore",
                 "Intelligence",
@@ -222,6 +276,7 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "AppLinks",
+                "AudioImport",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
@@ -309,6 +364,7 @@ let package = Package(
                 "DataStore",
                 "DesignSystem",
                 "Formatting",
+                "ImportExport",
                 "Intelligence",
                 "MarkdownEditorUI",
                 "SummaryPromptUI",
@@ -328,6 +384,7 @@ let package = Package(
                 "Calendar",
                 "DataStore",
                 "Formatting",
+                "ImportExport",
                 "Intelligence",
                 "MeetingCatalog",
                 "Permissions",
@@ -374,11 +431,13 @@ let package = Package(
             name: "AppShellUI",
             dependencies: [
                 "AppCore",
+                "AudioImport",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
                 "Formatting",
                 "HomeUI",
+                "ImportUI",
                 "MeetingListUI",
                 "MeetingDetailUI",
                 "OnboardingUI",
@@ -393,10 +452,12 @@ let package = Package(
                 "AppShellUI",
                 "AppCore",
                 "AppLinks",
+                "AudioImport",
                 "BiscottiTestSupport",
                 "Calendar",
                 "DataStore",
                 "HomeUI",
+                "ImportUI",
                 "MeetingCatalog",
                 "Permissions",
                 "Recording",

@@ -1,5 +1,6 @@
 import AppCore
 import AudioCapture
+import AudioImport
 import Calendar
 import DataStore
 import Foundation
@@ -41,6 +42,7 @@ public struct CoreFixture {
     public let speechEngines: SpeechEngineManager
     public let fakeAppleSpeech: FakeAppleSpeech
     public let managerEngine: FakeTranscriber
+    public let fakeAudioConverter: FakeAudioConverter
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
@@ -83,6 +85,23 @@ public struct CoreFixture {
                 recordingDuration, for: meetingID
             )
         }
+        return meetingID
+    }
+
+    /// Creates an imported meeting (system-only audio, placeholder title).
+    public func createImportedMeetingWithAudio(
+        title: String = "Imported from test.m4a",
+        duration: TimeInterval = 120
+    ) async throws -> UUID {
+        let meetingID = UUID()
+        try await store.createImportedMeeting(
+            id: meetingID,
+            title: title,
+            start: Date(),
+            duration: duration,
+            audioPath: "/tmp/test/system.aac",
+            audioByteSize: 2048
+        )
         return meetingID
     }
 }
@@ -375,10 +394,14 @@ public final class FakeActivitySource: ActivitySource,
 // MARK: - Fake LLM fakes for CoreFixture
 
 /// A simple fake LLM runner for AppCore integration tests.
-/// Records session usage; does not return meaningful LLM output.
+/// Records session usage; does not return meaningful LLM output
+/// unless `generateResult` is set.
 public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
     /// Number of times `withSession` was called.
     public var sessionCount = 0
+
+    /// String returned by `FakeCoreLLMSession.generate()`. Default empty.
+    public var generateResult: String = ""
 
     public init() {}
 
@@ -388,12 +411,20 @@ public final class FakeCoreLLMRunner: LLMRunning, @unchecked Sendable {
         _ body: @Sendable (any LLMSession) async throws -> T
     ) async throws -> T {
         sessionCount += 1
-        return try await body(FakeCoreLLMSession())
+        return try await body(
+            FakeCoreLLMSession(generateResult: generateResult)
+        )
     }
 }
 
-/// A minimal fake LLM session that returns empty responses.
-public struct FakeCoreLLMSession: LLMSession {
+/// A minimal fake LLM session that returns configurable responses.
+public struct FakeCoreLLMSession: LLMSession, @unchecked Sendable {
+    private let result: String
+
+    public init(generateResult: String = "") {
+        result = generateResult
+    }
+
     public func countTokens(
         messages _: [LocalLLM.LLMMessage]
     ) async throws -> Int {
@@ -406,7 +437,7 @@ public struct FakeCoreLLMSession: LLMSession {
         messages _: [LocalLLM.LLMMessage],
         options _: LocalLLM.GenerationOptions
     ) async throws -> String {
-        ""
+        result
     }
 
     public func generateStreaming(
@@ -516,6 +547,7 @@ public func makeCoreFixture(
     appleInstalled: Set<String> = [],
     whisperPresent: Bool = false,
     speakerIDPresent: Bool = false,
+    sendEnvironment: SendEnvironment? = nil,
     testName: String = "Test"
 ) throws -> CoreFixture {
     let store = try DataStore(storage: .inMemory)
@@ -645,6 +677,13 @@ public func makeCoreFixture(
         }
     )
 
+    let fakeAudioConverter = FakeAudioConverter()
+    let audioImportCtrl = AudioImportController(
+        store: store,
+        recordingsRoot: storageRoot,
+        converter: fakeAudioConverter
+    )
+
     let core = AppCore(
         store: store,
         permissions: permissions,
@@ -657,7 +696,9 @@ public func makeCoreFixture(
         modelManager: modelManager,
         scheduler: scheduler,
         mcpServer: MCPServerController(store: store, port: mcpServerPort),
-        speechEngines: speechEngines
+        speechEngines: speechEngines,
+        sendEnvironment: sendEnvironment ?? .live,
+        audioImport: audioImportCtrl
     )
 
     return CoreFixture(
@@ -680,6 +721,7 @@ public func makeCoreFixture(
         fakeModelProvider: fakeModelProvider,
         speechEngines: speechEngines,
         fakeAppleSpeech: fakeAppleSpeech,
-        managerEngine: managerEngine
+        managerEngine: managerEngine,
+        fakeAudioConverter: fakeAudioConverter
     )
 }

@@ -34,9 +34,9 @@ public actor SpeakerAnalyzer {
         }
     }
 
-    /// Run diarization on mic + system audio and return embedding sets and
-    /// speech durations without running STT.
-    public func analyze(micPath: String, systemPath: String) async throws -> SpeakerAnalysis {
+    /// Run diarization on audio and return embedding sets and speech
+    /// durations without running STT. At least one path must be non-nil.
+    public func analyze(micPath: String?, systemPath: String?) async throws -> SpeakerAnalysis {
         let mergeResult = try AudioLoading.loadAndMerge(
             micPath: micPath, systemPath: systemPath
         )

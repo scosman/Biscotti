@@ -587,8 +587,9 @@ struct PipelineReTranscribeTests {
         // Before re-transcribe: no LLM sessions
         #expect(fix.fakeLLMRunner.sessionCount == 0)
 
-        // Trigger re-transcribe which should also call runAutoEnhancements
-        await viewModel.reTranscribe()
+        // Trigger re-transcribe (now enqueues onto the post-processing queue)
+        viewModel.reTranscribe()
+        await fix.core.awaitPendingTranscription()
 
         // The LLM runner should have been called (proving auto-enhancements ran)
         #expect(fix.fakeLLMRunner.sessionCount == 1)

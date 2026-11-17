@@ -128,8 +128,8 @@ struct ResolverAppleTests {
 
 // MARK: - XPCProcessRequest
 
-@Suite("XPCProcessRequest")
-struct XPCProcessRequestTests {
+@Suite("XPCProcessRequest config")
+struct XPCProcessRequestConfigTests {
     @Test("decodes without config field (backward compatibility)")
     func decodesWithoutConfig() throws {
         // Simulate an old-format request without the config field.

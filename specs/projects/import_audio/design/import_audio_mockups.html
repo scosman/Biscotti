@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="design_doc_mode" content="canvas">
+<title>Biscotti — Import Audio</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+a{color:#4E7D5C}a:hover{color:#43704F}
+.lbl{position:absolute;font:500 13px/1.3 "IBM Plex Mono",monospace;letter-spacing:.06em;color:#3b3a35;width:1180px}
+.lbl b{font-family:-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;letter-spacing:-.01em;color:#1A1813;display:block;margin-bottom:4px}
+.sec{position:absolute;font:500 34px "Newsreader",Georgia,serif;color:#1A1813;letter-spacing:-.01em}
+.frame{position:absolute;width:1180px;height:800px}
+.win{--paper:#FBFAF5;--card:#fff;--ink:#1A1813;--ink2:rgba(26,24,19,.54);--ink3:rgba(26,24,19,.34);--sep:rgba(26,24,19,.11);--sage:#4E7D5C;--sagetx:#4E7D5C;--sbbg:#F4F2EB;--chip:rgba(26,24,19,.055);--selbg:rgba(78,125,92,.14);--veil:rgba(251,250,245,.76);--red:#C9402B;--redtx:#B23320;
+position:relative;width:100%;height:100%;overflow:hidden;border-radius:13px;display:flex;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.004em;box-shadow:0 0 0 .5px rgba(40,32,18,.2),0 30px 70px rgba(40,32,18,.3),0 8px 22px rgba(40,32,18,.16)}
+.win.dark{--paper:#100E09;--card:#1A170F;--ink:#F7F2E8;--ink2:rgba(247,242,232,.6);--ink3:rgba(247,242,232,.38);--sep:rgba(247,242,232,.1);--sage:#56906A;--sagetx:#86C295;--sbbg:#16130D;--chip:rgba(247,242,232,.07);--selbg:rgba(134,194,149,.14);--veil:rgba(16,14,9,.74);--red:#E5604A;--redtx:#E5604A;box-shadow:0 0 0 .5px rgba(0,0,0,.6),0 30px 70px rgba(0,0,0,.45)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.kick{font:500 10.5px "IBM Plex Mono",monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+.sb{flex:0 0 232px;display:flex;flex-direction:column;background:var(--sbbg);border-right:.5px solid var(--sep)}
+.tl{display:flex;gap:8px;height:46px;align-items:center;padding:0 18px}
+.tl i{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14)}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 18px 12px;font:600 19px "Newsreader",Georgia,serif}
+.brand s{width:15px;height:17px;background:var(--sage);border-radius:3px 3px 8px 8px;text-decoration:none}
+.nav{display:flex;align-items:center;gap:10px;height:32px;padding:0 9px;margin:0 10px;border-radius:7px;font-size:14px}
+.nav.sel{background:var(--selbg)}
+.nav u{width:15px;height:15px;border:1.6px solid var(--ink2);border-radius:4px;box-sizing:border-box}
+.nav.sel u{border-color:var(--sagetx)}
+.sb .kick{padding:18px 19px 7px}
+.srow{padding:7px 19px;display:flex;flex-direction:column;gap:3px}
+.srow div{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow span{font-size:11.5px;color:var(--ink2)}
+.sbfoot{margin-top:auto;border-top:.5px solid var(--sep);padding:8px 0}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tb{height:52px;flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 16px 0 22px;border-bottom:.5px solid var(--sep);font-size:15px;font-weight:600}
+.search{margin-left:auto;width:220px;height:30px;border-radius:8px;background:var(--chip);color:var(--ink3);font-size:13px;font-weight:400;display:flex;align-items:center;padding:0 12px}
+.rec{display:flex;align-items:center;gap:7px;height:30px;padding:0 14px 0 12px;border-radius:8px;color:#fff;font-size:13.5px;font-weight:600;background:linear-gradient(#5D9069,#43704F);box-shadow:0 1px 2px rgba(40,70,45,.4),inset 0 1px 0 rgba(255,255,255,.22)}
+.rec i{width:8px;height:8px;border-radius:50%;background:#fff}
+.body{padding:34px 64px;display:flex;flex-direction:column;gap:12px}
+.body h1{margin:0;font:500 38px/1.1 "Newsreader",Georgia,serif;letter-spacing:-.01em}
+.date{font-size:15px;color:var(--ink2)}
+.chips{display:flex;gap:8px;margin:6px 0 16px}
+.chip{height:28px;padding:0 11px;border-radius:7px;background:var(--chip);font-size:12.5px;color:var(--ink2);display:flex;align-items:center}
+.card{background:var(--card);border:.5px solid var(--sep);border-radius:12px;margin-bottom:18px;overflow:hidden}
+.row{display:flex;align-items:center;gap:16px;padding:13px 18px;border-top:.5px solid var(--sep)}
+.row:first-child{border-top:0}
+.av{display:flex}
+.av i{width:28px;height:28px;border-radius:50%;margin-right:-9px;box-shadow:0 0 0 2px var(--card);color:#fff;font:600 12px system-ui;display:flex;align-items:center;justify-content:center}
+.row .tt{font-size:14.5px;font-weight:500;margin-left:10px}
+.row .mm{font-size:12.5px;color:var(--ink2);margin-left:10px;margin-top:3px}
+.row .mm.s{color:var(--sagetx);font-weight:500}
+.drag{position:absolute;z-index:80;display:flex;flex-direction:column;align-items:center;gap:6px;opacity:.92;pointer-events:none}
+.doc{position:relative;width:52px;height:66px;background:#fff;border-radius:4px;clip-path:polygon(0 0,70% 0,100% 22%,100% 100%,0 100%);box-shadow:inset 0 0 0 1px rgba(26,24,19,.16);display:flex;align-items:flex-end;justify-content:center;padding-bottom:9px;box-sizing:border-box;font:600 9.5px "IBM Plex Mono",monospace;color:var(--d,#4E7D5C);letter-spacing:.04em}
+.docwrap{position:relative;filter:drop-shadow(0 4px 8px rgba(30,24,14,.22))}
+.badge{position:absolute;top:-7px;right:-9px;width:20px;height:20px;border-radius:50%;background:#28c840;color:#fff;font:700 15px/20px system-ui;text-align:center;box-shadow:0 0 0 1.5px #fff}
+.badge.n{background:#ff3b30;font-size:12px}
+.fname{font-size:11.5px;font-weight:500;color:#fff;background:rgba(26,24,19,.72);padding:2px 7px;border-radius:5px;white-space:nowrap}
+.stack .doc+.doc{position:absolute;left:5px;top:-5px;z-index:-1}
+.wave{display:flex;align-items:center;gap:4px}
+.wave i{width:4px;border-radius:2px;background:currentColor}
+/* drop overlay */
+.ov{position:absolute;inset:0;z-index:50;background:var(--veil);backdrop-filter:blur(7px) saturate(120%);-webkit-backdrop-filter:blur(7px);padding:12px;box-sizing:border-box}
+.zone{height:100%;border:2px dashed color-mix(in oklab,var(--sage) 70%,transparent);border-radius:9px;background:color-mix(in oklab,var(--sage) 5%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;box-sizing:border-box;text-align:center}
+.tile{width:76px;height:76px;border-radius:20px;background:linear-gradient(#5D9069,#43704F);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(40,70,45,.3),0 10px 24px rgba(40,70,45,.22),inset 0 1px 0 rgba(255,255,255,.22);margin-bottom:6px}
+.zt{font:500 34px/1.1 "Newsreader",Georgia,serif;letter-spacing:-.01em}
+.zs{font-size:15px;color:var(--ink2);max-width:440px;line-height:1.45;text-wrap:pretty}
+.fmt{font-size:11.5px;color:var(--ink3);letter-spacing:.06em;margin-top:6px}
+.zone.bad{border-color:var(--ink3);background:transparent}
+.tile.bad{background:var(--chip);color:var(--ink3);box-shadow:none}
+.skip{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;background:var(--chip);font-size:13px;color:var(--ink2)}
+.skip i{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink3);box-sizing:border-box;font:700 10px/13px system-ui;font-style:normal;text-align:center;color:var(--ink2)}
+/* importing screen */
+.imp{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:0 64px 60px;text-align:center}
+.imp h2{margin:0;font:500 30px/1.15 "Newsreader",Georgia,serif;letter-spacing:-.01em}
+.imp .st{font-size:15px;color:var(--ink2);line-height:1.45;max-width:440px;text-wrap:pretty}
+.imp .fm{font-size:12.5px;color:var(--ink3);margin-top:2px}
+.spin{width:var(--s,30px);height:var(--s,30px);border-radius:50%;border:var(--w,3px) solid color-mix(in oklab,var(--sage) 20%,transparent);border-top-color:var(--sage);box-sizing:border-box;animation:sp .9s linear infinite;flex:0 0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.errdot{width:44px;height:44px;border-radius:50%;background:color-mix(in oklab,var(--red) 12%,transparent);color:var(--red);font:700 22px/44px system-ui;text-align:center}
+.btns{display:flex;gap:10px;margin-top:14px}
+.bezel{display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;background:var(--card);font-size:13.5px;font-weight:500;color:var(--ink);box-shadow:0 0 0 .5px rgba(26,24,19,.16),0 1px 1.5px rgba(26,24,19,.07);white-space:nowrap}
+.prim{display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;color:#fff;font-size:13.5px;font-weight:600;background:linear-gradient(#5D9069,#43704F);box-shadow:0 1px 2px rgba(40,70,45,.34),inset 0 1px 0 rgba(255,255,255,.22);white-space:nowrap}
+.list{width:100%;max-width:620px;text-align:left;margin:14px 0 0}
+.list .r{display:flex;align-items:center;gap:14px;padding:0 16px;height:60px;border-top:.5px solid var(--sep)}
+.list .r:first-child{border-top:0}
+.list .ic{width:32px;height:32px;border-radius:8px;background:color-mix(in oklab,var(--sage) 12%,transparent);color:var(--sagetx);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.list .ic .wave{gap:2px}.list .ic .wave i{width:2px}
+.list .ic.x{background:color-mix(in oklab,var(--red) 11%,transparent);color:var(--red);font:700 14px system-ui}
+.list .ic.q{background:var(--chip);color:var(--ink3)}
+.list .n{min-width:0;flex:1}
+.list .n div{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .n span{font-size:12px;color:var(--ink2)}
+.list .n span.e{color:var(--redtx);font-family:-apple-system,system-ui,sans-serif}
+.list .s{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2);flex:0 0 auto}
+.list .s.w{color:var(--ink3)}
+.list .bezel{height:28px;padding:0 12px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="sec" style="left:80px;top:20px">Drop state</div>
+<div class="lbl" style="left:80px;top:90px"><b>1 · Supported file</b>Whole window frosts, sidebar included. Same for N supported files, title becomes “Drop to import N files”.</div>
+<div class="frame" id="f1" style="left:80px;top:160px"></div>
+<div class="lbl" style="left:1340px;top:90px"><b>1 · Supported file, dark</b>Deep Ink.</div>
+<div class="frame" id="f1d" style="left:1340px;top:160px"></div>
+<div class="lbl" style="left:80px;top:1050px"><b>2 · Mixed files</b>5 dragged, 3 supported. Sage target stays; skipped count shown below.</div>
+<div class="frame" id="f2" style="left:80px;top:1120px"></div>
+<div class="lbl" style="left:1340px;top:1050px"><b>3 · Unsupported file</b>Single file, or every file unsupported. Neutral colors, no + badge, drop refused.</div>
+<div class="frame" id="f3" style="left:1340px;top:1120px"></div>
+<div class="sec" style="left:80px;top:2040px">Importing screen</div>
+<div class="lbl" style="left:80px;top:2110px"><b>4 · Importing, single file</b>Same view, one row. On success jumps straight to the meeting view; on failure the row shows the error.</div>
+<div class="frame" id="f4" style="left:80px;top:2180px"></div>
+<div class="lbl" style="left:1340px;top:2110px"><b>5 · Importing, multiple files</b>Processed in order. Row states: done, failed, converting, waiting. No auto-jump.</div>
+<div class="frame" id="f6" style="left:1340px;top:2180px"></div>
+<div class="lbl" style="left:80px;top:3070px"><b>6 · Multiple files, complete</b>Status line updates; each row keeps its Go to Meeting button.</div>
+<div class="frame" id="f7" style="left:80px;top:3140px"></div>
+<script>
+const av=(cs)=>`<div class="av">${cs.map(([l,c])=>`<i style="background:linear-gradient(135deg,${c})">${l}</i>`).join('')}</div>`;
+const W='#4f8ef7,#2f63d8',O='#f7894f,#e0582e',Y='#f5c25a,#e09a2c',P='#b37cf0,#8350d6',T='#4cc2b5,#26958a';
+const row=(a,t,m,s)=>`<div class="row">${av(a)}<div><div class="tt">${t}</div><div class="mm mono${s?' s':''}">${m}</div></div></div>`;
+const home=`<div class="tb">Home<div class="search">Search meetings…</div><div class="rec"><i></i>Record</div></div>
+<div class="body"><h1>Good afternoon, Steve</h1><div class="date mono">Sunday, November 8</div>
+<div class="chips"><div class="chip mono">2 meetings tomorrow</div><div class="chip mono">1h 15m scheduled</div></div>
+<div class="kick">Upcoming</div>
+<div class="card">${row([['W',W],['M',O],['',Y]],'Daily Sync: Waldo and Modem','in 42m · 4:00 PM',1)}${row([['L',T],['',Y]],'Leonard 1:1','Tomorrow · 1:30 PM')}</div>
+<div class="kick">Past meetings</div>
+<div class="card">${row([['P',P],['',Y],['',W]],'Polarity Labs Dive','Today · 32m · Polarity, Steve, Waldo')}${row([['L',T],['',Y]],'Leonard 1:1','Fri · 24m · Leonard, Steve')}${row([['M',O],['',W]],'Daily Sync Mantle','Fri · 18m · Modem, Kai, Steve')}</div></div>`;
+function win(main,o={}){return `<div class="win${o.dark?' dark':''}">
+<aside class="sb"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+<div class="brand"><s></s>Biscotti</div>
+<div class="nav${o.homeSel?' sel':''}"><u></u>Home</div><div class="nav"><u style="border-radius:50%"></u>Past Meetings</div>
+<div class="kick">Upcoming</div>
+<div class="srow"><div>Daily Sync: Waldo and Modem</div><span class="mono">in 42m</span></div>
+<div class="srow"><div>Leonard 1:1</div><span class="mono">Tomorrow, 1:30</span></div>
+<div class="srow"><div>Waldo × Kiln Onboarding</div><span class="mono">Tue, 10:00</span></div>
+<div class="sbfoot"><div class="nav"><u style="border-radius:50%"></u>Settings</div></div></aside>
+<main class="main">${main}</main>${o.extra||''}</div>`}
+const wave=(h)=>`<div class="wave">${h.map(x=>`<i style="height:${x}px"></i>`).join('')}</div>`;
+const W5=[14,28,40,22,32],W4=[6,11,14,8];
+const drag=(x,y,name,ext,o={})=>`<div class="drag" style="left:${x}px;top:${y}px"><div class="docwrap ${o.stack?'stack':''}"><div class="doc" ${o.bad?'style="--d:#8a877e"':''}>${ext}</div>${o.stack?`<div class="doc"></div><div class="doc" style="left:10px;top:-10px"></div>`:''}${o.bad?'':`<div class="badge ${o.n?'n':''}">${o.n||'+'}</div>`}</div><div class="fname">${name}</div></div>`;
+const fmt=`<div class="fmt mono">WAV · MP3 · M4A · AAC · AIFF · CAF · FLAC · MP4 · MOV</div>`;
+const zone=(inner,bad)=>`<div class="ov"><div class="zone${bad?' bad':''}">${inner}</div></div>`;
+const tile=(bad)=>`<div class="tile${bad?' bad':''}">${wave(W5)}</div>`;
+const dropOK=zone(`${tile()}<div class="zt">Drop to import</div><div class="zs">Biscotti will transcribe and summarize it on your Mac.</div>${fmt}`);
+const tb=(t)=>`<div class="tb">${t}<div class="search">Search meetings…</div><div class="rec"><i></i>Record</div></div>`;
+const set=(id,h)=>document.getElementById(id).innerHTML=h;
+
+set('f1',win(home,{homeSel:1,extra:dropOK+drag(700,520,'Polarity Labs call.m4a','M4A')}));
+set('f1d',win(home,{homeSel:1,dark:1,extra:dropOK+drag(700,520,'Polarity Labs call.m4a','M4A')}));
+set('f2',win(home,{homeSel:1,extra:zone(`${tile()}<div class="zt">Drop to import 3 files</div><div class="zs">Each file becomes its own meeting.</div><div class="skip"><i>!</i>2 files are unsupported file types and will be skipped.</div>`)+drag(760,600,'5 items','M4A',{stack:1,n:5})}));
+set('f3',win(home,{homeSel:1,extra:zone(`${tile(1)}<div class="zt">Can’t import this file</div><div class="zs">Biscotti imports audio and video recordings.</div>${fmt}`,1)+drag(700,520,'Q3 Roadmap.pdf','PDF',{bad:1})}));
+
+const r=(ic,name,meta,s,err)=>`<div class="r">${ic}<div class="n"><div>${name}</div><span class="${err?'e':'mono'}">${meta}</span></div>${s}</div>`;
+const icOK=`<div class="ic">${wave(W4)}</div>`,icX=`<div class="ic x">!</div>`,icQ=`<div class="ic q">${wave(W4)}</div>`;
+const go=`<div class="s"><span class="bezel">Go to Meeting</span></div>`;
+const conv=`<div class="s"><div class="spin" style="--s:16px;--w:2px"></div>Converting…</div>`;
+const wait=`<div class="s w mono">Waiting</div>`;
+const fail=`<div class="s"><span class="bezel">Show in Finder</span></div>`;
+set('f4',win(tb('Import')+`<div class="imp" style="justify-content:flex-start;padding-top:72px"><h2>Importing 1 file</h2><div class="st mono" style="font-size:13px">converting audio</div><div class="card list">
+${r(`<div class="ic">${wave(W4)}</div>`,'Polarity Labs call.m4a','48:12',conv)}
+</div></div>`));
+set('f6',win(tb('Import')+`<div class="imp" style="justify-content:flex-start;padding-top:72px"><h2>Importing 4 files</h2><div class="st mono" style="font-size:13px">2 of 4 · converting audio</div><div class="card list">
+${r(icOK,'Polarity Labs call.m4a','48:12',go)}
+${r(icX,'Board prep voice memo.mp3','Couldn’t convert this file. It may be damaged.',fail,1)}
+${r(`<div class="ic">${wave(W4)}</div>`,'Leonard 1:1 — Oct 30.mov','23:41',conv)}
+${r(icQ,'Kiln standup.wav','14:05',wait)}
+</div></div>`));
+set('f7',win(tb('Import')+`<div class="imp" style="justify-content:flex-start;padding-top:72px"><h2>Imported 3 of 4 files</h2><div class="st">Transcripts and summaries are being written in each meeting.</div><div class="card list">
+${r(icOK,'Polarity Labs call.m4a','48:12',go)}
+${r(icX,'Board prep voice memo.mp3','Couldn’t convert this file. It may be damaged.',fail,1)}
+${r(icOK,'Leonard 1:1 — Oct 30.mov','23:41',go)}
+${r(icOK,'Kiln standup.wav','14:05',go)}
+</div></div>`));
+</script>
+</body>
+</html>

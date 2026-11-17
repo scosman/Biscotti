@@ -1,4 +1,5 @@
 import AppLinks
+import AudioImport
 import BiscottiTestSupport
 import Calendar
 import DataStore
@@ -758,5 +759,81 @@ struct AppShellUpcomingCapTests {
         // Preserves order (first 6)
         #expect(shellVM.upcomingEvents.first?.title == "Cap Event 0")
         #expect(shellVM.upcomingEvents.last?.title == "Cap Event 5")
+    }
+}
+
+// MARK: - Import sidebar row tests
+
+@Suite("AppShellViewModel -- import sidebar row")
+struct AppShellImportSidebarTests {
+    @Test("hasImportSession is false when no import")
+    @MainActor
+    func hiddenWhenNoImport() throws {
+        let fix = try makeCoreFixture(testName: "AppShellImport")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.hasImportSession == false)
+    }
+
+    @Test("hasImportSession is true after importing files")
+    @MainActor
+    func visibleAfterImport() throws {
+        let fix = try makeCoreFixture(testName: "AppShellImport")
+        defer { fix.cleanup() }
+
+        let url = fix.storageRoot.appendingPathComponent("song.m4a")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        fix.core.importFiles([.file(url)])
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.hasImportSession == true)
+    }
+
+    @Test("route is .importing when showing import")
+    @MainActor
+    func importedRowSelectedOnImportingRoute() throws {
+        let fix = try makeCoreFixture(testName: "AppShellImport")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        shellVM.showImport()
+        #expect(shellVM.route == .importing)
+    }
+
+    @Test("importPanelRequested passes through and consume clears it")
+    @MainActor
+    func importPanelRequestedPassthrough() throws {
+        let fix = try makeCoreFixture(testName: "AppShellImport")
+        defer { fix.cleanup() }
+
+        fix.core.route = .home
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.importPanelRequested == false)
+
+        fix.core.requestImportPanel()
+        #expect(shellVM.importPanelRequested == true)
+
+        shellVM.consumeImportPanelRequest()
+        #expect(shellVM.importPanelRequested == false)
+    }
+
+    @Test("isImportConverting reflects controller state")
+    @MainActor
+    func isImportConvertingReflectsState() async throws {
+        let fix = try makeCoreFixture(testName: "AppShellImport")
+        defer { fix.cleanup() }
+
+        let shellVM = AppShellViewModel(core: fix.core)
+        #expect(shellVM.isImportConverting == false)
+
+        let (entered, resume) = fix.fakeAudioConverter.installGate()
+        let url = fix.storageRoot.appendingPathComponent("conv.m4a")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        fix.core.importFiles([.file(url)])
+
+        await entered()
+        #expect(shellVM.isImportConverting == true)
+        resume()
     }
 }

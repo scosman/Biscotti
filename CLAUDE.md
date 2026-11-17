@@ -137,6 +137,8 @@ Run `make hooks` once to enable the opt-in hook. It runs `make precommit-checks`
 
 The `precommit_checks` run must be the **last thing before the commit** — if you touch any code after it, re-run it first. Humans and CI are unaffected and commit normally.
 
+**Exception — Linux VM agents:** on a Linux VM there is no Swift toolchain, so `hooks-mcp` / `make precommit-checks` cannot run. There the agent may skip step 1 and commit directly with `git commit --no-verify`; lint and tests run in the PR's CI instead.
+
 ---
 
 ## When you change things

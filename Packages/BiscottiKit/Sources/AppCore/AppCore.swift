@@ -304,6 +304,9 @@ public final class AppCore {
     /// Only starts when the user enables it in Settings.
     public let mcpServer: MCPServerController
 
+    /// Speech-engine state owner (selection, downloads, Apple locale).
+    public let speechEngines: SpeechEngineManager
+
     /// Injectable environment for the send-to-app feature (Obsidian, Bear, Notes).
     public let sendEnvironment: SendEnvironment
 
@@ -397,6 +400,7 @@ public final class AppCore {
         scheduler: any AppScheduler = LiveAppScheduler(),
         updateChecker: UpdateChecker? = nil,
         mcpServer: MCPServerController? = nil,
+        speechEngines: SpeechEngineManager? = nil,
         sendEnvironment: SendEnvironment = .live,
         audioImport: AudioImportController? = nil
     ) {
@@ -412,6 +416,13 @@ public final class AppCore {
         self.scheduler = scheduler
         self.updateChecker = updateChecker ?? UpdateChecker()
         self.mcpServer = mcpServer ?? MCPServerController(store: store)
+        self.speechEngines = speechEngines ?? SpeechEngineManager(
+            store: store,
+            transcriber: FallbackNoOpTranscribing(),
+            apple: FallbackNoOpAppleSpeech(),
+            diskProbe: { nil },
+            isJobInFlight: { false }
+        )
         self.sendEnvironment = sendEnvironment
         // The default builds one over the same store with a temp recordings
         // root. Tests inject their own via the audioImport parameter.
@@ -453,7 +464,11 @@ public final class AppCore {
         case .transcribe:
             await transcription.transcribe(meetingID: entry.meetingID)
         case .reTranscribe:
-            await transcription.reTranscribe(meetingID: entry.meetingID)
+            // A nil config uses the current engine target; a non-nil one is
+            // a one-off engine override from the Re-transcribe menu.
+            await transcription.reTranscribe(
+                meetingID: entry.meetingID, config: entry.config
+            )
         }
         await intelligence.runAutoEnhancements(
             meetingID: entry.meetingID
@@ -491,6 +506,11 @@ public final class AppCore {
         logger.info("onLaunch: modelManager.refresh starting")
         await modelManager.refresh()
         logger.info("onLaunch: modelManager.refresh done")
+
+        // Resolve speech engine state (Apple availability, locale, downloads)
+        logger.info("onLaunch: speechEngines.refresh starting")
+        await speechEngines.refresh()
+        logger.info("onLaunch: speechEngines.refresh done")
 
         // Check onboarding gate and load cached settings
         logger.info("onLaunch: reading settings")
@@ -1180,8 +1200,15 @@ public extension AppCore {
 
     /// Enqueues a re-transcription for the given meeting
     /// (Re-transcribe / Transcribe now path).
-    func enqueueReTranscription(meetingID: UUID) {
-        postProcessing.enqueue(meetingID, kind: .reTranscribe)
+    ///
+    /// - Parameter config: Optional one-off engine override (Re-transcribe
+    ///   engine submenu). Nil uses the current engine target. Does not
+    ///   change the user's engine selection.
+    func enqueueReTranscription(
+        meetingID: UUID,
+        config: TranscriptionConfig? = nil
+    ) {
+        postProcessing.enqueue(meetingID, kind: .reTranscribe, config: config)
     }
 }
 
@@ -2099,4 +2126,66 @@ extension AppCore {
             }
         }
     }
+}
+
+// MARK: - Fallback no-op types for default speechEngines init
+
+/// No-op `Transcribing` used when `AppCore` is created without an explicit
+/// `speechEngines` parameter (tests, previews). All calls return defaults.
+private struct FallbackNoOpTranscribing: Transcribing {
+    func ensureModelsDownloaded(
+        _: Set<ModelComponent>,
+        status _: (@Sendable (String) -> Void)?
+    ) async throws {}
+
+    func processAudio(
+        mic _: URL?,
+        system _: URL?,
+        customVocabulary _: [String],
+        config _: TranscriptionConfig
+    ) async throws -> TranscriptResult {
+        TranscriptResult(
+            id: UUID(),
+            createdAt: Date(),
+            transcriptionMethodId: "noop",
+            language: "en",
+            speakerCount: 0,
+            segments: [],
+            processingDuration: 0
+        )
+    }
+
+    func modelsPresent(_: Set<ModelComponent>) async -> Bool {
+        false
+    }
+
+    func deleteModels(_: Set<ModelComponent>) async throws {}
+    func shutdown() async {}
+}
+
+/// No-op `AppleSpeechProviding` used when `AppCore` is created without
+/// an explicit `speechEngines` parameter.
+private struct FallbackNoOpAppleSpeech: AppleSpeechProviding {
+    func availability() -> AppleSpeechAvailability {
+        .requiresOSUpdate(
+            currentMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        )
+    }
+
+    func supportedLocales() async -> [String] {
+        []
+    }
+
+    func supportedLocale(equivalentTo _: String) async -> String? {
+        nil
+    }
+
+    func assetsInstalled(locale _: String) async -> Bool {
+        false
+    }
+
+    func installAssets(
+        locale _: String,
+        progress _: @escaping @Sendable (Double?) -> Void
+    ) async throws {}
 }

@@ -11,9 +11,12 @@ public protocol TranscriptionEngine: Sendable {
     /// percentage: the underlying SDK only exposes file-count-weighted progress,
     /// which is misleading for a repo with one multi-GB file among small ones.
     ///
-    /// Throws `TranscriptionError.insufficientDisk` if there is not enough space,
-    /// or `TranscriptionError.downloadFailed` on network/IO errors.
+    /// - Parameters:
+    ///   - components: Which model components to download. Defaults to all.
+    ///   - status: Status callback for download stages.
+    /// - Throws: `TranscriptionError.insufficientDisk` or `.downloadFailed`.
     func ensureModelsDownloaded(
+        components: Set<ModelComponent>,
         status: @escaping @Sendable (String) -> Void
     ) async throws
 
@@ -21,29 +24,38 @@ public protocol TranscriptionEngine: Sendable {
     ///
     /// At least one path is required; a nil path means that stream was not
     /// recorded. The engine merges any non-nil streams to mono 16 kHz in
-    /// memory before running STT + diarization. The result carries the
-    /// method id in ``TranscriptResult/transcriptionMethodId``.
+    /// memory before running STT + diarization.
     ///
+    /// - Parameters:
+    ///   - micPath: Path to the mic audio file, or nil if not recorded.
+    ///   - systemPath: Path to the system audio file, or nil if not recorded.
+    ///   - customVocabulary: Custom vocabulary terms for biasing (Whisper only).
+    ///   - config: Per-call engine and locale. The engine's default when nil.
     /// - Throws: `TranscriptionError.invalidInput` if audio files are
     ///   empty/unreadable or both paths are nil.
     func processAudio(
         micPath: String?,
         systemPath: String?,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult
 
     /// Explicitly unload all models from memory. The engine remains usable;
     /// models will be re-loaded on the next call.
     func unloadModels() async
 
-    /// Returns `true` when the transcription models are already present on
-    /// disk and do NOT need to be downloaded.
+    /// Returns `true` when the requested model components are present on disk
+    /// and do NOT need to be downloaded.
     ///
     /// This is a **read-only** probe -- it must not download, load, or
-    /// otherwise mutate model state. It exists so callers (e.g. the
-    /// onboarding screen) can check readiness without triggering a
-    /// multi-GB download.
-    func modelsPresent() async -> Bool
+    /// otherwise mutate model state.
+    func modelsPresent(components: Set<ModelComponent>) async -> Bool
+
+    /// Delete specific model components from disk.
+    ///
+    /// Unloads first so the worker releases files, then removes the component
+    /// directories. Apple assets are system-managed and cannot be deleted here.
+    func deleteModels(_ components: Set<ModelComponent>) async throws
 
     /// The current model lifecycle status.
     func status() async -> ModelStatus

@@ -18,6 +18,7 @@ public struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @State private var showAlertsHelp = false
     @State private var showManageModels = false
+    @State private var showSpeechModels = false
     /// Internal (not private) so the cross-file calendar section extension
     /// can present the sheet.
     @State var showConnectCalendar = false
@@ -275,6 +276,8 @@ private extension SettingsView {
 
             summaryPromptRow
 
+            speechToTextModelRow
+
             aiLanguageModelRow
         } header: {
             HStack {
@@ -288,6 +291,11 @@ private extension SettingsView {
         .sheet(isPresented: $showManageModels) {
             ManageModelsSheet(
                 viewModel: ManageModelsViewModel(core: viewModel.appCore)
+            )
+        }
+        .sheet(isPresented: $showSpeechModels) {
+            SpeechModelSheet(
+                viewModel: SpeechModelSheetViewModel(core: viewModel.appCore)
             )
         }
         .sheet(item: $summaryPromptModel) { model in
@@ -336,6 +344,36 @@ private extension SettingsView {
             .controlSize(.small)
         }
         .disabled(!viewModel.aiAnalysisEnabled)
+    }
+
+    var speechToTextModelRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.spacingXS) {
+                Text("Speech to Text Model")
+                Text("The model used to transcribe meetings")
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+            }
+
+            Spacer()
+
+            if viewModel.speechTargetReady {
+                Text(viewModel.speechSummaryLabel)
+                    .font(Tokens.metadataFont)
+                    .foregroundStyle(Tokens.secondaryText)
+                Button("Manage") {
+                    showSpeechModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Button("Download\u{2026}") {
+                    showSpeechModels = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
     }
 
     var aiLanguageModelRow: some View {

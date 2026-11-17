@@ -5,62 +5,38 @@ import Permissions
 import Testing
 @testable import OnboardingUI
 
-@Suite("OnboardingViewModel -- Disk space check")
+@Suite("OnboardingViewModel -- Disk space check (via SpeechEngineManager)")
 @MainActor
 struct OnboardingDiskCheckTests {
-    @Test("disk check surfaces warning when insufficient (from permissions)")
-    func diskCheckFromPermissions() async throws {
+    @Test("Whisper insufficient disk surfaces in transcription row state")
+    func whisperInsufficientDisk() async throws {
+        // Low disk: SpeechEngineManager's disk probe will report insufficient
         let fixture = try makeCoreFixture(
-            calendarAuthStatus: .denied
+            calendarAuthStatus: .denied,
+            hardwareDiskBytes: 1_048_576 // 1 MB -- well below Whisper threshold
         )
         defer { fixture.cleanup() }
 
-        let lowDiskModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 1_048_576 }
-        )
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
 
-        await lowDiskModel.advance() // welcome -> permissions
-        await lowDiskModel.skip() // -> modelDownload (checkDiskSpace runs)
-
-        #expect(lowDiskModel.hasSufficientDisk == false)
+        // Target is Whisper (default on macOS 15), but disk is insufficient
+        #expect(viewModel.transcriptionRowState() == .insufficientDisk)
     }
 
-    @Test("disk check surfaces warning when insufficient (from calendarSelection)")
-    func diskCheckFromCalendarSelection() async throws {
+    @Test("sufficient disk shows idle for Whisper")
+    func sufficientDiskShowsIdle() async throws {
         let fixture = try makeCoreFixture(
-            calendarAuthStatus: .authorized
+            calendarAuthStatus: .denied,
+            hardwareDiskBytes: 100_000_000_000
         )
         defer { fixture.cleanup() }
 
-        let lowDiskModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 1_048_576 }
-        )
+        let viewModel = OnboardingViewModel(core: fixture.core)
+        await viewModel.advance() // welcome -> permissions
+        await viewModel.skip() // -> modelDownload
 
-        await lowDiskModel.advance() // welcome -> permissions
-        await lowDiskModel.requestCalendar()
-        await lowDiskModel.advance() // -> calendarSelection
-        await lowDiskModel.advance() // -> modelDownload (checkDiskSpace runs)
-
-        #expect(lowDiskModel.hasSufficientDisk == false)
-    }
-
-    @Test("sufficient disk check passes")
-    func diskCheckPasses() async throws {
-        let fixture = try makeCoreFixture(
-            calendarAuthStatus: .denied
-        )
-        defer { fixture.cleanup() }
-
-        let okModel = OnboardingViewModel(
-            core: fixture.core,
-            availableDiskBytes: { 100_000_000_000 }
-        )
-
-        await okModel.advance() // welcome -> permissions
-        await okModel.skip() // -> modelDownload
-
-        #expect(okModel.hasSufficientDisk == true)
+        #expect(viewModel.transcriptionRowState() == .idle(sizeCaption: "626 MB"))
     }
 }

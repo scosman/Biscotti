@@ -1,5 +1,6 @@
 import Intelligence
 import LocalLLM
+import TranscriptionService
 
 /// Progress style for a model download row.
 enum RowDownloadProgress: Equatable {
@@ -19,8 +20,9 @@ enum ModelRowState: Equatable {
     case insufficientDisk
     /// Download in progress.
     case downloading(RowDownloadProgress)
-    /// Model is downloaded and ready to use.
-    case ready
+    /// Model is downloaded and ready to use. Optional caption (e.g. "Built in")
+    /// renders below the READY tag.
+    case ready(caption: String? = nil)
     /// Download failed; message describes the error.
     case failed(message: String)
     /// Probing readiness / disk space in the background.
@@ -30,17 +32,33 @@ enum ModelRowState: Equatable {
 // MARK: - Model download derivation + row-state mappers
 
 public extension OnboardingViewModel {
-    // MARK: - Transcription row derivation
+    // MARK: - Transcription row (engine-aware)
 
-    /// Whether the transcription model is ready (already cached or just
-    /// downloaded).
+    /// Whether the target transcription engine is ready.
     var transcriptionReady: Bool {
-        transcriptionDownloaded || downloadComplete
+        appCore.speechEngines.targetReady
     }
 
-    /// Whether the transcription model cannot be downloaded due to disk.
-    internal var transcriptionInsufficientDisk: Bool {
-        !hasSufficientDisk
+    /// Whether the transcription download has started (ready or downloading).
+    var transcriptionStarted: Bool {
+        if transcriptionReady { return true }
+        let state = targetEngineState
+        if case .downloading = state { return true }
+        return false
+    }
+
+    // MARK: - Speaker ID row
+
+    /// Whether Speaker ID models are ready.
+    var speakerIDReady: Bool {
+        appCore.speechEngines.speakerID == .downloaded
+    }
+
+    /// Whether the Speaker ID download has started (ready or downloading).
+    var speakerIDStarted: Bool {
+        if speakerIDReady { return true }
+        if case .downloading = appCore.speechEngines.speakerID { return true }
+        return false
     }
 
     // MARK: - Language row derivation
@@ -80,11 +98,6 @@ public extension OnboardingViewModel {
         return LLMModelCatalog.model(id: id)?.displayName
     }
 
-    /// Whether the current target is the hardware-recommended model.
-    var languageTargetIsRecommended: Bool {
-        languageTargetModelID == appCore.modelManager.recommendedModelID()
-    }
-
     // MARK: - Private helpers
 
     /// The model id whose download is actively in progress (`.downloading`),
@@ -115,18 +128,6 @@ public extension OnboardingViewModel {
         appCore.modelManager.isModelAvailable
     }
 
-    /// Whether both model classes are ready (transcription + language).
-    var bothModelsReady: Bool {
-        transcriptionReady && languageReady
-    }
-
-    // MARK: - "Started" derivation (ready OR actively downloading)
-
-    /// Whether the transcription model has started (ready or downloading).
-    var transcriptionStarted: Bool {
-        transcriptionReady || isDownloading
-    }
-
     /// Whether the language model has started (ready or actively downloading).
     ///
     /// Intentionally checks only `.downloading`, not `.failed`. A failed
@@ -143,53 +144,109 @@ public extension OnboardingViewModel {
         return false
     }
 
-    /// Whether both model downloads have at least started (each is
+    /// Whether all three model classes are ready.
+    var allModelsReady: Bool {
+        transcriptionReady && speakerIDReady && languageReady
+    }
+
+    /// Whether all three model downloads have at least started (each is
     /// either ready or actively downloading). Used by the footer to
     /// show "Continue" without waiting for completion.
-    var bothModelsStarted: Bool {
-        transcriptionStarted && languageStarted
+    var allModelsStarted: Bool {
+        transcriptionStarted && speakerIDStarted && languageStarted
     }
 
     // MARK: - Footer caption
 
     /// Caption shown beneath the footer button. Non-empty only on the
-    /// model-download step when "Continue" is available (both models
+    /// model-download step when "Continue" is available (all models
     /// started) but at least one download is still in progress.
     var footerCaption: String {
-        guard currentStep == .modelDownload, bothModelsStarted, !bothModelsReady else {
+        guard currentStep == .modelDownload, allModelsStarted, !allModelsReady else {
             return ""
         }
         return "Downloads will continue in the background"
+    }
+
+    // MARK: - Private engine state helper
+
+    /// The download state of the current target engine.
+    private var targetEngineState: EngineDownloadState {
+        switch appCore.speechEngines.target {
+        case .apple: appCore.speechEngines.apple
+        case .whisper: appCore.speechEngines.whisper
+        }
     }
 
     // MARK: - Row-state mappers
 
     /// Computes the view-state for the transcription model row.
     internal func transcriptionRowState() -> ModelRowState {
+        let engines = appCore.speechEngines
+        let target = engines.target
+
         if transcriptionReady {
-            return .ready
+            return .ready(caption: target == .apple ? "Built in" : nil)
         }
-        if isDownloading {
-            return .downloading(
-                .indeterminate(status: downloadStatus)
-            )
+
+        let state = targetEngineState
+        switch state {
+        case let .downloading(fraction):
+            if target == .apple {
+                return .downloading(.determinate(fraction: fraction))
+            }
+            return .downloading(.indeterminate(status: "Downloading\u{2026}"))
+
+        case let .failed(message):
+            return .failed(message: message)
+
+        default:
+            break
         }
+
         if isPreparingModelStep {
             return .checking
         }
-        if transcriptionInsufficientDisk {
+
+        // Whisper: check disk
+        if target == .whisper, !engines.hasEnoughDiskForWhisper {
             return .insufficientDisk
         }
-        if downloadFailed, let status = downloadStatus {
-            return .failed(message: status)
+
+        return .idle(
+            sizeCaption: target == .apple ? "System download" : "626 MB"
+        )
+    }
+
+    /// Computes the view-state for the Speaker ID model row.
+    internal func speakerIDRowState() -> ModelRowState {
+        if speakerIDReady {
+            return .ready()
         }
-        return .idle(sizeCaption: "~1.5 GB")
+
+        let state = appCore.speechEngines.speakerID
+        switch state {
+        case .downloading:
+            return .downloading(.indeterminate(status: "Downloading\u{2026}"))
+
+        case let .failed(message):
+            return .failed(message: message)
+
+        default:
+            break
+        }
+
+        if isPreparingModelStep {
+            return .checking
+        }
+
+        return .idle(sizeCaption: "~11 MB")
     }
 
     /// Computes the view-state for the language model row.
     internal func languageRowState() -> ModelRowState {
         if languageReady {
-            return .ready
+            return .ready()
         }
 
         guard let targetID = languageTargetModelID else {

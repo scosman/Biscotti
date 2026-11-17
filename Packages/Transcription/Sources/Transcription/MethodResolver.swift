@@ -6,6 +6,7 @@ import Foundation
 /// parameters. Sequential loading is an internal detail — callers never
 /// see these settings.
 struct ResolvedMethodSettings: Equatable {
+    let engine: SpeechEngine
     let sttModel: String
     let sttModelRepo: String
     let enableWordTimestamps: Bool
@@ -42,6 +43,8 @@ enum MethodResolver {
             resolveV1(physicalMemory: physicalMemory)
         case "v2":
             resolveV2(physicalMemory: physicalMemory)
+        case "apple-v1":
+            resolveAppleV1(physicalMemory: physicalMemory)
         default:
             // Unknown methods fall back to v1 behavior.
             resolveV1(physicalMemory: physicalMemory)
@@ -51,16 +54,33 @@ enum MethodResolver {
     // MARK: - V1
 
     private static func resolveV1(physicalMemory: UInt64) -> ResolvedMethodSettings {
-        baseSettings(physicalMemory: physicalMemory, detectLanguage: false)
+        whisperSettings(physicalMemory: physicalMemory, detectLanguage: false)
     }
 
     // MARK: - V2
 
     private static func resolveV2(physicalMemory: UInt64) -> ResolvedMethodSettings {
-        baseSettings(physicalMemory: physicalMemory, detectLanguage: true)
+        whisperSettings(physicalMemory: physicalMemory, detectLanguage: true)
     }
 
-    private static func baseSettings(
+    // MARK: - Apple V1
+
+    private static func resolveAppleV1(physicalMemory: UInt64) -> ResolvedMethodSettings {
+        let eightGB: UInt64 = 8 * 1024 * 1024 * 1024
+        let isLowRAM = physicalMemory <= eightGB
+
+        return ResolvedMethodSettings(
+            engine: .apple,
+            sttModel: sttModel,
+            sttModelRepo: defaultRepo,
+            enableWordTimestamps: true,
+            detectLanguage: false,
+            diarizationStrategy: .subsegment,
+            sequentialLoading: isLowRAM
+        )
+    }
+
+    private static func whisperSettings(
         physicalMemory: UInt64,
         detectLanguage: Bool
     ) -> ResolvedMethodSettings {
@@ -68,6 +88,7 @@ enum MethodResolver {
         let isLowRAM = physicalMemory <= eightGB
 
         return ResolvedMethodSettings(
+            engine: .whisper,
             sttModel: sttModel,
             sttModelRepo: defaultRepo,
             enableWordTimestamps: true,

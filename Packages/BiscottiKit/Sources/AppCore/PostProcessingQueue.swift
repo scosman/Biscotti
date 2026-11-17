@@ -1,4 +1,5 @@
 import Foundation
+import TranscriptionService
 
 /// App-wide serial FIFO of heavy post-recording work. Each entry runs the
 /// injected runner to completion (transcribe -> AI auto-enhancements) before
@@ -13,10 +14,18 @@ public final class PostProcessingQueue {
     public struct Entry: Sendable, Equatable {
         public let meetingID: UUID
         public let kind: Kind
+        /// One-off engine override for the job. Nil uses the current
+        /// engine target from `SpeechEngineManager`.
+        public let config: TranscriptionConfig?
 
-        public init(meetingID: UUID, kind: Kind) {
+        public init(
+            meetingID: UUID,
+            kind: Kind,
+            config: TranscriptionConfig? = nil
+        ) {
             self.meetingID = meetingID
             self.kind = kind
+            self.config = config
         }
     }
 
@@ -34,9 +43,15 @@ public final class PostProcessingQueue {
     }
 
     /// Appends unless the meeting is already waiting or running (no-op then).
-    public func enqueue(_ meetingID: UUID, kind: Kind) {
+    ///
+    /// - Parameter config: Optional one-off engine override for this job.
+    public func enqueue(
+        _ meetingID: UUID,
+        kind: Kind,
+        config: TranscriptionConfig? = nil
+    ) {
         guard !isActive(meetingID) else { return }
-        waiting.append(Entry(meetingID: meetingID, kind: kind))
+        waiting.append(Entry(meetingID: meetingID, kind: kind, config: config))
         startIfNeeded()
     }
 

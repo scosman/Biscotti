@@ -681,8 +681,10 @@ let package = Package(
             name: "ModelManagementUI",
             dependencies: [
                 "AppCore",
+                "DataStore",
                 "DesignSystem",
                 "Intelligence",
+                "TranscriptionService",
                 .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors
@@ -693,7 +695,9 @@ let package = Package(
                 "ModelManagementUI",
                 "AppCore",
                 "BiscottiTestSupport",
+                "DataStore",
                 "Intelligence",
+                "TranscriptionService",
                 .product(name: "LocalLLM", package: "LocalLLM")
             ],
             swiftSettings: warningsAsErrors

@@ -81,6 +81,61 @@ struct AIModelTestSuite {
         )
     }
 
+    /// Apple Speech end-to-end test — transcribes the 3-speaker fixture using
+    /// the Apple engine and verifies structure: non-empty words with times,
+    /// multiple speakers, correct method id and language.
+    /// Requires macOS 26+ (Apple Speech is unavailable on older OS).
+    @Test(
+        "Apple end-to-end 3-speaker",
+        .tags(.aiModel),
+        .enabled(if: AITestGate.isEnabled)
+    )
+    func appleEndToEnd3Speaker() async throws {
+        // Skip on macOS < 26 where Apple Speech is unavailable.
+        guard case .available = AppleSpeechSupport.availability() else {
+            return
+        }
+
+        let mic = try #require(Bundle.module.url(
+            forResource: "mic_fixture", withExtension: "wav", subdirectory: "Fixtures"
+        ))
+        let sys = try #require(Bundle.module.url(
+            forResource: "system_fixture", withExtension: "wav", subdirectory: "Fixtures"
+        ))
+
+        let result = try await Transcriber(backend: .inProcess).processAudio(
+            mic: mic, system: sys,
+            config: .apple(locale: "en_US")
+        )
+
+        // Method and language
+        #expect(result.transcriptionMethodId == "apple-v1")
+        #expect(result.language == "en_US" || result.language.hasPrefix("en"))
+
+        // Non-empty transcript with words
+        #expect(!result.segments.isEmpty, "Apple transcript should have segments")
+        let allText = result.segments.map(\.text).joined(separator: " ")
+        #expect(!allText.isEmpty, "Apple transcript should have text")
+
+        // Word timings exist
+        let words = result.segments.compactMap(\.words).flatMap(\.self)
+        #expect(!words.isEmpty, "Apple transcript should have word timings")
+        let hasTimedWords = words.contains(where: { $0.startTime > 0 || $0.endTime > 0 })
+        #expect(hasTimedWords, "Apple transcript should have timed words")
+
+        // Multiple speakers from diarization
+        let speakerIDs = Set(result.segments.map(\.speakerID))
+        #expect(speakerIDs.count >= 2, "Expected at least 2 speakers, got \(speakerIDs.count)")
+
+        // No hallucination: no segment endTime exceeds audio duration
+        let duration = try audioDuration(mic)
+        let maxEnd = result.segments.map(\.endTime).max() ?? 0
+        #expect(
+            maxEnd <= duration + 0.001,
+            "Hallucination: segment endTime \(maxEnd) exceeds audio duration \(duration)"
+        )
+    }
+
     /// Custom-vocab test — verifies promptTokens vocabulary biasing produces a
     /// transcript that contains the expected domain terms. Previously disabled
     /// because WhisperKit's promptTokens blanked the transcript (Gotcha #16);

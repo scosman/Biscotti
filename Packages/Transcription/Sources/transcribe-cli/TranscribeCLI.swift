@@ -25,6 +25,12 @@ struct TranscribeCLI: AsyncParsableCommand {
     @Option(name: .long, help: "Comma-separated custom vocabulary terms.")
     var vocab: String?
 
+    @Option(name: .long, help: "STT engine: whisper (default) or apple.")
+    var engine: String?
+
+    @Option(name: .long, help: "Locale for Apple Speech (e.g. en_US). Required when --engine apple.")
+    var locale: String?
+
     @Flag(name: .long, help: "Output TranscriptResult as JSON to stdout.")
     var json: Bool = false
 
@@ -32,6 +38,7 @@ struct TranscribeCLI: AsyncParsableCommand {
         let writer = StandardOutputWriter()
 
         let vocabTerms = parseVocab(vocab)
+        let config = try buildConfig(writer: writer)
 
         // At least one audio path is required.
         guard mic != nil || system != nil else {
@@ -44,12 +51,18 @@ struct TranscribeCLI: AsyncParsableCommand {
 
         writer.writeStderr("transcribe-cli")
         writer.writeStderr("==============")
-        printInputSummary(vocabTerms: vocabTerms, writer: writer)
+        printInputSummary(vocabTerms: vocabTerms, config: config, writer: writer)
 
         let transcriber = Transcriber(backend: .inProcess)
 
+        // Download the components the engine needs.
+        let components: Set<ModelComponent> = switch config.engine {
+        case .whisper: .all
+        case .apple: [.speakerID]
+        }
+
         writer.writeStderr("Downloading models (if needed)...")
-        try await transcriber.ensureModelsDownloaded { status in
+        try await transcriber.ensureModelsDownloaded(components) { status in
             writer.writeStderr(status)
         }
 
@@ -59,7 +72,8 @@ struct TranscribeCLI: AsyncParsableCommand {
         let result = try await transcriber.processAudio(
             mic: micURL,
             system: systemURL,
-            customVocabulary: vocabTerms
+            customVocabulary: vocabTerms,
+            config: config
         )
 
         writer.writeStderr("Done. Elapsed: \(String(format: "%.1f", result.processingDuration))s")
@@ -70,6 +84,26 @@ struct TranscribeCLI: AsyncParsableCommand {
         } else {
             let text = formatResultText(result)
             writer.writeStdout(text)
+        }
+    }
+
+    /// Build a `TranscriptionConfig` from the CLI options.
+    func buildConfig(writer: some OutputWriter) throws -> TranscriptionConfig {
+        guard let engineStr = engine else {
+            return .whisper()
+        }
+        switch engineStr.lowercased() {
+        case "whisper":
+            return .whisper()
+        case "apple":
+            guard let loc = locale else {
+                writer.writeStderr("Error: --locale is required when --engine apple")
+                throw ExitCode.failure
+            }
+            return .apple(locale: loc)
+        default:
+            writer.writeStderr("Error: unknown engine '\(engineStr)'. Use 'whisper' or 'apple'.")
+            throw ExitCode.failure
         }
     }
 
@@ -89,11 +123,17 @@ struct TranscribeCLI: AsyncParsableCommand {
     }
 
     private func printInputSummary(
-        vocabTerms: [String], writer: some OutputWriter
+        vocabTerms: [String],
+        config: TranscriptionConfig,
+        writer: some OutputWriter
     ) {
         writer.writeStderr("Mic:        \(mic ?? "(none)")")
         writer.writeStderr("System:     \(system ?? "(none)")")
-        writer.writeStderr("Method:     \(TranscriptionMethod.current.id)")
+        writer.writeStderr("Engine:     \(config.engine.rawValue)")
+        writer.writeStderr("Method:     \(config.method.id)")
+        if let loc = config.locale {
+            writer.writeStderr("Locale:     \(loc)")
+        }
         if !vocabTerms.isEmpty {
             writer.writeStderr("Vocabulary: \(vocabTerms.joined(separator: ", "))")
         }

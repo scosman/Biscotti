@@ -3,15 +3,19 @@ import SwiftUI
 
 // MARK: - ModelCard
 
-/// Two-row card for the model download onboarding step.
-/// Transcription row on top, language row on bottom, separated
-/// by an inset divider matching the permission card chrome.
+/// Three-row card for the model download onboarding step.
+/// Transcription, Speaker ID, and Language Model rows separated
+/// by inset dividers matching the permission card chrome.
 struct ModelCard: View {
     @Bindable var viewModel: OnboardingViewModel
 
     var body: some View {
         VStack(spacing: 0) {
             transcriptionRow
+
+            InsetDivider(leadingInset: 48)
+
+            speakerIDRow
 
             InsetDivider(leadingInset: 48)
 
@@ -22,13 +26,34 @@ struct ModelCard: View {
     }
 
     private var transcriptionRow: some View {
-        ModelDownloadRow(
+        let state = viewModel.transcriptionRowState()
+        return ModelDownloadRow(
             icon: "waveform",
-            name: "Transcription & Speaker ID",
-            why: "Turns speech into text and labels who\u{2019}s speaking.",
-            state: viewModel.transcriptionRowState(),
+            name: "Transcription",
+            why: "Turns speech into text.",
+            state: state,
             onDownload: {
                 Task { await viewModel.startTranscriptionDownload() }
+            },
+            extraContent: {
+                if case .downloading = state {} else {
+                    RecommendationLine(
+                        modelName: viewModel.transcriptionLineText,
+                        onChange: { viewModel.showSpeechSheet = true }
+                    )
+                }
+            }
+        )
+    }
+
+    private var speakerIDRow: some View {
+        ModelDownloadRow(
+            icon: "person.2",
+            name: "Speaker ID",
+            why: "Labels who\u{2019}s speaking.",
+            state: viewModel.speakerIDRowState(),
+            onDownload: {
+                Task { await viewModel.startSpeakerIDDownload() }
             }
         )
     }
@@ -44,11 +69,10 @@ struct ModelCard: View {
                 viewModel.startLanguageDownload()
             },
             extraContent: {
-                if case .idle = state {
+                if case .downloading = state {} else {
                     RecommendationLine(
-                        modelName: viewModel.languageTargetDisplayName,
-                        isRecommended: viewModel.languageTargetIsRecommended,
-                        onSeeAll: { viewModel.showVariantSheet = true }
+                        modelName: viewModel.languageLineText,
+                        onChange: { viewModel.showVariantSheet = true }
                     )
                 }
             }
@@ -196,8 +220,13 @@ struct DownloadControl: View {
             case let .downloading(progress):
                 downloadingContent(progress)
 
-            case .ready:
+            case let .ready(caption):
                 GrantedTag("READY")
+                if let caption {
+                    Text(caption)
+                        .font(.biscottiMono(11))
+                        .foregroundStyle(.inkTertiary)
+                }
 
             case .insufficientDisk:
                 diskWarning
@@ -291,33 +320,48 @@ struct DownloadControl: View {
 
 // MARK: - RecommendationLine
 
-/// Grey line showing the target model name and a "See all options"
-/// affordance. Shown only when the language row is idle.
-/// When `isRecommended` is true, prefixes the name with "Recommended ·".
+/// Model-name + "Change…" line for onboarding rows.
+/// IBM Plex Mono (`.biscottiMono`) 11.5pt for the model label, SF 12.5
+/// semibold for the link. Wraps: the model string never truncates; if the
+/// row is too narrow "Change…" drops to a second line.
 struct RecommendationLine: View {
     let modelName: String?
-    let isRecommended: Bool
-    let onSeeAll: () -> Void
+    let onChange: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        FlowLayout(horizontalSpacing: 12, verticalSpacing: 4) {
             if let modelName {
-                Text(isRecommended ? "Recommended \u{00B7} \(modelName)" : modelName)
-                    .font(.system(size: 12.5))
+                Text(modelName)
+                    .font(.biscottiMono(11.5))
                     .foregroundStyle(.inkSecondary)
+                    .tracking(0.115) // ~0.01em at 11.5pt
+                    .lineLimit(1)
+                    .fixedSize()
             }
 
-            Button(action: onSeeAll) {
-                HStack(spacing: 3) {
-                    Text("See all options")
-                        .font(.system(size: 12.5, weight: .semibold))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11))
-                }
-                .foregroundStyle(.inkSecondary)
+            Button(action: onChange) {
+                Text("Change\u{2026}")
+                    .font(.system(size: 12.5, weight: .semibold))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChangeLinkStyle())
         }
-        .padding(.top, 6)
+        .padding(.top, 7)
+    }
+}
+
+// MARK: - ChangeLinkStyle
+
+/// Inline text-link button style: `.inkSecondary` at rest, `.ink` on
+/// hover or press. No background chrome.
+struct ChangeLinkStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(
+                configuration.isPressed || isHovered
+                    ? Color.ink : Color.inkSecondary
+            )
+            .onHover { isHovered = $0 }
     }
 }

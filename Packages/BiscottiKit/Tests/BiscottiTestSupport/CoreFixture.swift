@@ -39,10 +39,21 @@ public struct CoreFixture {
     public let modelManager: ModelManager
     public let fakeLLMRunner: FakeCoreLLMRunner
     public let fakeModelProvider: FakeCoreModelProvider
+    public let speechEngines: SpeechEngineManager
+    public let fakeAppleSpeech: FakeAppleSpeech
+    public let managerEngine: FakeTranscriber
     public let fakeAudioConverter: FakeAudioConverter
 
     public func cleanup() {
         try? FileManager.default.removeItem(at: storageRoot)
+    }
+
+    /// Persists an explicit speech-engine selection and refreshes the
+    /// manager, so `speechEngines.target` follows it even when the engine
+    /// is not yet downloaded (which `choose(_:)` would refuse).
+    public func selectSpeechEngine(_ engine: SpeechEngine) async throws {
+        try await store.updateSettings { $0.sttEngineSelection = engine.rawValue }
+        await speechEngines.refresh()
     }
 
     /// Creates a meeting with present audio files and returns its ID.
@@ -530,6 +541,12 @@ public func makeCoreFixture(
     hardwareRAMBytes: UInt64 = 32_000_000_000,
     hardwareDiskBytes: Int64? = 100_000_000_000,
     mcpServerPort: Int = 0,
+    appleAvailability: AppleSpeechAvailability = .requiresOSUpdate(currentMajor: 15),
+    appleLocales: [String] = [],
+    appleEquivalent: String? = nil,
+    appleInstalled: Set<String> = [],
+    whisperPresent: Bool = false,
+    speakerIDPresent: Bool = false,
     sendEnvironment: SendEnvironment? = nil,
     testName: String = "Test"
 ) throws -> CoreFixture {
@@ -565,10 +582,30 @@ public func makeCoreFixture(
     )
 
     let fakeEngine = FakeTranscriber()
+    // Separate engine for the SpeechEngineManager (mirrors production dual-Transcriber)
+    let managerEngine = FakeTranscriber()
+    managerEngine.backing.componentPresent[.whisper] = whisperPresent
+    managerEngine.backing.componentPresent[.speakerID] = speakerIDPresent
+    let fakeAppleSpeech = FakeAppleSpeech(
+        availability: appleAvailability,
+        locales: appleLocales,
+        equivalent: appleEquivalent,
+        installed: appleInstalled
+    )
+    var transcriptionRef: TranscriptionService?
+    let speechEngines = SpeechEngineManager(
+        store: store,
+        transcriber: managerEngine,
+        apple: fakeAppleSpeech,
+        diskProbe: { hardwareDiskBytes },
+        isJobInFlight: { transcriptionRef?.isJobInFlight ?? false }
+    )
     let transcription = TranscriptionService(
         store: store, engine: fakeEngine,
-        vocabulary: VocabularyService(store: store)
+        vocabulary: VocabularyService(store: store),
+        engines: speechEngines
     )
+    transcriptionRef = transcription
 
     let fakeEventStore = FakeEventStore(
         authStatus: calendarAuthStatus,
@@ -659,6 +696,7 @@ public func makeCoreFixture(
         modelManager: modelManager,
         scheduler: scheduler,
         mcpServer: MCPServerController(store: store, port: mcpServerPort),
+        speechEngines: speechEngines,
         sendEnvironment: sendEnvironment ?? .live,
         audioImport: audioImportCtrl
     )
@@ -681,6 +719,9 @@ public func makeCoreFixture(
         modelManager: modelManager,
         fakeLLMRunner: fakeLLMRunner,
         fakeModelProvider: fakeModelProvider,
+        speechEngines: speechEngines,
+        fakeAppleSpeech: fakeAppleSpeech,
+        managerEngine: managerEngine,
         fakeAudioConverter: fakeAudioConverter
     )
 }

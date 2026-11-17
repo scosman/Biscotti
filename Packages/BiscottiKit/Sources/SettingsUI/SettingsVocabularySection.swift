@@ -19,8 +19,8 @@ extension SettingsView {
                 .foregroundStyle(Tokens.secondaryText)
             }
 
-            // Rows 2 and 3 are hidden (not disabled) when the master toggle is off
-            if viewModel.customVocabularyEnabled {
+            // Rows 2 and 3 are hidden (not disabled) when the effective toggle is off
+            if viewModel.customVocabularyDisplayed {
                 // Row 2: Vocabulary List
                 vocabularyListRow
 
@@ -49,6 +49,17 @@ extension SettingsView {
         .sheet(isPresented: $showVocabularyListSheet) {
             VocabularyListSheet(viewModel: viewModel)
         }
+        .alert(
+            "Requires Whisper Transcription",
+            isPresented: $viewModel.showRequiresWhisperAlert
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Switch to Whisper") {
+                Task { await viewModel.switchToWhisperForVocabulary() }
+            }
+        } message: {
+            Text(viewModel.requiresWhisperAlertMessage)
+        }
     }
 
     private var vocabularyListRow: some View {
@@ -72,9 +83,9 @@ extension SettingsView {
 
     private var customVocabularyEnabledBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.customVocabularyEnabled },
+            get: { viewModel.customVocabularyDisplayed },
             set: { newValue in
-                Task { await viewModel.setCustomVocabularyEnabled(newValue) }
+                Task { await viewModel.requestCustomVocabularyEnabled(newValue) }
             }
         )
     }

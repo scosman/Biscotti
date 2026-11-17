@@ -3,6 +3,7 @@ import Calendar
 import DataStore
 import Permissions
 import Testing
+import TranscriptionService
 @testable import OnboardingUI
 
 @Suite("OnboardingViewModel")
@@ -131,8 +132,8 @@ struct OnboardingViewModelTests {
         #expect(model.currentStep == .done)
     }
 
-    @Test("model download sets isDownloading and updates status")
-    func modelDownloadProgress() async throws {
+    @Test("startTranscriptionDownload triggers speech engine download")
+    func startTranscriptionDownload() async throws {
         let fixture = try makeCoreFixture(
             calendarAuthStatus: .denied
         )
@@ -146,9 +147,9 @@ struct OnboardingViewModelTests {
         #expect(model.currentStep == .modelDownload)
 
         await model.startTranscriptionDownload()
-        // FakeTranscriber's ensureModelsDownloaded succeeds immediately
-        #expect(model.downloadComplete == true)
-        #expect(model.isDownloading == false)
+        // FakeTranscriber's download succeeds immediately, so
+        // the engine should now be downloaded and target ready.
+        #expect(model.transcriptionReady == true)
     }
 
     @Test("completeOnboarding calls core.completeOnboarding")
@@ -265,10 +266,6 @@ struct OnboardingViewModelTests {
 
         #expect(model.currentStep == .modelDownload)
 
-        // Mutate some state to verify reset clears it
-        await model.startTranscriptionDownload()
-        #expect(model.downloadComplete == true)
-
         // Reset
         model.resetForReplay()
 
@@ -279,15 +276,10 @@ struct OnboardingViewModelTests {
         #expect(model.notificationsGranted == false)
         #expect(model.calendarGroups.isEmpty)
         #expect(model.enabledCalendarIDs == nil)
-        #expect(model.downloadStatus == nil)
-        #expect(model.isDownloading == false)
-        #expect(model.downloadComplete == false)
-        #expect(model.downloadFailed == false)
-        #expect(model.transcriptionDownloaded == false)
         #expect(model.isPreparingModelStep == false)
         #expect(model.showVariantSheet == false)
+        #expect(model.showSpeechSheet == false)
         #expect(model.showConnectCalendarSheet == false)
-        #expect(model.hasSufficientDisk == true)
     }
 }
 
@@ -350,5 +342,188 @@ struct OnboardingCalendarReloadTests {
 
         await model.reloadCalendars()
         #expect(model.calendarGroups.isEmpty)
+    }
+}
+
+// MARK: - Persist target on advance (functional spec §4.3)
+
+@Suite("OnboardingViewModel -- persist target on advance")
+@MainActor
+struct OnboardingPersistTargetTests {
+    @Test("advance from modelDownload persists target when selection is empty")
+    func advancePersistsTarget() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true,
+            whisperPresent: true,
+            speakerIDPresent: true
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
+        await model.skip() // -> modelDownload
+
+        // No explicit selection has been made
+        #expect(fixture.speechEngines.selection == nil)
+
+        // Advance (Continue) should persist the target
+        await model.advance()
+        #expect(model.currentStep == .done)
+        #expect(fixture.speechEngines.selection != nil)
+    }
+
+    @Test("skip from modelDownload does not persist target")
+    func skipDoesNotPersistTarget() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
+        await model.skip() // -> modelDownload
+
+        // No explicit selection
+        #expect(fixture.speechEngines.selection == nil)
+
+        // Skip should NOT persist the target
+        await model.skip()
+        #expect(model.currentStep == .done)
+        #expect(fixture.speechEngines.selection == nil)
+    }
+
+    @Test("advance does not overwrite existing selection")
+    func advanceDoesNotOverwriteExisting() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            modelDownloaded: true,
+            whisperPresent: true,
+            speakerIDPresent: true
+        )
+        defer { fixture.cleanup() }
+
+        // Pre-set an explicit selection via the store
+        try await fixture.store.updateSettings { $0.sttEngineSelection = "whisper" }
+        await fixture.speechEngines.refresh()
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance() // welcome -> permissions
+        await model.skip() // -> modelDownload
+
+        #expect(fixture.speechEngines.selection != nil)
+
+        // Advance should not change the existing selection
+        await model.advance()
+        #expect(model.currentStep == .done)
+
+        let settings = try await fixture.store.settings()
+        #expect(settings.sttEngineSelection == "whisper")
+    }
+}
+
+// MARK: - Onboarding model line labels
+
+@Suite("OnboardingViewModel -- onboarding model line labels")
+@MainActor
+struct OnboardingModelLineLabelTests {
+    @Test("transcriptionLineText prepends Model: to summary label")
+    func transcriptionLineTextPrependsModelPrefix() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        #expect(model.transcriptionLineText == "Model: \(fixture.speechEngines.summaryLabel)")
+        #expect(model.transcriptionLineText.hasPrefix("Model: "))
+    }
+
+    @Test("transcriptionLineText shows Apple Speech with language in parentheses")
+    func transcriptionLineTextApple() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            appleAvailability: .available,
+            appleLocales: ["en_US"],
+            appleEquivalent: "en_US",
+            appleInstalled: ["en_US"]
+        )
+        defer { fixture.cleanup() }
+        try await fixture.selectSpeechEngine(.apple)
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        #expect(model.transcriptionLineText.contains("Apple Speech"))
+        #expect(model.transcriptionLineText.contains("only)"))
+        #expect(model.transcriptionLineText.hasPrefix("Model: "))
+    }
+
+    @Test("new user with Apple ready still targets Whisper")
+    func newUserWithAppleReadyTargetsWhisper() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            appleAvailability: .available,
+            appleLocales: ["en_US"],
+            appleEquivalent: "en_US",
+            appleInstalled: ["en_US"]
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        #expect(fixture.speechEngines.selection == nil)
+        #expect(model.transcriptionLineText == "Model: Whisper")
+        #expect(model.transcriptionRowState() == .idle(sizeCaption: "626 MB"))
+    }
+
+    @Test("transcriptionLineText for Whisper shows Model: Whisper")
+    func transcriptionLineTextWhisper() async throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        // Default on macOS 15: target is Whisper
+        #expect(model.transcriptionLineText == "Model: Whisper")
+    }
+
+    @Test("languageLineText prepends Model: to display name")
+    func languageLineTextPrependsModelPrefix() throws {
+        let fixture = try makeCoreFixture(calendarAuthStatus: .denied)
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        let displayName = model.languageTargetDisplayName
+        let lineText = model.languageLineText
+
+        if let displayName {
+            #expect(lineText == "Model: \(displayName)")
+        } else {
+            #expect(lineText == nil)
+        }
+    }
+
+    @Test("languageLineText is nil when no target display name")
+    func languageLineTextNilWhenNoTarget() throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            hardwareRAMBytes: 1 // extreme low RAM, but catalog still returns something
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        // If recommendedModelID returns nil (unlikely with catalog), lineText is nil
+        if model.languageTargetDisplayName == nil {
+            #expect(model.languageLineText == nil)
+        }
+        // Otherwise it has the prefix
+        if let lineText = model.languageLineText {
+            #expect(lineText.hasPrefix("Model: "))
+        }
     }
 }

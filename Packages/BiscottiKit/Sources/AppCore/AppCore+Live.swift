@@ -53,7 +53,7 @@ public extension AppCore {
             }
         )
 
-        let transcription = buildTranscription(
+        let (transcription, speechEngines) = buildTranscription(
             store: store, serviceName: transcriberServiceName, logger: logger
         )
 
@@ -91,6 +91,7 @@ public extension AppCore {
             notifications: notifications,
             intelligence: intelligence,
             modelManager: modelManager,
+            speechEngines: speechEngines,
             audioImport: audioImportCtrl
         )
         logger.info("AppCore.live: done")
@@ -130,20 +131,51 @@ public extension AppCore {
         return (modelManager, intelligence)
     }
 
-    /// Builds the live `TranscriptionService` with XPC engine and vocabulary.
+    /// Builds the live `TranscriptionService` and `SpeechEngineManager` with
+    /// two XPC engine instances (one for jobs, one for manager downloads/presence).
     /// Extracted to keep `live(storageRoot:…)` under the function body
     /// length lint limit.
     @MainActor
     private static func buildTranscription(
         store: DataStore, serviceName: String, logger: Logger
-    ) -> TranscriptionService {
+    ) -> (TranscriptionService, SpeechEngineManager) {
         logger.info("AppCore.live: TranscriptionService init")
-        let transcriber = Transcriber(backend: .hosted(serviceName: serviceName))
-        return TranscriptionService(
+
+        // Two separate Transcriber instances -> two separate XPC connections.
+        // A job's shutdown() never cuts a sheet download (and vice versa).
+        let jobTranscriber = Transcriber(backend: .hosted(serviceName: serviceName))
+        let managerTranscriber = Transcriber(backend: .hosted(serviceName: serviceName))
+
+        let appleProvider = LiveAppleSpeechProvider()
+
+        // SpeechEngineManager is built first; TranscriptionService gets it.
+        // The isJobInFlight closure binds to the service after construction.
+        var serviceRef: TranscriptionService?
+        let speechEngines = SpeechEngineManager(
             store: store,
-            engine: LiveTranscriberAdapter(transcriber: transcriber),
-            vocabulary: VocabularyService(store: store)
+            transcriber: LiveTranscriberAdapter(transcriber: managerTranscriber),
+            apple: appleProvider,
+            diskProbe: {
+                let url = FileManager.default.urls(
+                    for: .applicationSupportDirectory, in: .userDomainMask
+                ).first ?? URL(fileURLWithPath: NSHomeDirectory())
+                let values = try? url.resourceValues(
+                    forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+                )
+                return values?.volumeAvailableCapacityForImportantUsage
+            },
+            isJobInFlight: { serviceRef?.isJobInFlight ?? false }
         )
+
+        let service = TranscriptionService(
+            store: store,
+            engine: LiveTranscriberAdapter(transcriber: jobTranscriber),
+            vocabulary: VocabularyService(store: store),
+            engines: speechEngines
+        )
+        serviceRef = service
+
+        return (service, speechEngines)
     }
 }
 
@@ -228,25 +260,32 @@ private struct LiveTranscriberAdapter: Transcribing {
     let transcriber: Transcriber
 
     func ensureModelsDownloaded(
+        _ components: Set<ModelComponent>,
         status: (@Sendable (String) -> Void)?
     ) async throws {
-        try await transcriber.ensureModelsDownloaded(status: status)
+        try await transcriber.ensureModelsDownloaded(components, status: status)
     }
 
     func processAudio(
         mic: URL?,
         system: URL?,
-        customVocabulary: [String]
+        customVocabulary: [String],
+        config: TranscriptionConfig
     ) async throws -> TranscriptResult {
         try await transcriber.processAudio(
             mic: mic,
             system: system,
-            customVocabulary: customVocabulary
+            customVocabulary: customVocabulary,
+            config: config
         )
     }
 
-    func modelsPresent() async -> Bool {
-        await transcriber.modelsPresent()
+    func modelsPresent(_ components: Set<ModelComponent>) async -> Bool {
+        await transcriber.modelsPresent(components)
+    }
+
+    func deleteModels(_ components: Set<ModelComponent>) async throws {
+        try await transcriber.deleteModels(components)
     }
 
     func shutdown() async {

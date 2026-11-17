@@ -39,6 +39,7 @@ actions:
   - name: "precommit_checks"
     description: "Run the pre-commit checks (format + lint + test). Required before a --no-verify commit from inside the Claude Code agent; see CLAUDE.md."
     command: "bash -c 'set -o pipefail; make precommit-checks 2>&1 | tail -n 400'"
+    timeout: 600
 
   # build_app/test_app wrap xcodebuild, which is very verbose. The Makefile uses
   # `xcodebuild -quiet` (warnings/errors + final status only); here we additionally
@@ -75,3 +76,13 @@ actions:
     description: "Run the LocalLLM unit tests (Packages/LocalLLM). Always-on tests only; the env-gated AI/integration tests (BISCOTTI_RUN_AI_TESTS=1) need the model and are human-run."
     command: "bash -c 'set -o pipefail; swift test --package-path Packages/LocalLLM 2>&1 | tail -n 400'"
     timeout: 300
+
+  - name: "build_sttlab"
+    description: "Build the STTLab experiment package (experiments/STTLab)"
+    command: "bash -c 'set -o pipefail; swift build --package-path experiments/STTLab 2>&1 | tail -n 400'"
+    timeout: 600
+
+  - name: "test_sttlab"
+    description: "Run the STTLab experiment tests (experiments/STTLab)"
+    command: "bash -c 'set -o pipefail; swift test --package-path experiments/STTLab 2>&1 | tail -n 400'"
+    timeout: 600

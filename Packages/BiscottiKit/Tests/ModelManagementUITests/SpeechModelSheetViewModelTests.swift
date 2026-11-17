@@ -40,6 +40,20 @@ struct SpeechModelSheetViewModelTests {
         #expect(viewModel.rows[1].engine == .whisper)
     }
 
+    @Test("new user: Whisper is recommended and default even with Apple ready")
+    func whisperRecommendedAndDefaultWithAppleReady() async throws {
+        let (fix, viewModel) = try makeFixture()
+        defer { fix.cleanup() }
+        await viewModel.onAppear()
+
+        let apple = viewModel.rows[0]
+        let whisper = viewModel.rows[1]
+        #expect(apple.isRecommended == false)
+        #expect(apple.selection == .choose)
+        #expect(whisper.isRecommended == true)
+        #expect(whisper.selection == .isDefault)
+    }
+
     @Test("localeOptions delegates to engine manager")
     func localeOptionsForwards() throws {
         let (fix, viewModel) = try makeFixture()

@@ -67,11 +67,10 @@ struct SpeechEngineManagerRefreshTests {
         #expect(fix.manager.apple == .downloaded)
         #expect(fix.manager.whisper == .downloaded)
         #expect(fix.manager.speakerID == .downloaded)
-        #expect(fix.manager.languageSupported == true)
-        #expect(fix.manager.recommended == .apple)
-        // No explicit selection -> follows recommended
+        #expect(fix.manager.recommended == .whisper)
+        // No explicit selection -> follows recommended, even with Apple ready
         #expect(fix.manager.selection == nil)
-        #expect(fix.manager.target == .apple)
+        #expect(fix.manager.target == .whisper)
         #expect(!fix.manager.appleLocales.isEmpty)
     }
 
@@ -85,7 +84,6 @@ struct SpeechEngineManagerRefreshTests {
         await fix.manager.refresh()
 
         #expect(fix.manager.appleLocales.isEmpty)
-        #expect(fix.manager.languageSupported == false)
         #expect(fix.manager.recommended == .whisper)
         #expect(fix.manager.target == .whisper)
         #expect(fix.manager.apple == .notDownloaded)
@@ -115,32 +113,42 @@ struct SpeechEngineManagerRefreshTests {
         #expect(fix.manager.apple == .downloaded)
     }
 
-    @Test("migration pins whisper selection for existing users")
-    func migrationPinsWhisperForExistingUser() async throws {
-        let fix = try makeManager(
-            whisperPresent: true
-        )
+    @Test("new user with Apple available and installed defaults to whisper")
+    func newUserDefaultsToWhisperWithAppleReady() async throws {
+        let fix = try makeManager(installed: ["en_US"])
 
-        // Simulate existing user who completed onboarding but has no engine selection
-        try await fix.store.updateSettings { $0.onboardingComplete = true }
         await fix.manager.refresh()
+
+        #expect(fix.manager.isReady(.apple))
+        #expect(fix.manager.selection == nil)
+        #expect(fix.manager.target == .whisper)
+        #expect(fix.manager.summaryLabel == "Whisper")
+        #expect(fix.manager.jobConfig().engine == .whisper)
+    }
+
+    @Test("persistTargetIfUnset persists whisper for a new user")
+    func persistTargetIfUnsetWritesWhisper() async throws {
+        let fix = try makeManager()
+
+        await fix.manager.refresh()
+        await fix.manager.persistTargetIfUnset()
 
         #expect(fix.manager.selection == .whisper)
         let settings = try await fix.store.settings()
         #expect(settings.sttEngineSelection == "whisper")
     }
 
-    @Test("migration does not fire for new users (onboarding incomplete)")
-    func migrationSkipsNewUsers() async throws {
-        let fix = try makeManager(
-            whisperPresent: true
-        )
+    @Test("refresh leaves an onboarded user's empty selection unset")
+    func refreshDoesNotPinOnboardedUser() async throws {
+        let fix = try makeManager(whisperPresent: true)
 
-        // onboardingComplete defaults to false
+        try await fix.store.updateSettings { $0.onboardingComplete = true }
         await fix.manager.refresh()
 
-        // No migration: selection stays nil (follows recommended)
         #expect(fix.manager.selection == nil)
+        #expect(fix.manager.target == .whisper)
+        let settings = try await fix.store.settings()
+        #expect(settings.sttEngineSelection == "")
     }
 }
 
@@ -332,6 +340,32 @@ struct SpeechEngineManagerDeleteTests {
         let settings = try await fix.store.settings()
         #expect(settings.sttEngineSelection == "apple")
     }
+
+    @Test("deleting whisper with no explicit selection falls back to apple")
+    func deleteWhisperWithoutSelectionFallsBackToApple() async throws {
+        let fix = try makeManager(whisperPresent: true)
+
+        await fix.manager.refresh()
+        #expect(fix.manager.selection == nil)
+
+        await fix.manager.deleteWhisper()
+
+        #expect(fix.manager.selection == .apple)
+        #expect(fix.manager.target == .apple)
+    }
+
+    @Test("deleting whisper keeps an explicit apple selection")
+    func deleteWhisperKeepsAppleSelection() async throws {
+        let fix = try makeManager(whisperPresent: true)
+
+        await fix.manager.refresh()
+        await fix.manager.choose(.apple)
+
+        await fix.manager.deleteWhisper()
+
+        #expect(fix.manager.selection == .apple)
+        #expect(fix.manager.target == .apple)
+    }
 }
 
 // MARK: - Locale
@@ -399,15 +433,13 @@ struct SpeechEngineManagerDerivedTests {
 
         await fix.manager.refresh()
 
-        // Default target is apple (recommended when available + supported)
-        #expect(fix.manager.target == .apple)
-        let appleConfig = fix.manager.jobConfig()
-        #expect(appleConfig.engine == .apple)
+        // Default target is whisper
+        #expect(fix.manager.target == .whisper)
+        #expect(fix.manager.jobConfig().engine == .whisper)
 
-        // Switch to whisper
-        await fix.manager.choose(.whisper)
-        let whisperConfig = fix.manager.jobConfig()
-        #expect(whisperConfig.engine == .whisper)
+        // Switch to apple
+        await fix.manager.choose(.apple)
+        #expect(fix.manager.jobConfig().engine == .apple)
     }
 
     @Test("jobComponents returns speakerID for apple, all for whisper")
@@ -416,13 +448,13 @@ struct SpeechEngineManagerDerivedTests {
 
         await fix.manager.refresh()
 
-        // Apple target
-        #expect(fix.manager.target == .apple)
-        #expect(fix.manager.jobComponents() == [.speakerID])
-
-        // Whisper target
-        await fix.manager.choose(.whisper)
+        // Whisper target (default)
+        #expect(fix.manager.target == .whisper)
         #expect(fix.manager.jobComponents() == .all)
+
+        // Apple target
+        await fix.manager.choose(.apple)
+        #expect(fix.manager.jobComponents() == [.speakerID])
     }
 
     @Test("isReady checks both availability and download state")

@@ -39,17 +39,12 @@ public final class SpeechEngineManager {
     /// Whether enough disk space is available for Whisper (~750 MB).
     public private(set) var hasEnoughDiskForWhisper: Bool = true
 
-    /// Whether Apple supports the current system language.
-    public private(set) var languageSupported: Bool = false
-
     // MARK: - Derived
 
-    /// The recommended engine based on availability and language support.
+    /// The engine the UI badges as Recommended and the target when the
+    /// user has made no explicit choice.
     public var recommended: SpeechEngine {
-        SpeechEnginePolicy.recommended(
-            availability: appleAvailability,
-            languageSupported: languageSupported
-        )
+        SpeechEnginePolicy.recommended
     }
 
     /// The engine that transcribes new meetings.
@@ -183,12 +178,8 @@ public final class SpeechEngineManager {
         if case .available = appleAvailability {
             supported = await appleProvider.supportedLocales()
             appleLocales = AppleLocalePolicy.options(for: supported)
-            languageSupported = AppleLocalePolicy.languageSupported(
-                current: .current, supported: supported
-            )
         } else {
             appleLocales = []
-            languageSupported = false
         }
 
         // 2. Load settings
@@ -226,11 +217,6 @@ public final class SpeechEngineManager {
 
         // 5. Disk probe
         hasEnoughDiskForWhisper = (diskProbe() ?? .max) >= Self.whisperDiskMinimumBytes
-
-        // 6. Migration: existing user with Whisper -> pin selection
-        if selection == nil, settings.onboardingComplete, whisper == .downloaded {
-            await writeSelection(.whisper)
-        }
     }
 
     // MARK: - Private
@@ -296,7 +282,7 @@ public extension SpeechEngineManager {
         }
         await transcriber.shutdown()
         // If Whisper was the target, fall back to Apple if available
-        if selection == .whisper || (selection == nil && recommended == .whisper) {
+        if target == .whisper {
             if case .available = appleAvailability {
                 await writeSelection(.apple)
             }

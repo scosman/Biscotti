@@ -7,31 +7,9 @@ import TranscriptionService
 
 @Suite("SpeechEnginePolicy")
 struct SpeechEnginePolicyTests {
-    @Test("recommended returns apple when available and language supported")
-    func recommendedAppleWhenAvailableAndSupported() {
-        let result = SpeechEnginePolicy.recommended(
-            availability: .available,
-            languageSupported: true
-        )
-        #expect(result == .apple)
-    }
-
-    @Test("recommended returns whisper when available but language unsupported")
-    func recommendedWhisperWhenLanguageUnsupported() {
-        let result = SpeechEnginePolicy.recommended(
-            availability: .available,
-            languageSupported: false
-        )
-        #expect(result == .whisper)
-    }
-
-    @Test("recommended returns whisper when requires OS update")
-    func recommendedWhisperWhenRequiresOSUpdate() {
-        let result = SpeechEnginePolicy.recommended(
-            availability: .requiresOSUpdate(currentMajor: 15),
-            languageSupported: true
-        )
-        #expect(result == .whisper)
+    @Test("recommends whisper for new users")
+    func recommendsWhisper() {
+        #expect(SpeechEnginePolicy.recommended == .whisper)
     }
 }
 
@@ -67,24 +45,6 @@ struct AppleLocalePolicyTests {
             equivalent: nil
         )
         #expect(result == "en_US")
-    }
-
-    @Test("languageSupported returns true when current language is in supported list")
-    func languageSupportedTrue() {
-        let result = AppleLocalePolicy.languageSupported(
-            current: Locale(identifier: "en_US"),
-            supported: ["en_US", "en_GB", "fr_FR"]
-        )
-        #expect(result == true)
-    }
-
-    @Test("languageSupported returns false when no language match")
-    func languageSupportedFalse() {
-        let result = AppleLocalePolicy.languageSupported(
-            current: Locale(identifier: "ja_JP"),
-            supported: ["en_US", "fr_FR"]
-        )
-        #expect(result == false)
     }
 
     @Test("options returns sorted AppleLocaleOption values")

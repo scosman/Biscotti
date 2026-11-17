@@ -6,7 +6,7 @@ status: complete
 
 ## 1. Goal
 
-Add Apple `SpeechTranscriber` ("Apple Speech") as a second local speech-to-text engine beside Whisper. The user chooses the engine in onboarding and in Settings. Apple Speech is the default on macOS 26+ when it supports the user's language. Whisper stays the only engine on macOS 15.
+Add Apple `SpeechTranscriber` ("Apple Speech") as a second local speech-to-text engine beside Whisper. The user chooses the engine in onboarding and in Settings. Whisper is the default for new users on every macOS version; Apple Speech is opt-in on macOS 26+ (§13 — this replaced the original "Apple is the default on macOS 26+" decision). Whisper stays the only engine on macOS 15.
 
 Why: the validation experiment (`../apple_stt_validation/results/overview.md`) shows Apple is about 5x faster (4.3x measured, with Apple on the slower M2 and Whisper on an M4 Pro) with 3–10x less engine memory, its word timings work with SpeakerKit speaker alignment, and its accuracy is close to Whisper except for technical vocabulary. Whisper stays for users who need jargon accuracy, custom vocabulary, or a language Apple does not support.
 
@@ -23,7 +23,7 @@ Why: the validation experiment (`../apple_stt_validation/results/overview.md`) s
 | **Apple ready** | Apple available **and** the assets for the Apple locale are installed (system `AssetInventory`). |
 | **Whisper ready** | The Whisper model is on disk (today's presence check). |
 | **Selection** | The engine the user chose, persisted. Empty = no explicit choice. |
-| **Recommended** | Policy in §4.2. |
+| **Recommended** | Policy in §4.2 (Whisper; see §13). |
 | **Target engine** | Selection if set, else Recommended. The engine that transcribes new meetings. |
 | **Effective custom vocabulary** | The user's custom-vocabulary "on" preference **and** target engine = Whisper. |
 
@@ -38,7 +38,7 @@ Why: the validation experiment (`../apple_stt_validation/results/overview.md`) s
 6. Onboarding "Download Local AI Models" step: 3 rows (Transcription, Speaker ID, Language Model).
 7. Apple locale setting with a runtime list of supported locales.
 8. Custom vocabulary rules and the two alerts (§7).
-9. One-time migration for existing installs (§4.4).
+9. One-time migration for existing installs (§4.4; removed by §13).
 10. Unit tests; manual-test and AI-test additions for the Apple engine (§10).
 
 ### Out of scope
@@ -58,6 +58,8 @@ Why: the validation experiment (`../apple_stt_validation/results/overview.md`) s
 - Both live in `AppSettings` (SwiftData, additive fields with defaults; no schema version bump).
 
 ### 4.2 Recommendation policy
+> **Superseded by §13:** Recommended is now always **Whisper**. The original policy below is kept as a record.
+
 - **Apple** when Apple is available **and** Apple supports the user's language (some supported locale has the same language as `Locale.current`; see §6.2).
 - **Whisper** in all other cases (macOS 15, `SpeechTranscriber` unavailable, unsupported language).
 - Recomputed when read; not persisted.
@@ -70,11 +72,13 @@ Why: the validation experiment (`../apple_stt_validation/results/overview.md`) s
   - When **Switch to Whisper** is confirmed in the custom vocabulary alert (§7.3).
   - When Whisper is deleted while it is the target (§5.4).
   - When the user clicks **Continue** on the onboarding model step and the saved selection differs from the target (i.e. it is empty): save the target. This locks in the engine the user saw during onboarding, so a later OS update or locale change does not switch it silently.
-- Only these actions (and the migration in §4.4) write the selection. Onboarding and Settings share the same selection code. Outside onboarding, a user who never makes a choice follows the recommendation.
+- Only these actions (and the migration in §4.4, since removed by §13) write the selection. Onboarding and Settings share the same selection code. Outside onboarding, a user who never makes a choice follows the recommendation.
 - If the selection is `apple` but Apple is no longer available (e.g. impossible downgrade, or `isAvailable` false), the target is Whisper. The stored selection is kept.
 - Changing the engine or the Apple locale affects **new** transcripts only. Re-transcribe uses the current target engine and locale.
 
 ### 4.4 Migration for existing installs
+> **Removed by §13:** with Whisper as the default, an empty selection already targets Whisper, so this pin was redundant. The original rule below is kept as a record.
+
 At launch, if the selection is empty **and** onboarding is complete **and** Whisper is ready, set the selection to `whisper`. This keeps existing users on Whisper (their transcripts do not change without their action). Users who completed onboarding without downloading Whisper get the normal recommendation.
 
 ## 5. Downloads and Readiness
@@ -121,7 +125,7 @@ Mirror the LLM sheet: while one engine is downloading, the other engine's Downlo
 ### 6.2 Default
 1. `Locale.current` if supported (`supportedLocale(equivalentTo:)`).
 2. Else a supported locale with the same language (prefer the language's primary region, e.g. `fr_FR`).
-3. Else `en_US`. (In this case Recommended is Whisper per §4.2.)
+3. Else `en_US`.
 
 ### 6.3 Display name
 - Summary labels show the **language only**: "Apple Speech ({Language} only)" (e.g. "Apple Speech (English only)"). The region appears only in the picker. Onboarding prepends "Model: " (e.g. "Model: Apple Speech (English only)"); Settings shows the label without the prefix.
@@ -237,3 +241,20 @@ Added after the first build. It lets the user keep Apple as the default and re-t
 - Engine starts downloading in the sheet while the menu is closed: the item shows "(downloading…)" the next time the menu opens.
 - Engine assets are evicted after the menu is shown: the job downloads/installs what is missing (§5.5), same as today.
 - Meeting with no transcript version: no item has the current marker. (The meeting shows Transcribe now instead, so this case appears only if versions exist without a preferred transcript.)
+
+## 13. Whisper Is the Default for New Users (amendment, post-build)
+
+Decided after the build, before the branch merged. It replaces §4.2 and removes §4.4. Everything else about Apple Speech is unchanged: it stays available and selectable on macOS 26+ (Speech to Text Model sheet, onboarding "Change…"), with the same locale resolution (§6), asset downloads (§5) and custom vocabulary rules (§7).
+
+### 13.1 Behavior
+- **Recommended = Whisper** on every macOS version, whatever Apple's availability or the user's language. It is a constant, not a computed policy.
+- A user with no explicit selection (`sttEngineSelection == ""`) targets Whisper. §4.3 is unchanged: Target = Selection if set, else Recommended.
+- Every UI that shows the recommendation or the default follows it: the sheet's Recommended badge is on Whisper, the onboarding Transcription row shows "Model: Whisper" and downloads Whisper, and the Settings row shows Whisper. Onboarding **Continue** still persists the target (now `whisper`) when the selection is empty.
+- Deleting Whisper while it is the target (explicitly or by default) still selects Apple when Apple is available (§5.4).
+
+### 13.2 Removed
+- The §4.4 migration (pin existing onboarded Whisper users to `whisper`). An empty selection already targets Whisper.
+- `languageSupported` (manager state and `AppleLocalePolicy.languageSupported`): it only fed the old recommendation.
+
+### 13.3 No migration for implicit Apple users
+The branch was unreleased when this changed, so no installs got Apple as an implicit default. Users who chose Apple explicitly (Download / Choose Model / onboarding Continue) keep their stored `apple` selection.

@@ -3,6 +3,7 @@ import Calendar
 import DataStore
 import Permissions
 import Testing
+import TranscriptionService
 @testable import OnboardingUI
 
 @Suite("OnboardingViewModel")
@@ -447,6 +448,7 @@ struct OnboardingModelLineLabelTests {
             appleInstalled: ["en_US"]
         )
         defer { fixture.cleanup() }
+        try await fixture.selectSpeechEngine(.apple)
 
         let model = OnboardingViewModel(core: fixture.core)
         await model.advance()
@@ -455,6 +457,26 @@ struct OnboardingModelLineLabelTests {
         #expect(model.transcriptionLineText.contains("Apple Speech"))
         #expect(model.transcriptionLineText.contains("only)"))
         #expect(model.transcriptionLineText.hasPrefix("Model: "))
+    }
+
+    @Test("new user with Apple ready still targets Whisper")
+    func newUserWithAppleReadyTargetsWhisper() async throws {
+        let fixture = try makeCoreFixture(
+            calendarAuthStatus: .denied,
+            appleAvailability: .available,
+            appleLocales: ["en_US"],
+            appleEquivalent: "en_US",
+            appleInstalled: ["en_US"]
+        )
+        defer { fixture.cleanup() }
+
+        let model = OnboardingViewModel(core: fixture.core)
+        await model.advance()
+        await model.skip()
+
+        #expect(fixture.speechEngines.selection == nil)
+        #expect(model.transcriptionLineText == "Model: Whisper")
+        #expect(model.transcriptionRowState() == .idle(sizeCaption: "626 MB"))
     }
 
     @Test("transcriptionLineText for Whisper shows Model: Whisper")

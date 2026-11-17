@@ -3,19 +3,11 @@ import Transcription
 
 // MARK: - SpeechEnginePolicy
 
-/// Pure recommendation logic for which speech engine to use.
+/// Which speech engine the app recommends and uses when the user hasn't chosen one.
 public enum SpeechEnginePolicy {
-    /// Returns the recommended engine based on availability and language support.
-    /// Apple when available and the user's language is supported; Whisper otherwise.
-    public static func recommended(
-        availability: AppleSpeechAvailability,
-        languageSupported: Bool
-    ) -> SpeechEngine {
-        if case .available = availability, languageSupported {
-            return .apple
-        }
-        return .whisper
-    }
+    /// Whisper on every macOS version. Apple Speech stays opt-in on macOS 26+
+    /// (Speech to Text Model sheet), but is never the implicit default.
+    public static let recommended: SpeechEngine = .whisper
 }
 
 // MARK: - AppleLocalePolicy
@@ -54,17 +46,6 @@ public enum AppleLocalePolicy {
 
         // 3. en_US fallback
         return "en_US"
-    }
-
-    /// Whether any supported locale shares the current locale's language code.
-    public static func languageSupported(
-        current: Locale,
-        supported: [String]
-    ) -> Bool {
-        let currentLanguage = current.language.languageCode?.identifier ?? ""
-        return supported.contains { id in
-            Locale(identifier: id).language.languageCode?.identifier == currentLanguage
-        }
     }
 
     /// Builds sorted display options from supported locale identifiers.

@@ -432,7 +432,7 @@ public final class AppCore {
         await modelManager.refresh()
         logger.info("onLaunch: modelManager.refresh done")
 
-        // Resolve speech engine state (Apple availability, migration)
+        // Resolve speech engine state (Apple availability, locale, downloads)
         logger.info("onLaunch: speechEngines.refresh starting")
         await speechEngines.refresh()
         logger.info("onLaunch: speechEngines.refresh done")

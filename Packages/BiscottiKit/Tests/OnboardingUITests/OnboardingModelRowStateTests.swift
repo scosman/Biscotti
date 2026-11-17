@@ -34,6 +34,7 @@ struct TranscriptionRowStateTests {
             appleInstalled: [] // not installed
         )
         defer { fixture.cleanup() }
+        try await fixture.selectSpeechEngine(.apple)
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -52,6 +53,7 @@ struct TranscriptionRowStateTests {
             appleInstalled: ["en_US"]
         )
         defer { fixture.cleanup() }
+        try await fixture.selectSpeechEngine(.apple)
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()
@@ -134,6 +136,7 @@ struct TranscriptionRowStateTests {
             appleInstalled: [] // not installed
         )
         defer { fixture.cleanup() }
+        try await fixture.selectSpeechEngine(.apple)
 
         let viewModel = OnboardingViewModel(core: fixture.core)
         await viewModel.advance()

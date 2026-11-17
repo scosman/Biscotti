@@ -14,6 +14,7 @@ Add Apple `SpeechTranscriber` as a transcription engine option in Biscotti, besi
   - When the user tries to turn custom vocab on while using Apple Speech, they get an alert (custom vocab requires Whisper).
   - Similarly, in the model selection dialog, if switching to Apple Speech from Whisper and custom vocab is set up, show an alert confirming that it will be turned off.
 - Default model: Apple Speech on macOS 26+. Whisper is the only option on macOS 15.
+  - **Changed after the build:** Whisper is the default for new users on every macOS version; Apple Speech is opt-in on macOS 26+. See `functional_spec.md` §13.
   - Hide "See options" in onboarding on macOS 15.
   - In Settings, let them open the dialog, but they see that Apple Speech is disabled.
 

@@ -80,6 +80,8 @@ public enum SpeechEnginePolicy {
 }
 ```
 
+> **Changed by functional spec §13:** `SpeechEnginePolicy.recommended` is now the constant `.whisper`, and `languageSupported` (policy function and manager state) was removed. The refresh migration (step 6 below) was removed too.
+
 ### `SpeechEngineManager` (`@MainActor @Observable`, `public final class`)
 
 ```swift

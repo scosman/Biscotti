@@ -46,6 +46,14 @@ public struct CoreFixture {
         try? FileManager.default.removeItem(at: storageRoot)
     }
 
+    /// Persists an explicit speech-engine selection and refreshes the
+    /// manager, so `speechEngines.target` follows it even when the engine
+    /// is not yet downloaded (which `choose(_:)` would refuse).
+    public func selectSpeechEngine(_ engine: SpeechEngine) async throws {
+        try await store.updateSettings { $0.sttEngineSelection = engine.rawValue }
+        await speechEngines.refresh()
+    }
+
     /// Creates a meeting with present audio files and returns its ID.
     ///
     /// - Parameters:

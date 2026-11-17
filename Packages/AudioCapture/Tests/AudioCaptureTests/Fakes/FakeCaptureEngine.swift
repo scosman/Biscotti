@@ -27,6 +27,8 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         var startsWithoutBuffers = 0
         /// Simulated write error surfaced via `writeError`.
         var simulatedWriteError: OSStatus?
+        /// Simulated buffer-flow timestamps surfaced via `streamHealth`.
+        var streamHealth: StreamHealth = .unknown
     }
 
     private let state = Mutex(State())
@@ -60,6 +62,24 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     var reconnectCount: Int {
         state.withLock { $0.reconnectCount }
+    }
+
+    var streamHealth: StreamHealth {
+        state.withLock { $0.streamHealth }
+    }
+
+    /// Replaces the simulated buffer-flow timestamps wholesale.
+    func setStreamHealth(_ health: StreamHealth) {
+        state.withLock { $0.streamHealth = health }
+    }
+
+    /// Simulates a buffer arriving now. `audible` also stamps it as non-zero.
+    func simulateBuffer(audible: Bool) {
+        let now = hostClockNanos()
+        state.withLock {
+            $0.streamHealth.lastBufferHostNanos = now
+            if audible { $0.streamHealth.lastNonZeroHostNanos = now }
+        }
     }
 
     var lastURL: URL? {

@@ -43,7 +43,8 @@ enum TestRecorderFactory {
         probableDenied: Bool = false,
         observedNonZero: Bool = false,
         micAuthStatus: AVAuthorizationStatus = .authorized,
-        requestAccessResult: Bool = true
+        requestAccessResult: Bool = true,
+        watchdog: SystemStreamWatchdog.Configuration = .default
     ) throws -> Components {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("AudioRecorderTests-\(UUID().uuidString)", isDirectory: true)
@@ -68,7 +69,8 @@ enum TestRecorderFactory {
             micEngine: micEngine,
             deviceChangeProvider: deviceChangeProvider,
             permissionChecker: permissionChecker,
-            micPermissionChecker: micPermChecker
+            micPermissionChecker: micPermChecker,
+            watchdog: watchdog
         )
 
         return Components(

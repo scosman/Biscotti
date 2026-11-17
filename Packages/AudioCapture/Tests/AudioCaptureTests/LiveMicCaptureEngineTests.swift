@@ -1,5 +1,7 @@
 import AudioToolbox
 import AVFoundation
+import Foundation
+import Synchronization
 import Testing
 @testable import AudioCapture
 
@@ -162,5 +164,121 @@ struct VPIOBufferHelperTests {
             interleaved: false,
             channelLayout: layout
         )
+    }
+}
+
+@Suite("Mic reconnect waits")
+struct VoiceProcessingSettleWaitTests {
+    /// Stands in for the engine's graph generation and capturing flag.
+    private final class EngineState: Sendable {
+        let generation = Atomic<Int>(0)
+        let capturing = Atomic<Bool>(true)
+    }
+
+    /// The configuration-change path bumps the graph generation when its
+    /// restart finishes, so the wait must end then, not at the timeout.
+    @Test("Returns as soon as the configuration-change path starts a new graph")
+    func returnsWhenGraphRebuilt() async {
+        let state = EngineState()
+        let rebuild = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            state.generation.wrappingAdd(1, ordering: .releasing)
+        }
+        let start = ContinuousClock.now
+        let rebuilt = await LiveMicCaptureEngine.waitForGraphRebuild(
+            after: 0, timeout: .seconds(5),
+            currentGeneration: { state.generation.load(ordering: .acquiring) },
+            isCapturing: { state.capturing.load(ordering: .acquiring) }
+        )
+        await rebuild.value
+        #expect(rebuilt)
+        #expect(ContinuousClock.now - start < .seconds(2), "The wait did not end when the graph was rebuilt")
+    }
+
+    /// With no configuration change, `reconnect()` rebuilds by itself once
+    /// the wait times out.
+    @Test("Returns false after the timeout when no new graph starts")
+    func timesOutWithoutRebuild() async {
+        let state = EngineState()
+        let start = ContinuousClock.now
+        let rebuilt = await LiveMicCaptureEngine.waitForGraphRebuild(
+            after: 0, timeout: .milliseconds(200),
+            currentGeneration: { state.generation.load(ordering: .acquiring) },
+            isCapturing: { state.capturing.load(ordering: .acquiring) }
+        )
+        #expect(!rebuilt)
+        #expect(ContinuousClock.now - start >= .milliseconds(200))
+    }
+
+    /// A request for the route the engine already runs on, after its tap
+    /// has delivered audio, is decided at once.
+    @Test("A stale request keeps a delivering engine without waiting")
+    func staleRequestKeepsEngine() async {
+        let start = ContinuousClock.now
+        let decision = await LiveMicCaptureEngine.settleReconnectDecision(
+            timeout: .seconds(5), decision: { .keepEngine }, isCapturing: { true }
+        )
+        #expect(decision == .keepEngine)
+        #expect(ContinuousClock.now - start < .milliseconds(500))
+    }
+
+    /// An engine that a rebuild has just started is kept as soon as its tap
+    /// delivers audio, before the timeout.
+    @Test("A fresh engine is kept once its first buffer arrives")
+    func freshEngineKeptAfterFirstBuffer() async {
+        let state = EngineState()
+        let deliver = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            state.generation.wrappingAdd(1, ordering: .releasing)
+        }
+        let start = ContinuousClock.now
+        let decision = await LiveMicCaptureEngine.settleReconnectDecision(
+            timeout: .seconds(5),
+            decision: { state.generation.load(ordering: .acquiring) > 0 ? .keepEngine : .awaitFirstBuffer },
+            isCapturing: { state.capturing.load(ordering: .acquiring) }
+        )
+        await deliver.value
+        #expect(decision == .keepEngine)
+        #expect(ContinuousClock.now - start < .seconds(2), "The wait did not end when the buffer arrived")
+    }
+
+    /// An engine whose tap stays silent past the timeout is not kept, so the
+    /// caller rebuilds it.
+    @Test("A fresh engine with no buffer is not kept after the timeout")
+    func silentEngineNotKept() async {
+        let start = ContinuousClock.now
+        let decision = await LiveMicCaptureEngine.settleReconnectDecision(
+            timeout: .milliseconds(200), decision: { .awaitFirstBuffer }, isCapturing: { true }
+        )
+        #expect(decision == .awaitFirstBuffer)
+        #expect(ContinuousClock.now - start >= .milliseconds(200))
+    }
+
+    /// A changed route always needs a new graph, so the decision returns
+    /// without polling for a buffer.
+    @Test("A route change goes straight to the configuration-change wait")
+    func routeChangeDoesNotWait() async {
+        let start = ContinuousClock.now
+        let decision = await LiveMicCaptureEngine.settleReconnectDecision(
+            timeout: .seconds(5), decision: { .rebuild }, isCapturing: { true }
+        )
+        #expect(decision == .rebuild)
+        #expect(ContinuousClock.now - start < .milliseconds(500))
+    }
+
+    /// A `stop()` during the wait ends it, so a pending reconnect does not
+    /// delay the end of the recording.
+    @Test("Stops waiting when capture stops")
+    func stopsWhenCaptureStops() async {
+        let state = EngineState()
+        state.capturing.store(false, ordering: .releasing)
+        let start = ContinuousClock.now
+        let rebuilt = await LiveMicCaptureEngine.waitForGraphRebuild(
+            after: 0, timeout: .seconds(5),
+            currentGeneration: { state.generation.load(ordering: .acquiring) },
+            isCapturing: { state.capturing.load(ordering: .acquiring) }
+        )
+        #expect(!rebuilt)
+        #expect(ContinuousClock.now - start < .seconds(1))
     }
 }

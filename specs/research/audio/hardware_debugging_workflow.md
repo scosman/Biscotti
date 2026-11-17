@@ -54,6 +54,7 @@ This is a prefix match, so it covers `net.scosman.biscotti.audiocapture` and the
 … --predicate 'process == "Biscotti" AND messageType == error'
 ```
 
+- Default-device changes: Core Audio logs each one in our process at default level (`com.apple.coreaudio:ddagg`: `HAL notification: default input device changed`, then `fetched default input device, ID = …`). Use these lines to count and time route events when our own `.info` route-change lines were not persisted. Filter with `--predicate 'processID == <pid>'` and `grep ddagg`.
 - `com.apple.avfaudio:avae` lines show the AVAudioEngine lifecycle and are often the key evidence: `start, was running 0`, `iounit configuration changed > stopping the engine`, `… > posting notification`, `stop, was running 1|0`. A `stop, was running 0` at user stop means the engine was already dead.
 - To list unique errors in a window: `awk '$3=="E"||$3=="F"'`, then remove TIDs and hex addresses, then `sort | uniq -c`. **Compare with a clean recording** before you blame an error: most Core Audio errors are always there.
 

@@ -24,8 +24,10 @@ the evidence does not establish an incorrect device selection or a defective doc
   it is still running. If stopped, keep the existing AVAudioEngine and enabled
   VoiceProcessingIO unit, re-query the input format, reinstall the input tap and
   silent output node, then prepare/start that same engine.
-- After audio delivery, retain the existing full rebuild for configuration changes.
-  Keep the recording file open and preserve the original alignment anchor.
+- After audio delivery (a device change), restart the existing engine the same way.
+  Rebuild only if the restart throws or delivers no buffer within 2 s (see the
+  restart-in-place entry in `README.md`). Keep the recording file open and
+  preserve the original alignment anchor.
 - Ignore notifications from old or unrelated engine instances. Remove the observer
   on unrecoverable configuration failure before allowing a later startup attempt.
 - Require a successfully written, nonempty mic buffer before starting system capture.

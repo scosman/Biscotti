@@ -197,7 +197,9 @@ struct XPCDownloadRequestTests {
 
 // MARK: - Component presence and delete
 
-@Suite("Component presence and delete")
+// .serialized: every test shares one on-disk fake model directory
+// (`testModelDir`) and deletes it on exit, so parallel runs race.
+@Suite("Component presence and delete", .serialized)
 struct ComponentPresenceTests {
     /// A unique test repo name that will never collide with real models.
     private static let testRepo = "__test_repo_\(UUID().uuidString)"

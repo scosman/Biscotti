@@ -27,6 +27,12 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
         var startsWithoutBuffers = 0
         /// Simulated write error surfaced via `writeError`.
         var simulatedWriteError: OSStatus?
+        /// How long each `reconnect()` takes. Task cancellation does not cut
+        /// it short, like the real engine's tap rebuild.
+        var reconnectDuration: Duration?
+        var reconnectInFlight = false
+        /// `stop()` calls that arrived while a `reconnect()` was running.
+        var stopsDuringReconnect = 0
     }
 
     private let state = Mutex(State())
@@ -64,6 +70,16 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
 
     var lastURL: URL? {
         state.withLock { $0.lastURL }
+    }
+
+    /// `stop()` calls that arrived while a `reconnect()` was running.
+    var stopsDuringReconnect: Int {
+        state.withLock { $0.stopsDuringReconnect }
+    }
+
+    /// Makes every `reconnect()` take `duration` before it finishes.
+    func setReconnectDuration(_ duration: Duration?) {
+        state.withLock { $0.reconnectDuration = duration }
     }
 
     /// Set to make `start()` throw permanently (every call fails).
@@ -169,12 +185,16 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
     }
 
     func stop() async {
-        state.withLock { $0.stopCount += 1 }
+        state.withLock {
+            if $0.reconnectInFlight { $0.stopsDuringReconnect += 1 }
+            $0.stopCount += 1
+        }
     }
 
     func reconnect() async throws {
-        let error: (any Error)? = state.withLock { locked -> (any Error)? in
+        let (error, duration) = state.withLock { locked -> ((any Error)?, Duration?) in
             locked.reconnectCount += 1
+            locked.reconnectInFlight = true
             if let err = locked.reconnectError {
                 if locked.reconnectFailuresRemaining > 0 {
                     locked.reconnectFailuresRemaining -= 1
@@ -182,10 +202,15 @@ final class FakeCaptureEngine: CaptureEngine, @unchecked Sendable {
                         locked.reconnectError = nil
                     }
                 }
-                return err
+                return (err, locked.reconnectDuration)
             }
-            return nil
+            return (nil, locked.reconnectDuration)
         }
+        if let duration {
+            // A detached task is not cancelled along with the caller.
+            await Task.detached { try? await Task.sleep(for: duration) }.value
+        }
+        state.withLock { $0.reconnectInFlight = false }
         if let error { throw error }
     }
 }

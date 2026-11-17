@@ -346,8 +346,7 @@ public actor AudioRecorder {
         guard lifecycle == .recording else { return }
 
         lifecycle = .finished
-        routeChangeTask?.cancel()
-        routeChangeTask = nil
+        await stopRouteChangeListener()
         stateTimer?.cancel()
         stateTimer = nil
 
@@ -556,6 +555,17 @@ extension AudioRecorder {
         }
     }
 
+    /// Cancels the listener and waits for a reconnect it has in progress.
+    /// `stop()` calls this before stopping the engines: otherwise a reconnect
+    /// can build a tap after the system file is closed, and nothing would
+    /// tear that tap down.
+    private func stopRouteChangeListener() async {
+        let task = routeChangeTask
+        routeChangeTask = nil
+        task?.cancel()
+        await task?.value
+    }
+
     /// Maximum number of retry attempts for mic engine reconnect failures
     /// during input-device changes.
     static let micReconnectMaxRetries = 2
@@ -579,7 +589,7 @@ extension AudioRecorder {
 
         switch event {
         case .outputChanged:
-            logger.info("Output device changed -- reconnecting system capture (file-preserving)")
+            logger.notice("Output device changed -- reconnecting system capture (file-preserving)")
             await reconnectSystemEngineWithRetry()
 
         case .inputChanged:
@@ -592,13 +602,14 @@ extension AudioRecorder {
     ///
     /// The system engine's `reconnect()` includes its own settle delay to let
     /// the HAL stabilize. On failure, retries up to `systemReconnectMaxRetries`
-    /// times with an additional delay between attempts. If all retries are
-    /// exhausted, the system track is lost but the mic track continues.
+    /// times with an additional delay between attempts. If every attempt
+    /// fails, the system track pauses until the next output change starts
+    /// another reconnect; the mic track continues.
     private func reconnectSystemEngineWithRetry() async {
         var lastError: (any Error)?
         for attempt in 0 ... Self.systemReconnectMaxRetries {
             if attempt > 0 {
-                logger.info(
+                logger.notice(
                     "Retrying system engine reconnect (attempt \(attempt + 1, privacy: .public)/\(Self.systemReconnectMaxRetries + 1, privacy: .public))"
                 )
                 do {
@@ -610,7 +621,7 @@ extension AudioRecorder {
             do {
                 try await systemEngine.reconnect()
                 if attempt > 0 {
-                    logger.info("System engine reconnect succeeded on retry \(attempt, privacy: .public)")
+                    logger.notice("System engine reconnect succeeded on retry \(attempt, privacy: .public)")
                 }
                 return
             } catch {
@@ -621,7 +632,7 @@ extension AudioRecorder {
             }
         }
         logger.error(
-            "System engine reconnect failed after \(Self.systemReconnectMaxRetries + 1, privacy: .public) attempts — system track lost, mic continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
+            "System engine reconnect failed after \(Self.systemReconnectMaxRetries + 1, privacy: .public) attempts — system track paused until the next output change, mic continues: \(lastError?.localizedDescription ?? "unknown", privacy: .public)"
         )
     }
 

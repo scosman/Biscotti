@@ -1,74 +1,87 @@
 {
   "ac_crash_safety_check" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_crash_safety_check",
-    "timestamp" : "2026-10-08T15:02:14Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_device_sample_rate" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_device_sample_rate",
-    "timestamp" : "2026-10-08T13:44:37Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_files_exist" : {
-    "note" : "Both .aac files exist with sane sizes",
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_files_exist",
-    "timestamp" : "2026-10-08T13:37:49Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_meet_close_midcapture" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_meet_close_midcapture",
-    "timestamp" : "2026-10-08T13:45:34Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_meet_open_midcapture" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_meet_open_midcapture",
-    "timestamp" : "2026-10-08T13:45:45Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_mega_timing" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_mega_timing",
-    "timestamp" : "2026-10-08T13:54:46Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_mega_voice" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_mega_voice",
-    "timestamp" : "2026-10-08T13:48:32Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_playback_mic" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_playback_mic",
-    "timestamp" : "2026-10-08T13:38:10Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_playback_system" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_playback_system",
-    "timestamp" : "2026-10-08T13:38:11Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_request_permissions" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_request_permissions",
-    "timestamp" : "2026-10-08T13:37:38Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_route_change" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_route_change",
-    "timestamp" : "2026-10-08T13:42:09Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_start_recording" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_start_recording",
-    "timestamp" : "2026-10-08T13:56:19Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_stop_recording" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_stop_recording",
-    "timestamp" : "2026-10-08T13:47:29Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "ac_two_dialogs" : {
-    "status" : "pass",
+    "note" : "Microphone capture changed to passive input; rerun hardware validation.",
+    "status" : "not-run",
     "stepID" : "ac_two_dialogs",
-    "timestamp" : "2026-10-08T13:37:39Z"
+    "timestamp" : "2026-10-23T10:50:35Z"
   },
   "au_background_check" : {
     "status" : "pass",

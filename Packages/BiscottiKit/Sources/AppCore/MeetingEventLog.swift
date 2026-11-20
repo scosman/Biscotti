@@ -15,7 +15,14 @@ enum MeetingEventLog {
             .appendingPathComponent("Biscotti/\(fileName)")
     }
 
+    /// Only the app writes the log. A test run (not an .app) must never
+    /// touch the user's real log or support folder.
+    static var isEnabled: Bool {
+        Bundle.main.bundlePath.hasSuffix(".app")
+    }
+
     static func write(_ category: String, _ message: String, bundle: URL? = nil) {
+        guard isEnabled else { return }
         let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withInternetDateTime])
         let line = "\(stamp) [\(category)] \(message)\n"
         append(line, to: appFile, trimAt: maxBytes)

@@ -102,6 +102,23 @@ public extension DataStore {
     /// Sets or clears a single speaker assignment. Pass `nil` for `personID`
     /// to clear the assignment back to "Speaker N". Manual assignments are
     /// written with `userSet = true`.
+    /// Sets a hand-set name carried over from an earlier version, unless
+    /// the speaker already has a hand-set name or the person is already
+    /// placed by hand on another speaker. Checked and written in one step.
+    @discardableResult
+    func carrySpeakerAssignment(speakerID: Int, personID: UUID, for transcriptID: UUID) throws -> Bool {
+        guard let record = try transcriptRecord(id: transcriptID) else {
+            throw DataStoreError.notFound(transcriptID)
+        }
+        let current = record.speakerAssignments
+        if current[speakerID]?.userSet == true { return false }
+        if current.contains(where: { $0.key != speakerID && $0.value.userSet && $0.value.personID == personID }) {
+            return false
+        }
+        try setSpeakerAssignment(speakerID: speakerID, personID: personID, for: transcriptID)
+        return true
+    }
+
     func setSpeakerAssignment(
         speakerID: Int, personID: UUID?, for transcriptID: UUID
     ) throws {
@@ -114,12 +131,16 @@ public extension DataStore {
             // name it came from finds this person next time ("Lopez, Maria
             // (AGENCY)" -> Maria Reyes). Only when the two names share a first
             // or last name: otherwise the screen simply picked the wrong
-            // person, and that must not become a permanent rule.
+            // person, and that must not become a permanent rule. And only
+            // when the old name is a one-off screen label (no email, seen in
+            // at most this meeting): two real people who share a first name
+            // must never be merged.
             if let previous = assignments[speakerID], previous.personID != personID,
                previous.effectiveProvenance.source == .screen,
                let old = try fetchPerson(id: previous.personID),
                let new = try fetchPerson(id: personID),
-               PersonAlias.sharesAName(old.name, new.name)
+               PersonAlias.sharesAName(old.name, new.name),
+               old.email == nil, old.meetings.count <= 1, old.organizedMeetings.isEmpty
             {
                 addAlias(old.name, for: personID)
             }

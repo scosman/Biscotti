@@ -72,6 +72,28 @@ struct AutomationSettingsTests {
         #expect(!reloaded.isExported(second))
     }
 
+    @Test("moving a target's destination resets what it received; renaming doesn't")
+    func movedTargetResetsExported() throws {
+        let suite = "automation-ledger-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = AutomationSettingsStore(defaults: defaults)
+        var notes = ExportTarget(name: "Notes", kind: .folder, path: "/tmp/notes")
+        store.update { $0.exportTargets = [notes] }
+        let meeting = UUID()
+        store.markExported(meeting, targets: [notes.id])
+
+        notes.name = "Meeting notes"
+        store.update { $0.exportTargets = [notes] }
+        #expect(store.isExported(meeting))
+
+        notes.path = "/tmp/elsewhere"
+        store.update { $0.exportTargets = [notes] }
+        #expect(!store.isExported(meeting))
+        store.markExported(meeting, targets: [notes.id])
+        #expect(store.isExported(meeting))
+    }
+
     @Test("a target added later hasn't received older meetings")
     func newTargetResetsExported() throws {
         let suite = "automation-ledger-\(UUID().uuidString)"

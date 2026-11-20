@@ -659,6 +659,17 @@ public final class AppCore {
             return
         }
 
+        // Reserve the startup before any await, so a second detection
+        // arriving while notifications are cleared is refused by the guard
+        // above. Stash the eventKey/title so retry can re-use them.
+        pendingStartupEventKey = eventKey
+        pendingStartupTitle = title
+        startupGeneration &+= 1
+        let generation = startupGeneration
+        // Navigate instantly -- the recording pane shows a loading state.
+        recordingStartup = .loading
+        route = .recording
+
         // Dismiss any lingering meeting-detected banners so they don't
         // persist on screen during an active recording.
         await notifications.cancelAdHocDetected()
@@ -667,20 +678,14 @@ public final class AppCore {
         cancelAllCalendarNotificationExpiryTasks()
         await notifications.cancelAllMeetingStarting()
 
-        // Stash the eventKey/title so retry can re-use them.
-        pendingStartupEventKey = eventKey
-        pendingStartupTitle = title
-
-        // Navigate instantly -- the recording pane shows a loading state.
-        startupGeneration &+= 1
-        recordingStartup = .loading
-        route = .recording
+        // Cancelled (or paused) while notifications were cleared.
+        guard generation == startupGeneration, recordingStartup == .loading else { return }
 
         // Heavy startup runs in-line (callers already `await` this).
         await completeRecordingStartup(
             eventKey: eventKey,
             title: title,
-            generation: startupGeneration
+            generation: generation
         )
     }
 

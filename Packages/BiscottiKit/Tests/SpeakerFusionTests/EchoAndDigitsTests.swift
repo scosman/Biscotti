@@ -77,6 +77,36 @@ struct EchoAndDigitsTests {
         #expect(result.report.echoWords == 0)
     }
 
+    @Test func captionsOffThenOnAgainDontVouchForTheGap() {
+        // Captions ran until 45 s and came back at 80 s: the run at 62 s
+        // falls in the gap, so nothing shows someone else would have been
+        // captioned.
+        let meeting = Self.echoMeeting()
+        let captions = [
+            CaptionLine(name: "Sam Carter", text: "Can you hear me", start: 44, end: 45),
+            CaptionLine(name: "Sam Carter", text: "Let's try again", start: 80, end: 81)
+        ]
+        let result = SpeakerFuser.fuse(
+            words: meeting.words, levels: meeting.levels,
+            timeline: ParticipantTimeline(intervals: [], participants: [], captions: captions),
+            userName: "Sam Carter"
+        )
+        #expect(result.report.echoWords == 0)
+    }
+
+    @Test func wordsWithNoVoiceDontBorrowANeighboursSource() {
+        let words = [
+            FusionWord(text: " Hi", start: 1.0, end: 1.2, clusterID: nil),
+            FusionWord(text: " there", start: 1.3, end: 1.5, clusterID: nil),
+            FusionWord(text: " Yes", start: 1.6, end: 1.8, clusterID: 4),
+            FusionWord(text: " sir", start: 1.9, end: 2.1, clusterID: 4)
+        ]
+        var sources: [WordSource] = [.mic, .unknown, .system, .unknown]
+        SpeakerFuser.fillFromNeighbours(&sources, words: words, collapsed: [false, false, false, false])
+        // Two words with no voice aren't the same voice; two in voice 4 are.
+        #expect(sources == [.mic, .unknown, .system, .system])
+    }
+
     @Test func withoutCaptionsNothingIsDroppedAsAnEcho() {
         let meeting = Self.echoMeeting()
         let result = SpeakerFuser.fuse(words: meeting.words, levels: meeting.levels, timeline: nil, userName: "Sam Carter")

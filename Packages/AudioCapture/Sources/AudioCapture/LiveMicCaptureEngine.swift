@@ -438,7 +438,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         // Remember the device the unit confirms, not the one asked for: if
         // the switch didn't take, a later device change must not be skipped
         // as "already on the chosen device".
-        appliedDeviceID = actual ?? CoreAudioHelpers.defaultInputDeviceID()
+        appliedDeviceID = actual
         let actualName = actual.flatMap { CoreAudioHelpers.deviceName(for: $0) } ?? "unknown"
         logger.notice(
             "Mic priority: wanted \"\(target.name, privacy: .public)\" id=\(target.id, privacy: .public) status=\(status, privacy: .public); unit now on \"\(actualName, privacy: .public)\" id=\(actual ?? 0, privacy: .public)"

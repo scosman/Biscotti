@@ -47,7 +47,9 @@ extension TranscriptionService {
         matches = matches.filter { alreadySet[$0.key] == nil && !placed.contains($0.value) }
         for (speakerID, personID) in matches {
             do {
-                try await store.setSpeakerAssignment(speakerID: speakerID, personID: personID, for: transcript.id)
+                // Checked and written in one store step: a name confirmed
+                // since `alreadySet` was read is never overwritten.
+                try await store.carrySpeakerAssignment(speakerID: speakerID, personID: personID, for: transcript.id)
             } catch {
                 carryLogger.error("Couldn't carry a name over: \(error.localizedDescription, privacy: .public)")
             }

@@ -87,10 +87,10 @@ extension AppCore {
         }
         callWindowMisses = 0
         callWindowSeenWhileRecording = false
-        callWindowTitles = Set(inCall.flatMap { app in
-            scans.first { $0.0.bundleID == app.bundleID }?.1.callWindows.filter(Self.isDistinctTitle)
-                .map { "\(app.bundleID)|\($0)" } ?? []
-        })
+        // Keep every tracked title whose window is still open (a call with
+        // its controls hidden is still the call); drop closed ones.
+        let openWindows = Set(scans.flatMap { app, scan in scan.windows.map { "\(app.bundleID)|\($0)" } })
+        callWindowTitles.formIntersection(openWindows)
         guard let app = inCall.first(where: { !appsWithCallWindow.contains($0.bundleID) }) else { return }
         callLogger.notice("Call window found in \(app.bundleID, privacy: .public)")
         MeetingEventLog.write("detection", "Call window found in \(app.bundleID)")

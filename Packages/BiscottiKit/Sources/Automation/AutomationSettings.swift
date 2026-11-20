@@ -216,7 +216,9 @@ public final class AutomationSettingsStore {
         var copy = settings
         mutate(&copy)
         guard copy != settings else { return }
+        let moved = Self.movedTargets(from: settings.exportTargets, to: copy.exportTargets)
         settings = copy
+        if !moved.isEmpty { forgetTargets(moved) }
         micPolicy.update(priority: copy.micPriority, allowSwitchUp: copy.micSwitchUp)
         if let data = try? JSONEncoder().encode(copy) {
             defaults.set(data, forKey: Self.settingsKey)
@@ -253,6 +255,26 @@ public final class AutomationSettingsStore {
         guard !meetingIDs.isEmpty else { return }
         for id in meetingIDs {
             exportLedger.removeValue(forKey: id.uuidString)
+        }
+        defaults.set(exportLedger, forKey: Self.ledgerKey)
+    }
+
+    /// Targets whose destination (kind, folder or subfolder) changed: what
+    /// went to the old place hasn't reached the new one.
+    static func movedTargets(from old: [ExportTarget], to new: [ExportTarget]) -> Set<String> {
+        let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return Set(new.compactMap { target -> String? in
+            guard let previous = before[target.id] else { return nil }
+            let same = previous.kind == target.kind && previous.outputDirectory == target.outputDirectory
+            return same ? nil : target.id.uuidString
+        })
+    }
+
+    /// Removes these targets from every meeting's ledger entry.
+    func forgetTargets(_ targetIDs: Set<String>) {
+        for (meetingID, done) in exportLedger {
+            let kept = done.filter { !targetIDs.contains($0) }
+            exportLedger[meetingID] = kept.isEmpty ? nil : kept
         }
         defaults.set(exportLedger, forKey: Self.ledgerKey)
     }

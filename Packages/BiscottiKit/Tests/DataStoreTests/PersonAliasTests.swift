@@ -30,6 +30,25 @@ struct PersonAliasTests {
         #expect(try await store.findOrCreatePerson(name: "W. Lopez", email: nil) == maria)
     }
 
+    @Test func twoRealPeopleWhoShareAFirstNameAreNeverMerged() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: "Two Marias")
+        let transcriptID = try await store.addTranscript(
+            .init(transcriptionMethodId: "v2", language: "en", speakerCount: 2, segments: [], processingDuration: 0),
+            vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+        )
+        // Both are invitees with their own email: the screen picked the
+        // wrong Maria, which must not become a rule.
+        let lopez = try await store.findOrCreatePerson(name: "Maria Lopez", email: "lopez@example.com")
+        try await store.setSpeakerAssignment(
+            speakerID: 1, personID: lopez,
+            provenance: SpeakerNameProvenance(source: .screen, confidence: .high), for: transcriptID
+        )
+        let reyes = try await store.findOrCreatePerson(name: "Maria Reyes", email: "reyes@example.com")
+        try await store.setSpeakerAssignment(speakerID: 1, personID: reyes, for: transcriptID)
+        #expect(try await store.findOrCreatePerson(name: "Maria Lopez", email: nil) == lopez)
+    }
+
     @Test func correctingTheWrongPersonTeachesNoAlias() async throws {
         let store = try DataStore(storage: .inMemory)
         let meetingID = try await store.createMeeting(title: "Wrong person")

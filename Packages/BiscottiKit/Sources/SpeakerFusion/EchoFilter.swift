@@ -22,8 +22,11 @@ enum EchoFilter {
         var minimumShare = 0.8
         /// A silence this long ends a run.
         var runGap = 1.0
-        /// Captions must appear this close before and after a run.
-        var coverage = 30.0
+        /// Captions must appear this close before and after a run. Captions
+        /// don't record being switched off, so a wide window could span an
+        /// off-then-on gap and drop real speech as an echo; keeping an echo
+        /// now and then is the safer mistake.
+        var coverage = 10.0
     }
 
     /// Indexes of words that echo the user.

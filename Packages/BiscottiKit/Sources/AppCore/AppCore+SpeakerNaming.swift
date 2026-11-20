@@ -25,7 +25,9 @@ extension AppCore {
     func refineSpeakers(meetingID: UUID, result: TranscriptResult, vocabulary: [String] = []) async -> RefinedTranscript? {
         let settings = automation.settings
         guard settings.nameSpeakers else { return nil }
-        let words = result.segments.flatMap { $0.words ?? [] }
+        // Lines without word timings keep their text (spread over the line)
+        // so it can't be mistaken for unheard speech below.
+        let words = Self.fusionWords(result)
         // No words but heard voices: the voices may still be re-listened to
         // as "[unintelligible]" lines below.
         guard !words.isEmpty || !result.speakerSpans.isEmpty else { return nil }
@@ -33,7 +35,7 @@ extension AppCore {
         let paths = try? await store.audioPaths(meetingID: meetingID)
         let detail = try? await store.meetingDetail(id: meetingID)
         let recordingStart = detail?.date ?? Date()
-        let recordingEnd = recordingStart.addingTimeInterval(detail?.recordingDuration ?? words.last?.endTime ?? 0)
+        let recordingEnd = recordingStart.addingTimeInterval(detail?.recordingDuration ?? words.last?.end ?? 0)
         let folders = [rootBundleFolder(meetingID: meetingID), uiCapture.folder, UICaptureController.defaultFolder]
             .compactMap(\.self)
 
@@ -57,12 +59,7 @@ extension AppCore {
             ? NSFullUserName() : settings.transcriptName.trimmingCharacters(in: .whitespaces)
         await addSeenParticipants(Array(Set((timeline?.participants ?? []) + (timeline?.seen ?? []))), meetingID: meetingID, userName: userName)
         var fusion = SpeakerFuser.fuse(
-            words: words.map {
-                FusionWord(
-                    text: $0.word, start: $0.startTime, end: $0.endTime,
-                    probability: $0.probability, clusterID: $0.speakerID
-                )
-            },
+            words: words,
             levels: levels,
             timeline: timeline,
             userName: userName,
@@ -79,6 +76,30 @@ extension AppCore {
         namingLogger.notice("Speaker naming \(meetingID, privacy: .public): \(summary, privacy: .public)")
         MeetingEventLog.write("naming", "Result: \(summary)", bundle: rootBundleFolder(meetingID: meetingID))
         return Self.refined(from: fusion, original: result, userName: userName)
+    }
+
+    /// The transcript's words for speaker fusion. A line with text but no
+    /// word timings gets its words spread evenly over the line.
+    static func fusionWords(_ result: TranscriptResult) -> [FusionWord] {
+        result.segments.flatMap { segment -> [FusionWord] in
+            if let words = segment.words, !words.isEmpty {
+                return words.map {
+                    FusionWord(
+                        text: $0.word, start: $0.startTime, end: $0.endTime,
+                        probability: $0.probability, clusterID: $0.speakerID
+                    )
+                }
+            }
+            let tokens = segment.text.split(whereSeparator: \.isWhitespace)
+            guard !tokens.isEmpty else { return [] }
+            let step = max(segment.endTime - segment.startTime, 0) / Double(tokens.count)
+            return tokens.enumerated().map { index, token in
+                let start = segment.startTime + Double(index) * step
+                return FusionWord(
+                    text: " " + token, start: start, end: start + step, clusterID: segment.speakerID
+                )
+            }
+        }
     }
 
     /// Converts fused lines back into a `TranscriptResult`. Speaker IDs: the

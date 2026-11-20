@@ -551,7 +551,8 @@ extension SpeakerFuser {
             nextKnown[index] = upcoming
             if sources[index] != .unknown { upcoming = index }
         }
-        for index in sources.indices where sources[index] == .unknown && !collapsed[index] {
+        // A word with no voice (nil cluster) has no neighbour in its voice.
+        for index in sources.indices where sources[index] == .unknown && !collapsed[index] && words[index].clusterID != nil {
             let word = words[index]
             if index > 0, sources[index - 1] != .unknown, words[index - 1].clusterID == word.clusterID,
                word.start - words[index - 1].end < 0.8

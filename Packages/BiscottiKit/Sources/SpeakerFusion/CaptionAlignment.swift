@@ -179,7 +179,11 @@ public enum CaptionAligner {
             let total = names.values.reduce(0, +)
             guard let top = names.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }), top.value >= minimumWords,
                   Double(top.value) / Double(total) >= minimumShare else { continue }
-            if let current = best[top.key], current.words >= top.value { continue }
+            // Spellings of one person ("Sam Carter", "Carter, Sam") compete
+            // for one voice. Ties keep the lower cluster (seen first).
+            let key = best.keys.first { PersonName.same($0, top.key) } ?? top.key
+            if let current = best[key], current.words >= top.value { continue }
+            best.removeValue(forKey: key)
             best[top.key] = (cluster, top.value)
         }
         return Dictionary(uniqueKeysWithValues: best.map { ($0.value.cluster, (name: $0.key, words: $0.value.words)) })

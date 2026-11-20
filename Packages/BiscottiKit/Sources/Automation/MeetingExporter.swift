@@ -143,9 +143,13 @@ public struct MeetingExporter: Sendable {
     private func commit(_ meeting: ExportableMeeting, to target: ExportTarget, changed names: [String]) async throws -> String? {
         let root = URL(fileURLWithPath: target.path, isDirectory: true)
         let folder = target.gitPathspec == "." ? "" : target.gitPathspec + "/"
+        // A removal from an earlier try whose commit failed is committed now.
+        let pending = try await pendingRemovals(of: meeting.id, folder: folder, in: root)
         var paths: [String] = []
-        for name in names {
-            let path = folder + name
+        for name in names + pending.filter({ !names.contains($0) }) {
+            // Literal: export names contain "[...]", which git would read
+            // as a pattern.
+            let path = ":(literal)" + folder + name
             if FileManager.default.fileExists(atPath: target.outputDirectory.appendingPathComponent(name).path) {
                 try await runChecked(["add", "--", path], in: root)
             } else {
@@ -171,6 +175,23 @@ public struct MeetingExporter: Sendable {
         } catch {
             return ExportError.gitFailed(command: "push", output: error.localizedDescription).localizedDescription
         }
+    }
+
+    /// This meeting's tracked exports in the folder that are already gone
+    /// from disk (removed by an earlier export whose commit didn't happen).
+    private func pendingRemovals(of meetingID: UUID, folder: String, in root: URL) async throws -> [String] {
+        let marker = "\(MeetingMarkdown.idMarker(for: meetingID)).md"
+        let listing = try await git.run(["-c", "core.quotePath=false", "ls-files", "--deleted", "--", ":(literal)" + (folder.isEmpty ? "." : folder)], in: root)
+        var names: [String] = []
+        for path in listing.output.split(separator: "\n").map(String.init) where path.hasSuffix(marker) {
+            let name = (path as NSString).lastPathComponent
+            guard folder + name == path else { continue } // not in a subfolder
+            let indexed = try await git.run(["show", ":" + path], in: root)
+            if indexed.exitCode == 0, MeetingMarkdown.names(String(indexed.output.prefix(4096)), meetingID) {
+                names.append(name)
+            }
+        }
+        return names
     }
 
     private func runChecked(_ arguments: [String], in directory: URL) async throws {

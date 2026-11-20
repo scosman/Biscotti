@@ -83,6 +83,21 @@ struct MeetingMarkdownTests {
 
 @Suite("MeetingExporter -- folder")
 struct FolderExportTests {
+    @Test("a header cut mid-character at 4 KB still names the meeting")
+    func headerCutMidCharacter() throws {
+        let dir = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let id = UUID()
+        let name = "2025-11-17 0930 Notes \(MeetingMarkdown.idMarker(for: id)).md"
+        var text = "---\nbiscotti_id: \(id.uuidString)\n---\n"
+        while text.utf8.count < 4095 {
+            text += "a"
+        }
+        text += String(repeating: "\u{00E9}", count: 10) // 2-byte characters straddle byte 4096
+        try Data(text.utf8).write(to: dir.appendingPathComponent(name))
+        #expect(MeetingMarkdown.isExport(named: name, in: dir, of: id))
+    }
+
     @Test("writes the file and replaces an older export after a title change")
     func replacesOnRename() async throws {
         let dir = try makeTempDirectory()
@@ -207,6 +222,31 @@ struct GitExportTests {
             .split(separator: "\n")
         #expect(tracked.count == 1)
         #expect(tracked.first?.contains("Budget review") == true)
+    }
+
+    @Test("a removal left uncommitted by an earlier try is committed with the next export")
+    func recoversPendingRemoval() async throws {
+        let repo = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let id = UUID()
+        let target = ExportTarget(name: "Repo", kind: .gitRepository, path: repo.path, subfolder: "meetings")
+        let exporter = MeetingExporter(git: git)
+        _ = await exporter.export(sampleMeeting(id: id, title: "Untitled Meeting"), to: [target], timeZone: utc)
+
+        // An earlier try removed the old file, then its commit failed.
+        let folder = repo.appendingPathComponent("meetings")
+        let old = try #require(try FileManager.default.contentsOfDirectory(atPath: folder.path).first)
+        try FileManager.default.removeItem(at: folder.appendingPathComponent(old))
+        // Another meeting's export is untouched.
+        let other = await exporter.export(sampleMeeting(id: UUID(), title: "Other"), to: [target], timeZone: utc)
+        #expect(other.first?.succeeded == true)
+
+        _ = await exporter.export(sampleMeeting(id: id, title: "Budget review"), to: [target], timeZone: utc)
+        let status = try await git.run(["status", "--porcelain"], in: repo).output
+        #expect(status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(status)")
+        let tracked = try await git.run(["ls-files", "meetings"], in: repo).output.split(separator: "\n")
+        #expect(tracked.count == 2)
+        #expect(!tracked.contains { $0.contains("Untitled") })
     }
 
     @Test("a failing push is a warning, not a failure")

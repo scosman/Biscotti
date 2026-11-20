@@ -25,6 +25,9 @@ public extension AppCore {
         automation.update { $0.recordingMode = mode }
         automationLogger.info("Recording mode set to \(mode.rawValue, privacy: .public)")
         guard mode == .paused else { return }
+        // A recording still starting up is cancelled too; its generation
+        // check stops it before (or right after) the recorder starts.
+        if recordingStartup == .loading { cancelRecordingStartup() }
         await notifications.cancelAdHocDetected()
         if recording.state.isRecording {
             await stopRecording()
@@ -401,6 +404,9 @@ public extension AppCore {
         }
         var deletedMeetings: [UUID] = []
         for meetingID in plan.meetingsToDelete {
+            // Re-checked here: the plan is a snapshot, and a meeting can be
+            // queued for transcription while earlier deletions run.
+            guard !protectedMeetingIDs().contains(meetingID) else { continue }
             let deleted = await deleteSingleMeetingInternal(meetingID: meetingID)
             guard deleted else { continue }
             deletedMeetings.append(meetingID)

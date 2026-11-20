@@ -182,10 +182,10 @@
             // pop-ups, not the meeting stage, until something wakes it. The
             // enhanced flag is what Chromium treats as a screen reader.
             if manual != .success || !hasWebContent(app) {
-                let enhanced = AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
-                if enhanced == .success, enhancedUIApps[target.pid] == nil {
+                let alreadyOwned = enhancedUIApps[target.pid] != nil
+                let enhanced = EnhancedUIOwnership.acquire(target.pid, app: app, count: !alreadyOwned)
+                if enhanced == .success, !alreadyOwned {
                     enhancedUIApps[target.pid] = app
-                    EnhancedUIOwnership.acquire(target.pid)
                 }
                 note("\(target.bundleID): AXEnhancedUserInterface -> \(enhanced.rawValue)")
             }
@@ -240,8 +240,8 @@
             observers.removeAll()
             // Turn the flag off only if no other capture still relies on it
             // (a replacement session may have started for the same app).
-            for (pid, app) in enhancedUIApps where EnhancedUIOwnership.release(pid) {
-                AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
+            for (pid, app) in enhancedUIApps {
+                EnhancedUIOwnership.release(pid, app: app)
             }
             enhancedUIApps.removeAll()
             if droppedEvents > 0 {
@@ -363,8 +363,8 @@
             if let observer = observers.removeValue(forKey: pid) {
                 CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
             }
-            if enhancedUIApps.removeValue(forKey: pid) != nil {
-                EnhancedUIOwnership.release(pid)
+            if let app = enhancedUIApps.removeValue(forKey: pid) {
+                EnhancedUIOwnership.release(pid, app: app)
             }
         }
     }
@@ -376,20 +376,26 @@
         private static let lock = NSLock()
         private nonisolated(unsafe) static var owners: [pid_t: Int] = [:]
 
-        static func acquire(_ pid: pid_t) {
+        /// Turns the flag on and (when `count`) records one more owner, in
+        /// one step with any other session's release.
+        static func acquire(_ pid: pid_t, app: AXUIElement, count: Bool) -> AXError {
             lock.lock()
-            owners[pid, default: 0] += 1
-            lock.unlock()
+            defer { lock.unlock() }
+            let result = AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            if result == .success, count { owners[pid, default: 0] += 1 }
+            return result
         }
 
-        /// True when no capture relies on the flag any more.
-        @discardableResult
-        static func release(_ pid: pid_t) -> Bool {
+        /// Drops one owner and turns the flag off when none remain, in one
+        /// step, so a session starting meanwhile keeps its flag on.
+        static func release(_ pid: pid_t, app: AXUIElement) {
             lock.lock()
             defer { lock.unlock() }
             let remaining = max((owners[pid] ?? 1) - 1, 0)
             owners[pid] = remaining == 0 ? nil : remaining
-            return remaining == 0
+            if remaining == 0 {
+                AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
+            }
         }
     }
 #endif

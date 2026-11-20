@@ -44,11 +44,22 @@ struct TimelineEvidenceTests {
     }
 
     @Test func aCallWhoseWindowWentQuietEnded() {
+        // The capture ran on past the window's next full record (one a
+        // minute) without seeing it: the window is gone.
         let timeline = ParticipantTimelineBuilder.build(
-            records: Self.call(windowActiveUntil: 30, timerUntil: 30, captureUntil: 60), recordingStartedAt: nil
+            records: Self.call(windowActiveUntil: 30, timerUntil: 30, captureUntil: 120), recordingStartedAt: nil
         )
         let end = try? #require(timeline.callEndedAt)
         #expect(abs((end ?? 0) - 30) < 0.5)
+    }
+
+    @Test func aStillWindowBetweenFullRecordsIsNotAnEnd() {
+        // A call window with nothing changing (no timer on screen) writes
+        // nothing between full records: 50 s of quiet is not an ended call.
+        let timeline = ParticipantTimelineBuilder.build(
+            records: Self.call(windowActiveUntil: 0, timerUntil: 0, captureUntil: 50), recordingStartedAt: nil
+        )
+        #expect(timeline.callEndedAt == nil)
     }
 
     @Test func aStoppedTimerAloneDoesNotEndTheCall() {

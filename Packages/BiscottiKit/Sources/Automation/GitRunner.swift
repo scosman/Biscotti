@@ -99,6 +99,9 @@ private final class ProcessJob: @unchecked Sendable {
     private var continuation: CheckedContinuation<GitResult, Error>?
     private var reachedEnd = false
     private var exited = false
+    /// Set by `terminate()`; checked under the lock before git launches, so
+    /// a timeout that fires before launch isn't lost.
+    private var terminationRequested = false
 
     /// How long to keep reading after git exits, for output still in the pipe.
     private static let drainGrace: DispatchTimeInterval = .seconds(2)
@@ -134,7 +137,13 @@ private final class ProcessJob: @unchecked Sendable {
                 }
             }
             do {
-                try process.run()
+                // Launch and the termination check share the lock with
+                // `terminate()`: either git never starts, or it has a pid
+                // by the time `terminate()` looks.
+                try lock.withLock {
+                    if terminationRequested { throw CancellationError() }
+                    try process.run()
+                }
             } catch {
                 pipe.fileHandleForReading.readabilityHandler = nil
                 let pending = lock.withLock { () -> CheckedContinuation<GitResult, Error>? in
@@ -169,7 +178,10 @@ private final class ProcessJob: @unchecked Sendable {
     /// blocked. The tree is collected first, so children are found before
     /// their parent dies and they are re-parented.
     func terminate() {
-        let pid = process.processIdentifier
+        let pid = lock.withLock { () -> pid_t in
+            terminationRequested = true
+            return process.processIdentifier
+        }
         guard pid > 0 else { return }
         for child in Self.descendants(of: pid) {
             kill(child, SIGKILL)

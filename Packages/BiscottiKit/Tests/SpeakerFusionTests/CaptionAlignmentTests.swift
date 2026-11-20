@@ -57,6 +57,18 @@ struct CaptionAlignmentTests {
         #expect(CaptionAligner.clusterNames(words, assigned: assigned).mapValues(\.name) == [3: "Lee Morgan"])
     }
 
+    @Test func twoSpellingsOfOnePersonClaimOneVoice() {
+        var words: [FusionWord] = []
+        var assigned: [Int: String] = [:]
+        for index in 0 ..< 14 {
+            let cluster = index < 6 ? 2 : 5
+            words.append(word("w", Double(index), cluster: cluster))
+            assigned[index] = cluster == 2 ? "Carter, Sam" : "Sam Carter"
+        }
+        // Voice 5 has more matched words (8 vs 6): it keeps the person.
+        #expect(CaptionAligner.clusterNames(words, assigned: assigned).mapValues(\.name) == [5: "Sam Carter"])
+    }
+
     @Test func namesInEitherOrderMatch() {
         #expect(PersonName.same("Carter, Sam", "Sam Carter"))
         #expect(!PersonName.same("Sam Carter", "Nora Hale"))

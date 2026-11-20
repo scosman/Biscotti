@@ -316,6 +316,9 @@ private struct Replay {
             lastCallSign = max(lastCallSign ?? 0, time)
             callWindows.insert(key.window)
             callSignNodes.insert(key)
+            // Back on screen (Zoom hides its controls when the mouse rests):
+            // an earlier disappearance no longer says the call ended.
+            if let gone = callSignGoneAt, gone <= time { callSignGoneAt = nil }
         } else if callSignNodes.contains(key) {
             // The button changed into something else: the call control left.
             callSignNodes.remove(key)
@@ -496,12 +499,22 @@ extension Replay {
         if let gone = callSignGoneAt, gone >= sign - Self.callEndMargin { return true }
         if let notice = endedNoticeAt, notice >= sign - Self.callEndMargin { return true }
         let lastSeen = callWindows.compactMap { windowLastSeen[$0] }.max()
-        if let lastSeen, lastSeen <= sign + Self.windowQuietSlack { return true }
+        // A window that doesn't change writes nothing between full records
+        // (one a minute), so quiet only counts once a full record is missed.
+        if let lastSeen, lastSeen <= sign + Self.windowQuietSlack,
+           lastUptime - lastSeen > Self.fullRecordGap
+        {
+            return true
+        }
         return false
     }
 
     /// A call window's last change can trail its last timer tick by this much.
     static let windowQuietSlack = 2.0
+
+    /// Longer than the capture's full-record interval (60 s), so a quiet
+    /// window has really gone rather than just not changed.
+    static let fullRecordGap = 65.0
 
     /// A node left the screen: its visual history ends here (so a highlight
     /// can't run on past it), its caption row closes, and a call control

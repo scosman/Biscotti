@@ -225,9 +225,6 @@ public final class TranscriptionService {
             meetingID: meetingID, paths: paths, vocabulary: vocab, config: config
         ) else { return }
 
-        // Names a person set on the transcript being replaced.
-        let previousNames = await humanNamesOnPreferred(meetingID: meetingID)
-
         guard await persistAndPromote(meetingID: meetingID, result: result, vocabularyUsed: vocab) else { return }
 
         if let refiner {
@@ -238,6 +235,9 @@ public final class TranscriptionService {
                 Self.refineLog.notice("Speaker naming produced nothing for \(meetingID, privacy: .public)")
             }
         }
+        // Names a person set on any version, read now so names confirmed
+        // on the new transcript while naming ran are included.
+        let previousNames = await humanNamesOnPreferred(meetingID: meetingID)
         await carryOverNames(previousNames, meetingID: meetingID)
 
         jobs[meetingID] = .completed

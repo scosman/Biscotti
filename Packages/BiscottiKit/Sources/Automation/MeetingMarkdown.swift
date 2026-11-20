@@ -79,8 +79,16 @@ public enum MeetingMarkdown {
               let handle = FileHandle(forReadingAtPath: directory.appendingPathComponent(name).path)
         else { return false }
         defer { try? handle.close() }
-        let head = String(bytes: (try? handle.read(upToCount: 4096)) ?? Data(), encoding: .utf8) ?? ""
-        return head.contains("biscotti_id: \(id.uuidString)")
+        // 4 KB can end mid-character: drop up to 3 trailing bytes until the
+        // text decodes.
+        let data = (try? handle.read(upToCount: 4096)) ?? Data()
+        let head = (0 ... 3).lazy.compactMap { String(bytes: data.dropLast($0), encoding: .utf8) }.first ?? ""
+        return names(head, id)
+    }
+
+    /// True when an export's opening text names this meeting.
+    public static func names(_ head: String, _ id: UUID) -> Bool {
+        head.contains("biscotti_id: \(id.uuidString)")
     }
 
     /// Removes characters that are unsafe in file names, collapses

@@ -35,6 +35,7 @@
         @ObservationIgnored public var excludedApps: Set<String> = []
         @ObservationIgnored private var rescanTask: Task<Void, Never>?
         @ObservationIgnored private var capturedPIDs: Set<Int32> = []
+        @ObservationIgnored private var browserOffMicSince: [Int32: Date] = [:]
 
         static let folderKey = "biscotti.uicapture.folder"
 
@@ -106,9 +107,35 @@
                         capturedPIDs.remove(pid)
                         session.remove(pid: pid)
                     }
+                    dropBrowsersOffTheMic(session: session)
                 }
             }
         }
+
+        /// A browser joined because it used the mic. Once it has been off the
+        /// mic for `browserOffMicGrace` (left the web call, still browsing),
+        /// it leaves the capture. The grace covers muting, which can release
+        /// the mic too.
+        private func dropBrowsersOffTheMic(session: CaptureSession, now: Date = Date()) {
+            let eligible = Set(runningMeetingApps().map(\.pid))
+            for pid in capturedPIDs {
+                guard let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+                      BrowserApps.isBrowser(bundleID), bundleID != BrowserApps.ferdium
+                else { continue }
+                if eligible.contains(pid) {
+                    browserOffMicSince[pid] = nil
+                } else if let since = browserOffMicSince[pid] {
+                    guard now.timeIntervalSince(since) >= Self.browserOffMicGrace else { continue }
+                    browserOffMicSince[pid] = nil
+                    capturedPIDs.remove(pid)
+                    session.remove(pid: pid)
+                } else {
+                    browserOffMicSince[pid] = now
+                }
+            }
+        }
+
+        static let browserOffMicGrace: TimeInterval = 180
 
         /// Stops the session if a recording started it. A capture started by
         /// hand keeps running.

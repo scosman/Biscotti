@@ -71,6 +71,18 @@ public enum MeetingMarkdown {
         "[\(id.uuidString.prefix(8).lowercased())]"
     }
 
+    /// True when the file named `name` is this meeting's export: its name
+    /// carries the meeting's marker and its frontmatter names the meeting.
+    /// The 8-character marker alone could match another meeting.
+    public static func isExport(named name: String, in directory: URL, of id: UUID) -> Bool {
+        guard name.hasSuffix("\(idMarker(for: id)).md"),
+              let handle = FileHandle(forReadingAtPath: directory.appendingPathComponent(name).path)
+        else { return false }
+        defer { try? handle.close() }
+        let head = String(bytes: (try? handle.read(upToCount: 4096)) ?? Data(), encoding: .utf8) ?? ""
+        return head.contains("biscotti_id: \(id.uuidString)")
+    }
+
     /// Removes characters that are unsafe in file names, collapses
     /// whitespace and caps the length.
     public static func sanitize(_ title: String) -> String {

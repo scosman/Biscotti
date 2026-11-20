@@ -62,7 +62,16 @@ public struct ProcessGitRunner: GitRunning {
                 return nil
             }
             defer { group.cancelAll() }
-            guard let first = try await group.next(), let result = first else {
+            let first: GitResult??
+            do {
+                first = try await group.next()
+            } catch {
+                job.terminate()
+                throw error
+            }
+            guard let first, let result = first else {
+                // Kill git and anything it started (hooks), so the run
+                // ends now instead of when a hook lets go of the output.
                 job.terminate()
                 throw GitRunnerError.timedOut(arguments.first ?? "")
             }
@@ -77,12 +86,22 @@ public struct ProcessGitRunner: GitRunning {
     }
 }
 
-/// Wraps a configured `Process` so it can be run off the cooperative thread
-/// pool. `Process` is not `Sendable`; this box is safe because the process is
-/// only started once, from one queue, and `terminate()` is thread-safe.
+/// Wraps a configured `Process` so it can be awaited. Output is collected as
+/// it arrives rather than read to end of file, because a hook that git
+/// started can hold the pipe open after git itself has exited. `Process` is
+/// not `Sendable`; this box is safe because the process is started once and
+/// all shared state is behind `lock`.
 private final class ProcessJob: @unchecked Sendable {
     private let process: Process
     private let pipe = Pipe()
+    private let lock = NSLock()
+    private var output = Data()
+    private var continuation: CheckedContinuation<GitResult, Error>?
+    private var reachedEnd = false
+    private var exited = false
+
+    /// How long to keep reading after git exits, for output still in the pipe.
+    private static let drainGrace: DispatchTimeInterval = .seconds(2)
 
     init(process: Process) {
         self.process = process
@@ -93,29 +112,87 @@ private final class ProcessJob: @unchecked Sendable {
 
     func runToCompletion() async throws -> GitResult {
         try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                do {
-                    try self.process.run()
-                } catch {
-                    continuation.resume(throwing: error)
-                    return
+            lock.withLock { self.continuation = continuation }
+            pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                let chunk = handle.availableData
+                guard let self else { return }
+                if chunk.isEmpty {
+                    handle.readabilityHandler = nil
+                    lock.withLock { self.reachedEnd = true }
+                    finishIfDone()
+                } else {
+                    lock.withLock { self.output.append(chunk) }
                 }
-                // Drain before waiting so a large output can't fill the pipe and block git.
-                let data = self.pipe.fileHandleForReading.readDataToEndOfFile()
-                self.process.waitUntilExit()
-                let text = String(bytes: data, encoding: .utf8) ?? ""
-                continuation.resume(returning: GitResult(exitCode: self.process.terminationStatus, output: text))
+            }
+            process.terminationHandler = { [weak self] _ in
+                guard let self else { return }
+                lock.withLock { exited = true }
+                finishIfDone()
+                // A hook may still hold the pipe: don't wait for it forever.
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.drainGrace) {
+                    self.finish()
+                }
+            }
+            do {
+                try process.run()
+            } catch {
+                pipe.fileHandleForReading.readabilityHandler = nil
+                let pending = lock.withLock { () -> CheckedContinuation<GitResult, Error>? in
+                    defer { self.continuation = nil }
+                    return self.continuation
+                }
+                pending?.resume(throwing: error)
             }
         }
     }
 
-    /// Force-kills the process. SIGKILL rather than `terminate()` (SIGTERM):
-    /// a child spawned from a dispatch worker thread can inherit a signal
-    /// mask that blocks SIGTERM, and SIGKILL cannot be blocked.
+    private func finishIfDone() {
+        let done = lock.withLock { exited && reachedEnd }
+        if done { finish() }
+    }
+
+    /// Resumes the caller once, with whatever output arrived.
+    private func finish() {
+        let (pending, data) = lock.withLock { () -> (CheckedContinuation<GitResult, Error>?, Data) in
+            defer { continuation = nil }
+            return (continuation, output)
+        }
+        guard let pending else { return }
+        pipe.fileHandleForReading.readabilityHandler = nil
+        let text = String(bytes: data, encoding: .utf8) ?? ""
+        pending.resume(returning: GitResult(exitCode: process.terminationStatus, output: text))
+    }
+
+    /// Force-kills git and every process it started. SIGKILL rather than
+    /// `terminate()` (SIGTERM): a child spawned from a dispatch worker thread
+    /// can inherit a signal mask that blocks SIGTERM, and SIGKILL cannot be
+    /// blocked. The tree is collected first, so children are found before
+    /// their parent dies and they are re-parented.
     func terminate() {
         let pid = process.processIdentifier
-        if process.isRunning, pid > 0 {
+        guard pid > 0 else { return }
+        for child in Self.descendants(of: pid) {
+            kill(child, SIGKILL)
+        }
+        if process.isRunning {
             kill(pid, SIGKILL)
         }
+    }
+
+    static func descendants(of root: pid_t) -> [pid_t] {
+        var found: [pid_t] = []
+        var queue = [root]
+        while let current = queue.popLast() {
+            var children = [pid_t](repeating: 0, count: 256)
+            let count = children.withUnsafeMutableBytes { buffer in
+                proc_listchildpids(current, buffer.baseAddress, Int32(buffer.count))
+            }
+            guard count > 0 else { continue }
+            for child in children.prefix(min(Int(count), children.count)) where child > 0 {
+                found.append(child)
+                queue.append(child)
+            }
+        }
+        return found
     }
 }

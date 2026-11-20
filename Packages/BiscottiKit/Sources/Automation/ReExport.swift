@@ -44,14 +44,16 @@ public enum ReTranscribeExportBehavior: String, Codable, Sendable, CaseIterable,
 
 public extension MeetingExporter {
     /// Existing export files for a meeting in the given targets (matched by
-    /// the meeting's ID marker).
+    /// the meeting's ID marker and the full ID inside). Two targets writing to
+    /// the same folder list each file once.
     static func existingExports(meetingID: UUID, in targets: [ExportTarget]) -> [URL] {
-        let marker = MeetingMarkdown.idMarker(for: meetingID)
         var found: [URL] = []
+        var folders: Set<String> = []
         for target in targets {
             let directory = target.outputDirectory
+            guard folders.insert(directory.standardizedFileURL.resolvingSymlinksInPath().path).inserted else { continue }
             let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-            for name in names where name.hasSuffix("\(marker).md") {
+            for name in names where MeetingMarkdown.isExport(named: name, in: directory, of: meetingID) {
                 found.append(directory.appendingPathComponent(name))
             }
         }
@@ -62,7 +64,8 @@ public extension MeetingExporter {
     /// replace them: "2026-11-18 1129 Title [1a2b3c4d].md" becomes
     /// "2026-11-18 1129 Title [1a2b3c4d] (before 2026-11-18 1530).md". The
     /// renamed file no longer ends with the ID marker, so later exports
-    /// leave it alone. Returns the new URLs.
+    /// leave it alone. All or nothing: if any rename fails, the ones already
+    /// made are undone and the error is thrown. Returns the new URLs.
     @discardableResult
     static func preserveExistingExports(
         meetingID: UUID,
@@ -75,20 +78,32 @@ public extension MeetingExporter {
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HHmm"
         let stamp = formatter.string(from: now)
-        var renamed: [URL] = []
-        for file in existingExports(meetingID: meetingID, in: targets) {
-            let base = file.deletingPathExtension().lastPathComponent
-            var destination = file.deletingLastPathComponent()
-                .appendingPathComponent("\(base) (before \(stamp)).md")
-            var counter = 2
-            while FileManager.default.fileExists(atPath: destination.path) {
-                destination = file.deletingLastPathComponent()
-                    .appendingPathComponent("\(base) (before \(stamp) \(counter)).md")
-                counter += 1
+        var moves: [(from: URL, to: URL)] = []
+        do {
+            for file in existingExports(meetingID: meetingID, in: targets) {
+                let destination = keptName(for: file, stamp: stamp)
+                try FileManager.default.moveItem(at: file, to: destination)
+                moves.append((file, destination))
             }
-            try FileManager.default.moveItem(at: file, to: destination)
-            renamed.append(destination)
+        } catch {
+            for move in moves.reversed() {
+                try? FileManager.default.moveItem(at: move.to, to: move.from)
+            }
+            throw error
         }
-        return renamed
+        return moves.map(\.to)
+    }
+
+    /// "<name> (before <stamp>).md", numbered if that's taken.
+    private static func keptName(for file: URL, stamp: String) -> URL {
+        let base = file.deletingPathExtension().lastPathComponent
+        var destination = file.deletingLastPathComponent().appendingPathComponent("\(base) (before \(stamp)).md")
+        var counter = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            destination = file.deletingLastPathComponent()
+                .appendingPathComponent("\(base) (before \(stamp) \(counter)).md")
+            counter += 1
+        }
+        return destination
     }
 }

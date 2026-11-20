@@ -8,10 +8,11 @@ import Foundation
 /// naming lines in its root bundle, deleted with the bundle.
 enum MeetingEventLog {
     static let maxBytes = 1_000_000
+    static let fileName = "meeting-events.log"
 
     static var appFile: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Biscotti/meeting-events.log")
+            .appendingPathComponent("Biscotti/\(fileName)")
     }
 
     static func write(_ category: String, _ message: String, bundle: URL? = nil) {
@@ -19,7 +20,7 @@ enum MeetingEventLog {
         let line = "\(stamp) [\(category)] \(message)\n"
         append(line, to: appFile, trimAt: maxBytes)
         if let bundle, FileManager.default.fileExists(atPath: bundle.path) {
-            append(line, to: bundle.appendingPathComponent("meeting-events.log"), trimAt: nil)
+            append(line, to: bundle.appendingPathComponent(fileName), trimAt: nil)
         }
     }
 

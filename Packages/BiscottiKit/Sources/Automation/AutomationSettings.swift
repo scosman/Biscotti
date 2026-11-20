@@ -168,16 +168,20 @@ public final class AutomationSettingsStore {
     @ObservationIgnored public let micPolicy = MicPolicyBox()
 
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var exportLedger: [String: Double]
+    /// Meeting ID -> IDs of the targets it has been exported to.
+    @ObservationIgnored private var exportLedger: [String: [String]]
 
     static let settingsKey = "biscotti.automation.settings.v1"
-    static let ledgerKey = "biscotti.automation.exportLedger.v1"
+    /// The old ledger: meeting ID -> export time, for "every target at the time".
+    static let legacyLedgerKey = "biscotti.automation.exportLedger.v1"
+    static let ledgerKey = "biscotti.automation.exportLedger.v2"
 
     public init(defaults: UserDefaults) {
         self.defaults = defaults
-        settings = Self.loadSettings(from: defaults)
-        exportLedger = defaults.dictionary(forKey: Self.ledgerKey) as? [String: Double] ?? [:]
-        micPolicy.update(priority: settings.micPriority, allowSwitchUp: settings.micSwitchUp)
+        let loaded = Self.loadSettings(from: defaults)
+        settings = loaded
+        exportLedger = Self.loadLedger(from: defaults, targets: loaded.enabledExportTargets.map(\.id))
+        micPolicy.update(priority: loaded.micPriority, allowSwitchUp: loaded.micSwitchUp)
     }
 
     /// The store the app uses.
@@ -221,13 +225,27 @@ public final class AutomationSettingsStore {
 
     // MARK: - Export ledger
 
+    /// True when the meeting has reached every export target enabled now. A
+    /// target added later has not received older meetings, so they don't
+    /// count as exported until it has.
     public func isExported(_ meetingID: UUID) -> Bool {
-        exportLedger[meetingID.uuidString] != nil
+        let targets = settings.enabledExportTargets
+        guard !targets.isEmpty, let done = exportLedger[meetingID.uuidString] else { return false }
+        return targets.allSatisfy { done.contains($0.id.uuidString) }
     }
 
-    public func markExported(_ meetingID: UUID, at date: Date = Date()) {
-        exportLedger[meetingID.uuidString] = date.timeIntervalSince1970
+    /// Records that the meeting reached these targets.
+    public func markExported(_ meetingID: UUID, targets: [UUID]) {
+        guard !targets.isEmpty else { return }
+        var done = Set(exportLedger[meetingID.uuidString] ?? [])
+        done.formUnion(targets.map(\.uuidString))
+        exportLedger[meetingID.uuidString] = done.sorted()
         defaults.set(exportLedger, forKey: Self.ledgerKey)
+    }
+
+    /// Records that the meeting reached every target enabled now.
+    public func markExported(_ meetingID: UUID) {
+        markExported(meetingID, targets: settings.enabledExportTargets.map(\.id))
     }
 
     /// Clears ledger entries, e.g. after targets change or meetings are deleted.
@@ -242,6 +260,21 @@ public final class AutomationSettingsStore {
     public func forgetAllExports() {
         exportLedger = [:]
         defaults.removeObject(forKey: Self.ledgerKey)
+    }
+
+    /// Reads the per-target ledger, or converts the old one: a meeting it
+    /// listed had reached every target enabled at the time, which is the
+    /// best record there is of where it went.
+    private static func loadLedger(from defaults: UserDefaults, targets: [UUID]) -> [String: [String]] {
+        if let ledger = defaults.dictionary(forKey: ledgerKey) as? [String: [String]] {
+            return ledger
+        }
+        guard let legacy = defaults.dictionary(forKey: legacyLedgerKey) as? [String: Double] else { return [:] }
+        let ids = targets.map(\.uuidString).sorted()
+        let ledger = ids.isEmpty ? [:] : legacy.mapValues { _ in ids }
+        defaults.set(ledger, forKey: ledgerKey)
+        defaults.removeObject(forKey: legacyLedgerKey)
+        return ledger
     }
 
     private static func loadSettings(from defaults: UserDefaults) -> AutomationSettings {

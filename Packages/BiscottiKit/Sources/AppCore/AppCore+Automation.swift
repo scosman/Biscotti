@@ -237,7 +237,14 @@ public extension AppCore {
                 keptNames = try MeetingExporter.preserveExistingExports(meetingID: meetingID, in: targets)
                     .map(\.lastPathComponent)
             } catch {
-                automationLogger.error("Export: couldn't keep the old file: \(error.localizedDescription, privacy: .public)")
+                // The user asked to keep the old export. If it couldn't be set
+                // aside, don't export over it.
+                let message = "Couldn't keep the old export, so it wasn't replaced: \(error.localizedDescription)"
+                automationLogger.error("Export: \(message, privacy: .public)")
+                automation.lastExportStatus = ExportStatus(
+                    date: Date(), meetingTitle: meeting.title, failures: [message], detail: message
+                )
+                return nil
             }
         }
         let outcomes = await exporter.export(meeting, to: targets)
@@ -247,9 +254,8 @@ public extension AppCore {
         let warnings = outcomes.compactMap { outcome in
             outcome.pushWarning.map { "\(outcome.targetName): \($0)" }
         }
-        if failures.isEmpty {
-            automation.markExported(meetingID)
-        }
+        // Each target that got the file counts; retention waits for all of them.
+        automation.markExported(meetingID, targets: outcomes.filter(\.succeeded).map(\.targetID))
         let detail = Self.exportDetail(
             failures: failures, replaced: !existing.isEmpty && keptNames.isEmpty,
             kept: keptNames, targets: targets.map(\.name)
@@ -466,6 +472,10 @@ public extension AppCore {
     /// transcript, summary and notes stay.
     private func deleteAudio(meetingID: UUID) async {
         let paths = await (try? store.audioFilePaths(meetingID: meetingID)) ?? []
+        // The lookup awaited: a recording or transcription may have started
+        // on this meeting since the plan was made. Check again right before
+        // deleting, with no suspension point in between.
+        guard !protectedMeetingIDs().contains(meetingID) else { return }
         deleteRecordingFiles(paths)
         do {
             try await store.markAudioPresence(meetingID: meetingID)

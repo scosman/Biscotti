@@ -170,6 +170,25 @@ struct GitExportTests {
         #expect(staged.trimmingCharacters(in: .whitespacesAndNewlines) == "wip.txt")
     }
 
+    @Test("unrelated files in the export folder are never committed")
+    func leavesUnrelatedFilesInTheExportFolder() async throws {
+        let repo = try await makeRepo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        // An untracked note sits in the repository root, which is also the
+        // export folder.
+        try Data("notes".utf8).write(to: repo.appendingPathComponent("notes.txt"))
+
+        let target = ExportTarget(name: "Repo", kind: .gitRepository, path: repo.path, subfolder: "")
+        let outcomes = await MeetingExporter(git: git).export(sampleMeeting(id: UUID()), to: [target], timeZone: utc)
+        #expect(outcomes.first?.succeeded == true, "\(outcomes)")
+
+        let committed = try await git.run(["show", "--name-only", "--format=", "HEAD"], in: repo).output
+        #expect(committed.contains(".md"))
+        #expect(!committed.contains("notes.txt"))
+        let untracked = try await git.run(["status", "--porcelain"], in: repo).output
+        #expect(untracked.contains("?? notes.txt"))
+    }
+
     @Test("re-export with a new title commits the rename; identical re-export commits nothing")
     func renameAndNoop() async throws {
         let repo = try await makeRepo()
@@ -242,5 +261,36 @@ struct GitRunnerTests {
             _ = try await runner.run(["status"], in: dir)
         }
         #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
+    @Test("a timed-out run ends even when a child keeps the output open")
+    func timeoutKillsChildren() async throws {
+        // Like a git hook that starts a background process: the child holds
+        // the output pipe, so reading to end of file would wait for it.
+        let dir = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("hook.sh")
+        try Data("#!/bin/sh\nsleep 30 &\nsleep 30\n".utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+        let runner = ProcessGitRunner(executable: script, timeout: .milliseconds(300))
+        let start = ContinuousClock.now
+        await #expect(throws: GitRunnerError.timedOut("push")) {
+            _ = try await runner.run(["push"], in: dir)
+        }
+        #expect(ContinuousClock.now - start < .seconds(5))
+    }
+
+    @Test("a quick command returns all of its output")
+    func collectsOutput() async throws {
+        let dir = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appendingPathComponent("echo.sh")
+        try Data("#!/bin/sh\nseq 1 20000\n".utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+        let result = try await ProcessGitRunner(executable: script).run(["status"], in: dir)
+        #expect(result.exitCode == 0)
+        #expect(result.output.hasSuffix("19999\n20000\n"))
     }
 }

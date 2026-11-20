@@ -8,9 +8,11 @@ import SpeakerFusion
 /// caption text), and in future transcripts from other systems. It lives in
 /// the meeting's recordings folder and is deleted with the audio.
 enum RootBundle {
-    /// Files in a bundle folder that are evidence rather than audio.
+    /// Files in a bundle folder that are evidence rather than audio: the
+    /// meeting-window capture and the meeting's event log.
     static func isEvidence(_ url: URL) -> Bool {
-        url.lastPathComponent.hasPrefix("ui-capture") && url.pathExtension == "jsonl"
+        let name = url.lastPathComponent
+        return (name.hasPrefix("ui-capture") && url.pathExtension == "jsonl") || name == MeetingEventLog.fileName
     }
 
     static func removeEvidence(in folder: URL) {

@@ -10,12 +10,32 @@ struct ReExportTests {
         return (ExportTarget(name: "Folder", kind: .folder, path: root.path), root)
     }
 
+    /// An export file's content: frontmatter naming the meeting, then text.
+    static func export(_ meetingID: UUID, _ text: String) -> String {
+        "---\nbiscotti_id: \(meetingID.uuidString)\n---\n\(text)"
+    }
+
+    @Test func anotherMeetingWithTheSameShortMarkerIsLeftAlone() throws {
+        let (target, root) = try Self.folderTarget()
+        let meetingID = UUID()
+        // Same first 8 characters, so the same marker in the file name.
+        let twin = try #require(UUID(uuidString: String(meetingID.uuidString.prefix(24)) + "000000000000"))
+        let marker = MeetingMarkdown.idMarker(for: meetingID)
+        try Data(Self.export(twin, "twin").utf8).write(to: root.appendingPathComponent("Twin \(marker).md"))
+        #expect(MeetingMarkdown.idMarker(for: twin) == marker)
+        #expect(MeetingExporter.existingExports(meetingID: meetingID, in: [target]).isEmpty)
+
+        _ = try MeetingExporter().writeFile(Self.export(meetingID, "mine"), named: "Mine \(marker).md", meetingID: meetingID, into: root)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Twin \(marker).md").path))
+    }
+
     @Test func keepingRenamesTheOldFileSoTheNextExportLeavesItAlone() throws {
         let (target, root) = try Self.folderTarget()
         let meetingID = UUID()
         let marker = MeetingMarkdown.idMarker(for: meetingID)
         let old = root.appendingPathComponent("2026-11-18 1129 NORTHWIND \(marker).md")
-        try Data("old".utf8).write(to: old)
+        let oldText = Self.export(meetingID, "old")
+        try Data(oldText.utf8).write(to: old)
         try Data("other".utf8).write(to: root.appendingPathComponent("unrelated.md"))
 
         #expect(MeetingExporter.existingExports(meetingID: meetingID, in: [target]).count == 1)
@@ -31,7 +51,7 @@ struct ReExportTests {
         _ = try MeetingExporter().writeFile("new", named: "2026-11-18 1129 NORTHWIND \(marker).md", meetingID: meetingID, into: root)
         let names = try FileManager.default.contentsOfDirectory(atPath: root.path).sorted()
         #expect(names.count == 3)
-        #expect(try String(contentsOf: renamed[0], encoding: .utf8) == "old")
+        #expect(try String(contentsOf: renamed[0], encoding: .utf8) == oldText)
     }
 
     @Test func keepingTwiceInOneMinuteDoesNotOverwrite() throws {
@@ -40,7 +60,7 @@ struct ReExportTests {
         let marker = MeetingMarkdown.idMarker(for: meetingID)
         let now = Date()
         for version in ["first", "second"] {
-            try Data(version.utf8).write(to: root.appendingPathComponent("Meeting \(marker).md"))
+            try Data(Self.export(meetingID, version).utf8).write(to: root.appendingPathComponent("Meeting \(marker).md"))
             try MeetingExporter.preserveExistingExports(meetingID: meetingID, in: [target], now: now)
         }
         let kept = try FileManager.default.contentsOfDirectory(atPath: root.path)

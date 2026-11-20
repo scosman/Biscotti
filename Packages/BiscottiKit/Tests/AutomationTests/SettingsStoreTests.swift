@@ -56,6 +56,7 @@ struct AutomationSettingsTests {
         let first = UUID()
         let second = UUID()
         let store = AutomationSettingsStore(defaults: defaults)
+        store.update { $0.exportTargets = [ExportTarget(name: "Notes", kind: .folder, path: "/tmp/notes")] }
         store.markExported(first)
         store.markExported(second)
         #expect(store.isExported(first))
@@ -69,6 +70,40 @@ struct AutomationSettingsTests {
 
         reloaded.forgetAllExports()
         #expect(!reloaded.isExported(second))
+    }
+
+    @Test("a target added later hasn't received older meetings")
+    func newTargetResetsExported() throws {
+        let suite = "automation-ledger-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = AutomationSettingsStore(defaults: defaults)
+        let notes = ExportTarget(name: "Notes", kind: .folder, path: "/tmp/notes")
+        let archive = ExportTarget(name: "Archive", kind: .folder, path: "/tmp/archive")
+        store.update { $0.exportTargets = [notes] }
+        let meeting = UUID()
+        store.markExported(meeting, targets: [notes.id])
+        #expect(store.isExported(meeting))
+
+        store.update { $0.exportTargets = [notes, archive] }
+        #expect(!store.isExported(meeting))
+        store.markExported(meeting, targets: [archive.id])
+        #expect(store.isExported(meeting))
+    }
+
+    @Test("the old ledger converts to every target enabled at the time")
+    func legacyLedgerMigrates() throws {
+        let suite = "automation-ledger-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let notes = ExportTarget(name: "Notes", kind: .folder, path: "/tmp/notes")
+        let meeting = UUID()
+        try defaults.set(JSONEncoder().encode(AutomationSettings(exportTargets: [notes])), forKey: "biscotti.automation.settings.v1")
+        defaults.set([meeting.uuidString: 1_700_000_000.0], forKey: "biscotti.automation.exportLedger.v1")
+
+        let store = AutomationSettingsStore(defaults: defaults)
+        #expect(store.isExported(meeting))
+        #expect(defaults.object(forKey: "biscotti.automation.exportLedger.v1") == nil)
     }
 
     @Test("ephemeral stores never capture meeting UI; saved settings without the key default to on")

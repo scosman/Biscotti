@@ -488,8 +488,10 @@ public extension AudioRecorder {
         let tonePlayer = ProbeTonePlayer()
 
         // Start the system engine (creates a fresh tap -> TCC prompt on first use).
+        // Use the same bounded retry policy as recording: transient Core Audio
+        // startup failures must not be reported as missing Screen Recording permission.
         do {
-            try await systemEngine.start(writingTo: probePath)
+            try await startSystemEngineWithRetry(path: probePath)
         } catch {
             logger.error(
                 "Probe: system engine start failed: \(error.localizedDescription, privacy: .public)"

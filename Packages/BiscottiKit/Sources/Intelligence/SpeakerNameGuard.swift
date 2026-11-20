@@ -32,8 +32,10 @@ struct SpeakerNameGuard {
         let key = Self.normalize(name)
         if invited.contains(key) || confirmed.contains(key) { return true }
         if let email = email?.lowercased(), invitedEmails.contains(email) { return true }
-        // Mentioned: their first or last name is said in the meeting.
-        let parts = key.split(separator: " ").map(String.init).filter { $0.count >= 3 }
+        // Mentioned: their first or last name is said in the meeting. Split
+        // on non-letters, as the transcript is ("Anne-Marie O'Connor" ->
+        // anne, marie, connor).
+        let parts = key.split(whereSeparator: { !$0.isLetter }).map(String.init).filter { $0.count >= 3 }
         return parts.contains { transcriptWords.contains($0) }
     }
 

@@ -62,7 +62,8 @@ public struct ParticipantTimeline: Sendable, Equatable {
     func overlaps(from lower: Double, until upper: Double, excluding excluded: Set<String>) -> [String: Double] {
         var result: [String: Double] = [:]
         for interval in intervals where interval.start < upper && interval.end > lower {
-            guard !excluded.contains(interval.name) else { continue }
+            // "Carter, Sam" and "Sam Carter" are the same person.
+            guard !excluded.contains(where: { PersonName.same($0, interval.name) }) else { continue }
             result[interval.name, default: 0] += interval.overlap(lower, upper)
         }
         return result
@@ -97,7 +98,9 @@ public enum ParticipantTimelineBuilder {
     }
 
     /// The capture file for a recording: one whose header names the meeting,
-    /// otherwise the one whose time span covers most of the recording.
+    /// otherwise the untagged one (started by hand) whose time span covers
+    /// most of the recording. A capture tagged for another meeting is never
+    /// borrowed.
     public static func findCapture(
         in folder: URL,
         meetingID: UUID,
@@ -112,6 +115,7 @@ public enum ParticipantTimelineBuilder {
             if header.recordingMeetingID == meetingID {
                 return file
             }
+            guard header.recordingMeetingID == nil else { continue }
             let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             let end = modified ?? header.startedAt
             let overlap = min(end, recordingEnd).timeIntervalSince(max(header.startedAt, recordingStart))
@@ -182,6 +186,13 @@ private struct Replay {
     /// the last sign the call was live (raw uptime).
     var windowTitles: Set<String> = []
     var lastCallSign: Double?
+    /// Leave/End buttons on screen, and the last time one went away.
+    var callSignNodes: Set<NodeKey> = []
+    var callSignGoneAt: Double?
+    /// When the app said the meeting ended ("Meeting in "General" ended").
+    var endedNoticeAt: Double?
+    /// Last snapshot or change seen in each window (raw uptime).
+    var windowLastSeen: [String: Double] = [:]
     /// Names shown per window, and the windows that held a call.
     var seenNames: [String: Set<String>] = [:]
     var callWindows: Set<String> = []
@@ -199,6 +210,8 @@ private struct Replay {
             lastUptime = max(lastUptime, event.uptime)
             if let value = event.value, ParticipantTimelineBuilder.isCallTimer(value) {
                 lastCallSign = max(lastCallSign ?? 0, event.uptime)
+            } else if let value = event.value, ParticipantTimelineBuilder.isEndedNotice(value) {
+                endedNoticeAt = max(endedNoticeAt ?? 0, event.uptime)
             }
         case let .note(note):
             lastUptime = max(lastUptime, note.uptime)
@@ -207,22 +220,33 @@ private struct Replay {
 
     mutating func applySnapshot(_ snapshot: Snapshot) {
         lastUptime = max(lastUptime, snapshot.uptime)
-        let window = Self.windowName(snapshot.window)
-        guard !ParticipantTimelineBuilder.isNonMeetingWindow(window) else { return }
+        let title = Self.windowName(snapshot.window)
+        guard !ParticipantTimelineBuilder.isNonMeetingWindow(title) else { return }
+        let window = Self.windowKey(bundleID: snapshot.bundleID, title: title)
+        windowLastSeen[window] = snapshot.uptime
+        let present = Set(snapshot.nodes.map(\.path))
         for key in nodes.keys where key.window == window {
+            if !present.contains(key.path) {
+                nodeGone(key, at: snapshot.uptime)
+            }
             nodes[key] = nil
         }
         for node in snapshot.nodes {
             add(node, window: window, at: snapshot.uptime)
         }
+        seedCaptionNames(snapshot.nodes, window: window)
     }
 
     mutating func applyDiff(_ diff: SnapshotDiff) {
         lastUptime = max(lastUptime, diff.uptime)
-        let window = Self.windowName(diff.window)
-        guard !ParticipantTimelineBuilder.isNonMeetingWindow(window) else { return }
+        let title = Self.windowName(diff.window)
+        guard !ParticipantTimelineBuilder.isNonMeetingWindow(title) else { return }
+        let window = Self.windowKey(bundleID: diff.bundleID, title: title)
+        windowLastSeen[window] = diff.uptime
         for path in diff.removed {
-            nodes[NodeKey(window: window, path: path)] = nil
+            let key = NodeKey(window: window, path: path)
+            nodeGone(key, at: diff.uptime)
+            nodes[key] = nil
         }
         var events: [CaptionEvent] = []
         for node in diff.added {
@@ -235,22 +259,6 @@ private struct Replay {
             events += captionEvent(path: change.path, role: role, value: change.fields["value"], window: window)
         }
         applyCaptions(events, at: diff.uptime)
-    }
-
-    /// "0:Meeting in "General"" -> "Meeting in "General"". The index moves
-    /// when windows open and close; the title is the stable part.
-    static func windowName(_ raw: String) -> String {
-        guard let colon = raw.firstIndex(of: ":"), raw[..<colon].allSatisfy(\.isNumber) else { return raw }
-        return String(raw[raw.index(after: colon)...])
-    }
-
-    static func visual(classes: String?, bold: String?, weight: String?, role: String?, value: String?) -> String {
-        var parts = [classes ?? "", bold ?? "", weight ?? ""]
-        // Level meters and indicator images carry their state in the value.
-        if let role, ["AXLevelIndicator", "AXProgressIndicator", "AXValueIndicator"].contains(role) {
-            parts.append(value ?? "")
-        }
-        return parts.joined(separator: "|")
     }
 
     mutating func add(_ node: NodeRecord, window: String, at time: Double) {
@@ -307,6 +315,11 @@ private struct Replay {
         {
             lastCallSign = max(lastCallSign ?? 0, time)
             callWindows.insert(key.window)
+            callSignNodes.insert(key)
+        } else if callSignNodes.contains(key) {
+            // The button changed into something else: the call control left.
+            callSignNodes.remove(key)
+            callSignGoneAt = max(callSignGoneAt ?? 0, time)
         }
         if [live.label, live.title].contains(where: { $0?.lowercased().contains("caption") == true }) {
             captionRoots.insert(key)
@@ -352,7 +365,7 @@ private struct Replay {
         for (key, history) in visualHistory {
             guard history.count >= 3, !isInCaptions(key), let owner = namedAncestor(of: key),
                   !isInCaptions(owner) else { continue }
-            let spans = Self.spans(history, end: lastUptime)
+            let spans = Self.spans(history, end: lastUptime).filter { $0.state != Self.gone }
             var totals: [String: Double] = [:]
             for span in spans {
                 totals[span.state, default: 0] += span.end - span.start
@@ -388,7 +401,7 @@ private struct Replay {
         // Only call windows: an idle Dialpad window lists your contacts.
         let shown = callWindows.reduce(into: Set<String>()) { $0.formUnion(seenNames[$1] ?? []) }
         timeline.seen = shown.subtracting(titles).sorted()
-        if let sign = lastCallSign, lastUptime - sign > Self.callEndMargin {
+        if let sign = lastCallSign, callEndConfirmed(after: sign) {
             timeline.callEndedAt = sign + timeOffset
         }
         timeline.captions = captionLines.map { line in
@@ -403,10 +416,16 @@ private struct Replay {
     /// The capture has to run this long past the last call sign to say the
     /// call ended.
     static let callEndMargin = 10.0
+    /// Visual state of a node that has left the screen.
+    static let gone = "\u{0}gone"
 
     static let captionLead = 2.5
     static let captionTail = 0.0
+}
 
+// MARK: - Window names, visual state and spans
+
+extension Replay {
     struct Span {
         var start: Double
         var end: Double
@@ -441,6 +460,74 @@ private struct Replay {
         }
         return result.sorted { $0.start < $1.start }
     }
+
+    /// "0:Meeting in "General"" -> "Meeting in "General"". The index moves
+    /// when windows open and close; the title is the stable part.
+    static func windowName(_ raw: String) -> String {
+        guard let colon = raw.firstIndex(of: ":"), raw[..<colon].allSatisfy(\.isNumber) else { return raw }
+        return String(raw[raw.index(after: colon)...])
+    }
+
+    /// Two apps can show windows with the same title; the app tells them apart.
+    static func windowKey(bundleID: String, title: String) -> String {
+        bundleID.isEmpty ? title : "\(bundleID)\u{1F}\(title)"
+    }
+
+    static func visual(classes: String?, bold: String?, weight: String?, role: String?, value: String?) -> String {
+        var parts = [classes ?? "", bold ?? "", weight ?? ""]
+        // Level meters and indicator images carry their state in the value.
+        if let role, ["AXLevelIndicator", "AXProgressIndicator", "AXValueIndicator"].contains(role) {
+            parts.append(value ?? "")
+        }
+        return parts.joined(separator: "|")
+    }
+}
+
+// MARK: - Nodes leaving the screen
+
+extension Replay {
+    /// A stopped timer alone doesn't end a call (the capture may just have
+    /// stopped seeing it). The capture must have run on past the last sign,
+    /// and the call must visibly have ended: its window went quiet then
+    /// (closed, or replaced by another window), a Leave button went away,
+    /// or the app said the meeting ended.
+    func callEndConfirmed(after sign: Double) -> Bool {
+        guard lastUptime - sign > Self.callEndMargin else { return false }
+        if let gone = callSignGoneAt, gone >= sign - Self.callEndMargin { return true }
+        if let notice = endedNoticeAt, notice >= sign - Self.callEndMargin { return true }
+        let lastSeen = callWindows.compactMap { windowLastSeen[$0] }.max()
+        if let lastSeen, lastSeen <= sign + Self.windowQuietSlack { return true }
+        return false
+    }
+
+    /// A call window's last change can trail its last timer tick by this much.
+    static let windowQuietSlack = 2.0
+
+    /// A node left the screen: its visual history ends here (so a highlight
+    /// can't run on past it), its caption row closes, and a call control
+    /// leaving is noted as a sign the call ended.
+    mutating func nodeGone(_ key: NodeKey, at time: Double) {
+        if let last = visualHistory[key]?.last, last.1 != Self.gone {
+            visualHistory[key, default: []].append((time, Self.gone))
+        }
+        for entry in openLine.keys where entry == key || entry.parent == key || key.parent == entry {
+            openLine[entry] = nil
+        }
+        if callSignNodes.remove(key) != nil {
+            callSignGoneAt = max(callSignGoneAt ?? 0, time)
+        }
+    }
+
+    /// Caption rows already on screen when a snapshot is taken: learn who
+    /// each row belongs to, so later text changes are attributed. Not new
+    /// speech, so no pings or lines.
+    mutating func seedCaptionNames(_ records: [NodeRecord], window: String) {
+        for node in records where node.path.hasSuffix(".0") {
+            for event in captionEvent(path: node.path, role: node.role, value: node.value, window: window) {
+                if let name = event.name { captionNames[event.entry] = name }
+            }
+        }
+    }
 }
 
 // MARK: - Windows
@@ -450,6 +537,12 @@ extension ParticipantTimelineBuilder {
     /// presence and mentions, never who is speaking.
     static func isNonMeetingWindow(_ title: String) -> Bool {
         ["Chat |", "Activity |", "Calendar |", "Teams |", "Files |", "Apps |"].contains { title.hasPrefix($0) }
+    }
+
+    /// "Meeting in "General" ended", "Call ended", "You left the meeting".
+    static func isEndedNotice(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        return lowered.range(of: #"\b(meeting|call)\b.*\bended$|^call ended\b|^you left\b"#, options: .regularExpression) != nil
     }
 
     /// "31:33" or "1:02:07": a call's running timer.

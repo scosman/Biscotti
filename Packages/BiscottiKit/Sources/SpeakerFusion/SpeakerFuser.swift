@@ -180,11 +180,17 @@ public struct FusionResult: Sendable, Equatable {
     public var report: FusionReport
     /// Person name -> how often the screen agreed while that voice spoke.
     public var evidence: [String: NameEvidence]
+    /// Person name -> caption-matched words, for voices named by captions.
+    public var captionEvidence: [String: Int]
 
-    public init(segments: [FusedSegment], report: FusionReport, evidence: [String: NameEvidence] = [:]) {
+    public init(
+        segments: [FusedSegment], report: FusionReport, evidence: [String: NameEvidence] = [:],
+        captionEvidence: [String: Int] = [:]
+    ) {
         self.segments = segments
         self.report = report
         self.evidence = evidence
+        self.captionEvidence = captionEvidence
     }
 }
 
@@ -273,11 +279,12 @@ public enum SpeakerFuser {
         // Caption text says who said which words; it outranks
         // the loudness and highlight evidence below.
         let captioned = CaptionAligner.assign(sorted, captions: timeline?.captions ?? [])
+        let captionNamed = captionNamedVoices(sorted, captioned: captioned, userName: userName)
         let naming = WordNaming(
             sources: sources, captioned: captioned, userName: userName,
             clusterNames: withCaptionNames(
                 nameClusters(sorted, sources: sources, timeline: timeline ?? .empty, excluded: [userName], tuning: tuning),
-                words: sorted, captioned: captioned, userName: userName
+                captionNamed: captionNamed
             )
         )
         let clusterNames = naming.clusterNames
@@ -288,7 +295,10 @@ public enum SpeakerFuser {
         // Speech diarization heard that Whisper couldn't make out becomes a
         // "[unintelligible]" line for whoever it was.
         var allWords = kept.map { sorted[$0] }
-        let gaps = Unintelligible.find(spans: voiceSpans, words: sorted, levels: levels)
+        let gaps = Unintelligible.find(
+            spans: AfterCall.clip(voiceSpans, callEndedAt: afterCall.dropped > 0 ? timeline?.callEndedAt : nil),
+            words: sorted, levels: levels
+        )
         for (word, speaker) in unintelligibleLines(
             gaps, clusterNames: clusterNames, timeline: timeline, userName: userName
         ) {
@@ -306,19 +316,12 @@ public enum SpeakerFuser {
         report.captionCorrections = refined.replaced
         report.afterCallWords = afterCall.dropped
         report.echoWords = echoes.count
-        for speaker in speakers.prefix(kept.count) {
-            switch speaker {
-            case .user: report.userWords += 1
-            case let .person(name):
-                report.namedWords += 1
-                if !report.namedPeople.contains(name) { report.namedPeople.append(name) }
-            case .cluster, .unknown: report.clusterWords += 1
-            }
-        }
+        report.count(speakers.prefix(kept.count))
         let evidence = turnEvidence(
             sorted, sources: sources, timeline: timeline ?? .empty, naming: ClusterNaming(names: clusterNames, excluded: [userName]), tuning: tuning
         )
-        return FusionResult(segments: segments, report: report, evidence: evidence)
+        let captionEvidence = Dictionary(captionNamed.values.map { ($0.name, $0.words) }, uniquingKeysWith: max)
+        return FusionResult(segments: segments, report: report, evidence: evidence, captionEvidence: captionEvidence)
     }
 
     // MARK: - Source
@@ -344,19 +347,7 @@ public enum SpeakerFuser {
             return .unknown
         }
         keepRemoteVoicesRemote(&sources, words: words, margin: margin)
-        // An unsure word joins its neighbour in the same breath.
-        for index in sources.indices where sources[index] == .unknown && !collapsed[index] {
-            let previous = index > 0 ? index - 1 : nil
-            if let previous, sources[previous] != .unknown, words[index].start - words[previous].end < 0.8 {
-                sources[index] = sources[previous]
-                continue
-            }
-            if let next = sources[(index + 1)...].firstIndex(where: { $0 != .unknown }),
-               words[next].start - words[index].end < 0.8
-            {
-                sources[index] = sources[next]
-            }
-        }
+        fillFromNeighbours(&sources, words: words, collapsed: collapsed)
         fillCollapsed(&sources, words: words, collapsed: collapsed)
         return sources
     }
@@ -532,7 +523,7 @@ extension SpeakerFuser {
             let speaker = speakers[index]
             // "[unintelligible]" always stands as its own line.
             let placeholder = Unintelligible.isMarker(word)
-            let lastIsPlaceholder = segments.last?.words.contains(where: Unintelligible.isMarker) ?? false
+            let lastIsPlaceholder = segments.last?.words.first.map(Unintelligible.isMarker) ?? false
             if var last = segments.last, last.speaker == speaker, word.start - last.end <= gap,
                !placeholder, !lastIsPlaceholder
             {
@@ -543,5 +534,49 @@ extension SpeakerFuser {
             }
         }
         return segments
+    }
+}
+
+// MARK: - Sources from neighbours, and the report
+
+extension SpeakerFuser {
+    /// An unsure word joins its neighbour in the same breath, but only a
+    /// neighbour in the same voice: across a change of voice the neighbour
+    /// says nothing about this word.
+    static func fillFromNeighbours(_ sources: inout [WordSource], words: [FusionWord], collapsed: [Bool]) {
+        // The next word with a known source, found in one backward pass.
+        var nextKnown = [Int?](repeating: nil, count: sources.count)
+        var upcoming: Int?
+        for index in sources.indices.reversed() {
+            nextKnown[index] = upcoming
+            if sources[index] != .unknown { upcoming = index }
+        }
+        for index in sources.indices where sources[index] == .unknown && !collapsed[index] {
+            let word = words[index]
+            if index > 0, sources[index - 1] != .unknown, words[index - 1].clusterID == word.clusterID,
+               word.start - words[index - 1].end < 0.8
+            {
+                sources[index] = sources[index - 1]
+            } else if let next = nextKnown[index], words[next].clusterID == word.clusterID,
+                      words[next].start - word.end < 0.8
+            {
+                sources[index] = sources[next]
+            }
+        }
+    }
+}
+
+extension FusionReport {
+    /// Tallies who each spoken word went to.
+    mutating func count(_ speakers: some Sequence<FusedSpeaker>) {
+        for speaker in speakers {
+            switch speaker {
+            case .user: userWords += 1
+            case let .person(name):
+                namedWords += 1
+                if !namedPeople.contains(name) { namedPeople.append(name) }
+            case .cluster, .unknown: clusterWords += 1
+            }
+        }
     }
 }

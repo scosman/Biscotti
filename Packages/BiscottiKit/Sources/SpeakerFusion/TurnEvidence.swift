@@ -28,7 +28,10 @@ extension SpeakerFuser {
             let lower = turn.start - tuning.leadSlack
             let upper = turn.end + tuning.lagSlack
             let overlaps = timeline.overlaps(from: lower, until: upper, excluding: naming.excluded)
-            if let top = overlaps.max(by: { $0.value < $1.value }),
+                .sorted { $0.value > $1.value }
+            // Two people tied for the most highlight time say nothing either way.
+            let tied = overlaps.count > 1 && overlaps[0].value - overlaps[1].value < 0.001
+            if let top = overlaps.first, !tied,
                top.value >= (turn.end - turn.start) * tuning.turnCoverage
             {
                 if top.key == name {

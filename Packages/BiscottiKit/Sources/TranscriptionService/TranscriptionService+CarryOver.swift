@@ -40,6 +40,11 @@ extension TranscriptionService {
                 matches[speakerID] = personID
             }
         }
+        // A name set by hand on the new transcript while it was being made
+        // (or by an earlier carry) stays; so does that person's place.
+        let alreadySet = await (try? store.confirmedSpeakerMappings(for: transcript.id)) ?? [:]
+        let placed = Set(alreadySet.values.map(\.id))
+        matches = matches.filter { alreadySet[$0.key] == nil && !placed.contains($0.value) }
         for (speakerID, personID) in matches {
             do {
                 try await store.setSpeakerAssignment(speakerID: speakerID, personID: personID, for: transcript.id)

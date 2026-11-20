@@ -30,6 +30,34 @@ struct PersonAliasTests {
         #expect(try await store.findOrCreatePerson(name: "W. Lopez", email: nil) == maria)
     }
 
+    @Test func correctingTheWrongPersonTeachesNoAlias() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let meetingID = try await store.createMeeting(title: "Wrong person")
+        let transcriptID = try await store.addTranscript(
+            .init(transcriptionMethodId: "v2", language: "en", speakerCount: 2, segments: [], processingDuration: 0),
+            vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+        )
+        // The screen highlighted Nora, but it was Owen talking.
+        let nora = try await store.findOrCreatePerson(name: "Nora Hale", email: nil)
+        try await store.setSpeakerAssignment(
+            speakerID: 1, personID: nora,
+            provenance: SpeakerNameProvenance(source: .screen, confidence: .high), for: transcriptID
+        )
+        let owen = try await store.findOrCreatePerson(name: "Owen Price", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: owen, for: transcriptID)
+        #expect(try await store.findOrCreatePerson(name: "Nora Hale", email: nil) == nora)
+        #expect(!PersonAlias.sharesAName("Nora Hale", "Owen Price"))
+        #expect(PersonAlias.sharesAName("Lopez, Maria (AGENCY)", "Maria Reyes"))
+    }
+
+    @Test func aNameOrderMatchNeedsExactlyOnePerson() async throws {
+        let store = try DataStore(storage: .inMemory)
+        _ = try await store.findOrCreatePerson(name: "Sam Carter", email: "sam@one.example")
+        #expect(try await store.personMatchingAlias("Carter, Sam") != nil)
+        _ = try await store.findOrCreatePerson(name: "Sam Carter", email: "sam@two.example")
+        #expect(try await store.personMatchingAlias("Carter, Sam") == nil)
+    }
+
     @Test func junkPeopleAndTheirAutomaticNamesAreRemoved() async throws {
         let store = try DataStore(storage: .inMemory)
         let meetingID = try await store.createMeeting(title: "Junk")

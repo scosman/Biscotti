@@ -15,6 +15,16 @@ public enum PersonAlias {
         let ordered = parts.count == 2 ? "\(parts[1]) \(parts[0])" : stripped
         return ordered.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
+
+    /// True when two names have a word of 2+ letters in common, so they could
+    /// be the same person under another name ("Lopez, Maria" and "Maria
+    /// Reyes"), not two different people.
+    public static func sharesAName(_ lhs: String, _ rhs: String) -> Bool {
+        func words(_ name: String) -> Set<String> {
+            Set(key(name).split(whereSeparator: { !$0.isLetter }).map(String.init).filter { $0.count >= 2 })
+        }
+        return !words(lhs).isDisjoint(with: words(rhs))
+    }
 }
 
 public extension DataStore {
@@ -38,13 +48,15 @@ public extension DataStore {
     }
 
     /// The person a name belongs to by alias or by the same name in another
-    /// order, if any.
+    /// order, if any. A taught alias wins; a name-order match counts only if
+    /// exactly one person matches (two "Sam Carter"s are not one person).
     func personMatchingAlias(_ name: String) throws -> UUID? {
         let key = PersonAlias.key(name)
         if let taught = try personWithAlias(name) {
             return taught
         }
-        return try context.fetch(FetchDescriptor<Person>()).first { PersonAlias.key($0.name) == key }?.id
+        let matches = try context.fetch(FetchDescriptor<Person>()).filter { PersonAlias.key($0.name) == key }
+        return matches.count == 1 ? matches[0].id : nil
     }
 
     /// Adds people seen in the meeting (on its participant tiles) to its

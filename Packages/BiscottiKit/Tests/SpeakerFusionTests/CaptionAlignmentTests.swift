@@ -54,7 +54,7 @@ struct CaptionAlignmentTests {
             words.append(word("w", Double(index), cluster: 3))
             assigned[index] = index < 8 ? "Lee Morgan" : "Chris Doyle"
         }
-        #expect(CaptionAligner.clusterNames(words, assigned: assigned) == [3: "Lee Morgan"])
+        #expect(CaptionAligner.clusterNames(words, assigned: assigned).mapValues(\.name) == [3: "Lee Morgan"])
     }
 
     @Test func namesInEitherOrderMatch() {

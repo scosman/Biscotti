@@ -25,11 +25,25 @@ public enum AfterCall {
 
     public static func trim(_ words: [FusionWord], callEndedAt: Double?, levels: LevelTrack?) -> (words: [FusionWord], dropped: Int) {
         guard let end = callEndedAt, let levels, let last = words.last, last.end > end + grace else { return (words, 0) }
+        // A call-audio track that stops before the last word can't show that
+        // the room was quiet: missing frames are not silence.
+        guard Double(levels.systemDB.count) * levels.frameSeconds >= last.end - levels.frameSeconds else { return (words, 0) }
         // Mostly silent, not perfectly: Teams plays a short chime as you
         // leave (about a second, 2026-11-19).
         guard soundShare(levels, from: end + grace, until: last.end) <= maxSoundShare else { return (words, 0) }
         let kept = words.filter { $0.start < end + grace }
         return (kept, words.count - kept.count)
+    }
+}
+
+extension AfterCall {
+    /// Voice spans cut at the call's end (plus grace), so speech heard after
+    /// a trimmed call isn't reported as "[unintelligible]". Nil: no cut.
+    static func clip(_ spans: [VoiceSpan], callEndedAt: Double?) -> [VoiceSpan] {
+        guard let end = callEndedAt.map({ $0 + grace }) else { return spans }
+        return spans.compactMap { span in
+            span.start < end ? VoiceSpan(cluster: span.cluster, start: span.start, end: min(span.end, end)) : nil
+        }
     }
 }
 

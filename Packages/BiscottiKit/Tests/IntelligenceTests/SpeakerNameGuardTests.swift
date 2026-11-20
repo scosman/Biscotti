@@ -27,4 +27,9 @@ struct SpeakerNameGuardTests {
         #expect(!Self.nameGuard.permits(name: "Tyler Grant", email: nil))
         #expect(!Self.nameGuard.permits(name: "mking@tailspin.example", email: nil))
     }
+
+    @Test func punctuatedNamesMatchTheirSpokenParts() {
+        let nameGuard = SpeakerNameGuard(invited: [], lines: ["Thanks, Marie, over to you."], confirmedNames: [])
+        #expect(nameGuard.permits(name: "Anne-Marie O'Connor", email: nil))
+    }
 }

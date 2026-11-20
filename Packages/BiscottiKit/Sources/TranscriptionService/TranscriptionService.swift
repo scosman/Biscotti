@@ -412,8 +412,9 @@ public final class TranscriptionService {
 // MARK: - Speaker-named transcripts
 
 extension TranscriptionService {
-    /// Saves a refined transcript as the preferred version. Failures leave
-    /// the engine's transcript in place.
+    /// Saves a refined transcript as the preferred version, after its
+    /// speaker names are saved: if naming fails, the engine's transcript
+    /// stays preferred rather than an unnamed refined one.
     private func persistRefined(meetingID: UUID, refined: RefinedTranscript, vocabularyUsed: [String]) async {
         do {
             let transcriptID = try await store.addTranscript(
@@ -422,7 +423,6 @@ extension TranscriptionService {
                 mappedEventIdentifier: nil,
                 to: meetingID
             )
-            try await store.setPreferredTranscript(transcriptID, for: meetingID)
             for (speakerID, name) in refined.speakerNames.sorted(by: { $0.key < $1.key }) {
                 let personID = try await store.findOrCreatePerson(name: name, email: nil)
                 let provenance = refined.speakerProvenance[speakerID] ?? SpeakerNameProvenance(
@@ -432,6 +432,7 @@ extension TranscriptionService {
                     speakerID: speakerID, personID: personID, provenance: provenance, for: transcriptID
                 )
             }
+            try await store.setPreferredTranscript(transcriptID, for: meetingID)
         } catch {
             Self.refineLog.error("Speaker naming not saved: \(error.localizedDescription, privacy: .public)")
         }

@@ -26,7 +26,9 @@ extension AppCore {
         let settings = automation.settings
         guard settings.nameSpeakers else { return nil }
         let words = result.segments.flatMap { $0.words ?? [] }
-        guard !words.isEmpty else { return nil }
+        // No words but heard voices: the voices may still be re-listened to
+        // as "[unintelligible]" lines below.
+        guard !words.isEmpty || !result.speakerSpans.isEmpty else { return nil }
 
         let paths = try? await store.audioPaths(meetingID: meetingID)
         let detail = try? await store.meetingDetail(id: meetingID)
@@ -70,6 +72,7 @@ extension AppCore {
         // lines with the vocabulary prompt, then fix name spelling.
         let pass = await secondPass(fusion.segments, paths: paths, vocabulary: vocabulary)
         fusion.segments = pass.segments
+        guard !fusion.segments.isEmpty else { return nil }
         let title = detail?.title ?? "Meeting"
         let summary = [fusion.report.summary, pass.summary].filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
         automation.lastNamingReport = "\(title): \(summary)"
@@ -104,21 +107,9 @@ extension AppCore {
         let segments = fusion.segments.map { segment -> TranscriptSegment in
             let speakerID = id(for: segment.speaker)
             if let speakerID { durations[speakerID, default: 0] += segment.end - segment.start }
-            return TranscriptSegment(
-                speakerID: speakerID,
-                speakerLabel: speakerID.map { "Speaker \($0)" } ?? "Unknown",
-                startTime: segment.start,
-                endTime: segment.end,
-                text: segment.text,
-                confidence: segment.words.isEmpty ? 0
-                    : segment.words.reduce(Float(0)) { $0 + $1.probability } / Float(segment.words.count),
-                noSpeechProbability: 0,
-                words: segment.words.map {
-                    TranscriptWord(word: $0.text, startTime: $0.start, endTime: $0.end, probability: $0.probability, speakerID: speakerID)
-                }
-            )
+            return transcriptSegment(segment, speakerID: speakerID)
         }
-        let result = TranscriptResult(
+        var result = TranscriptResult(
             transcriptionMethodId: original.transcriptionMethodId,
             language: original.language,
             speakerCount: ids.count,
@@ -127,9 +118,31 @@ extension AppCore {
             speakerSpeechDurations: durations,
             processingDuration: original.processingDuration
         )
+        // Diarization's voice spans (in its own cluster numbers) stay
+        // available to later passes, e.g. re-listening.
+        result.speakerSpans = original.speakerSpans
         return RefinedTranscript(
             result: result, speakerNames: names,
-            speakerProvenance: provenance(names: names, userName: userName, evidence: fusion.evidence)
+            speakerProvenance: provenance(
+                names: names, userName: userName, evidence: fusion.evidence, captionWords: fusion.captionEvidence
+            )
+        )
+    }
+
+    /// One fused line as a transcript segment for `speakerID`.
+    static func transcriptSegment(_ segment: FusedSegment, speakerID: Int?) -> TranscriptSegment {
+        TranscriptSegment(
+            speakerID: speakerID,
+            speakerLabel: speakerID.map { "Speaker \($0)" } ?? "Unknown",
+            startTime: segment.start,
+            endTime: segment.end,
+            text: segment.text,
+            confidence: segment.words.isEmpty ? 0
+                : segment.words.reduce(Float(0)) { $0 + $1.probability } / Float(segment.words.count),
+            noSpeechProbability: 0,
+            words: segment.words.map {
+                TranscriptWord(word: $0.text, startTime: $0.start, endTime: $0.end, probability: $0.probability, speakerID: speakerID)
+            }
         )
     }
 
@@ -170,13 +183,19 @@ extension AppCore {
     /// The badge for each name: your own voice comes from the microphone;
     /// everyone else from how many of their turns the screen agreed with.
     static func provenance(
-        names: [Int: String], userName: String, evidence: [String: NameEvidence]
+        names: [Int: String], userName: String, evidence: [String: NameEvidence], captionWords: [String: Int] = [:]
     ) -> [Int: SpeakerNameProvenance] {
         var result: [Int: SpeakerNameProvenance] = [:]
         for (speakerID, name) in names {
             if speakerID == 0, name == userName {
                 result[speakerID] = SpeakerNameProvenance(
                     source: .microphone, confidence: .high, detail: "Your microphone was the loudest source"
+                )
+            } else if let words = captionWords[name] {
+                // Named by the meeting's live captions, not by highlights.
+                result[speakerID] = SpeakerNameProvenance(
+                    source: .screen, confidence: words >= 10 ? .high : .medium,
+                    detail: "Named by the meeting's live captions (\(words) matching words)"
                 )
             } else if let found = evidence[name] {
                 let confidence: SpeakerNameConfidence = switch found.strength {
@@ -207,18 +226,23 @@ extension AppCore {
         fusion: FusionResult, ids: [FusedSpeaker: Int], original: TranscriptResult
     ) -> [SpeakerEmbeddingSet] {
         var byPair: [Int: [Int: Int]] = [:] // new ID -> original cluster -> words
+        // Every word of a voice and of a speaker counts in its total, even
+        // words the other side doesn't have (an unnamed speaker, a word with
+        // no voice), so a mixed voice can't look clean.
         var clusterTotals: [Int: Int] = [:]
+        var speakerTotals: [Int: Int] = [:]
         for segment in fusion.segments {
-            guard let newID = ids[segment.speaker] else { continue }
+            let newID = ids[segment.speaker]
             for word in segment.words {
-                guard let cluster = word.clusterID else { continue }
-                byPair[newID, default: [:]][cluster, default: 0] += 1
-                clusterTotals[cluster, default: 0] += 1
+                if let cluster = word.clusterID { clusterTotals[cluster, default: 0] += 1 }
+                guard let newID else { continue }
+                speakerTotals[newID, default: 0] += 1
+                if let cluster = word.clusterID { byPair[newID, default: [:]][cluster, default: 0] += 1 }
             }
         }
         var source: [Int: Int] = [:] // new ID -> original cluster
         for (newID, clusters) in byPair {
-            let total = clusters.values.reduce(0, +)
+            let total = speakerTotals[newID] ?? 0
             guard let top = clusters.max(by: { $0.value < $1.value }), total > 0,
                   Double(top.value) / Double(total) >= 0.8,
                   Double(top.value) / Double(clusterTotals[top.key] ?? top.value) >= 0.8

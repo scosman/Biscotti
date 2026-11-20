@@ -50,7 +50,10 @@ struct EchoAndDigitsTests {
 
     @Test func yourVoiceEchoedBackIsDroppedWhenCaptionsVouchForIt() {
         let meeting = Self.echoMeeting()
-        let captions = [CaptionLine(name: "Sam Carter", text: "I still can't hear you", start: 60.3, end: 60.3)]
+        let captions = [
+            CaptionLine(name: "Sam Carter", text: "I still can't hear you", start: 60.3, end: 60.3),
+            CaptionLine(name: "Sam Carter", text: "Let's try again", start: 70, end: 71)
+        ]
         let result = SpeakerFuser.fuse(
             words: meeting.words, levels: meeting.levels,
             timeline: ParticipantTimeline(intervals: [], participants: [], captions: captions),
@@ -59,6 +62,19 @@ struct EchoAndDigitsTests {
         #expect(result.report.echoWords == 5)
         #expect(result.segments.map(\.text) == ["I still can't hear you."])
         #expect(result.report.summary.contains("dropped 5 words echoing you"))
+    }
+
+    @Test func captionsThatStoppedBeforeTheRunDontVouchForIt() {
+        // Captions were turned off after 60 s: nothing shows they'd have
+        // caught someone else speaking at 62 s.
+        let meeting = Self.echoMeeting()
+        let captions = [CaptionLine(name: "Sam Carter", text: "I still can't hear you", start: 60.3, end: 60.3)]
+        let result = SpeakerFuser.fuse(
+            words: meeting.words, levels: meeting.levels,
+            timeline: ParticipantTimeline(intervals: [], participants: [], captions: captions),
+            userName: "Sam Carter"
+        )
+        #expect(result.report.echoWords == 0)
     }
 
     @Test func withoutCaptionsNothingIsDroppedAsAnEcho() {

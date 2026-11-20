@@ -85,6 +85,15 @@ public extension DataStore {
             current[speakerID] = SpeakerAssignmentEntry(
                 personID: personID, userSet: false, provenance: source
             )
+            // A name backed by evidence (a voice match) replaces any earlier
+            // AI guess that put the same person on another speaker.
+            if source.source != .guess {
+                for (other, entry) in current where other != speakerID && entry.personID == personID
+                    && entry.effectiveProvenance.source == .guess && !entry.userSet
+                {
+                    current.removeValue(forKey: other)
+                }
+            }
         }
         record.speakerAssignments = current
         try save()
@@ -101,11 +110,16 @@ public extension DataStore {
         }
         var assignments = record.speakerAssignments
         if let personID {
-            // Correcting an automatic name teaches an alias, so
-            // the display name it came from finds this person next time.
+            // Correcting an automatic name teaches an alias, so the display
+            // name it came from finds this person next time ("Lopez, Maria
+            // (AGENCY)" -> Maria Reyes). Only when the two names share a first
+            // or last name: otherwise the screen simply picked the wrong
+            // person, and that must not become a permanent rule.
             if let previous = assignments[speakerID], previous.personID != personID,
                previous.effectiveProvenance.source == .screen,
-               let old = try fetchPerson(id: previous.personID)
+               let old = try fetchPerson(id: previous.personID),
+               let new = try fetchPerson(id: personID),
+               PersonAlias.sharesAName(old.name, new.name)
             {
                 addAlias(old.name, for: personID)
             }

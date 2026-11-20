@@ -42,12 +42,14 @@ public extension CaptionAligner {
     }
 
     /// The caption's words for a gap of low-confidence Whisper words, or nil
-    /// to leave them alone.
+    /// to leave them alone. Every word in the gap must be unsure (a confident
+    /// word stays as an anchor), and the gap must be one voice, since the new
+    /// words can only carry one.
     internal static func replacement(_ gap: ArraySlice<FusionWord>, with captionWords: [String]) -> [FusionWord]? {
         guard let first = gap.first, let last = gap.last, !captionWords.isEmpty,
               captionWords.count <= gap.count * 3 + 2 else { return nil }
-        let mean = gap.reduce(Float(0)) { $0 + $1.probability } / Float(gap.count)
-        guard mean < replaceBelow else { return nil }
+        guard gap.allSatisfy({ $0.probability < replaceBelow }),
+              gap.allSatisfy({ $0.clusterID == first.clusterID }) else { return nil }
         let start = first.start
         let step = max(last.end - start, 0.05) / Double(captionWords.count)
         return captionWords.enumerated().map { index, text in

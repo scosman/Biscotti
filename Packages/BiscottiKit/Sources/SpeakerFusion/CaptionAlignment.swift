@@ -163,37 +163,47 @@ public enum CaptionAligner {
     ]
 
     /// A voice most of whose caption-matched words carry one name, with at
-    /// least `minimumWords` such words, takes that name.
+    /// least `minimumWords` such words, takes that name. One voice per
+    /// person: if two voices qualify for the same name, the one with more
+    /// matched words keeps it.
     static func clusterNames(
         _ words: [FusionWord], assigned: [Int: String], minimumWords: Int = 5, minimumShare: Double = 0.6
-    ) -> [Int: String] {
+    ) -> [Int: (name: String, words: Int)] {
         var counts: [Int: [String: Int]] = [:]
         for (index, name) in assigned {
             guard let cluster = words[index].clusterID else { continue }
             counts[cluster, default: [:]][name, default: 0] += 1
         }
-        var result: [Int: String] = [:]
-        for (cluster, names) in counts {
+        var best: [String: (cluster: Int, words: Int)] = [:]
+        for (cluster, names) in counts.sorted(by: { $0.key < $1.key }) {
             let total = names.values.reduce(0, +)
-            guard let top = names.max(by: { $0.value < $1.value }), top.value >= minimumWords,
+            guard let top = names.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }), top.value >= minimumWords,
                   Double(top.value) / Double(total) >= minimumShare else { continue }
-            result[cluster] = top.key
+            if let current = best[top.key], current.words >= top.value { continue }
+            best[top.key] = (cluster, top.value)
         }
-        return result
+        return Dictionary(uniqueKeysWithValues: best.map { ($0.value.cluster, (name: $0.key, words: $0.value.words)) })
     }
 }
 
 extension SpeakerFuser {
-    /// A voice most of whose caption-matched words carry one person's name
-    /// takes that name (the user excepted: the mic covers them).
-    static func withCaptionNames(
-        _ names: [Int: String], words: [FusionWord], captioned: [Int: String], userName: String
-    ) -> [Int: String] {
+    /// Voices named by captions (the user excepted: the mic covers them),
+    /// with how many caption-matched words back each name.
+    static func captionNamedVoices(
+        _ words: [FusionWord], captioned: [Int: String], userName: String
+    ) -> [Int: (name: String, words: Int)] {
+        CaptionAligner.clusterNames(words, assigned: captioned).filter { !PersonName.same($0.value.name, userName) }
+    }
+
+    /// Caption names outrank highlight names. A person named by captions is
+    /// taken off any other voice, so each person has at most one voice.
+    static func withCaptionNames(_ names: [Int: String], captionNamed: [Int: (name: String, words: Int)]) -> [Int: String] {
         var result = names
-        for (cluster, name) in CaptionAligner.clusterNames(words, assigned: captioned)
-            where !PersonName.same(name, userName)
-        {
-            result[cluster] = name
+        for (cluster, entry) in captionNamed {
+            for (other, existing) in result where other != cluster && PersonName.same(existing, entry.name) {
+                result[other] = nil
+            }
+            result[cluster] = entry.name
         }
         return result
     }

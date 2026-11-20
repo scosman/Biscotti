@@ -22,6 +22,8 @@ enum EchoFilter {
         var minimumShare = 0.8
         /// A silence this long ends a run.
         var runGap = 1.0
+        /// Captions must appear this close before and after a run.
+        var coverage = 30.0
     }
 
     /// Indexes of words that echo the user.
@@ -43,9 +45,10 @@ enum EchoFilter {
             let start = words[first].start
             let end = words[last].end
             let tuningWindow = CaptionAligner.Tuning()
-            let vouched = !others.contains {
-                $0.start - tuningWindow.lead < end && $0.end + tuningWindow.tail > start
-            }
+            // Captions must have been running on both sides of the run (they
+            // can be turned off mid-meeting), and no one else captioned in it.
+            let vouched = captionsRunning(captions, around: start ... end, within: tuning.coverage)
+                && !others.contains { $0.start - tuningWindow.lead < end && $0.end + tuningWindow.tail > start }
             guard vouched else { continue }
             let recent = words.indices.filter {
                 sources[$0] == .mic && words[$0].start >= start - tuning.lookBack && words[$0].start < start
@@ -56,6 +59,14 @@ enum EchoFilter {
             }
         }
         return result
+    }
+
+    /// Some caption (anyone's) shortly before the run and another shortly
+    /// after it.
+    static func captionsRunning(_ captions: [CaptionLine], around run: ClosedRange<Double>, within seconds: Double) -> Bool {
+        let before = captions.contains { $0.start <= run.lowerBound && $0.end >= run.lowerBound - seconds }
+        let after = captions.contains { $0.end >= run.upperBound && $0.start <= run.upperBound + seconds }
+        return before && after
     }
 
     /// Consecutive words that weren't loudest on the user's mic and that no

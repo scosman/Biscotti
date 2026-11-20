@@ -1,6 +1,8 @@
 import AudioCapture
 import AudioImport
+import Automation
 import Calendar
+import CoreAudio
 import DataStore
 import Foundation
 import Intelligence
@@ -42,6 +44,9 @@ public extension AppCore {
 
         let permissions = Permissions()
         let recordingsRoot = storageRoot.appendingPathComponent("Recordings")
+        // Settings first, so the recorder can follow the mic priority list.
+        let automation = AutomationSettingsStore.live()
+        let micSelector = AutomationMicSelector(policy: automation.micPolicy)
 
         logger.info("AppCore.live: RecordingController init")
         let recording = RecordingController(
@@ -49,7 +54,7 @@ public extension AppCore {
             permissions: permissions,
             storageRoot: recordingsRoot,
             makeRecorder: {
-                LiveRecorderAdapter(recorder: AudioRecorder.live())
+                LiveRecorderAdapter(recorder: AudioRecorder.live(micSelector: micSelector))
             }
         )
 
@@ -92,7 +97,8 @@ public extension AppCore {
             intelligence: intelligence,
             modelManager: modelManager,
             speechEngines: speechEngines,
-            audioImport: audioImportCtrl
+            audioImport: audioImportCtrl,
+            automation: automation
         )
         logger.info("AppCore.live: done")
         return core
@@ -290,5 +296,27 @@ private struct LiveTranscriberAdapter: Transcribing {
 
     func shutdown() async {
         await transcriber.shutdown()
+    }
+}
+
+/// Adapts the mic priority setting to the recorder's selector seam.
+struct AutomationMicSelector: MicDeviceSelecting {
+    let policy: MicPolicyBox
+
+    func preferredInputUID(connected: [InputDeviceInfo]) -> String? {
+        policy.choose(connected: connected.map(\.micCandidate))
+    }
+}
+
+extension InputDeviceInfo {
+    var micCandidate: MicCandidate {
+        MicCandidate(
+            uid: uid,
+            name: name,
+            isHeadset: isHeadset,
+            connection: isBluetooth ? .bluetooth : isUSB ? .usb
+                : transportType == kAudioDeviceTransportTypeBuiltIn ? .builtIn : .other,
+            isSystemDefault: isSystemDefault
+        )
     }
 }

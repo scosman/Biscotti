@@ -78,6 +78,17 @@ public final class MeetingDetector {
     // MARK: - Debounce constants
 
     let startDebounce: Duration = .seconds(3)
+
+    /// Apps that keep the microphone open all the time
+    /// (Ferdium does, whatever service is in it). Their mic says nothing
+    /// about a call, so it neither starts a meeting nor holds off auto-stop.
+    /// Calls in them are found from their call window instead.
+    public static let alwaysOnMicApps: [String] = ["org.ferdium.ferdium-app"]
+
+    static func ignoresMic(_ bundleID: String) -> Bool {
+        alwaysOnMicApps.contains { bundleID == $0 || bundleID.hasPrefix($0 + ".") }
+    }
+
     let stopDebounce: Duration = .seconds(8)
     let micStopDebounce: Duration = .seconds(5)
 
@@ -192,14 +203,15 @@ public final class MeetingDetector {
             ) ?? bundleID
             let name = catalog.displayName(forBundleID: parentID) ?? parentID
 
+            let mic = process.isRunningInput && !Self.ignoresMic(bundleID)
             if var existing = merged[parentID] {
-                existing.mic = existing.mic || process.isRunningInput
+                existing.mic = existing.mic || mic
                 merged[parentID] = existing
             } else {
                 let app = DetectedApp(bundleID: parentID, displayName: name)
                 merged[parentID] = MergedFlags(
                     app: app,
-                    mic: process.isRunningInput
+                    mic: mic
                 )
             }
         }
@@ -382,8 +394,9 @@ extension MeetingDetector {
 
         for process in snapshot where process.isRunningInput {
             if let bundleID = process.bundleID {
-                if bundleID.hasPrefix(selfBundlePrefix) {
-                    // Our own process -- excluded from non-self counting.
+                if bundleID.hasPrefix(selfBundlePrefix) || Self.ignoresMic(bundleID) {
+                    // Our own process, or an app that never closes the mic
+                    // excluded from non-self counting.
                     continue
                 } else if isIgnoredAppleSystemService(bundleID) {
                     // Apple system service (not a meeting app) -- ignored.

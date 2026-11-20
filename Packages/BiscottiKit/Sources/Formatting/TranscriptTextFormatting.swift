@@ -39,23 +39,30 @@ public enum TranscriptTextFormatting {
     /// per fragment makes both the Copy output and the CSV unreadable.
     /// Segments with nil `speakerID` never collapse. Blank segments are
     /// dropped. Timestamps are `M:SS`, or `H:MM:SS` from one hour up.
+    ///
+    /// `markUnclear` adds " · unclear audio" to the header of
+    /// a turn containing a line Whisper was unsure of. Only for exports; the
+    /// Copy text and CSV stay parseable.
     public static func render(
-        _ segments: [SegmentData], names: [Int: String] = [:]
+        _ segments: [SegmentData], names: [Int: String] = [:], markUnclear: Bool = false
     ) -> String {
         var turns: [String] = []
         var currentSpeakerID: Int?
         var currentName = ""
         var currentStartTime: TimeInterval = 0
         var currentText = ""
+        var currentUnclear = false
 
         func flushTurn() {
             if !currentText.isEmpty {
                 let timeText = TimeFormatting.formatPlaybackTime(currentStartTime)
-                turns.append("[\(timeText)] \(currentName)\n\(currentText)")
+                let note = markUnclear && currentUnclear ? " \u{00B7} unclear audio" : ""
+                turns.append("[\(timeText)] \(currentName)\(note)\n\(currentText)")
             }
             currentSpeakerID = nil
             currentName = ""
             currentText = ""
+            currentUnclear = false
         }
 
         for segment in segments {
@@ -72,10 +79,31 @@ public enum TranscriptTextFormatting {
                 currentStartTime = segment.startTime
                 currentText = trimmed
             }
+            currentUnclear = currentUnclear || segment.isUnclear
         }
         flushTurn()
 
         return turns.joined(separator: "\n\n")
+    }
+
+    /// A one-line audio-quality note for exports, or nil
+    /// when every line was clear. "Unclear audio in 6 places (Nora Hale 4,
+    /// Speaker 5 2). Those lines are marked below."
+    public static func unclearSummary(_ segments: [SegmentData], names: [Int: String] = [:]) -> String? {
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for segment in segments where segment.isUnclear {
+            let name = displayName(for: segment, names: names)
+            if counts[name] == nil { order.append(name) }
+            counts[name, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return nil }
+        let total = counts.values.reduce(0, +)
+        let people = order.sorted { counts[$0, default: 0] > counts[$1, default: 0] }
+            .map { "\($0) \(counts[$0, default: 0])" }
+            .joined(separator: ", ")
+        let places = total == 1 ? "1 place" : "\(total) places"
+        return "Unclear audio in \(places) (\(people)). Those lines are marked \u{201C}unclear audio\u{201D} below."
     }
 
     // MARK: - Parse

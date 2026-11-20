@@ -81,6 +81,26 @@ public enum VoiceprintEvidence {
         )
     }
 
+    /// Like `block`, but keeps the matches so the AI's picks
+    /// can be labelled with voice evidence. Nil on failure.
+    public static func evidence(
+        store: DataStore,
+        meetingID: UUID,
+        transcript: TranscriptData,
+        detail: MeetingDetailData,
+        human: [Int: PersonData]
+    ) async -> VoiceprintEvidenceResult? {
+        do {
+            return try await compute(
+                store: store, meetingID: meetingID,
+                transcript: transcript, detail: detail, human: human
+            )
+        } catch {
+            logger.error("Voiceprint evidence failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// Production entry point — never throws; logs and returns "" on failure.
     public static func block(
         store: DataStore,

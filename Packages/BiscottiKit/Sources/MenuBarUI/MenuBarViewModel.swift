@@ -1,5 +1,6 @@
 import AppCore
 import AppKit
+import Automation
 import Calendar
 import DataStore
 import DesignSystem
@@ -92,6 +93,55 @@ public final class MenuBarViewModel {
         Array(core.summaries.prefix(2))
     }
 
+    // MARK: - UI capture
+
+    /// While recording: whether the meeting window is being captured, or
+    /// why not (no Accessibility permission, turned off in Settings).
+    public var uiCaptureStatusLine: String {
+        if core.uiCapture.isCapturing {
+            return "Meeting window: capturing"
+        }
+        if !core.automation.settings.captureMeetingUI {
+            return "Meeting window: capture off (Settings)"
+        }
+        return "Meeting window: " + (core.uiCapture.lastMessage ?? "not capturing")
+    }
+
+    /// Permissions Biscotti still needs (shown as a menu item).
+    public var needsPermissions: Bool {
+        !core.launchPermissionPrompt.isEmpty
+    }
+
+    /// What the last automatic export did.
+    public var lastExportLine: String? {
+        core.automation.lastExportStatus?.menuLine
+    }
+
+    // MARK: - Recording mode
+
+    /// The current recording mode (Automatic / Ask / Paused).
+    public var recordingMode: RecordingMode {
+        core.automation.settings.recordingMode
+    }
+
+    /// Every mode, in menu order.
+    public var recordingModes: [RecordingMode] {
+        RecordingMode.allCases
+    }
+
+    /// Changes the mode. Pausing stops a recording in progress.
+    public func setRecordingMode(_ mode: RecordingMode) async {
+        await core.setRecordingMode(mode)
+    }
+
+    /// Disabled status line at the top of the menu.
+    public var statusText: String {
+        if isRecording {
+            return "Recording \u{2022} \(elapsedText)"
+        }
+        return "Mode: \(recordingMode.title)"
+    }
+
     /// SF Symbol name for the record/stop action in the menu body.
     public var recordActionIcon: String {
         isRecording ? "record.circle.fill" : "circle.dotted.circle"
@@ -130,6 +180,12 @@ public final class MenuBarViewModel {
         } else {
             core.showHome()
         }
+        windowOpener()
+    }
+
+    /// Opens the main window on Settings.
+    public func openSettings() {
+        core.showSettings()
         windowOpener()
     }
 

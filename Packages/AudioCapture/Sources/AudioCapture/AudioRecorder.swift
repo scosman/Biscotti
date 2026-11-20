@@ -668,11 +668,16 @@ public extension AudioRecorder {
     /// Creates a recorder wired to real Core Audio / AVAudioEngine backends.
     ///
     /// Use this for production; use the main `init` with fakes for tests.
-    static func live(encoder: EncoderSettings = .voice) -> AudioRecorder {
+    /// - Parameter micSelector: Chooses the input device from the
+    ///   mic priority setting; nil always uses the system default input.
+    static func live(
+        encoder: EncoderSettings = .voice,
+        micSelector: (any MicDeviceSelecting)? = nil
+    ) -> AudioRecorder {
         let permissionChecker = LiveSystemPermissionChecker()
         return AudioRecorder(
             systemEngine: LiveSystemCaptureEngine(permissionChecker: permissionChecker, encoder: encoder),
-            micEngine: LiveMicCaptureEngine(encoder: encoder),
+            micEngine: LiveMicCaptureEngine(encoder: encoder, selector: micSelector),
             deviceChangeProvider: LiveDeviceChangeProvider(),
             permissionChecker: permissionChecker,
             micPermissionChecker: LiveMicPermissionChecker(),

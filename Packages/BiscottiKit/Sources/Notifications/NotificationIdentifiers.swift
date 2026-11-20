@@ -8,6 +8,8 @@ enum CategoryID {
     static let meetingStartingWithJoin = "biscotti.meeting-starting-with-join"
     static let adHocDetected = "biscotti.ad-hoc-detected"
     static let stopCountdown = "biscotti.stop-countdown"
+    static let autoRecording = "biscotti.auto-recording"
+    static let captions = "biscotti.captions"
 }
 
 // MARK: - Action IDs
@@ -17,6 +19,11 @@ enum ActionID {
     static let recordAndJoin = "biscotti.action.record-and-join"
     static let record = "biscotti.action.record"
     static let keepRecording = "biscotti.action.keep-recording"
+    static let stopRecording = "biscotti.action.stop-recording"
+    static let discardRecording = "biscotti.action.discard-recording"
+    static let turnOnCaptions = "biscotti.action.captions-on"
+    static let skipCaptions = "biscotti.action.captions-skip"
+    static let noCaptions = "biscotti.action.captions-no"
 }
 
 // MARK: - UserInfo keys
@@ -37,6 +44,9 @@ enum KindValue {
     static let meetingStarting = "meeting-starting"
     static let adHoc = "ad-hoc"
     static let countdown = "countdown"
+    static let autoRecording = "auto-recording"
+    static let export = "export"
+    static let captions = "captions"
 }
 
 // MARK: - Request identifier construction
@@ -53,6 +63,12 @@ func requestIdentifier(for kind: NotificationKind) -> String {
         adHocRequestIdentifier(bundleID: bundleID)
     case let .stopCountdown(meetingID, _):
         countdownRequestIdentifier(meetingID: meetingID)
+    case let .autoRecordingStarted(meetingID, _):
+        autoRecordingRequestIdentifier(meetingID: meetingID)
+    case let .exportUpdated(meetingID, _, _):
+        "biscotti.notif.export.\(meetingID.uuidString)"
+    case let .captionsOff(bundleID, _):
+        "biscotti.notif.captions.\(bundleID)"
     }
 }
 
@@ -72,4 +88,9 @@ func adHocRequestIdentifier(bundleID: String) -> String {
 /// doesn't receive a full `NotificationKind`.
 func countdownRequestIdentifier(meetingID: UUID) -> String {
     "biscotti.notif.countdown.\(meetingID.uuidString)"
+}
+
+/// Standalone auto-recording ID builder for `cancelAutoRecordingStarted`.
+func autoRecordingRequestIdentifier(meetingID: UUID) -> String {
+    "biscotti.notif.auto-recording.\(meetingID.uuidString)"
 }

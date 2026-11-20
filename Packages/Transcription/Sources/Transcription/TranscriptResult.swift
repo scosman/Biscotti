@@ -150,6 +150,33 @@ public struct TranscriptResult: Sendable, Codable, Identifiable, Equatable {
     /// Wall-clock time spent processing (STT + diarization + merging).
     public let processingDuration: TimeInterval
 
+    /// Every time range diarization heard each voice, including
+    /// speech Whisper couldn't transcribe, for speaker naming's
+    /// "[unintelligible]" lines. Encoded (it crosses the transcriber's XPC
+    /// boundary) but optional when decoding, so older JSON still reads.
+    public var speakerSpans: [DiarizedSpan] = []
+
+    enum CodingKeys: String, CodingKey {
+        case id, createdAt, transcriptionMethodId, language, speakerCount, segments
+        case embeddingSets, speakerSpeechDurations, processingDuration, speakerSpans
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        transcriptionMethodId = try container.decode(String.self, forKey: .transcriptionMethodId)
+        language = try container.decode(String.self, forKey: .language)
+        speakerCount = try container.decode(Int.self, forKey: .speakerCount)
+        segments = try container.decode([TranscriptSegment].self, forKey: .segments)
+        embeddingSets = try container.decodeIfPresent([SpeakerEmbeddingSet].self, forKey: .embeddingSets) ?? []
+        speakerSpeechDurations = try container.decodeIfPresent(
+            [Int: TimeInterval].self, forKey: .speakerSpeechDurations
+        ) ?? [:]
+        processingDuration = try container.decode(TimeInterval.self, forKey: .processingDuration)
+        speakerSpans = try container.decodeIfPresent([DiarizedSpan].self, forKey: .speakerSpans) ?? []
+    }
+
     public init(
         id: UUID = UUID(),
         createdAt: Date = Date(),

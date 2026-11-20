@@ -1,6 +1,7 @@
 import DataStore
 import Foundation
 import LocalLLM
+import VoiceprintMatching
 #if DEBUG
     import os
 #endif
@@ -43,6 +44,8 @@ enum MeetingAnalyzer {
         let doSummary: Bool
         let doTitle: Bool
         let voiceprintBlock: String
+        /// Voiceprint matches, to label the AI's picks.
+        var voiceMatches: [Int: SpeakerMatch] = [:]
         let summaryInstructions: String
         let markSummaryEdited: Bool
         let store: DataStore
@@ -276,17 +279,32 @@ enum MeetingAnalyzer {
         _ raw: String, _ ctx: Context
     ) async throws {
         let parsed = SpeakerMappingParser.parse(raw)
+        let nameGuard = await SpeakerNameGuard(
+            detail: ctx.detail, transcript: ctx.transcript,
+            confirmedNames: (try? ctx.store.confirmedPersonNames()) ?? []
+        )
 
-        var assignments: [Int: UUID] = [:]
-        for (speakerID, mapping) in parsed {
+        // Strong voice matches name speakers directly; the AI
+        // only fills speakers with no evidence (see `allowsAIPick`).
+        let voice = voiceAssignments(ctx.voiceMatches)
+        var assignments = voice.mapValues(\.personID)
+        var provenance = voice.mapValues(\.provenance)
+        var used = Set(assignments.values)
+        for (speakerID, mapping) in parsed.sorted(by: { $0.key < $1.key }) where assignments[speakerID] == nil {
+            // No guesses from outside this meeting.
+            guard nameGuard.permits(name: mapping.name, email: mapping.email) else { continue }
             let personID = try await ctx.store.findOrCreatePerson(
                 name: mapping.name, email: mapping.email
             )
+            let match = ctx.voiceMatches[speakerID]
+            guard !used.contains(personID), allowsAIPick(personID: personID, match: match) else { continue }
+            used.insert(personID)
             assignments[speakerID] = personID
+            provenance[speakerID] = pickProvenance(personID: personID, match: match)
         }
 
         try await ctx.store.setSpeakerAssignments(
-            assignments, for: ctx.transcript.id
+            assignments, provenance: provenance, for: ctx.transcript.id
         )
     }
 

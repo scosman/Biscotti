@@ -143,7 +143,7 @@ actor MeetingToolProvider {
         )
         let text = TranscriptTextFormatting.render(
             segments,
-            names: preferred.speakerAssignments.mapValues(\.name)
+            names: preferred.labeledSpeakerNames
         )
         mcpServerLog.debug(
             "tool get_transcript: segments=\(segments.count)/\(preferred.segments.count), windowed=\(startSeconds != nil || endSeconds != nil)"
@@ -242,7 +242,7 @@ actor MeetingToolProvider {
                 SpeakerPayload(
                     id: speakerID,
                     label: segment.speakerLabel,
-                    name: transcript.speakerAssignments[speakerID]?.name
+                    name: transcript.labeledSpeakerNames[speakerID]
                 )
             )
         }

@@ -18,7 +18,7 @@ extension SettingsView {
                 viewModel.systemAudioState == .approved ? .sage : .warningOchre
             )
 
-            Text("System Audio")
+            Text("System Audio Recording")
 
             Spacer()
 

@@ -133,6 +133,14 @@ public final class NotificationService {
         provider.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
+    /// Removes the "recording started automatically" notification.
+    /// Always executes regardless of auth status (cleanup is always valid).
+    public func cancelAutoRecordingStarted(meetingID: UUID) async {
+        let identifier = autoRecordingRequestIdentifier(meetingID: meetingID)
+        provider.removePendingRequests(withIdentifiers: [identifier])
+        provider.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
     /// Removes any lingering meeting-detected notifications (pending + delivered).
     /// Called when a recording starts so stale ad-hoc banners don't persist on screen.
     public func cancelAdHocDetected() async {
@@ -320,7 +328,9 @@ public final class NotificationService {
             meetingStart,
             meetingStartWithJoin,
             adHoc,
-            countdown
+            countdown,
+            autoRecordingCategory(),
+            captionsCategory()
         ])
     }
 
@@ -333,6 +343,54 @@ public final class NotificationService {
         cachedAuthStatus = status
         return status == .authorized
     }
+}
+
+/// The auto-recording category (Stop Recording, Stop & Discard).
+/// A free function to keep `NotificationService` within the lint length limits.
+private func autoRecordingCategory() -> UNNotificationCategory {
+    let stopRecording = UNNotificationAction(
+        identifier: ActionID.stopRecording,
+        title: "Stop Recording",
+        options: []
+    )
+    let discardRecording = UNNotificationAction(
+        identifier: ActionID.discardRecording,
+        title: "Stop & Discard",
+        options: [.destructive]
+    )
+    return UNNotificationCategory(
+        identifier: CategoryID.autoRecording,
+        actions: [stopRecording, discardRecording],
+        intentIdentifiers: [],
+        options: []
+    )
+}
+
+/// The captions-off banner.
+private func fillCaptionsContent(_ content: UNMutableNotificationContent, bundleID: String, appName: String) {
+    content.title = "Live captions are off"
+    content.subtitle = "App: \(appName)"
+    content.body = "Turning on live captions greatly improves speaker identification and transcription."
+    content.interruptionLevel = .timeSensitive
+    content.categoryIdentifier = CategoryID.captions
+    content.userInfo = [
+        UserInfoKey.kind: KindValue.captions,
+        UserInfoKey.bundleID: bundleID
+    ]
+}
+
+/// The captions-off category.
+private func captionsCategory() -> UNNotificationCategory {
+    UNNotificationCategory(
+        identifier: CategoryID.captions,
+        actions: [
+            UNNotificationAction(identifier: ActionID.turnOnCaptions, title: "Turn On Captions", options: []),
+            UNNotificationAction(identifier: ActionID.skipCaptions, title: "Skip Till Next Meeting", options: []),
+            UNNotificationAction(identifier: ActionID.noCaptions, title: "No", options: [])
+        ],
+        intentIdentifiers: [],
+        options: []
+    )
 }
 
 // MARK: - Request building (nonisolated to avoid sending issues)
@@ -367,6 +425,30 @@ private func makeRequest(for kind: NotificationKind) -> UNNotificationRequest {
         fillCountdownContent(
             content, meetingID: meetingID, secondsRemaining: secondsRemaining
         )
+
+    case let .autoRecordingStarted(meetingID, appName):
+        content.title = "Recording started automatically"
+        content.subtitle = "App: \(appName)"
+        content.body = "Biscotti is recording this meeting. Stop it here if you don't want it recorded."
+        content.interruptionLevel = .timeSensitive
+        content.categoryIdentifier = CategoryID.autoRecording
+        content.userInfo = [
+            UserInfoKey.kind: KindValue.autoRecording,
+            UserInfoKey.meetingID: meetingID.uuidString
+        ]
+
+    case let .captionsOff(bundleID, appName):
+        fillCaptionsContent(content, bundleID: bundleID, appName: appName)
+
+    case let .exportUpdated(meetingID, meetingTitle, detail):
+        content.title = "Export updated"
+        content.subtitle = meetingTitle
+        content.body = detail
+        content.interruptionLevel = .passive
+        content.userInfo = [
+            UserInfoKey.kind: KindValue.export,
+            UserInfoKey.meetingID: meetingID.uuidString
+        ]
     }
 
     return UNNotificationRequest(

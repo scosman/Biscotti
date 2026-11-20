@@ -1,4 +1,5 @@
 import AppCore
+import Automation
 import Calendar
 import DataStore
 import DesignSystem
@@ -17,6 +18,14 @@ public struct MenuBarContentView: View {
     }
 
     public var body: some View {
+        // Missing permissions open the app's prompt.
+        if viewModel.needsPermissions {
+            Button("\u{26A0}\u{FE0E} Permissions Needed\u{2026}") {
+                viewModel.openApp()
+            }
+            Divider()
+        }
+
         // Recording section
         recordingSection
 
@@ -34,9 +43,23 @@ public struct MenuBarContentView: View {
             Divider()
         }
 
+        // Meeting-window capture status while recording.
+        uiCaptureStatus
+
+        // What the last automatic export did.
+        if let export = viewModel.lastExportLine {
+            Text(export)
+            Divider()
+        }
+
         // Footer
         Button("Open Biscotti") {
             viewModel.openApp()
+        }
+
+        // Straight to Settings.
+        Button("Settings\u{2026}") {
+            viewModel.openSettings()
         }
 
         Button("Quit Biscotti") {
@@ -48,6 +71,9 @@ public struct MenuBarContentView: View {
 
     @ViewBuilder
     private var recordingSection: some View {
+        // Status line: elapsed timer while recording, otherwise the mode.
+        Text(viewModel.statusText)
+
         if viewModel.isRecording {
             Button {
                 Task { await viewModel.stopRecording() }
@@ -62,11 +88,35 @@ public struct MenuBarContentView: View {
                 Task { await viewModel.startRecording() }
             } label: {
                 Label(
-                    "Start Recording",
+                    "Record Now",
                     systemImage: viewModel.recordActionIcon
                 )
             }
         }
+
+        // Mode picker, rendered by the menu as a submenu
+        // with a checkmark on the current mode.
+        Picker("Recording Mode", selection: recordingModeBinding) {
+            ForEach(viewModel.recordingModes) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+    }
+
+    /// One status line while a recording captures the meeting
+    /// window. Everything else about the capture lives in Settings.
+    @ViewBuilder
+    private var uiCaptureStatus: some View {
+        if viewModel.isRecording {
+            Text(viewModel.uiCaptureStatusLine)
+        }
+    }
+
+    private var recordingModeBinding: Binding<RecordingMode> {
+        Binding(
+            get: { viewModel.recordingMode },
+            set: { mode in Task { await viewModel.setRecordingMode(mode) } }
+        )
     }
 
     @ViewBuilder

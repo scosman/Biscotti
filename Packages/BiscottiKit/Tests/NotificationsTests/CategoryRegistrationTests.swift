@@ -12,13 +12,17 @@ struct CategoryRegistrationTests {
 
         #expect(fake.setCategoriesCalls.count == 1)
         let categories = fake.setCategoriesCalls[0]
-        #expect(categories.count == 4)
+        // 4 original categories + the auto-recording and
+        // captions categories.
+        #expect(categories.count == 6)
 
         let ids = Set(categories.map(\.identifier))
         #expect(ids.contains("biscotti.meeting-starting"))
         #expect(ids.contains("biscotti.meeting-starting-with-join"))
         #expect(ids.contains("biscotti.ad-hoc-detected"))
         #expect(ids.contains("biscotti.stop-countdown"))
+        #expect(ids.contains("biscotti.auto-recording"))
+        #expect(ids.contains("biscotti.captions"))
     }
 
     @Test("Meeting-starting category has Record action without foreground")

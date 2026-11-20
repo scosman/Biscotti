@@ -116,7 +116,14 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
             )
         }
 
-        let diarization = try await runDiarization(audioArray: mergeResult.samples)
+        // Separate voices on the call audio alone. Your own
+        // lines are found from the mic track by loudness, so mixing your
+        // voice in only lets diarization blend you with remote speakers
+        // (2026-11-19: "You're | muted, Chris" split across two voices).
+        // Recordings without call audio (in person) diarize the mic as before.
+        let diarization = try await runDiarization(
+            audioArray: Self.diarizationAudio(mergeResult)
+        )
 
         if settings.sequentialLoading { await unloadSpeakerKit() }
 
@@ -137,6 +144,14 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
         await statusMachine.transition(to: .ready)
         Self.log.debug("processAudio: complete")
         return result
+    }
+
+    /// The audio to separate voices in. `BISCOTTI_DIARIZE_MIXED=1`
+    /// goes back to the mixed audio.
+    static func diarizationAudio(_ merge: AudioLoading.MergeResult) -> [Float] {
+        if ProcessInfo.processInfo.environment["BISCOTTI_DIARIZE_MIXED"] == "1" { return merge.samples }
+        guard let system = merge.systemOnly, system.contains(where: { abs($0) > 0.001 }) else { return merge.samples }
+        return system
     }
 
     public func unloadModels() async {
@@ -242,6 +257,20 @@ extension InProcessTranscriptionEngine {
 
 // MARK: - Processing helpers
 
+/// Vocabulary prompt switches.
+public enum VocabularyPrompt {
+    /// Include in `customVocabulary` to use the prompt for that request even
+    /// though it's off by default. Never shown or stored as a term.
+    public static let forceMarker = "\u{1}biscotti-force-vocabulary-prompt"
+}
+
+extension InProcessTranscriptionEngine {
+    static var vocabularyPromptEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "biscotti.whisper.vocabularyPrompt")
+            || ProcessInfo.processInfo.environment["BISCOTTI_VOCAB_PROMPT"] == "1"
+    }
+}
+
 private extension InProcessTranscriptionEngine {
     func loadAndMergeAudio(
         micPath: String?, systemPath: String?
@@ -262,7 +291,19 @@ private extension InProcessTranscriptionEngine {
                 wordTimestamps: settings.enableWordTimestamps
             )
 
-            if let promptText = VocabularyFormatter.formatPrompt(from: customVocabulary) {
+            // Vocabulary prompts are off unless turned on. On the
+            // 2026-11-18 test call (17 calendar terms) the prompt collapsed
+            // 80% of word timestamps to zero length and dropped about 22% of
+            // the words (1,911 vs 2,466 without it). Speaker naming needs the
+            // timestamps. `defaults write net.scosman.biscotti
+            // biscotti.whisper.vocabularyPrompt -bool YES` turns it back on.
+            // A caller can force the prompt for one request (the second pass
+            // over short unclear clips) with a marker term.
+            let forcePrompt = customVocabulary.contains(VocabularyPrompt.forceMarker)
+            let terms = customVocabulary.filter { $0 != VocabularyPrompt.forceMarker }
+            if Self.vocabularyPromptEnabled || forcePrompt,
+               let promptText = VocabularyFormatter.formatPrompt(from: terms)
+            {
                 if let tokenizer = whisperKit?.tokenizer {
                     decodingOptions.promptTokens = tokenizer.encode(text: promptText)
                 }
@@ -360,7 +401,7 @@ private extension InProcessTranscriptionEngine {
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
         let spans = SpeakerDurations.spans(from: diarization)
 
-        let rawResult = TranscriptResult(
+        var rawResult = TranscriptResult(
             transcriptionMethodId: methodId,
             language: language,
             speakerCount: diarization.speakerCount,
@@ -370,6 +411,7 @@ private extension InProcessTranscriptionEngine {
             processingDuration: elapsed
         )
 
+        rawResult.speakerSpans = spans
         return TranscriptSanitizer.sanitize(rawResult, audioDuration: audioDuration)
     }
 }

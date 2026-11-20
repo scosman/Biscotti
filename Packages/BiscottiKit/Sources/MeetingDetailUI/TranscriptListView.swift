@@ -71,12 +71,18 @@ struct TranscriptListView<Header: View>: View {
     /// speakers merged onto the same person share a color.
     var speakerColorKeys: [Int: String] = [:]
 
+    /// Speaker ID -> where its name came from, for the
+    /// confidence tag next to the name.
+    var speakerProvenance: [Int: SpeakerNameProvenance] = [:]
+
     /// Callback when the user taps a timestamp to seek playback.
     let onSeek: (TimeInterval) -> Void
 
     /// Callback when the user taps a speaker label, with the speaker ID,
     /// to open the speaker-mapping sheet.
     var onSpeaker: (Int) -> Void = { _ in }
+    /// Confirm on a name the app chose.
+    var onConfirmSpeaker: (Int) -> Void = { _ in }
 
     /// Callback when the user opens the voiceprint debug window for a
     /// speaker (right-click context menu, `#if DEBUG` only).
@@ -113,9 +119,11 @@ struct TranscriptListView<Header: View>: View {
                     speakerColor: TranscriptContent.speakerColor(
                         for: segment, colorKeys: speakerColorKeys
                     ),
+                    provenance: segment.speakerID.flatMap { speakerProvenance[$0] },
                     canSeek: canSeek,
                     onSeek: onSeek,
                     onSpeaker: onSpeaker,
+                    onConfirmSpeaker: onConfirmSpeaker,
                     onVoiceprintDebug: onVoiceprintDebug
                 )
                 .equatable()
@@ -148,17 +156,26 @@ struct TranscriptSegmentRow: View, Equatable {
     /// The resolved speaker display name (assigned person or label).
     let speakerName: String
     let speakerColor: Color
+    /// Shown as a tag after the name.
+    var provenance: SpeakerNameProvenance?
     let canSeek: Bool
     let onSeek: (TimeInterval) -> Void
     /// Tapped with the segment's speaker ID to open the mapping sheet.
     let onSpeaker: (Int) -> Void
+    var onConfirmSpeaker: (Int) -> Void = { _ in }
     /// Callback for the voiceprint debug context menu (`#if DEBUG` only).
     let onVoiceprintDebug: (Int) -> Void
+
+    /// Names the app chose can be confirmed; yours and the mic's already are.
+    static func canConfirm(_ provenance: SpeakerNameProvenance) -> Bool {
+        provenance.source != .confirmed && provenance.source != .microphone
+    }
 
     nonisolated static func == (lhs: TranscriptSegmentRow, rhs: TranscriptSegmentRow) -> Bool {
         lhs.segment == rhs.segment
             && lhs.speakerName == rhs.speakerName
             && lhs.speakerColor == rhs.speakerColor
+            && lhs.provenance == rhs.provenance
             && lhs.canSeek == rhs.canSeek
     }
 
@@ -200,13 +217,28 @@ struct TranscriptSegmentRow: View, Equatable {
 
     private var headerLine: some View {
         HStack(alignment: .center, spacing: Tokens.spacingXS) {
-            // Speaker color chip
-            Circle()
-                .fill(speakerColor)
-                .frame(width: 8, height: 8)
+            // Speaker chip: numbered so it doesn't depend on color alone.
+            if let speakerID = segment.speakerID {
+                SpeakerBadge(speakerID: speakerID, color: speakerColor)
+            } else {
+                Circle()
+                    .fill(speakerColor)
+                    .frame(width: 8, height: 8)
+            }
 
             // Speaker label (tappable to open the mapping sheet)
             speakerLabel
+
+            // How sure the app is of this name.
+            if let provenance {
+                NameConfidenceTag(provenance: provenance)
+                if Self.canConfirm(provenance), let speakerID = segment.speakerID {
+                    Button("Confirm") { onConfirmSpeaker(speakerID) }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11, weight: .medium))
+                        .help("This is the right person. Confirmed names are kept and teach voice matching.")
+                }
+            }
 
             // Timestamp (with optional seek action)
             if canSeek {
@@ -228,14 +260,53 @@ struct TranscriptSegmentRow: View, Equatable {
                     .foregroundStyle(.inkTertiary)
                     .padding(.leading, Tokens.spacingXS)
             }
+
+            // Flag lines Whisper was unsure of (symbol + text,
+            // not color alone). Uncertain words are underlined below.
+            if segment.isUnclear {
+                Label("Unclear audio", systemImage: "waveform.badge.exclamationmark")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.inkSecondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .overlay(Capsule().strokeBorder(Color.inkTertiary, lineWidth: 1))
+                    .padding(.leading, Tokens.spacingXS)
+                    .help(unclearHelp)
+            }
         }
     }
 
     private var utteranceText: some View {
-        Text(segment.text.drop(while: \.isWhitespace))
+        Text(utteranceAttributed)
             .font(.system(size: 14))
             .foregroundStyle(.read)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var unclearHelp: String {
+        if segment.text.trimmingCharacters(in: .whitespaces) == "[unintelligible]" {
+            return "Someone spoke here, but no words could be made out. Play the line to listen."
+        }
+        return "\(segment.uncertainWordCount) of \(segment.words.count) words were transcribed with low confidence (underlined). Play the line to check."
+    }
+
+    /// The line's text, with words Whisper was unsure of
+    /// underlined (dotted) when the line is flagged unclear.
+    private var utteranceAttributed: AttributedString {
+        let plain = String(segment.text.drop(while: \.isWhitespace))
+        guard segment.isUnclear else { return AttributedString(plain) }
+        var result = AttributedString()
+        for (index, word) in segment.words.enumerated() {
+            let leading = String(word.text.prefix(while: \.isWhitespace))
+            let core = String(word.text.drop(while: \.isWhitespace))
+            if index > 0 { result += AttributedString(leading) }
+            var piece = AttributedString(core)
+            if word.isUncertain {
+                piece.underlineStyle = Text.LineStyle(pattern: .dot)
+            }
+            result += piece
+        }
+        return result
     }
 }
 

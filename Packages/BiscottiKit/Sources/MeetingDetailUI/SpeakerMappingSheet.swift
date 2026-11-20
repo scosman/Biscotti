@@ -37,6 +37,24 @@ struct SpeakerMappingSheet: View {
                     .foregroundStyle(.inkSecondary)
             }
 
+            // Corrections after the audio is gone are on trust.
+            if !data.audioAvailable {
+                Label {
+                    Text(
+                        "The recording for this meeting has been deleted. Name changes can't be checked against the audio or re-transcribed. Change a name only if you're sure who was speaking."
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.ink)
+                .padding(Tokens.spacingSM)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6).strokeBorder(Color.inkTertiary, lineWidth: 1)
+                )
+            }
+
             if data.rows.isEmpty {
                 Text("No speakers detected in this transcript.")
                     .font(.system(size: 14))
@@ -86,12 +104,15 @@ struct SpeakerMappingSheet: View {
         HStack(spacing: Tokens.spacingSM) {
             // Color dot matching the transcript color for this speaker
             // (respects merged-speaker color keys from §13.5)
-            Circle()
-                .fill(TranscriptContent.speakerColor(
+            // The same numbered badge as the transcript.
+            SpeakerBadge(
+                speakerID: row.speakerID,
+                color: TranscriptContent.speakerColor(
                     forSpeakerID: row.speakerID,
                     colorKeys: data.colorKeys
-                ))
-                .frame(width: 10, height: 10)
+                ),
+                size: 20
+            )
 
             Text(row.label)
                 .font(.system(size: 14, weight: .medium))
@@ -99,6 +120,11 @@ struct SpeakerMappingSheet: View {
                 .frame(minWidth: 80, alignment: .leading)
 
             personPickerPill(for: row)
+
+            // Where the current name came from.
+            if row.assigned != nil, let provenance = row.provenance {
+                NameConfidenceTag(provenance: provenance)
+            }
 
             Spacer()
         }

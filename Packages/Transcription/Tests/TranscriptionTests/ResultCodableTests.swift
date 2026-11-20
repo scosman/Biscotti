@@ -249,3 +249,22 @@ struct ResultCodableTests {
         #expect(jsonString.contains("\"createdAt\""))
     }
 }
+
+/// Diarization spans cross the XPC boundary, and JSON saved
+/// before they existed still decodes.
+struct SpeakerSpansCodableTests {
+    @Test func spansRoundTripAndAreOptional() throws {
+        var result = TranscriptResult(
+            transcriptionMethodId: "v2", language: "en", speakerCount: 1, segments: [], processingDuration: 1
+        )
+        result.speakerSpans = [DiarizedSpan(speakerID: 3, start: 21.5, end: 22.4)]
+        let data = try JSONEncoder().encode(result)
+        let decoded = try JSONDecoder().decode(TranscriptResult.self, from: data)
+        #expect(decoded.speakerSpans == result.speakerSpans)
+
+        var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["speakerSpans"] = nil
+        let older = try JSONSerialization.data(withJSONObject: object)
+        #expect(try JSONDecoder().decode(TranscriptResult.self, from: older).speakerSpans.isEmpty)
+    }
+}

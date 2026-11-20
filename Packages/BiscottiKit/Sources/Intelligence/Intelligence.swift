@@ -223,12 +223,13 @@ public final class Intelligence {
         // Nothing to do: all tasks skipped
         guard doSpeakers || doSummary || doTitle else { return }
 
-        let voiceprintBlock = doSpeakers
-            ? await VoiceprintEvidence.block(
+        let voiceEvidence = doSpeakers
+            ? await VoiceprintEvidence.evidence(
                 store: store, meetingID: meetingID,
                 transcript: transcript, detail: detail, human: human
             )
-            : ""
+            : nil
+        let voiceprintBlock = voiceEvidence?.block ?? ""
 
         let firstUser = buildFirstUserContent(
             doSpeakers: doSpeakers, doSummary: doSummary,
@@ -262,6 +263,7 @@ public final class Intelligence {
                 doSpeakers: doSpeakers, doSummary: doSummary,
                 doTitle: doTitle,
                 voiceprintBlock: voiceprintBlock,
+                voiceMatches: voiceEvidence?.matches ?? [:],
                 summaryInstructions: summaryInstructions,
                 markSummaryEdited: markSummaryEdited,
                 store: self.store,

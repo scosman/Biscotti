@@ -25,6 +25,20 @@ import SettingsUI
 public final class AppShellViewModel {
     private let core: AppCore
 
+    /// The app core, for views that take it directly.
+    public var appCore: AppCore {
+        core
+    }
+
+    /// Permissions listed by the launch prompt (empty = closed).
+    public var permissionPrompt: [AppPermission] {
+        core.launchPermissionPrompt
+    }
+
+    public func dismissPermissionPrompt() {
+        core.launchPermissionPrompt = []
+    }
+
     // MARK: - Stable child view models
 
     /// The meeting-list view model (created once, never replaced).

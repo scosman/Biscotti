@@ -186,15 +186,18 @@ public extension DataStore {
             }
             .map { try mapTranscript($0) }
 
-        return MeetingExportData(
+        var data = MeetingExportData(
             id: meeting.id,
             title: meeting.title,
             date: meeting.startDate ?? meeting.createdAt,
             summary: meeting.summary,
             notes: meeting.notes,
             segments: transcript?.segments ?? [],
-            speakerNames: transcript?.speakerAssignments.mapValues(\.name) ?? [:]
+            speakerNames: transcript?.labeledSpeakerNames ?? [:]
         )
+        data.plainSpeakerNames = transcript?.speakerAssignments.mapValues(\.name) ?? [:]
+        data.speakerProvenance = transcript?.speakerProvenance ?? [:]
+        return data
     }
 }
 

@@ -87,6 +87,10 @@ public struct MeetingExportData: Sendable, Equatable {
     /// Resolved person names by diarization speaker ID, from the preferred
     /// transcript's speaker assignments.
     public let speakerNames: [Int: String]
+    /// Plain names and where each came from, for the
+    /// export's Speakers section.
+    public var plainSpeakerNames: [Int: String] = [:]
+    public var speakerProvenance: [Int: SpeakerNameProvenance] = [:]
 
     public init(
         id: UUID,

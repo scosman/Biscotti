@@ -93,6 +93,20 @@ public struct BundledMeetingCatalog: MeetingCatalog {
         "com.google.Chrome",
         "com.apple.Safari",
         "company.thebrowser.Browser",
+        // Teams/Meet on the web in Edge, Firefox and Brave.
+        // Chromium browsers can route audio through a helper process, so the
+        // helpers are listed and mapped to their parent app below.
+        // Verify on hardware: which process holds the mic varies by version.
+        "com.microsoft.edgemac",
+        "com.microsoft.edgemac.helper",
+        "com.google.Chrome.helper",
+        "org.mozilla.firefox",
+        "com.brave.Browser",
+        "com.brave.Browser.helper",
+        // Ferdium (Electron multi-messenger hosting Teams and others).
+        "org.ferdium.ferdium-app",
+        "org.ferdium.ferdium-app.helper",
+        "org.ferdium.ferdium-app.helper.Renderer",
 
         // System helpers (audio-routing daemons)
         "com.apple.avconferenced",
@@ -118,7 +132,11 @@ public struct BundledMeetingCatalog: MeetingCatalog {
         "com.hnc.Discord": "Discord",
         "com.apple.FaceTime": "FaceTime",
         "com.apple.Safari": "Safari",
-        "company.thebrowser.Browser": "Arc Browser"
+        "company.thebrowser.Browser": "Arc Browser",
+        "com.microsoft.edgemac": "Microsoft Edge",
+        "org.mozilla.firefox": "Firefox",
+        "com.brave.Browser": "Brave",
+        "org.ferdium.ferdium-app": "Ferdium"
     ]
 
     /// Helper-process to user-facing parent mapping.
@@ -127,7 +145,12 @@ public struct BundledMeetingCatalog: MeetingCatalog {
         "com.apple.avconferenced": "com.apple.FaceTime",
         "com.tinyspeck.slackmacgap.helper": "com.tinyspeck.slackmacgap",
         "com.microsoft.teams2.modulehost": "com.microsoft.teams2",
-        "com.microsoft.teams2.helper": "com.microsoft.teams2"
+        "com.microsoft.teams2.helper": "com.microsoft.teams2",
+        "com.microsoft.edgemac.helper": "com.microsoft.edgemac",
+        "com.google.Chrome.helper": "com.google.Chrome",
+        "com.brave.Browser.helper": "com.brave.Browser",
+        "org.ferdium.ferdium-app.helper": "org.ferdium.ferdium-app",
+        "org.ferdium.ferdium-app.helper.Renderer": "org.ferdium.ferdium-app"
     ]
 
     // MARK: - Compiled regex patterns (cached)

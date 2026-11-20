@@ -22,6 +22,15 @@ final class LiveDeviceChangeProvider: DeviceChangeProvider, @unchecked Sendable 
         mElement: kAudioObjectPropertyElementMain
     )
 
+    /// Devices connecting or disconnecting can change which mic
+    /// the priority list picks, so they are reported as input changes. The
+    /// mic engine skips the rebuild when the chosen device is unchanged.
+    private static let devicesAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+
     func deviceChanges() -> AsyncStream<DeviceChangeEvent> {
         AsyncStream { continuation in
             let listenerQueue = DispatchQueue(
@@ -37,13 +46,22 @@ final class LiveDeviceChangeProvider: DeviceChangeProvider, @unchecked Sendable 
                 logger.info("Default input device changed")
                 continuation.yield(.inputChanged)
             }
+            let devicesBlock: @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void = { _, _ in
+                logger.info("Audio device list changed")
+                continuation.yield(.inputChanged)
+            }
+            var devicesAddr = Self.devicesAddress
+            AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &devicesAddr, listenerQueue, devicesBlock
+            )
 
             Self.addListeners(queue: listenerQueue, outputBlock: outputBlock, inputBlock: inputBlock)
             Self.setTermination(
                 continuation: continuation,
                 queue: listenerQueue,
                 outputBlock: outputBlock,
-                inputBlock: inputBlock
+                inputBlock: inputBlock,
+                devicesBlock: devicesBlock
             )
         }
     }
@@ -67,11 +85,16 @@ final class LiveDeviceChangeProvider: DeviceChangeProvider, @unchecked Sendable 
         continuation: AsyncStream<DeviceChangeEvent>.Continuation,
         queue: DispatchQueue,
         outputBlock: @escaping @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void,
-        inputBlock: @escaping @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
+        inputBlock: @escaping @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void,
+        devicesBlock: @escaping @Sendable (UInt32, UnsafePointer<AudioObjectPropertyAddress>) -> Void
     ) {
         continuation.onTermination = { @Sendable _ in
             var outAddr = outputAddress
             var inAddr = inputAddress
+            var devicesAddr = devicesAddress
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &devicesAddr, queue, devicesBlock
+            )
             AudioObjectRemovePropertyListenerBlock(
                 AudioObjectID(kAudioObjectSystemObject), &outAddr, queue, outputBlock
             )

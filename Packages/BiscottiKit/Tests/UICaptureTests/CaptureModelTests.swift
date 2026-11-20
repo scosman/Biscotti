@@ -149,6 +149,20 @@ struct CaptureFileTests {
         #expect(text.utf8.count == writer.bytesWritten)
     }
 
+    @Test("a second capture in the same second gets its own file")
+    func writerNeverOverwrites() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uicapture-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("ui-capture 2026-11-20 120000.jsonl")
+        let first = try CaptureWriter(url: url)
+        try first.write(.note(Note(uptime: 1, message: "first")))
+        first.close()
+        let second = try CaptureWriter(url: url)
+        second.close()
+        #expect(second.url.lastPathComponent == "ui-capture 2026-11-20 120000 2.jsonl")
+        #expect(try String(contentsOf: url, encoding: .utf8).contains("first"))
+    }
+
     @Test("file name")
     func fileName() {
         let date = Date(timeIntervalSince1970: 1_763_391_722) // 2025-11-17 15:02:02 UTC

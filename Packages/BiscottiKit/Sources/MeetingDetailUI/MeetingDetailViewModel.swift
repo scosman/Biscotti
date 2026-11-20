@@ -1060,7 +1060,14 @@ public extension MeetingDetailViewModel {
         case .whisper:
             .whisper()
         }
-        core.enqueueReTranscription(meetingID: meetingID, config: config)
+        // Same export question as a plain re-transcription; the chosen
+        // engine rides along with the answer.
+        let question = core.reExportQuestion(for: meetingID)
+        if question.ask {
+            reExportPrompt = ReExportPrompt(hasExistingFile: question.hasExistingFile, config: config)
+        } else {
+            core.enqueueReTranscription(meetingID: meetingID, config: config)
+        }
     }
 }
 
@@ -1081,8 +1088,9 @@ public extension MeetingDetailViewModel {
 
     /// The answer to `reExportPrompt`.
     func reTranscribe(exportChoice: ReExportChoice) {
+        let config = reExportPrompt?.config
         reExportPrompt = nil
-        core.enqueueReTranscription(meetingID: meetingID, exportChoice: exportChoice)
+        core.enqueueReTranscription(meetingID: meetingID, exportChoice: exportChoice, config: config)
     }
 
     /// Enqueues a retry of a failed transcription + AI auto-enhancements.
@@ -2080,4 +2088,11 @@ public extension MeetingDetailViewModel {
 public struct ReExportPrompt: Equatable, Sendable {
     /// An export file for this meeting already exists in a target.
     public let hasExistingFile: Bool
+    /// The engine chosen for this re-transcription, if not the default.
+    public let config: TranscriptionConfig?
+
+    public init(hasExistingFile: Bool, config: TranscriptionConfig? = nil) {
+        self.hasExistingFile = hasExistingFile
+        self.config = config
+    }
 }

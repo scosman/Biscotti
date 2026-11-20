@@ -97,12 +97,22 @@
             }
         }
 
-        /// Depth-first search of the app's windows for the first element
-        /// whose role and label (title or description) match.
+        /// The windows to look in: the call window when one is recognisable
+        /// (so "More" and "Captions" are never pressed in, say, Teams' chat
+        /// window), otherwise every window, as with a single window.
+        static func searchWindows(pid: Int32) -> [AXUIElement] {
+            let windows = AXReader.windows(of: AXUIElementCreateApplication(pid)).map(\.element)
+            guard windows.count > 1 else { return windows }
+            let reader = AXReader(maxNodes: 2500, maxDepth: 45, timeBudget: 0.4)
+            let calls = windows.filter { CallWindowProbe.hasCallControls(reader.walk(window: $0).nodes) }
+            return calls.isEmpty ? windows : calls
+        }
+
+        /// Depth-first search of the call window (or the app's windows) for
+        /// the first element whose role and label (title or description) match.
         static func search(pid: Int32, limit: Int = 6000, matching: (String, String) -> Bool) -> AXUIElement? {
-            let app = AXUIElementCreateApplication(pid)
             var visited = 0
-            for (_, window) in AXReader.windows(of: app) {
+            for window in searchWindows(pid: pid) {
                 var stack = [window]
                 while let element = stack.popLast(), visited < limit {
                     visited += 1

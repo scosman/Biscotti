@@ -12,7 +12,9 @@ public struct PermissionList: View {
     let core: AppCore
     /// Limit to these permissions (the launch prompt); nil shows all.
     let only: [AppPermission]?
-    @State private var tick = 0
+    /// Statuses as of the last poll. Rows read these, so a poll updates a
+    /// row's text without rebuilding it (the Grant button keeps its focus).
+    @State private var statuses: [AppPermission: AppPermissionStatus] = [:]
 
     public init(core: AppCore, only: [AppPermission]? = nil) {
         self.core = core
@@ -25,26 +27,27 @@ public struct PermissionList: View {
             ForEach(permissions) { permission in
                 row(permission)
             }
-            // Accessibility isn't observable; a new tick re-renders rows.
-            .id(tick)
         }
         .task {
             while !Task.isCancelled {
-                await core.refreshAllPermissions()
-                tick &+= 1
+                await refresh(permissions)
                 try? await Task.sleep(for: .seconds(2))
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task {
-                await core.refreshAllPermissions()
-                tick &+= 1
-            }
+            Task { await refresh(permissions) }
         }
     }
 
+    /// Accessibility isn't observable, so statuses are polled into state.
+    private func refresh(_ permissions: [AppPermission]) async {
+        await core.refreshAllPermissions()
+        let latest = Dictionary(uniqueKeysWithValues: permissions.map { ($0, core.status(of: $0)) })
+        if latest != statuses { statuses = latest }
+    }
+
     private func row(_ permission: AppPermission) -> some View {
-        let status = core.status(of: permission)
+        let status = statuses[permission] ?? core.status(of: permission)
         return HStack(alignment: .firstTextBaseline) {
             Image(systemName: status == .granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(status == .granted ? .sage : .warningOchre)
@@ -62,7 +65,7 @@ public struct PermissionList: View {
                 Button("Grant\u{2026}") {
                     Task {
                         await core.grant(permission)
-                        tick &+= 1
+                        await refresh(only ?? AppPermission.allCases)
                     }
                 }
                 .buttonStyle(.bordered)

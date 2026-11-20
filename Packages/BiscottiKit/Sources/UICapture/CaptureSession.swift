@@ -49,8 +49,12 @@
         private var nextSnapshotAt: Double = 0
         private var nextBurstAt: Double = 0
         private var burstUntil: Double = -1
-        private var observers: [AXObserver] = []
-        private var enhancedUIApps: [AXUIElement] = []
+        private var observers: [pid_t: AXObserver] = [:]
+        /// Apps this session switched AXEnhancedUserInterface on for.
+        private var enhancedUIApps: [pid_t: AXUIElement] = [:]
+        private var pendingRemovals: Set<pid_t> = []
+        /// The first write that failed; the session stops on it.
+        private var writeError: String?
         private var eventWindowStart: Double = 0
         private var eventsInWindow: [String: Int] = [:]
         private var droppedEvents = 0
@@ -89,11 +93,19 @@
             lock.unlock()
         }
 
-        private func takePendingTargets() -> [TargetApp] {
+        /// Drops an app that quit. Thread-safe.
+        func remove(pid: pid_t) {
+            lock.lock()
+            pendingRemovals.insert(pid)
+            lock.unlock()
+        }
+
+        private func takePendingTargets() -> (added: [TargetApp], removed: Set<pid_t>) {
             lock.lock()
             defer { lock.unlock() }
-            let pending = pendingTargets
+            let pending = (pendingTargets, pendingRemovals)
             pendingTargets.removeAll()
+            pendingRemovals.removeAll()
             return pending
         }
 
@@ -127,6 +139,10 @@
                     reason = "reached the file size limit"
                     break
                 }
+                if let writeError {
+                    reason = "couldn't write the capture file (\(writeError))"
+                    break
+                }
                 tick(now: now)
                 RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: schedule.burstInterval))
             }
@@ -134,7 +150,11 @@
         }
 
         private func tick(now: Double) {
-            for target in takePendingTargets() where !targets.contains(where: { $0.pid == target.pid }) {
+            let pending = takePendingTargets()
+            for pid in pending.removed {
+                dropTarget(pid)
+            }
+            for target in pending.added where !targets.contains(where: { $0.pid == target.pid }) {
                 targets.append(target)
                 note("\(target.bundleID): joined the capture")
                 prepare(target)
@@ -163,22 +183,13 @@
             // enhanced flag is what Chromium treats as a screen reader.
             if manual != .success || !hasWebContent(app) {
                 let enhanced = AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
-                if enhanced == .success {
-                    enhancedUIApps.append(app)
+                if enhanced == .success, enhancedUIApps[target.pid] == nil {
+                    enhancedUIApps[target.pid] = app
+                    EnhancedUIOwnership.acquire(target.pid)
                 }
                 note("\(target.bundleID): AXEnhancedUserInterface -> \(enhanced.rawValue)")
             }
             addObserver(for: target, app: app)
-        }
-
-        private func hasWebContent(_ app: AXUIElement) -> Bool {
-            for (_, window) in AXReader.windows(of: app) {
-                let shallow = AXReader(maxNodes: 400, maxDepth: 12, timeBudget: 0.3).walk(window: window)
-                if shallow.nodes.contains(where: { $0.role == "AXWebArea" }) {
-                    return true
-                }
-            }
-            return false
         }
 
         private func snapshot(_ target: TargetApp, now: Double) {
@@ -193,13 +204,14 @@
                 )
                 let windowKey = "\(target.bundleID)|\(key)"
                 let fullDue = now - (lastFullAt[windowKey] ?? -.infinity) >= schedule.fullSnapshotInterval
+                // A record that failed to write isn't a baseline for the next diff.
                 if fullDue || lastSnapshot[windowKey] == nil {
-                    write(.snapshot(snap))
+                    guard write(.snapshot(snap)) else { return }
                     lastFullAt[windowKey] = now
                 } else if let previous = lastSnapshot[windowKey] {
                     let diff = SnapshotDiffer.diff(from: previous, to: snap)
                     if !diff.isEmpty {
-                        write(.diff(diff))
+                        guard write(.diff(diff)) else { return }
                     }
                 }
                 lastSnapshot[windowKey] = snap
@@ -222,13 +234,16 @@
         }
 
         private func finish(reason: String) {
-            for observer in observers {
+            for observer in observers.values {
                 CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
             }
             observers.removeAll()
-            for app in enhancedUIApps {
+            // Turn the flag off only if no other capture still relies on it
+            // (a replacement session may have started for the same app).
+            for (pid, app) in enhancedUIApps where EnhancedUIOwnership.release(pid) {
                 AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
             }
+            enhancedUIApps.removeAll()
             if droppedEvents > 0 {
                 note("dropped \(droppedEvents) events over the rate limit")
             }
@@ -266,7 +281,7 @@
                 registered.append(name)
             }
             CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
-            observers.append(observer)
+            observers[target.pid] = observer
             note("\(target.bundleID): observing \(registered.joined(separator: ", "))")
         }
 
@@ -286,12 +301,24 @@
                 name: name,
                 role: role,
                 title: TextRedactor.redact(values[kAXTitleAttribute].flatMap(AXReader.string), role: role),
-                label: TextRedactor.redact(values[kAXDescriptionAttribute].flatMap(AXReader.string), role: nil),
+                label: TextRedactor.redact(values[kAXDescriptionAttribute].flatMap(AXReader.string), role: role),
                 value: TextRedactor.redact(values[kAXValueAttribute].flatMap(AXReader.string), role: role)
             )))
         }
+    }
 
-        private func admitEvent(for bundleID: String, now: Double) -> Bool {
+    fileprivate extension CaptureSession {
+        func hasWebContent(_ app: AXUIElement) -> Bool {
+            for (_, window) in AXReader.windows(of: app) {
+                let shallow = AXReader(maxNodes: 400, maxDepth: 12, timeBudget: 0.3).walk(window: window)
+                if shallow.nodes.contains(where: { $0.role == "AXWebArea" }) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        func admitEvent(for bundleID: String, now: Double) -> Bool {
             if now - eventWindowStart >= 1 {
                 eventWindowStart = now
                 eventsInWindow.removeAll()
@@ -307,16 +334,62 @@
 
         // MARK: - Helpers
 
-        private func uptime() -> Double {
+        func uptime() -> Double {
             ProcessInfo.processInfo.systemUptime
         }
 
-        private func note(_ message: String) {
+        func note(_ message: String) {
             write(.note(Note(uptime: uptime(), message: message)))
         }
 
-        private func write(_ record: CaptureRecord) {
-            try? writer.write(record)
+        /// Writes a record; false (and the session stops) if it couldn't.
+        @discardableResult
+        func write(_ record: CaptureRecord) -> Bool {
+            guard writeError == nil else { return false }
+            do {
+                try writer.write(record)
+                return true
+            } catch {
+                writeError = error.localizedDescription
+                return false
+            }
+        }
+
+        /// Stops watching an app that quit.
+        func dropTarget(_ pid: pid_t) {
+            guard let index = targets.firstIndex(where: { $0.pid == pid }) else { return }
+            note("\(targets[index].bundleID): left the capture")
+            targets.remove(at: index)
+            if let observer = observers.removeValue(forKey: pid) {
+                CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
+            }
+            if enhancedUIApps.removeValue(forKey: pid) != nil {
+                EnhancedUIOwnership.release(pid)
+            }
+        }
+    }
+
+    /// Which captures rely on an app's AXEnhancedUserInterface flag. Two
+    /// sessions can overlap for a moment (a recording's capture replacing a
+    /// hand-started one); the flag goes off only when the last one finishes.
+    enum EnhancedUIOwnership {
+        private static let lock = NSLock()
+        private nonisolated(unsafe) static var owners: [pid_t: Int] = [:]
+
+        static func acquire(_ pid: pid_t) {
+            lock.lock()
+            owners[pid, default: 0] += 1
+            lock.unlock()
+        }
+
+        /// True when no capture relies on the flag any more.
+        @discardableResult
+        static func release(_ pid: pid_t) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            let remaining = max((owners[pid] ?? 1) - 1, 0)
+            owners[pid] = remaining == 0 ? nil : remaining
+            return remaining == 0
         }
     }
 #endif

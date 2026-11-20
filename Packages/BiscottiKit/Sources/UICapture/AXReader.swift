@@ -81,7 +81,7 @@
             let isCaptionText = keepText && role == kAXStaticTextRole as String
             record.title = isCaptionText ? value(kAXTitleAttribute).flatMap(Self.string)
                 : TextRedactor.redact(value(kAXTitleAttribute).flatMap(Self.string), role: role)
-            record.label = TextRedactor.redact(value(kAXDescriptionAttribute).flatMap(Self.string), role: nil)
+            record.label = TextRedactor.redact(value(kAXDescriptionAttribute).flatMap(Self.string), role: role)
             record.value = isCaptionText ? value(kAXValueAttribute).flatMap(Self.string)
                 : TextRedactor.redact(value(kAXValueAttribute).flatMap(Self.string), role: role)
             record.help = TextRedactor.redact(value(kAXHelpAttribute).flatMap(Self.string), role: nil)

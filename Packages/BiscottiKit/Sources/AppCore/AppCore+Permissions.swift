@@ -103,26 +103,39 @@ public extension AppCore {
         let status = status(of: permission)
         guard status != .granted else { return }
         if status == .notAsked {
-            switch permission {
-            case .microphone: await permissions.requestMicrophone()
-            case .systemAudio: await requestSystemAudioPermission()
-            case .notifications: _ = await permissions.requestNotifications()
-            case .calendar:
-                let result = await calendar.requestAccess()
-                let state: PermissionState = switch result {
-                case .authorized: .authorized
-                case .denied, .restricted: .denied
-                case .notDetermined: .notDetermined
-                }
-                permissions.noteCalendar(state)
-            case .accessibility:
-                UICaptureController.promptForAccessibilityIfNeeded()
-                openSystemSettings(for: .accessibility)
-            }
+            await ask(for: permission)
             await refreshAllPermissions()
             return
         }
+        // System audio access turned on in System Settings since the last
+        // probe only shows up in a new probe; try that before sending the
+        // user back to Settings.
+        if permission == .systemAudio {
+            await requestSystemAudioPermission()
+            await refreshAllPermissions()
+            if self.status(of: .systemAudio) == .granted { return }
+        }
         openSystemSettings(for: permission)
+    }
+
+    /// Shows macOS's own prompt for a permission it hasn't asked about yet.
+    private func ask(for permission: AppPermission) async {
+        switch permission {
+        case .microphone: await permissions.requestMicrophone()
+        case .systemAudio: await requestSystemAudioPermission()
+        case .notifications: _ = await permissions.requestNotifications()
+        case .calendar:
+            let result = await calendar.requestAccess()
+            let state: PermissionState = switch result {
+            case .authorized: .authorized
+            case .denied, .restricted: .denied
+            case .notDetermined: .notDetermined
+            }
+            permissions.noteCalendar(state)
+        case .accessibility:
+            UICaptureController.promptForAccessibilityIfNeeded()
+            openSystemSettings(for: .accessibility)
+        }
     }
 
     func openSystemSettings(for permission: AppPermission) {

@@ -652,8 +652,10 @@ public final class AppCore {
         eventKey: String? = nil,
         title: String? = nil
     ) async {
-        // One-recording-at-a-time guard
-        guard runState == .idle || runState == .detectedPending else {
+        // One-recording-at-a-time guard. `runState` only changes once
+        // startup finishes, so a start already in flight (a mic detection
+        // and a call-window detection arriving together) is refused too.
+        guard runState == .idle || runState == .detectedPending, recordingStartup != .loading else {
             return
         }
 
@@ -1469,7 +1471,15 @@ extension AppCore {
     private func handleAllMicUsersStopped() {
         guard stopRecordingAutomatically else { return }
         guard case let .recording(meetingID) = runState else { return }
+        // Muting releases the mic in Teams. While the call window is still
+        // open, the call hasn't ended; its closing starts the countdown.
+        guard !callWindowOpenNow else { return }
         beginAutoStopCountdown(meetingID: meetingID)
+    }
+
+    /// The latest call-window check found the recording's call on screen.
+    var callWindowOpenNow: Bool {
+        callWindowSeenWhileRecording && callWindowMisses == 0
     }
 }
 

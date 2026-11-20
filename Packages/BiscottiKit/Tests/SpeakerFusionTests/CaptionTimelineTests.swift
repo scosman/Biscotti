@@ -124,8 +124,13 @@ struct RealCaptureTimelineTests {
         for (name, entry) in totals.sorted(by: { $0.key < $1.key }) {
             print("SPEAKER", name, entry.count, "intervals", Int(entry.seconds), "s")
         }
+        // Timing and counts only: caption text is what people said, so it's
+        // printed only with BISCOTTI_PRINT_CAPTIONS set as well.
+        let showText = ProcessInfo.processInfo.environment["BISCOTTI_PRINT_CAPTIONS"] != nil
+        print("CAPTIONS", timeline.captions.count)
         for line in timeline.captions {
-            print(String(format: "CAPTION %6.1f-%6.1f", line.start, line.end), line.name, "|", line.text)
+            let words = line.text.split(separator: " ").count
+            print(String(format: "CAPTION %6.1f-%6.1f", line.start, line.end), showText ? "\(line.name) | \(line.text)" : "\(words) words")
         }
     }
 }

@@ -255,7 +255,9 @@ public enum TextRedactor {
     static let statusRoles: Set<String> = ["AXMenuItem", "AXButton", "AXGroup", "AXImage", "AXCell", "AXRow", "AXListItem"]
 
     /// "First Last, status, status" or "Last, First, status": a name made
-    /// of capitalised words, then short comma-separated parts.
+    /// of capitalised words, then only known statuses ("muted", "video on",
+    /// "hand raised"...). Anything else after the name could be speech or
+    /// chat, so the label isn't treated as a participant status.
     static func isPersonStatus(_ text: String) -> Bool {
         let parts = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         guard parts.count >= 2, parts.allSatisfy({ $0.split(separator: " ").count <= 5 }) else { return false }
@@ -264,13 +266,26 @@ public enum TextRedactor {
             let shaped = !words.isEmpty && words.allSatisfy { $0.first?.isUppercase == true || $0.first == "(" }
             return shaped ? words : nil
         }
-        if let first = capitalised(parts[0]), first.count >= 2, first.count <= 4 { return true }
+        if let first = capitalised(parts[0]), first.count >= 2, first.count <= 4 {
+            return parts.dropFirst().allSatisfy(isKnownStatus)
+        }
         // "Lopez, Maria (AGENCY), ..."
         if let last = capitalised(parts[0]), last.count == 1, let given = capitalised(parts[1]), given.count <= 2 {
-            return parts.count >= 3
+            return parts.count >= 3 && parts.dropFirst(2).allSatisfy(isKnownStatus)
         }
         return false
     }
+
+    /// A participant status as meeting apps write them.
+    static func isKnownStatus(_ clause: String) -> Bool {
+        let lowered = clause.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+        return lowered.range(of: knownStatusPattern, options: .regularExpression) != nil
+    }
+
+    static let knownStatusPattern = #"^((un)?muted|(video|camera|mic|microphone|audio) (is )?(on|off)|"#
+        + #"(hand raised|raised hand|raised their hand)|presenting|speaking|external( unfamiliar)?|guest|"#
+        + #"organi[sz]er|(co-)?host|you|me|pinned|spotlighted|in (the )?lobby|"#
+        + #"context menu is available|(not )?muted by .{1,30})$"#
 
     static let inputRoles: Set<String> = ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox"]
 
@@ -369,28 +384,47 @@ public final class CaptureWriter {
     public let url: URL
     public let maxBytes: Int
     public private(set) var bytesWritten = 0
+    private var reachedCap = false
     private let handle: FileHandle
 
+    /// Creates the file. If `url` is taken (two captures started in the same
+    /// second), " 2", " 3"... is added to the name, so no capture is ever
+    /// overwritten; `url` is the name actually used.
     public init(url: URL, maxBytes: Int = 200_000_000) throws {
-        self.url = url
         self.maxBytes = maxBytes
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+        var candidate = url
+        var counter = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = url.deletingLastPathComponent().appendingPathComponent(
+                "\(url.deletingPathExtension().lastPathComponent) \(counter).\(url.pathExtension)"
+            )
+            counter += 1
+        }
+        guard FileManager.default.createFile(atPath: candidate.path, contents: nil) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        handle = try FileHandle(forWritingTo: url)
+        self.url = candidate
+        handle = try FileHandle(forWritingTo: candidate)
     }
 
     /// Whether the size cap has been reached; later writes are dropped.
     public var isFull: Bool {
-        bytesWritten >= maxBytes
+        reachedCap || bytesWritten >= maxBytes
     }
 
+    /// Writes one line, or nothing once the cap is reached: a line that
+    /// would go past the cap marks the file full instead of being written,
+    /// so the file never ends in a partial or oversized line.
     public func write(_ record: CaptureRecord) throws {
         guard !isFull else { return }
         let line = try CaptureCoding.encodeLine(record)
+        guard bytesWritten + line.count <= maxBytes else {
+            reachedCap = true
+            return
+        }
         try handle.write(contentsOf: line)
         bytesWritten += line.count
     }

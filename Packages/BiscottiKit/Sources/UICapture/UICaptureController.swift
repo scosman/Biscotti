@@ -86,10 +86,6 @@
                 recordingMeetingID: meetingID, recordingStartedAt: startedAt
             )
             isTiedToRecording = isCapturing
-            if isCapturing {
-                capturedPIDs = Set(targets.map(\.pid))
-                startRescan()
-            }
         }
 
         /// While a recording runs, add meeting apps that start using the mic
@@ -104,13 +100,25 @@
                         capturedPIDs.insert(target.pid)
                         session.add(target)
                     }
+                    // Apps that quit leave the capture. An app that only let
+                    // go of the mic stays: muting in Teams releases it.
+                    for pid in capturedPIDs where Self.hasExited(pid) {
+                        capturedPIDs.remove(pid)
+                        session.remove(pid: pid)
+                    }
                 }
             }
         }
 
-        /// Stops the session if a recording started it.
+        /// Stops the session if a recording started it. A capture started by
+        /// hand keeps running.
         public func stopForRecording() {
+            guard isTiedToRecording else { return }
             stop()
+        }
+
+        static func hasExited(_ pid: Int32) -> Bool {
+            NSRunningApplication(processIdentifier: pid)?.isTerminated ?? true
         }
 
         /// The same 12-hour ceiling as hand-started captures.
@@ -147,9 +155,9 @@
             recordingStartedAt: Date?
         ) {
             let now = Date()
-            let url = folder.appendingPathComponent(CaptureWriter.fileName(for: now))
             do {
-                let writer = try CaptureWriter(url: url)
+                let writer = try CaptureWriter(url: folder.appendingPathComponent(CaptureWriter.fileName(for: now)))
+                let url = writer.url
                 let session = CaptureSession(targets: targets, writer: writer, schedule: schedule) { [weak self] reason in
                     Task { @MainActor in self?.sessionEnded(reason: reason, url: url) }
                 }
@@ -166,6 +174,10 @@
                 isCapturing = true
                 startedAt = now
                 currentFile = url
+                // Hand-started and recording captures alike pick up meeting
+                // apps that open later and drop ones that quit.
+                capturedPIDs = Set(targets.map(\.pid))
+                startRescan()
             } catch {
                 lastMessage = "Couldn't create the capture file: \(error.localizedDescription)"
             }

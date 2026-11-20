@@ -294,7 +294,8 @@ struct TranscriptSegmentRow: View, Equatable {
     /// underlined (dotted) when the line is flagged unclear.
     private var utteranceAttributed: AttributedString {
         let plain = String(segment.text.drop(while: \.isWhitespace))
-        guard segment.isUnclear else { return AttributedString(plain) }
+        // Without word timings there is nothing to underline: show the text.
+        guard segment.isUnclear, !segment.words.isEmpty else { return AttributedString(plain) }
         var result = AttributedString()
         for (index, word) in segment.words.enumerated() {
             let leading = String(word.text.prefix(while: \.isWhitespace))

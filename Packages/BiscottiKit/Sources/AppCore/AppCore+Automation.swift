@@ -6,6 +6,7 @@ import Foundation
 import ImportExport
 import MeetingDetection
 import os
+import TranscriptionService
 import UICapture
 
 // Recording modes, auto-record, screen-lock stop, automatic
@@ -42,7 +43,12 @@ extension AppCore {
     }
 
     /// Starts the meeting UI capture alongside a new recording, when enabled.
+    /// Call-window evidence starts fresh with each recording, so a call
+    /// still going on can establish it again for the new one.
     func recordingDidStart(meetingID: UUID) {
+        callWindowMisses = 0
+        callWindowSeenWhileRecording = false
+        callWindowTitles = []
         guard automation.settings.captureMeetingUI else { return }
         uiCapture.excludedApps = Set(automation.settings.captureExcludedApps)
         uiCapture.startForRecording(
@@ -218,9 +224,9 @@ public extension AppCore {
     }
 
     /// Re-transcribes with the user's export choice for when it finishes.
-    func enqueueReTranscription(meetingID: UUID, exportChoice: ReExportChoice) {
+    func enqueueReTranscription(meetingID: UUID, exportChoice: ReExportChoice, config: TranscriptionConfig? = nil) {
         automation.pendingReExport[meetingID] = exportChoice
-        enqueueReTranscription(meetingID: meetingID)
+        enqueueReTranscription(meetingID: meetingID, config: config)
     }
 
     /// Exports one meeting to every enabled target. Returns nil when there

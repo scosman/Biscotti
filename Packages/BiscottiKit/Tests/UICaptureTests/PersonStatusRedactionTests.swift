@@ -17,4 +17,10 @@ struct PersonStatusRedactionTests {
         let message = "Ravi Patel, External unfamiliar, video is on, muted, hand raised"
         #expect(TextRedactor.redact(message, role: "AXStaticText")?.hasPrefix("[redacted") == true)
     }
+
+    @Test func onlyKnownStatusesMakeAParticipantLabel() {
+        #expect(TextRedactor.isPersonStatus("Ravi Patel, muted, camera off"))
+        #expect(!TextRedactor.isPersonStatus("Sam Carter, call me back later"))
+        #expect(!TextRedactor.isPersonStatus("Lopez, Maria, the budget is final"))
+    }
 }

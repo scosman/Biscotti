@@ -134,12 +134,17 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
             config.locale ?? "unknown"
         }
 
-        let result = assembleResult(
+        var result = assembleResult(
             sttResults: sttResults, diarization: diarization,
             audioDuration: mergeResult.duration, startTime: startTime,
             methodId: config.method.id, language: language,
             settings: settings
         )
+        // With voices separated on the call audio alone, your own words
+        // would otherwise go to the nearest remote voice.
+        if Self.diarizesCallAudioOnly(mergeResult) {
+            result = LocalSpeech.separate(result, spans: result.speakerSpans)
+        }
 
         await statusMachine.transition(to: .ready)
         Self.log.debug("processAudio: complete")
@@ -149,9 +154,14 @@ public actor InProcessTranscriptionEngine: TranscriptionEngine {
     /// The audio to separate voices in. `BISCOTTI_DIARIZE_MIXED=1`
     /// goes back to the mixed audio.
     static func diarizationAudio(_ merge: AudioLoading.MergeResult) -> [Float] {
-        if ProcessInfo.processInfo.environment["BISCOTTI_DIARIZE_MIXED"] == "1" { return merge.samples }
-        guard let system = merge.systemOnly, system.contains(where: { abs($0) > 0.001 }) else { return merge.samples }
-        return system
+        diarizesCallAudioOnly(merge) ? merge.systemOnly ?? merge.samples : merge.samples
+    }
+
+    /// True when voices are separated on the call audio alone.
+    static func diarizesCallAudioOnly(_ merge: AudioLoading.MergeResult) -> Bool {
+        if ProcessInfo.processInfo.environment["BISCOTTI_DIARIZE_MIXED"] == "1" { return false }
+        guard let system = merge.systemOnly else { return false }
+        return system.contains { abs($0) > 0.001 }
     }
 
     public func unloadModels() async {

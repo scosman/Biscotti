@@ -56,8 +56,12 @@ extension AppCore {
             scan.windows.contains { callWindowTitles.contains("\(app.bundleID)|\($0)") }
         }
         defer { appsWithCallWindow = current }
-        // A call that ended resets "skip till next meeting" for its app.
-        captionsOffered.formIntersection(current)
+        // A call that ended resets "skip till next meeting" for its app. A
+        // call whose controls are only hidden (Zoom) hasn't ended.
+        let openApps = Set(scans.filter { app, scan in
+            scan.windows.contains { callWindowTitles.contains("\(app.bundleID)|\($0)") }
+        }.map(\.0.bundleID))
+        captionsOffered.formIntersection(current.union(openApps))
         await offerCaptionsIfNeeded(inCall)
 
         if case let .recording(meetingID) = runState {
@@ -66,6 +70,12 @@ extension AppCore {
             } else {
                 callWindowMisses = 0
                 callWindowSeenWhileRecording = true
+                // The call is still on screen: a countdown started because
+                // the mic went quiet (muted) is wrong, so it stops.
+                if autoStop?.meetingID == meetingID {
+                    callLogger.notice("Call window still open: auto-stop countdown cancelled")
+                    keepRecording()
+                }
             }
             // Two checks in a row without the call window: the call ended.
             if callWindowSeenWhileRecording, callWindowMisses == 2, stopRecordingAutomatically {

@@ -25,7 +25,7 @@ public final class TranscriptionService {
 
     // MARK: - Dependencies
 
-    private let store: DataStore
+    let store: DataStore
     private let engine: any Transcribing
     private let vocabulary: VocabularyService
     private let engines: SpeechEngineManager?
@@ -40,6 +40,22 @@ public final class TranscriptionService {
             subsystem: "net.scosman.biscotti", category: "TranscriptionService"
         )
     #endif
+
+    /// Runs after the engine's transcript is saved. A returned
+    /// transcript is saved as a new version and made preferred, with its
+    /// named speakers assigned (as if set by hand, so AI naming keeps them).
+    /// The engine's transcript stays as the previous version.
+    /// The third argument is the meeting's vocabulary (calendar names, terms)
+    /// for name correction after transcription.
+    public var refiner: (@MainActor (UUID, TranscriptResult, [String]) async -> RefinedTranscript?)?
+
+    /// Transcribes a short clip on its own (no vocabulary) with the current
+    /// engine. Used to re-listen to unclear lines.
+    public func transcribeClip(mic: URL?, system: URL?) async throws -> TranscriptResult {
+        try await engine.processAudio(
+            mic: mic, system: system, customVocabulary: [], config: engines?.jobConfig() ?? .whisper()
+        )
+    }
 
     // MARK: - In-flight guard
 
@@ -211,6 +227,19 @@ public final class TranscriptionService {
 
         guard await persistAndPromote(meetingID: meetingID, result: result, vocabularyUsed: vocab) else { return }
 
+        if let refiner {
+            if let refined = await refiner(meetingID, result, vocab) {
+                await persistRefined(meetingID: meetingID, refined: refined, vocabularyUsed: vocab)
+                Self.refineLog.notice("Speaker naming saved for \(meetingID, privacy: .public)")
+            } else {
+                Self.refineLog.notice("Speaker naming produced nothing for \(meetingID, privacy: .public)")
+            }
+        }
+        // Names a person set on any version, read now so names confirmed
+        // on the new transcript while naming ran are included.
+        let previousNames = await humanNamesOnPreferred(meetingID: meetingID)
+        await carryOverNames(previousNames, meetingID: meetingID)
+
         jobs[meetingID] = .completed
     }
 
@@ -378,4 +407,36 @@ public final class TranscriptionService {
             return ("Speech engine not available: \(detail)", false)
         }
     }
+}
+
+// MARK: - Speaker-named transcripts
+
+extension TranscriptionService {
+    /// Saves a refined transcript as the preferred version, after its
+    /// speaker names are saved: if naming fails, the engine's transcript
+    /// stays preferred rather than an unnamed refined one.
+    private func persistRefined(meetingID: UUID, refined: RefinedTranscript, vocabularyUsed: [String]) async {
+        do {
+            let transcriptID = try await store.addTranscript(
+                refined.result,
+                vocabularyUsed: vocabularyUsed,
+                mappedEventIdentifier: nil,
+                to: meetingID
+            )
+            for (speakerID, name) in refined.speakerNames.sorted(by: { $0.key < $1.key }) {
+                let personID = try await store.findOrCreatePerson(name: name, email: nil)
+                let provenance = refined.speakerProvenance[speakerID] ?? SpeakerNameProvenance(
+                    source: .screen, confidence: .low, detail: "Named from the meeting window"
+                )
+                try await store.setSpeakerAssignment(
+                    speakerID: speakerID, personID: personID, provenance: provenance, for: transcriptID
+                )
+            }
+            try await store.setPreferredTranscript(transcriptID, for: meetingID)
+        } catch {
+            Self.refineLog.error("Speaker naming not saved: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static let refineLog = Logger(subsystem: "net.scosman.biscotti", category: "SpeakerNaming")
 }

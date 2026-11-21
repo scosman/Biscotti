@@ -47,6 +47,17 @@ public struct AppShellView: View {
             }
         }
         .background(Color.wall.ignoresSafeArea())
+        // One prompt listing every missing permission.
+        .sheet(isPresented: Binding(
+            get: { !viewModel.showOnboarding && !viewModel.permissionPrompt.isEmpty },
+            set: { if !$0 { viewModel.dismissPermissionPrompt() } }
+        )) {
+            PermissionsPromptSheet(
+                core: viewModel.appCore,
+                permissions: viewModel.permissionPrompt,
+                onDone: { viewModel.dismissPermissionPrompt() }
+            )
+        }
         // A well-formed link whose target vanished foregrounds the app
         // and explains itself; a later failure replaces an earlier one.
         .alert(

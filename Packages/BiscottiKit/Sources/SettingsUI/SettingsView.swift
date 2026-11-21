@@ -72,6 +72,8 @@ public struct SettingsView: View {
 
                 Form {
                     generalSection
+                    // Recording Automation, Retention, Automatic Export.
+                    AutomationSettingsSections(core: viewModel.appCore)
                     permissionsSection
                     notificationsSection
                     aiEnhancementsSection
@@ -161,17 +163,9 @@ public struct SettingsView: View {
     // MARK: - Permissions section
 
     private var permissionsSection: some View {
+        // Every permission uses the same row and Grant button.
         Section(Self.sectionTitles[1]) {
-            permissionRow(
-                "Microphone", state: viewModel.microphoneState, kind: .microphone
-            )
-            systemAudioRow
-            permissionRow(
-                "Calendar", state: viewModel.calendarState, kind: .calendar
-            )
-            permissionRow(
-                "Notifications", state: viewModel.notificationsState, kind: .notifications
-            )
+            PermissionList(core: viewModel.appCore)
         }
     }
 

@@ -1,6 +1,7 @@
 import AppKit
 import AppLinks
 import AudioImport
+import Automation
 import Calendar
 import DataStore
 import Foundation
@@ -13,6 +14,7 @@ import os
 import Permissions
 import Recording
 import TranscriptionService
+import UICapture
 
 // MARK: - Cross-module notification names
 
@@ -313,6 +315,17 @@ public final class AppCore {
     /// The session-long import controller (classifier, converter, worker).
     public let audioImport: AudioImportController
 
+    /// Recording mode, screen-lock stop, retention and export
+    /// settings, plus the export ledger. See `AppCore+Automation.swift`.
+    public let automation: AutomationSettingsStore
+
+    /// Writes meeting Markdown to export targets.
+    let exporter: MeetingExporter
+
+    /// Accessibility-tree capture of meeting apps (menu bar
+    /// "UI Capture"), used to tune speaker detection.
+    public let uiCapture: UICaptureController
+
     /// File > Import Audio File... request. The App sets it; AppShellView
     /// consumes it by presenting `.fileImporter`.
     public internal(set) var importPanelRequested = false
@@ -363,6 +376,21 @@ public final class AppCore {
     /// Fires at each clock-minute boundary to refresh `minuteTick`.
     private var minuteTickTask: Task<Void, Never>?
 
+    /// Screen-lock observer and periodic retention pass.
+    var screenLockTask: Task<Void, Never>?
+    /// Call-window detection state (see AppCore+CallWindows).
+    var callWindowTask: Task<Void, Never>?
+    var appsWithCallWindow: Set<String> = []
+    var callWindowMisses = 0
+    var callWindowSeenWhileRecording = false
+    /// "bundleID|window title" of call windows seen during the
+    /// current recording. Zoom hides its controls when the mouse is idle, so
+    /// a call lasts as long as its window, not its buttons.
+    var callWindowTitles: Set<String> = []
+    /// Captions offered or skipped for the current call, per app.
+    var captionsOffered: Set<String> = []
+    var retentionTask: Task<Void, Never>?
+
     /// Observes `.menuBarLeadTimeDidChange` to refresh the cached lead time.
     private var menuBarLeadTimeObserverTask: Task<Void, Never>?
 
@@ -402,7 +430,9 @@ public final class AppCore {
         mcpServer: MCPServerController? = nil,
         speechEngines: SpeechEngineManager? = nil,
         sendEnvironment: SendEnvironment = .live,
-        audioImport: AudioImportController? = nil
+        audioImport: AudioImportController? = nil,
+        automation: AutomationSettingsStore? = nil,
+        exporter: MeetingExporter = MeetingExporter()
     ) {
         self.store = store
         self.permissions = permissions
@@ -424,6 +454,11 @@ public final class AppCore {
             isJobInFlight: { false }
         )
         self.sendEnvironment = sendEnvironment
+        // Tests and previews get an isolated store with default (upstream)
+        // behavior; `AppCore.live` passes the persistent one.
+        self.automation = automation ?? AutomationSettingsStore.ephemeral()
+        self.exporter = exporter
+        uiCapture = UICaptureController()
         // The default builds one over the same store with a temp recordings
         // root. Tests inject their own via the audioImport parameter.
         self.audioImport = audioImport ?? AudioImportController(
@@ -476,6 +511,9 @@ public final class AppCore {
         // Refresh cached summaries so the sidebar reflects any title or
         // metadata changes made by transcription and AI enhancements.
         await reloadSummaries()
+        // Export the finished text, then groom (which may
+        // delete this meeting's audio when retention is "after transcription").
+        await afterPostProcessing(meetingID: entry.meetingID, reTranscribed: entry.kind == .reTranscribe)
     }
 
     // MARK: - Lifecycle
@@ -592,6 +630,8 @@ public final class AppCore {
             logger.info("startBackgroundServices: starting MCP server")
             await mcpServer.start()
         }
+
+        startAutomationServices()
         logger.info("startBackgroundServices: done")
     }
 
@@ -612,10 +652,23 @@ public final class AppCore {
         eventKey: String? = nil,
         title: String? = nil
     ) async {
-        // One-recording-at-a-time guard
-        guard runState == .idle || runState == .detectedPending else {
+        // One-recording-at-a-time guard. `runState` only changes once
+        // startup finishes, so a start already in flight (a mic detection
+        // and a call-window detection arriving together) is refused too.
+        guard runState == .idle || runState == .detectedPending, recordingStartup != .loading else {
             return
         }
+
+        // Reserve the startup before any await, so a second detection
+        // arriving while notifications are cleared is refused by the guard
+        // above. Stash the eventKey/title so retry can re-use them.
+        pendingStartupEventKey = eventKey
+        pendingStartupTitle = title
+        startupGeneration &+= 1
+        let generation = startupGeneration
+        // Navigate instantly -- the recording pane shows a loading state.
+        recordingStartup = .loading
+        route = .recording
 
         // Dismiss any lingering meeting-detected banners so they don't
         // persist on screen during an active recording.
@@ -625,20 +678,14 @@ public final class AppCore {
         cancelAllCalendarNotificationExpiryTasks()
         await notifications.cancelAllMeetingStarting()
 
-        // Stash the eventKey/title so retry can re-use them.
-        pendingStartupEventKey = eventKey
-        pendingStartupTitle = title
-
-        // Navigate instantly -- the recording pane shows a loading state.
-        startupGeneration &+= 1
-        recordingStartup = .loading
-        route = .recording
+        // Cancelled (or paused) while notifications were cleared.
+        guard generation == startupGeneration, recordingStartup == .loading else { return }
 
         // Heavy startup runs in-line (callers already `await` this).
         await completeRecordingStartup(
             eventKey: eventKey,
             title: title,
-            generation: startupGeneration
+            generation: generation
         )
     }
 
@@ -654,6 +701,8 @@ public final class AppCore {
         guard let meetingID = await recording.stop() else {
             return nil
         }
+        await notifications.cancelAutoRecordingStarted(meetingID: meetingID)
+        recordingDidStop()
 
         // Clear detection tracking and startup state
         activeDetectedBundleID = nil
@@ -927,6 +976,7 @@ extension AppCore {
         recordingStartup = .started
         pendingStartupEventKey = nil
         pendingStartupTitle = nil
+        recordingDidStart(meetingID: meetingID) // Meeting UI capture
 
         // Associate with the calendar event if resolved
         if let resolvedEvent {
@@ -949,6 +999,7 @@ extension AppCore {
     private func tearDownPartialRecording() async {
         if recording.state.isRecording {
             _ = await recording.stop()
+            recordingDidStop()
         }
     }
 
@@ -1335,36 +1386,45 @@ extension AppCore {
         for await event in detector.events() {
             switch event {
             case let .started(app):
+                MeetingEventLog.write("detection", "Microphone call started in \(app.bundleID)")
                 await handleDetectionStarted(app: app)
             case let .stopped(app):
+                MeetingEventLog.write("detection", "Microphone call stopped in \(app.bundleID)")
                 await handleDetectionStopped(app: app)
             case .allMicUsersStopped:
+                MeetingEventLog.write("detection", "No other app is using the microphone")
                 handleAllMicUsersStopped()
             }
         }
     }
 
-    private func handleDetectionStarted(
+    func handleDetectionStarted(
         app: DetectedApp
     ) async {
-        detectionLogger.info(
+        detectionLogger.notice(
             "Received .started for \(app.bundleID)"
         )
 
-        // Suppress if monitor is off
-        guard monitorForMeetings else {
-            detectionLogger.info(
-                "Suppressed: monitorForMeetings is off"
+        // Suppress if already recording
+        if case .recording = runState {
+            detectionLogger.notice(
+                "Suppressed: already recording"
             )
             return
         }
 
-        // Suppress if already recording
-        if case .recording = runState {
-            detectionLogger.info(
-                "Suppressed: already recording"
-            )
+        // The recording mode decides between ignoring,
+        // offering (upstream behavior, which honors Monitor for Meetings)
+        // and recording automatically.
+        switch detectionResponse(for: app) {
+        case .ignore:
+            detectionLogger.notice("Suppressed: recording mode or monitor setting")
             return
+        case .recordAutomatically:
+            await autoStartRecording(app: app)
+            return
+        case .offerToRecord:
+            break
         }
 
         // Suppress if a calendar notification was recently presented (de-dup)
@@ -1372,14 +1432,14 @@ extension AppCore {
             let elapsed = Date().timeIntervalSince(lastCal)
             let window = calendarSuppressionInterval
             if elapsed < window {
-                detectionLogger.info(
+                detectionLogger.notice(
                     "Suppressed: calendar prompt \(Int(elapsed))s ago (window \(Int(window))s)"
                 )
                 return
             }
         }
 
-        detectionLogger.info(
+        detectionLogger.notice(
             "Presenting ad-hoc notification for \(app.bundleID)"
         )
 
@@ -1416,7 +1476,15 @@ extension AppCore {
     private func handleAllMicUsersStopped() {
         guard stopRecordingAutomatically else { return }
         guard case let .recording(meetingID) = runState else { return }
+        // Muting releases the mic in Teams. While the call window is still
+        // open, the call hasn't ended; its closing starts the countdown.
+        guard !callWindowOpenNow else { return }
         beginAutoStopCountdown(meetingID: meetingID)
+    }
+
+    /// The latest call-window check found the recording's call on screen.
+    var callWindowOpenNow: Bool {
+        callWindowSeenWhileRecording && callWindowMisses == 0
     }
 }
 
@@ -1432,7 +1500,7 @@ extension AppCore {
         }
     }
 
-    private func beginAutoStopCountdown(meetingID: UUID) {
+    func beginAutoStopCountdown(meetingID: UUID) {
         countdownTask?.cancel()
 
         let seconds = autoStopSeconds
@@ -1497,6 +1565,23 @@ extension AppCore {
             case .keepRecording:
                 keepRecording()
                 route = .recording
+
+            case let .stopRecording(meetingID):
+                await stopAutoRecording(meetingID: meetingID, discard: false)
+
+            case let .discardRecording(meetingID):
+                await stopAutoRecording(meetingID: meetingID, discard: true)
+
+            case let .turnOnCaptions(bundleID):
+                await turnOnCaptions(bundleID: bundleID)
+
+            case .skipCaptions:
+                // Already marked as offered for this call; nothing else to do.
+                MeetingEventLog.write("captions", "Skipped for this meeting")
+
+            case .neverOfferCaptions:
+                automation.update { $0.offerCaptions = false }
+                MeetingEventLog.write("captions", "Turned off: won't offer captions again")
             }
         }
     }
@@ -1548,6 +1633,9 @@ extension AppCore {
     private func handleCalendarTimerFired(
         event: CalendarEvent
     ) async {
+        // Paused mode silences calendar prompts too.
+        guard automation.settings.recordingMode != .paused else { return }
+
         // Re-check mode in case it changed since the timer was scheduled
         switch calendarNotificationMode {
         case .never:
@@ -2007,8 +2095,11 @@ extension AppCore {
     ///
     /// - Returns: `true` if the meeting was deleted, `false` if deletion
     ///   was refused (e.g. the meeting is actively recording).
+    ///
+    /// Internal (not private) so the retention pass in
+    /// `AppCore+Automation.swift` can reuse it.
     @discardableResult
-    private func deleteSingleMeetingInternal(meetingID: UUID) async -> Bool {
+    func deleteSingleMeetingInternal(meetingID: UUID) async -> Bool {
         // Guard: refuse to delete a meeting that is actively recording.
         if recording.state.isRecording,
            recording.state.meetingID == meetingID
@@ -2093,7 +2184,7 @@ extension AppCore {
     }
 
     /// Best-effort removal of audio files and their per-meeting directory.
-    private func deleteRecordingFiles(_ paths: [String]) {
+    func deleteRecordingFiles(_ paths: [String]) {
         let fileManager = FileManager.default
         var parentDirectories: Set<String> = []
 
@@ -2114,6 +2205,12 @@ extension AppCore {
             parentDirectories.insert(
                 url.deletingLastPathComponent().path
             )
+        }
+
+        // The rest of the meeting's root bundle (screen
+        // capture with captions) goes with its audio.
+        for dirPath in parentDirectories {
+            RootBundle.removeEvidence(in: URL(fileURLWithPath: dirPath))
         }
 
         // Remove empty per-meeting directories.

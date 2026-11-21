@@ -28,7 +28,12 @@ public struct MenuBarLabelView: View {
     public var body: some View {
         HStack(spacing: 4) {
             menuBarIcon
-            if case let .nextMeeting(title, time) = viewModel
+            if viewModel.isRecording {
+                // Live elapsed timer next to the icon.
+                Text(viewModel.elapsedText)
+                    .font(.caption)
+                    .monospacedDigit()
+            } else if case let .nextMeeting(title, time) = viewModel
                 .iconState
             {
                 Text("\(title) \u{2013} \(time)")

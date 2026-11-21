@@ -56,7 +56,7 @@ public enum TranscriptSanitizer {
             segments.removeLast()
         }
 
-        return TranscriptResult(
+        var sanitized = TranscriptResult(
             id: result.id,
             createdAt: result.createdAt,
             transcriptionMethodId: result.transcriptionMethodId,
@@ -67,6 +67,8 @@ public enum TranscriptSanitizer {
             speakerSpeechDurations: result.speakerSpeechDurations,
             processingDuration: result.processingDuration
         )
+        sanitized.speakerSpans = result.speakerSpans
+        return sanitized
     }
 
     /// Derives average confidence from word-level probabilities, ignoring

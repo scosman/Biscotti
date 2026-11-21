@@ -1,6 +1,7 @@
 import AppCore
 import AppKit
 import AppLinks
+import Automation
 import Calendar
 import DataStore
 import DesignSystem
@@ -218,6 +219,14 @@ public final class MeetingDetailViewModel {
         public var voiceprintDebug: VoiceprintDebugModel?
     #endif
 
+    // MARK: - Re-export prompt
+
+    /// Set when re-transcribing needs the user's export choice.
+    public var reExportPrompt: ReExportPrompt?
+    /// Names changed and the export should be updated (ask).
+    public var nameExportPrompt = false
+    private var nameExportTask: Task<Void, Never>?
+
     // MARK: - Speaker mapping sheet
 
     /// The transcript ID for which the speaker mapping sheet is presented.
@@ -388,7 +397,7 @@ public final class MeetingDetailViewModel {
 
         let text = TranscriptTextFormatting.render(
             transcript.segments,
-            names: displayedSpeakerNames
+            names: transcript.labeledSpeakerNames
         )
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -670,6 +679,11 @@ public extension MeetingDetailViewModel {
     /// and for the view's `Equatable` re-render trigger.
     var displayedSpeakerNames: [Int: String] {
         displayedTranscript?.speakerAssignments.mapValues(\.name) ?? [:]
+    }
+
+    /// Where each displayed name came from, for the badge.
+    var displayedSpeakerProvenance: [Int: SpeakerNameProvenance] {
+        displayedTranscript?.speakerProvenance ?? [:]
     }
 
     /// Speaker ID -> color-key string map derived from assignments.
@@ -1046,7 +1060,14 @@ public extension MeetingDetailViewModel {
         case .whisper:
             .whisper()
         }
-        core.enqueueReTranscription(meetingID: meetingID, config: config)
+        // Same export question as a plain re-transcription; the chosen
+        // engine rides along with the answer.
+        let question = core.reExportQuestion(for: meetingID)
+        if question.ask {
+            reExportPrompt = ReExportPrompt(hasExistingFile: question.hasExistingFile, config: config)
+        } else {
+            core.enqueueReTranscription(meetingID: meetingID, config: config)
+        }
     }
 }
 
@@ -1054,8 +1075,22 @@ public extension MeetingDetailViewModel {
 
 public extension MeetingDetailViewModel {
     /// Enqueues a re-transcription + AI auto-enhancements for the meeting.
+    /// With automatic export on, first asks what to do with
+    /// the export (`reExportPrompt`).
     func reTranscribe() {
-        core.enqueueReTranscription(meetingID: meetingID)
+        let question = core.reExportQuestion(for: meetingID)
+        if question.ask {
+            reExportPrompt = ReExportPrompt(hasExistingFile: question.hasExistingFile)
+        } else {
+            core.enqueueReTranscription(meetingID: meetingID)
+        }
+    }
+
+    /// The answer to `reExportPrompt`.
+    func reTranscribe(exportChoice: ReExportChoice) {
+        let config = reExportPrompt?.config
+        reExportPrompt = nil
+        core.enqueueReTranscription(meetingID: meetingID, exportChoice: exportChoice, config: config)
     }
 
     /// Enqueues a retry of a failed transcription + AI auto-enhancements.
@@ -1718,17 +1753,21 @@ public struct SpeakerRow: Identifiable, Sendable, Equatable {
     public let speakerID: Int
     public let label: String
     public let assigned: PersonData?
+    /// Where the assigned name came from.
+    public var provenance: SpeakerNameProvenance?
 
     public var id: Int {
         speakerID
     }
 
     public init(
-        speakerID: Int, label: String, assigned: PersonData?
+        speakerID: Int, label: String, assigned: PersonData?,
+        provenance: SpeakerNameProvenance? = nil
     ) {
         self.speakerID = speakerID
         self.label = label
         self.assigned = assigned
+        self.provenance = provenance
     }
 }
 
@@ -1747,13 +1786,18 @@ public struct SpeakerSheetData: Sendable, Equatable {
     /// assigned to the same person) share a color dot in the sheet.
     public let colorKeys: [Int: String]
 
+    /// False once the recording is deleted, so the sheet can
+    /// warn that name changes can no longer be checked against the audio.
+    public let audioAvailable: Bool
+
     public init(
         transcriptID: UUID,
         rows: [SpeakerRow],
         invitees: [PersonData],
         people: [PersonData],
         focusedSpeakerID: Int? = nil,
-        colorKeys: [Int: String] = [:]
+        colorKeys: [Int: String] = [:],
+        audioAvailable: Bool = true
     ) {
         self.transcriptID = transcriptID
         self.rows = rows
@@ -1761,6 +1805,7 @@ public struct SpeakerSheetData: Sendable, Equatable {
         self.people = people
         self.focusedSpeakerID = focusedSpeakerID
         self.colorKeys = colorKeys
+        self.audioAvailable = audioAvailable
     }
 }
 
@@ -1799,7 +1844,8 @@ public extension MeetingDetailViewModel {
             SpeakerRow(
                 speakerID: sid,
                 label: "Speaker \(sid)",
-                assigned: transcript.speakerAssignments[sid]
+                assigned: transcript.speakerAssignments[sid],
+                provenance: transcript.speakerProvenance[sid]
             )
         }
 
@@ -1839,7 +1885,8 @@ public extension MeetingDetailViewModel {
             invitees: invitees,
             people: people,
             focusedSpeakerID: focusedSpeakerID,
-            colorKeys: colorKeys
+            colorKeys: colorKeys,
+            audioAvailable: isAudioAvailable
         )
     }
 
@@ -1854,6 +1901,44 @@ public extension MeetingDetailViewModel {
                 speakerID: speakerID, personID: personID,
                 for: transcriptID
             )
+            await reloadAfterSpeakerChange()
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    /// After names change, update the export as the setting
+    /// says. Waits a few seconds so a round of corrections makes one export
+    /// (or one question).
+    private func scheduleNameExport() {
+        nameExportTask?.cancel()
+        nameExportTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard let self, !Task.isCancelled else { return }
+            guard let decision = core.exportChoiceAfterNameChange(for: meetingID) else { return }
+            if let choice = decision {
+                await core.exportAfterNameChange(meetingID, choice: choice)
+            } else {
+                nameExportPrompt = true
+            }
+        }
+    }
+
+    /// The answer to `nameExportPrompt`.
+    func answerNameExport(_ choice: ReExportChoice) {
+        nameExportPrompt = false
+        guard choice != .skip else { return }
+        Task { await core.exportAfterNameChange(meetingID, choice: choice) }
+    }
+
+    /// Confirms the name the app chose for a speaker on the
+    /// displayed transcript. It becomes a hand-set name: kept on
+    /// re-transcription and used to teach voice matching.
+    func confirmSpeaker(speakerID: Int) async {
+        guard let transcript = displayedTranscript,
+              let person = transcript.speakerAssignments[speakerID] else { return }
+        do {
+            try await core.store.setSpeakerAssignment(speakerID: speakerID, personID: person.id, for: transcript.id)
             await reloadAfterSpeakerChange()
         } catch {
             // Non-fatal
@@ -1901,6 +1986,7 @@ public extension MeetingDetailViewModel {
     /// Reloads detail + rebuilds the transcript cache and refreshes
     /// the sheet data after a speaker assignment change.
     private func reloadAfterSpeakerChange() async {
+        scheduleNameExport()
         do {
             detail = try await core.store.meetingDetail(id: meetingID)
             versions = detail?.versions ?? []
@@ -1995,5 +2081,18 @@ public extension MeetingDetailViewModel {
 
         // Reload records from the store so the next tap reflects the new state.
         sentExports = await (try? core.store.sentExports(meetingID: meetingID)) ?? []
+    }
+}
+
+/// Asked before re-transcribing when automatic export is on.
+public struct ReExportPrompt: Equatable, Sendable {
+    /// An export file for this meeting already exists in a target.
+    public let hasExistingFile: Bool
+    /// The engine chosen for this re-transcription, if not the default.
+    public let config: TranscriptionConfig?
+
+    public init(hasExistingFile: Bool, config: TranscriptionConfig? = nil) {
+        self.hasExistingFile = hasExistingFile
+        self.config = config
     }
 }

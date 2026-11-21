@@ -124,24 +124,40 @@ public struct TranscriptData: Sendable, Identifiable, Equatable {
     /// Speaker ID -> resolved person data. Dangling IDs (referencing
     /// deleted Person records) are dropped during read-model resolution.
     public let speakerAssignments: [Int: PersonData]
+    /// Where each assigned name came from and how sure the
+    /// app is. Same keys as `speakerAssignments`.
+    public let speakerProvenance: [Int: SpeakerNameProvenance]
 
     public init(
         id: UUID,
         createdAt: Date,
         speakerCount: Int,
         segments: [SegmentData],
-        speakerAssignments: [Int: PersonData] = [:]
+        speakerAssignments: [Int: PersonData] = [:],
+        speakerProvenance: [Int: SpeakerNameProvenance] = [:]
     ) {
         self.id = id
         self.createdAt = createdAt
         self.speakerCount = speakerCount
         self.segments = segments
         self.speakerAssignments = speakerAssignments
+        self.speakerProvenance = speakerProvenance
     }
 
     /// Returns the display name for a diarization speaker ID, or nil if unassigned.
     public func speakerName(forID speakerID: Int) -> String? {
         speakerAssignments[speakerID]?.name
+    }
+
+    /// Names for text that leaves the app (exports, copies,
+    /// the MCP server), with "(guess)", "(likely)" or "(unsure)" after any
+    /// name the app isn't sure of.
+    public var labeledSpeakerNames: [Int: String] {
+        var result: [Int: String] = [:]
+        for (speakerID, person) in speakerAssignments {
+            result[speakerID] = speakerProvenance[speakerID]?.label(person.name) ?? person.name
+        }
+        return result
     }
 }
 
@@ -154,6 +170,9 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
     public let startTime: TimeInterval
     public let endTime: TimeInterval
     public let text: String
+    /// The words with Whisper's confidence, in order. Empty
+    /// for transcripts without word timing (imports).
+    public let words: [WordConfidence]
 
     public init(
         id: UUID,
@@ -161,7 +180,8 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
         speakerLabel: String,
         startTime: TimeInterval,
         endTime: TimeInterval,
-        text: String
+        text: String,
+        words: [WordConfidence] = []
     ) {
         self.id = id
         self.speakerID = speakerID
@@ -169,6 +189,39 @@ public struct SegmentData: Sendable, Identifiable, Equatable {
         self.startTime = startTime
         self.endTime = endTime
         self.text = text
+        self.words = words
+    }
+
+    /// Words Whisper was unsure of (probability under 0.4).
+    public var uncertainWordCount: Int {
+        words.count(where: \.isUncertain)
+    }
+
+    /// The audio for this line was probably hard to hear
+    /// (dropouts, a bad connection, crosstalk). Single short words aren't
+    /// flagged: Whisper is often unsure of a lone "Okay".
+    public var isUnclear: Bool {
+        // Speaker naming writes "[unintelligible]" for speech with no words.
+        if text.trimmingCharacters(in: .whitespaces) == "[unintelligible]" { return true }
+        guard words.count >= 3 else { return false }
+        let uncertain = uncertainWordCount
+        let mean = words.reduce(Float(0)) { $0 + $1.probability } / Float(words.count)
+        return uncertain >= 3 || mean < 0.6 || Double(uncertain) / Double(words.count) >= 0.3
+    }
+}
+
+/// One transcribed word and how sure Whisper was of it.
+public struct WordConfidence: Sendable, Equatable {
+    public let text: String
+    public let probability: Float
+
+    public init(text: String, probability: Float) {
+        self.text = text
+        self.probability = probability
+    }
+
+    public var isUncertain: Bool {
+        probability < 0.4
     }
 }
 
@@ -1159,7 +1212,10 @@ public extension DataStore {
                 speakerLabel: seg.speakerLabel,
                 startTime: seg.startTime,
                 endTime: seg.endTime,
-                text: seg.text
+                text: seg.text,
+                words: seg.words.sorted { $0.index < $1.index }.map {
+                    WordConfidence(text: $0.word, probability: $0.probability)
+                }
             )
         }
 
@@ -1168,11 +1224,13 @@ public extension DataStore {
         // full Person table scan.
         let rawAssignments = record.speakerAssignments
         var resolvedAssignments: [Int: PersonData] = [:]
+        var provenance: [Int: SpeakerNameProvenance] = [:]
         for (speakerID, entry) in rawAssignments {
             if let person = try fetchPerson(id: entry.personID) {
                 resolvedAssignments[speakerID] = PersonData(
                     id: person.id, name: person.name, email: person.email
                 )
+                provenance[speakerID] = entry.effectiveProvenance
             }
             // Dangling IDs (Person deleted) are silently dropped
         }
@@ -1182,7 +1240,8 @@ public extension DataStore {
             createdAt: record.createdAt,
             speakerCount: record.speakerCount,
             segments: segments,
-            speakerAssignments: resolvedAssignments
+            speakerAssignments: resolvedAssignments,
+            speakerProvenance: provenance
         )
     }
 }

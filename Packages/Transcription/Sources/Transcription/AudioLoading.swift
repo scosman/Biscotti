@@ -33,6 +33,9 @@ enum AudioLoading {
     struct MergeResult {
         let samples: [Float]
         let duration: TimeInterval
+        /// The call audio alone, when there is also a mic
+        /// track. Same timeline as `samples` (both start at sample 0).
+        var systemOnly: [Float]?
     }
 
     static func loadAndMerge(
@@ -46,6 +49,10 @@ enum AudioLoading {
         let micSamples = try micPath.map { try loadSamples(fromPath: $0) } ?? []
         let systemSamples = try systemPath.map { try loadSamples(fromPath: $0) } ?? []
         let merged = try AudioMerger.merge(mic: micSamples, system: systemSamples)
-        return MergeResult(samples: merged.samples, duration: merged.duration)
+        var result = MergeResult(samples: merged.samples, duration: merged.duration)
+        if !micSamples.isEmpty, !systemSamples.isEmpty {
+            result.systemOnly = systemSamples
+        }
+        return result
     }
 }

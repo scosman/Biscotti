@@ -27,6 +27,10 @@ public actor DataStore {
     /// Last-known SwiftData history token for incremental FTS5 index
     /// sync. `nil` on launch; the first search triggers a full reconcile.
     var lastSyncToken: DefaultHistoryToken?
+    /// Other names people go by (see DataStore+Aliases).
+    /// Kept in `person-aliases.json` next to the store; memory only in tests.
+    let aliasFile: URL?
+    var aliases: [String: UUID] = [:]
 
     /// Creates a DataStore with the given storage configuration.
     /// - Parameters:
@@ -66,6 +70,13 @@ public actor DataStore {
 
         context = ModelContext(container)
         context.autosaveEnabled = true
+
+        if case let .onDisk(url) = storage {
+            aliasFile = url.appending(path: "person-aliases.json")
+        } else {
+            aliasFile = nil
+        }
+        aliases = Self.loadAliases(from: aliasFile)
 
         // FTS5 search index: separate SQLite file alongside the SwiftData store.
         let indexStorage: SearchIndex.Storage = switch storage {
@@ -224,11 +235,21 @@ public actor DataStore {
 
         // Then try to match by exact name (only if no email provided)
         if email == nil || email?.isEmpty == true {
+            // A name the user taught as an alias wins, even over
+            // a leftover person with that exact name.
+            if let taught = try personWithAlias(name) {
+                return taught
+            }
             let descriptor = FetchDescriptor<Person>(
                 predicate: #Predicate { $0.name == name }
             )
             if let match = try context.fetch(descriptor).first {
                 return match.id
+            }
+            // The same name in another order ("Lopez, Maria"
+            // for "Maria Lopez").
+            if let known = try personMatchingAlias(name) {
+                return known
             }
         }
 

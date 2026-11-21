@@ -153,6 +153,8 @@ public struct MeetingDetailView: View {
                 "We\u{2019}ll use this event\u{2019}s title, description and attendee list to improve transcription accuracy."
             )
         }
+        .modifier(ReExportDialog(viewModel: viewModel))
+        .modifier(NameChangeExportDialog(viewModel: viewModel))
         .confirmationDialog(
             "Delete this meeting?",
             isPresented: $viewModel.showDeleteConfirmation,
@@ -1072,6 +1074,7 @@ private extension MeetingDetailView {
                 segments: transcript.segments,
                 speakerNames: viewModel.displayedSpeakerNames,
                 speakerColorKeys: viewModel.displayedSpeakerColorKeys,
+                speakerProvenance: viewModel.displayedSpeakerProvenance,
                 onSeek: { viewModel.seekAndPlay(to: $0) },
                 onSpeaker: { speakerID in
                     Task {
@@ -1079,6 +1082,9 @@ private extension MeetingDetailView {
                             speakerID: speakerID
                         )
                     }
+                },
+                onConfirmSpeaker: { speakerID in
+                    Task { await viewModel.confirmSpeaker(speakerID: speakerID) }
                 },
                 onVoiceprintDebug: { speakerID in
                     #if DEBUG

@@ -56,9 +56,19 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         firstBufferCallback.withLock { $0 = callback }
     }
 
+    /// Picks the input device from the mic priority setting.
+    /// Nil keeps upstream behavior (always the system default input).
+    private let selector: (any MicDeviceSelecting)?
+
+    /// Device the current engine was pointed at. Owned by
+    /// engineQueue. Lets a device-list change skip the rebuild when the
+    /// priority choice did not change.
+    private var appliedDeviceID: AudioObjectID?
+
     /// Configures the file encoding used by each independent recording attempt.
-    init(encoder: EncoderSettings = .voice) {
+    init(encoder: EncoderSettings = .voice, selector: (any MicDeviceSelecting)? = nil) {
         self.encoder = encoder
+        self.selector = selector
     }
 
     // MARK: - CaptureEngine conformance
@@ -135,6 +145,11 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
                     let name = CoreAudioHelpers.deviceName(for: inID) ?? "unknown"
                     logger.info("Mic reconnect: following default input \"\(name)\" id=\(inID)")
                 }
+                if engineAlreadyOnChosenDevice() {
+                    logger.info("Mic reconnect skipped: priority choice unchanged")
+                    cont.resume()
+                    return
+                }
                 teardownEngine()
                 do {
                     try buildAndStartEngineOrThrow()
@@ -179,6 +194,7 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
         input.voiceProcessingOtherAudioDuckingConfiguration = .init(
             enableAdvancedDucking: false, duckingLevel: .min
         )
+        applyPreferredDevice(to: input)
 
         try installCaptureGraphAndStart(newEngine)
     }
@@ -396,6 +412,55 @@ final class LiveMicCaptureEngine: CaptureEngine, @unchecked Sendable { // swiftl
 
             recoverEngineAfterConfigurationChange(engine, hasDeliveredBuffer: settled)
         }
+    }
+
+    // MARK: - Mic priority
+
+    /// Points the voice-processing input at the device the priority list
+    /// chose. Leaves the system default alone when that is the choice, so
+    /// without a priority list the behavior matches upstream exactly.
+    /// Whether voice processing honors a non-default device is checked by
+    /// reading the device back and logging both.
+    private func applyPreferredDevice(to input: AVAudioInputNode) {
+        let target = InputDevices.resolve(using: selector)
+        appliedDeviceID = target?.id ?? CoreAudioHelpers.defaultInputDeviceID()
+        guard let target, !target.isSystemDefault else { return }
+        guard let unit = input.audioUnit else {
+            logger.error("Mic priority: input has no audio unit; using the system default")
+            return
+        }
+        var deviceID = target.id
+        let status = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+            &deviceID, UInt32(MemoryLayout<AudioObjectID>.size)
+        )
+        let actual = Self.currentDevice(of: unit)
+        // Remember the device the unit confirms, not the one asked for: if
+        // the switch didn't take, a later device change must not be skipped
+        // as "already on the chosen device".
+        appliedDeviceID = actual
+        let actualName = actual.flatMap { CoreAudioHelpers.deviceName(for: $0) } ?? "unknown"
+        logger.notice(
+            "Mic priority: wanted \"\(target.name, privacy: .public)\" id=\(target.id, privacy: .public) status=\(status, privacy: .public); unit now on \"\(actualName, privacy: .public)\" id=\(actual ?? 0, privacy: .public)"
+        )
+    }
+
+    /// Whether a rebuild would land on the device the engine already uses.
+    private func engineAlreadyOnChosenDevice() -> Bool {
+        // Not gated on a delivered buffer: a disconnect fires several change
+        // events in a burst, and each rebuild costs about a second of audio.
+        guard let engine, engine.isRunning, let applied = appliedDeviceID else { return false }
+        let desired = InputDevices.resolve(using: selector)?.id ?? CoreAudioHelpers.defaultInputDeviceID()
+        return desired == applied
+    }
+
+    private static func currentDevice(of unit: AudioUnit) -> AudioObjectID? {
+        var deviceID = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = AudioUnitGetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceID, &size
+        )
+        return status == noErr ? deviceID : nil
     }
 
     /// Finalizes the current attempt after its hardware has been stopped.

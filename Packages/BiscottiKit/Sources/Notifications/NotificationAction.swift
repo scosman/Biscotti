@@ -8,4 +8,15 @@ public enum NotificationAction: Sendable, Equatable {
 
     /// User tapped Keep Recording on a stop-countdown notification.
     case keepRecording(meetingID: UUID)
+
+    /// User tapped Stop Recording on an auto-recording notification.
+    case stopRecording(meetingID: UUID)
+
+    /// User tapped Stop & Discard on an auto-recording notification.
+    case discardRecording(meetingID: UUID)
+
+    /// Answers to the captions-off notification.
+    case turnOnCaptions(bundleID: String)
+    case skipCaptions(bundleID: String)
+    case neverOfferCaptions
 }

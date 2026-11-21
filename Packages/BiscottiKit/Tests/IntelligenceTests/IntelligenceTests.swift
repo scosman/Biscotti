@@ -771,9 +771,11 @@ struct IntelligenceOrchestrationTests {
         #expect(detail?.summary == "## Meeting Notes\nSummary text")
         #expect(detail?.editedSummary == false)
 
+        // Alice and Bob aren't invited, mentioned or confirmed
+        // anywhere, so SpeakerNameGuard keeps the AI from naming them.
         let transcript = detail?.preferredTranscript
-        #expect(transcript?.speakerAssignments[0]?.name == "Alice")
-        #expect(transcript?.speakerAssignments[1]?.name == "Bob")
+        #expect(transcript?.speakerAssignments[0] == nil)
+        #expect(transcript?.speakerAssignments[1] == nil)
     }
 
     @Test("auto-run skips speakers when all are human-set (summary-only)")

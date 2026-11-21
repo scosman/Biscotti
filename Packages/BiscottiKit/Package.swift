@@ -15,6 +15,9 @@ let package = Package(
         .library(name: "TranscriptionService", targets: ["TranscriptionService"]),
         .library(name: "AppLinks", targets: ["AppLinks"]),
         .library(name: "AppCore", targets: ["AppCore"]),
+        .library(name: "Automation", targets: ["Automation"]),
+        .library(name: "UICapture", targets: ["UICapture"]),
+        .library(name: "SpeakerFusion", targets: ["SpeakerFusion"]),
         .library(name: "MeetingListUI", targets: ["MeetingListUI"]),
         .library(name: "RecordingUI", targets: ["RecordingUI"]),
         .library(name: "MeetingDetailUI", targets: ["MeetingDetailUI"]),
@@ -221,12 +224,52 @@ let package = Package(
             ],
             swiftSettings: warningsAsErrors
         ),
+        // Recording modes, retention, automatic export.
+        // Foundation-only (no DataStore/AppKit) so it builds and tests anywhere.
+        .target(
+            name: "Automation",
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "AutomationTests",
+            dependencies: ["Automation"],
+            swiftSettings: warningsAsErrors
+        ),
+        // Accessibility-tree capture of meeting apps, used to
+        // tune speaker detection. AX code is macOS-only; the data model is
+        // Foundation-only and tested anywhere.
+        .target(
+            name: "UICapture",
+            dependencies: ["Automation", "MeetingCatalog"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "UICaptureTests",
+            dependencies: ["UICapture"],
+            swiftSettings: warningsAsErrors
+        ),
+        // Names speakers from the mic/system split and the
+        // UI capture's speaking indicators. Foundation-only.
+        .target(
+            name: "SpeakerFusion",
+            dependencies: ["UICapture"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "SpeakerFusionTests",
+            dependencies: ["SpeakerFusion", "UICapture"],
+            swiftSettings: warningsAsErrors
+        ),
         .target(
             name: "AppCore",
             dependencies: [
                 "AppLinks",
+                "Automation",
+                "UICapture",
+                "SpeakerFusion",
                 "AudioImport",
                 "DataStore",
+                "Formatting",
                 "ImportExport",
                 "Intelligence",
                 "MCPServer",
@@ -275,6 +318,7 @@ let package = Package(
             name: "AppCoreTests",
             dependencies: [
                 "AppCore",
+                "Automation",
                 "AppLinks",
                 "AudioImport",
                 "BiscottiTestSupport",
@@ -286,6 +330,7 @@ let package = Package(
                 "Intelligence",
                 "MCPServer",
                 "MeetingCatalog",
+                "SpeakerFusion",
                 "MeetingDetailUI",
                 "MeetingDetection",
                 "Notifications",
@@ -360,6 +405,7 @@ let package = Package(
             dependencies: [
                 "AppCore",
                 "AppLinks",
+                "Automation",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
@@ -488,6 +534,7 @@ let package = Package(
             name: "SettingsUI",
             dependencies: [
                 "AppCore",
+                "Automation",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",
@@ -498,6 +545,7 @@ let package = Package(
                 "ModelManagementUI",
                 "Permissions",
                 "SummaryPromptUI",
+                "UICapture",
                 "Vocabulary"
             ],
             swiftSettings: warningsAsErrors
@@ -529,6 +577,8 @@ let package = Package(
             name: "MenuBarUI",
             dependencies: [
                 "AppCore",
+                "Automation",
+                "UICapture",
                 "Calendar",
                 "DataStore",
                 "DesignSystem",

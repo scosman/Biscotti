@@ -10,10 +10,19 @@ import SwiftData
 public struct SpeakerAssignmentEntry: Codable, Equatable, Sendable {
     public let personID: UUID
     public let userSet: Bool
+    /// Where the name came from and how sure the app is.
+    /// Missing on entries saved before it existed (decoded as nil).
+    public let provenance: SpeakerNameProvenance?
 
-    public init(personID: UUID, userSet: Bool) {
+    public init(personID: UUID, userSet: Bool, provenance: SpeakerNameProvenance? = nil) {
         self.personID = personID
         self.userSet = userSet
+        self.provenance = provenance
+    }
+
+    /// The provenance, or for older entries what `userSet` implies.
+    public var effectiveProvenance: SpeakerNameProvenance {
+        provenance ?? (userSet ? .confirmed : .legacyGuess)
     }
 }
 

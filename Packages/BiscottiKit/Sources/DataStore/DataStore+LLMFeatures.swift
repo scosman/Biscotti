@@ -102,6 +102,23 @@ public extension DataStore {
     /// Sets or clears a single speaker assignment. Pass `nil` for `personID`
     /// to clear the assignment back to "Speaker N". Manual assignments are
     /// written with `userSet = true`.
+    /// A person who exists beyond a name read off the meeting screen: they
+    /// have an email (a calendar invite), or some transcript names them by
+    /// hand or by voice. Screen labels the app saved on its own have none
+    /// of these, however many meetings they appear in.
+    func isEstablishedPerson(_ person: Person) throws -> Bool {
+        if let email = person.email, !email.isEmpty { return true }
+        for record in try context.fetch(FetchDescriptor<TranscriptRecord>()) {
+            for entry in record.speakerAssignments.values where entry.personID == person.id {
+                // Not `userSet`: a high-confidence screen name is stored as
+                // trusted too, and that's the label itself.
+                let source = entry.effectiveProvenance.source
+                if source == .confirmed || source == .voice { return true }
+            }
+        }
+        return false
+    }
+
     /// Sets a hand-set name carried over from an earlier version, unless
     /// the speaker already has a hand-set name or the person is already
     /// placed by hand on another speaker. Checked and written in one step.
@@ -131,16 +148,17 @@ public extension DataStore {
             // name it came from finds this person next time ("Lopez, Maria
             // (AGENCY)" -> Maria Reyes). Only when the two names share a first
             // or last name: otherwise the screen simply picked the wrong
-            // person, and that must not become a permanent rule. And only
-            // when the old name is a one-off screen label (no email, seen in
-            // at most this meeting): two real people who share a first name
-            // must never be merged.
+            // person, and that must not become a permanent rule. And never
+            // when the old name is a real person in its own right (see
+            // `isEstablishedPerson`): two people who share a first name must
+            // not be merged. A screen label seen in many meetings still
+            // teaches the alias.
             if let previous = assignments[speakerID], previous.personID != personID,
                previous.effectiveProvenance.source == .screen,
                let old = try fetchPerson(id: previous.personID),
                let new = try fetchPerson(id: personID),
                PersonAlias.sharesAName(old.name, new.name),
-               old.email == nil, old.meetings.count <= 1, old.organizedMeetings.isEmpty
+               try !isEstablishedPerson(old)
             {
                 addAlias(old.name, for: personID)
             }

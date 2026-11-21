@@ -49,6 +49,54 @@ struct PersonAliasTests {
         #expect(try await store.findOrCreatePerson(name: "Maria Lopez", email: nil) == lopez)
     }
 
+    @Test func aScreenLabelSeenInManyMeetingsStillTeachesAnAlias() async throws {
+        let store = try DataStore(storage: .inMemory)
+        // The app saved the label as a person and added it to three weekly
+        // meetings before anyone corrected it.
+        let label = try await store.findOrCreatePerson(name: "Lopez, Maria (AGENCY)", email: nil)
+        var transcriptID = UUID()
+        for week in 1 ... 3 {
+            let meetingID = try await store.createMeeting(title: "Weekly \(week)")
+            _ = try await store.addParticipants([label], to: meetingID)
+            transcriptID = try await store.addTranscript(
+                .init(transcriptionMethodId: "v2", language: "en", speakerCount: 2, segments: [], processingDuration: 0),
+                vocabularyUsed: [], mappedEventIdentifier: nil, to: meetingID
+            )
+            try await store.setSpeakerAssignment(
+                speakerID: 1, personID: label,
+                provenance: SpeakerNameProvenance(source: .screen, confidence: .high), for: transcriptID
+            )
+        }
+        let maria = try await store.findOrCreatePerson(name: "Maria Reyes", email: "maria@example.com")
+        try await store.setSpeakerAssignment(speakerID: 1, personID: maria, for: transcriptID)
+        #expect(try await store.findOrCreatePerson(name: "Lopez, Maria (AGENCY)", email: nil) == maria)
+    }
+
+    @Test func someoneConfirmedByHandIsNeverMergedIntoAnother() async throws {
+        let store = try DataStore(storage: .inMemory)
+        let earlier = try await store.createMeeting(title: "Earlier")
+        let earlierTranscript = try await store.addTranscript(
+            .init(transcriptionMethodId: "v2", language: "en", speakerCount: 2, segments: [], processingDuration: 0),
+            vocabularyUsed: [], mappedEventIdentifier: nil, to: earlier
+        )
+        // No email, but you confirmed Sam Carter as a speaker before.
+        let carter = try await store.findOrCreatePerson(name: "Sam Carter", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 0, personID: carter, for: earlierTranscript)
+
+        let today = try await store.createMeeting(title: "Today")
+        let transcriptID = try await store.addTranscript(
+            .init(transcriptionMethodId: "v2", language: "en", speakerCount: 2, segments: [], processingDuration: 0),
+            vocabularyUsed: [], mappedEventIdentifier: nil, to: today
+        )
+        try await store.setSpeakerAssignment(
+            speakerID: 1, personID: carter,
+            provenance: SpeakerNameProvenance(source: .screen, confidence: .high), for: transcriptID
+        )
+        let other = try await store.findOrCreatePerson(name: "Sam Kelbo", email: nil)
+        try await store.setSpeakerAssignment(speakerID: 1, personID: other, for: transcriptID)
+        #expect(try await store.findOrCreatePerson(name: "Sam Carter", email: nil) == carter)
+    }
+
     @Test func correctingTheWrongPersonTeachesNoAlias() async throws {
         let store = try DataStore(storage: .inMemory)
         let meetingID = try await store.createMeeting(title: "Wrong person")
